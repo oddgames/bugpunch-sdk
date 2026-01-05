@@ -12,20 +12,6 @@ namespace ODDGames.UITest.Samples.Editor
     /// </summary>
     public static class SampleSceneGenerator
     {
-        private const string SamplesPath = "Assets/UITest/Samples/Scenes";
-
-        [MenuItem("Window/UI Test Behaviours/Samples/Generate All Sample Scenes")]
-        public static void GenerateAllScenes()
-        {
-            EnsureDirectoryExists();
-            GenerateButtonSampleScene();
-            GenerateFormSampleScene();
-            GenerateDragSampleScene();
-            GenerateNavigationSampleScene();
-            AssetDatabase.Refresh();
-            Debug.Log("All sample scenes generated successfully!");
-        }
-
         [MenuItem("Window/UI Test Behaviours/Samples/Generate Button Sample Scene")]
         public static void GenerateButtonSampleScene()
         {
@@ -70,7 +56,7 @@ namespace ODDGames.UITest.Samples.Editor
             var testRunner = new GameObject("ButtonInteractionTest");
             testRunner.AddComponent<ButtonInteractionTest>();
 
-            SaveScene(scene, "ButtonSampleScene");
+            MarkSceneDirty(scene, "ButtonSampleScene");
         }
 
         [MenuItem("Window/UI Test Behaviours/Samples/Generate Form Sample Scene")]
@@ -121,7 +107,7 @@ namespace ODDGames.UITest.Samples.Editor
             var testRunner = new GameObject("FormInputTest");
             testRunner.AddComponent<FormInputTest>();
 
-            SaveScene(scene, "FormSampleScene");
+            MarkSceneDirty(scene, "FormSampleScene");
         }
 
         [MenuItem("Window/UI Test Behaviours/Samples/Generate Drag Sample Scene")]
@@ -157,7 +143,7 @@ namespace ODDGames.UITest.Samples.Editor
             var testRunner = new GameObject("DragAndDropTest");
             testRunner.AddComponent<DragAndDropTest>();
 
-            SaveScene(scene, "DragSampleScene");
+            MarkSceneDirty(scene, "DragSampleScene");
         }
 
         [MenuItem("Window/UI Test Behaviours/Samples/Generate Navigation Sample Scene")]
@@ -200,17 +186,7 @@ namespace ODDGames.UITest.Samples.Editor
             var testRunner = new GameObject("BasicNavigationTest");
             testRunner.AddComponent<BasicNavigationTest>();
 
-            SaveScene(scene, "NavigationSampleScene");
-        }
-
-        private static void EnsureDirectoryExists()
-        {
-            if (!AssetDatabase.IsValidFolder("Assets/UITest"))
-                AssetDatabase.CreateFolder("Assets", "UITest");
-            if (!AssetDatabase.IsValidFolder("Assets/UITest/Samples"))
-                AssetDatabase.CreateFolder("Assets/UITest", "Samples");
-            if (!AssetDatabase.IsValidFolder(SamplesPath))
-                AssetDatabase.CreateFolder("Assets/UITest/Samples", "Scenes");
+            MarkSceneDirty(scene, "NavigationSampleScene");
         }
 
         private static void CreateEventSystem()
@@ -568,12 +544,10 @@ namespace ODDGames.UITest.Samples.Editor
             return scrollRect;
         }
 
-        private static void SaveScene(UnityEngine.SceneManagement.Scene scene, string name)
+        private static void MarkSceneDirty(UnityEngine.SceneManagement.Scene scene, string name)
         {
-            EnsureDirectoryExists();
-            string path = $"{SamplesPath}/{name}.unity";
-            EditorSceneManager.SaveScene(scene, path);
-            Debug.Log($"Saved scene: {path}");
+            EditorSceneManager.MarkSceneDirty(scene);
+            Debug.Log($"[UITest] Generated {name}. Save it with Ctrl+S or File > Save Scene.");
         }
     }
 }
