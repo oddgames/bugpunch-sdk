@@ -4,6 +4,7 @@
     "references": [
         "ODDGames.UITest",
         "ODDGames.UITest.EzGUI",
+        "EzGUI",
         "UniTask"
     ],
     "includePlatforms": [],
