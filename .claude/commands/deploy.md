@@ -1,9 +1,5 @@
 Deploy the UITest package - version bump, changelog, and push.
 
-## Package Path
-
-C:\Workspaces\ui-automation
-
 ## Steps
 
 1. **Version and changelog update**
