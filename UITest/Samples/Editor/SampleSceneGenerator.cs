@@ -14,7 +14,7 @@ namespace ODDGames.UITest.Samples.Editor
     {
         private const string SamplesPath = "Assets/UITest/Samples/Scenes";
 
-        [MenuItem("UITest/Samples/Generate All Sample Scenes")]
+        [MenuItem("Window/UI Test Behaviours/Samples/Generate All Sample Scenes")]
         public static void GenerateAllScenes()
         {
             EnsureDirectoryExists();
@@ -26,7 +26,7 @@ namespace ODDGames.UITest.Samples.Editor
             Debug.Log("All sample scenes generated successfully!");
         }
 
-        [MenuItem("UITest/Samples/Generate Button Sample Scene")]
+        [MenuItem("Window/UI Test Behaviours/Samples/Generate Button Sample Scene")]
         public static void GenerateButtonSampleScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
@@ -69,7 +69,7 @@ namespace ODDGames.UITest.Samples.Editor
             SaveScene(scene, "ButtonSampleScene");
         }
 
-        [MenuItem("UITest/Samples/Generate Form Sample Scene")]
+        [MenuItem("Window/UI Test Behaviours/Samples/Generate Form Sample Scene")]
         public static void GenerateFormSampleScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
@@ -116,7 +116,7 @@ namespace ODDGames.UITest.Samples.Editor
             SaveScene(scene, "FormSampleScene");
         }
 
-        [MenuItem("UITest/Samples/Generate Drag Sample Scene")]
+        [MenuItem("Window/UI Test Behaviours/Samples/Generate Drag Sample Scene")]
         public static void GenerateDragSampleScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
@@ -148,7 +148,7 @@ namespace ODDGames.UITest.Samples.Editor
             SaveScene(scene, "DragSampleScene");
         }
 
-        [MenuItem("UITest/Samples/Generate Navigation Sample Scene")]
+        [MenuItem("Window/UI Test Behaviours/Samples/Generate Navigation Sample Scene")]
         public static void GenerateNavigationSampleScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
