@@ -65,17 +65,11 @@ Two approaches for recording UI events:
 - More precise, no duplicates
 - Requires game code changes
 
-**Current Setup**: TOR's `CustomStandaloneInputModule` calls `UITestRecorder.RecordClick()` directly.
-Consider removing that and relying on `UITestInputInterceptor` for consistency.
-
-## Projects Using This Package
-
-- **MTD** (`game_monster_truck_destruction`) - Uses HAS_EZ_GUI, file:// reference for dev
-- **TOR** (`game_trucks_off_road`) - Uses git reference with commit hash
+**Current Setup**: Uses `UITestInputInterceptor` for automatic event capture.
 
 ## Deploy Command
 
 Run `/deploy` to:
-1. Commit and push pending changes
-2. Get latest commit hash
-3. Update both project manifests
+1. Version bump and changelog update
+2. Commit and push pending changes
+3. Get latest commit hash (for updating project manifests manually)

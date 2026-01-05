@@ -2,7 +2,8 @@
     "name": "ODDGames.UITest.EzGUI",
     "rootNamespace": "ODDGames.UITest",
     "references": [
-        "ODDGames.UITest"
+        "ODDGames.UITest",
+        "EzGUI"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
