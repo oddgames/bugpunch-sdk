@@ -3,6 +3,7 @@
     "rootNamespace": "ODDGames.UITest",
     "references": [
         "ODDGames.UITest",
+        "ODDGames.UITest.Recording",
         "EzGUI"
     ],
     "includePlatforms": [],
