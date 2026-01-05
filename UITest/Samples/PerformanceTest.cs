@@ -32,35 +32,27 @@ namespace ODDGames.UITest.Samples
             AddParameter("initial_fps", currentFps.ToString("F1"));
 
             // Step 2: Track UI navigation performance
-            using (TrackPerformance("UI Navigation"))
-            {
-                // Click through some menus
-                await ClickAny("*Settings*", "*Options*", "*Menu*");
-                await Wait(1);
-                await ClickAny("*Back*", "*Close*", "*Return*");
-                await Wait(1);
-            }
+            await ClickAny("*Settings*", "*Options*", "*Menu*");
+            await Wait(1);
+            await ClickAny("*Back*", "*Close*", "*Return*");
+            await Wait(1);
 
             // Step 3: Stress test with rapid interactions
-            using (TrackPerformance("Rapid Clicks"))
+            var button = await Find<Component>(
+                new[] { "*Button*", "*Btn*" },
+                throwIfMissing: false,
+                seconds: 3
+            );
+
+            if (button != null)
             {
-                // Find any clickable button and click it rapidly
-                var button = await Find<Component>(
-                    new[] { "*Button*", "*Btn*" },
-                    throwIfMissing: false,
-                    seconds: 3
-                );
+                // Rapid clicks with short intervals
+                int originalInterval = Interval;
+                Interval = 100; // 100ms between clicks
 
-                if (button != null)
-                {
-                    // Rapid clicks with short intervals
-                    int originalInterval = Interval;
-                    Interval = 100; // 100ms between clicks
+                await Click(button.name, repeat: 10);
 
-                    await Click(button.name, repeat: 10);
-
-                    Interval = originalInterval;
-                }
+                Interval = originalInterval;
             }
 
             // Verify framerate didn't drop too much
@@ -75,11 +67,8 @@ namespace ODDGames.UITest.Samples
 
             if (playButton != null)
             {
-                using (TrackPerformance("Scene Load"))
-                {
-                    await Click(playButton.name);
-                    await SceneChange(seconds: 60);
-                }
+                await Click(playButton.name);
+                await SceneChange(seconds: 60);
 
                 string newScene = SceneManager.GetActiveScene().name;
                 AddParameter("loaded_scene", newScene);
@@ -89,11 +78,7 @@ namespace ODDGames.UITest.Samples
             }
 
             // Step 5: Extended playability test
-            using (TrackPerformance("Extended Play"))
-            {
-                // Simulate playing for a bit
-                await SimulatePlay(seconds: 10);
-            }
+            await SimulatePlay(seconds: 10);
 
             float finalFps = 1f / Time.smoothDeltaTime;
             AddParameter("final_fps", finalFps.ToString("F1"));
