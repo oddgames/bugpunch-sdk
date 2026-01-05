@@ -66,6 +66,10 @@ namespace ODDGames.UITest.Samples.Editor
             // Hold button
             CreateButton(panel.transform, "HoldButton", "Hold Me", new Vector2(0, -280));
 
+            // Add test behaviour
+            var testRunner = new GameObject("ButtonInteractionTest");
+            testRunner.AddComponent<ButtonInteractionTest>();
+
             SaveScene(scene, "ButtonSampleScene");
         }
 
@@ -113,6 +117,10 @@ namespace ODDGames.UITest.Samples.Editor
             var successMsg = CreateText(panel.transform, "SuccessMessage", "Form submitted successfully!", 18, new Vector2(0, -180));
             successMsg.gameObject.SetActive(false);
 
+            // Add test behaviour
+            var testRunner = new GameObject("FormInputTest");
+            testRunner.AddComponent<FormInputTest>();
+
             SaveScene(scene, "FormSampleScene");
         }
 
@@ -144,6 +152,10 @@ namespace ODDGames.UITest.Samples.Editor
             var dropZone = CreatePanel(panel.transform, "DropZone", new Vector2(100, -220), new Vector2(100, 100));
             dropZone.GetComponent<Image>().color = new Color(0.3f, 0.8f, 0.3f, 0.5f);
             CreateText(dropZone.transform, "Label", "Drop Here", 12, Vector2.zero);
+
+            // Add test behaviour
+            var testRunner = new GameObject("DragAndDropTest");
+            testRunner.AddComponent<DragAndDropTest>();
 
             SaveScene(scene, "DragSampleScene");
         }
@@ -183,6 +195,10 @@ namespace ODDGames.UITest.Samples.Editor
             CreateText(creditsPanel.transform, "Title", "Credits", 28, new Vector2(0, 150));
             CreateText(creditsPanel.transform, "Content", "Made with UITest\nSample Project", 16, new Vector2(0, 50));
             CreateButton(creditsPanel.transform, "BackButton", "Back", new Vector2(0, -100));
+
+            // Add test behaviour
+            var testRunner = new GameObject("BasicNavigationTest");
+            testRunner.AddComponent<BasicNavigationTest>();
 
             SaveScene(scene, "NavigationSampleScene");
         }

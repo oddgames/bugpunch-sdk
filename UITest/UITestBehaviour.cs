@@ -74,25 +74,6 @@ namespace ODDGames.UITest
 
         #endregion
 
-        class StepContext : IDisposable
-        {
-            readonly string stepName;
-            readonly float startTime;
-
-            public StepContext(string name)
-            {
-                stepName = name;
-                startTime = Time.realtimeSinceStartup;
-                Debug.Log($"[UITEST] Step Start: {name}");
-            }
-
-            public void Dispose()
-            {
-                float duration = Time.realtimeSinceStartup - startTime;
-                Debug.Log($"[UITEST] Step End: {stepName} ({duration:F2}s)");
-            }
-        }
-
         public class TestException : Exception
         {
             public TestException(string message) : base(message) { }
@@ -285,16 +266,6 @@ namespace ODDGames.UITest
         static string lastKnownScene;
         static float lastSceneChangeTime;
 
-        protected IDisposable BeginStep(string stepName)
-        {
-            return new StepContext(stepName);
-        }
-
-        protected void LogStep(string message)
-        {
-            Debug.Log($"[UITEST] Step: {message}");
-        }
-
         protected void CaptureScreenshot(string name = "screenshot")
         {
             string path = Path.Combine(Application.temporaryCachePath, $"{name}_{DateTime.Now.Ticks}.png");
@@ -327,11 +298,6 @@ namespace ODDGames.UITest
             {
                 Debug.Log($"[UITEST] Attach File: {filePath}");
             }
-        }
-
-        protected IDisposable TrackPerformance(string sectionName)
-        {
-            return new StepContext($"Performance: {sectionName}");
         }
 
         protected void AddParameter(string name, string value)

@@ -25,107 +25,80 @@ namespace ODDGames.UITest.Samples
             AddParameter("start_scene", startScene);
 
             // Step 1: Measure initial framerate
-            using (BeginStep("Measure Initial Framerate"))
-            {
-                // Wait for framerate to stabilize at 30+ fps
-                await WaitFramerate(averageFps: 30, sampleDuration: 2f, timeout: 30f);
-                LogStep("Initial framerate meets 30fps threshold");
+            // Wait for framerate to stabilize at 30+ fps
+            await WaitFramerate(averageFps: 30, sampleDuration: 2f, timeout: 30f);
 
-                float currentFps = 1f / Time.smoothDeltaTime;
-                AddParameter("initial_fps", currentFps.ToString("F1"));
-            }
+            float currentFps = 1f / Time.smoothDeltaTime;
+            AddParameter("initial_fps", currentFps.ToString("F1"));
 
             // Step 2: Track UI navigation performance
-            using (BeginStep("Track Navigation Performance"))
+            using (TrackPerformance("UI Navigation"))
             {
-                using (TrackPerformance("UI Navigation"))
-                {
-                    // Click through some menus
-                    await ClickAny("*Settings*", "*Options*", "*Menu*");
-                    await Wait(1);
-                    await ClickAny("*Back*", "*Close*", "*Return*");
-                    await Wait(1);
-                }
-                LogStep("Navigation performance tracked");
+                // Click through some menus
+                await ClickAny("*Settings*", "*Options*", "*Menu*");
+                await Wait(1);
+                await ClickAny("*Back*", "*Close*", "*Return*");
+                await Wait(1);
             }
 
             // Step 3: Stress test with rapid interactions
-            using (BeginStep("Rapid Interaction Stress Test"))
+            using (TrackPerformance("Rapid Clicks"))
             {
-                using (TrackPerformance("Rapid Clicks"))
-                {
-                    // Find any clickable button and click it rapidly
-                    var button = await Find<Component>(
-                        new[] { "*Button*", "*Btn*" },
-                        throwIfMissing: false,
-                        seconds: 3
-                    );
-
-                    if (button != null)
-                    {
-                        // Rapid clicks with short intervals
-                        int originalInterval = Interval;
-                        Interval = 100; // 100ms between clicks
-
-                        await Click(button.name, repeat: 10);
-
-                        Interval = originalInterval;
-                        LogStep("Rapid click stress test completed");
-                    }
-                }
-
-                // Verify framerate didn't drop too much
-                await WaitFramerate(averageFps: 25, sampleDuration: 1f, timeout: 10f);
-                LogStep("Framerate recovered after stress test");
-            }
-
-            // Step 4: Scene load performance (if applicable)
-            using (BeginStep("Scene Load Performance"))
-            {
-                var playButton = await Find<Component>(
-                    new[] { "*Play*", "*Start*", "*Begin*" },
+                // Find any clickable button and click it rapidly
+                var button = await Find<Component>(
+                    new[] { "*Button*", "*Btn*" },
                     throwIfMissing: false,
                     seconds: 3
                 );
 
-                if (playButton != null)
+                if (button != null)
                 {
-                    using (TrackPerformance("Scene Load"))
-                    {
-                        await Click(playButton.name);
-                        await SceneChange(seconds: 60);
-                    }
+                    // Rapid clicks with short intervals
+                    int originalInterval = Interval;
+                    Interval = 100; // 100ms between clicks
 
-                    string newScene = SceneManager.GetActiveScene().name;
-                    AddParameter("loaded_scene", newScene);
-                    LogStep($"Scene changed to: {newScene}");
+                    await Click(button.name, repeat: 10);
 
-                    // Wait for new scene to stabilize
-                    await WaitFramerate(averageFps: 30, sampleDuration: 3f, timeout: 60f);
-                    LogStep("New scene framerate stable");
+                    Interval = originalInterval;
                 }
-                else
+            }
+
+            // Verify framerate didn't drop too much
+            await WaitFramerate(averageFps: 25, sampleDuration: 1f, timeout: 10f);
+
+            // Step 4: Scene load performance (if applicable)
+            var playButton = await Find<Component>(
+                new[] { "*Play*", "*Start*", "*Begin*" },
+                throwIfMissing: false,
+                seconds: 3
+            );
+
+            if (playButton != null)
+            {
+                using (TrackPerformance("Scene Load"))
                 {
-                    LogStep("No play button found - skipping scene load test");
+                    await Click(playButton.name);
+                    await SceneChange(seconds: 60);
                 }
+
+                string newScene = SceneManager.GetActiveScene().name;
+                AddParameter("loaded_scene", newScene);
+
+                // Wait for new scene to stabilize
+                await WaitFramerate(averageFps: 30, sampleDuration: 3f, timeout: 60f);
             }
 
             // Step 5: Extended playability test
-            using (BeginStep("Extended Play Test"))
+            using (TrackPerformance("Extended Play"))
             {
-                using (TrackPerformance("Extended Play"))
-                {
-                    // Simulate playing for a bit
-                    await SimulatePlay(seconds: 10);
-                }
-
-                float finalFps = 1f / Time.smoothDeltaTime;
-                AddParameter("final_fps", finalFps.ToString("F1"));
-                LogStep($"Final framerate: {finalFps:F1} fps");
+                // Simulate playing for a bit
+                await SimulatePlay(seconds: 10);
             }
 
+            float finalFps = 1f / Time.smoothDeltaTime;
+            AddParameter("final_fps", finalFps.ToString("F1"));
+
             CaptureScreenshot("performance_test_complete");
-            LogStep("Performance test completed");
         }
     }
 }
