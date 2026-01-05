@@ -1,0 +1,20 @@
+{
+    "name": "ODDGames.UITest.Samples.EzGUI",
+    "rootNamespace": "ODDGames.UITest.Samples.EzGUI",
+    "references": [
+        "ODDGames.UITest",
+        "ODDGames.UITest.EzGUI",
+        "UniTask"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "HAS_EZ_GUI"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
