@@ -1,0 +1,22 @@
+{
+    "name": "ODDGames.UITest.Samples.EzGUI.Editor",
+    "rootNamespace": "ODDGames.UITest.Samples.EzGUI.Editor",
+    "references": [
+        "ODDGames.UITest",
+        "ODDGames.UITest.Samples.EzGUI",
+        "EzGUI"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "HAS_EZ_GUI"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
