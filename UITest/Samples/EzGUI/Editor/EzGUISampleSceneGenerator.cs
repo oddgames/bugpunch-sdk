@@ -1,4 +1,3 @@
-#if HAS_EZ_GUI
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -224,4 +223,3 @@ namespace ODDGames.UITest.Samples.EzGUI.Editor
         }
     }
 }
-#endif
