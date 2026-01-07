@@ -1,0 +1,20 @@
+{
+    "name": "ODDGames.UITest.Samples.Editor",
+    "rootNamespace": "ODDGames.UITest.Samples.Editor",
+    "references": [
+        "ODDGames.UITest",
+        "ODDGames.UITest.Samples",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

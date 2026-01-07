@@ -1,0 +1,19 @@
+{
+    "name": "ODDGames.UITest.Recording",
+    "rootNamespace": "ODDGames.UITest",
+    "references": [
+        "ODDGames.UITest",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "UniTask"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

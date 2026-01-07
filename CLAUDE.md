@@ -1,35 +1,40 @@
 # UITest Package - Claude Context
 
-## Package Structure
+## Repository Structure
 
 ```
-tool_ui_automation/
-├── package.json              # UPM package manifest
-├── UITest/
-│   ├── ODDGames.UITest.asmdef     # Core runtime (always compiled)
-│   ├── UITestAttribute.cs          # [UITest] attribute
-│   ├── UITestBehaviour.cs          # Base test class
-│   │
-│   ├── Editor/
-│   │   ├── ODDGames.UITest.Editor.asmdef  # Editor tools
-│   │   └── UITestRunner.cs                 # Batch test runner
-│   │
-│   ├── Recording/
-│   │   ├── ODDGames.UITest.Recording.asmdef      # Recording runtime
-│   │   ├── UITestRecorder.cs                      # Main recorder
-│   │   ├── UITestRecordingData.cs                 # Data structures
-│   │   ├── UITestInputInterceptor.cs              # Auto-hooks into Input
-│   │   ├── UITestInputEvents.cs                   # Static helpers for manual reporting
-│   │   ├── UITestPromptGenerator.cs               # AI prompt generation
-│   │   └── Editor/
-│   │       ├── ODDGames.UITest.Recording.Editor.asmdef
-│   │       ├── UITestGeneratorWindow.cs
-│   │       ├── UITestRecorderToolbar.cs           # HAS_TOOLBAR_EXTENDER only
-│   │       └── UITestRecordingSetupWindow.cs
-│   │
-│   └── EzGUI/                                     # HAS_EZ_GUI only
-│       ├── ODDGames.UITest.EzGUI.asmdef
-│       └── EzGUIClickableRegistration.cs          # Auto-registers AnB UI SDK types
+ui-automation/
+├── package/                  # The UPM package
+│   ├── package.json          # UPM package manifest
+│   ├── UITest/               # Core framework code
+│   │   ├── ODDGames.UITest.asmdef
+│   │   ├── UITestAttribute.cs
+│   │   ├── UITestBehaviour.cs
+│   │   ├── Editor/
+│   │   ├── Recording/
+│   │   └── EzGUI/            # HAS_EZ_GUI only
+│   ├── README.md
+│   ├── CHANGELOG.md
+│   └── LICENSE
+├── test/                     # Test Unity project
+│   ├── Assets/
+│   │   └── Plugins/EzGUI/    # EzGUI stubs for testing
+│   ├── Packages/
+│   └── ProjectSettings/
+├── .gitignore
+└── CLAUDE.md                 # This file
+```
+
+## Package Installation
+
+Projects reference via git with path:
+```json
+"com.oddgames.uitest": "https://github.com/oddgames/ui-automation.git?path=package"
+```
+
+Test project references locally:
+```json
+"com.oddgames.uitest": "file:../../package"
 ```
 
 ## Conditional Compilation
@@ -43,7 +48,7 @@ tool_ui_automation/
 
 ## Adding New Conditional Features
 
-1. Create a new folder under `UITest/` (e.g., `UITest/NewFeature/`)
+1. Create a new folder under `package/UITest/` (e.g., `package/UITest/NewFeature/`)
 2. Create an asmdef with:
    - `defineConstraints` for manual defines (e.g., `["HAS_NEW_FEATURE"]`)
    - `versionDefines` for package-based defines
@@ -55,7 +60,7 @@ tool_ui_automation/
 Two approaches for recording UI events:
 
 ### 1. Automatic (UITestInputInterceptor)
-- Hooks into `Input.GetMouseButton/Touch` directly
+- Uses new Input System (`Mouse.current`, `Keyboard.current`, `EnhancedTouchSupport`)
 - Works with any input module
 - Auto-spawned when recording starts
 - May duplicate events if game also reports them
@@ -65,7 +70,14 @@ Two approaches for recording UI events:
 - More precise, no duplicates
 - Requires game code changes
 
-**Current Setup**: Uses `UITestInputInterceptor` for automatic event capture.
+**Current Setup**: Uses `UITestInputInterceptor` for automatic event capture with Input System.
+
+## Input System
+
+The package requires Unity's new Input System (`com.unity.inputsystem`):
+- Test playback uses `InputSystem.QueueEvent()` for true input injection
+- Recording uses `Mouse.current`, `Keyboard.current`, `EnhancedTouchSupport`
+- Projects should have `activeInputHandler` set to `3` (Both) or `1` (New only)
 
 ## Deploy Command
 
@@ -73,3 +85,10 @@ Run `/deploy` to:
 1. Version bump and changelog update
 2. Commit and push pending changes
 3. Get latest commit hash (for updating project manifests manually)
+
+## Test Project
+
+The `test/` folder contains a Unity project for development testing:
+- Has Input System set to "Both" mode
+- References the package via `file:../../package`
+- Includes EzGUI stubs in `Assets/Plugins/EzGUI/` for testing EzGUI integration

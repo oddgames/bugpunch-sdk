@@ -1,0 +1,17 @@
+{
+    "name": "ODDGames.UITest.Samples",
+    "rootNamespace": "ODDGames.UITest.Samples",
+    "references": [
+        "ODDGames.UITest",
+        "UniTask"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
