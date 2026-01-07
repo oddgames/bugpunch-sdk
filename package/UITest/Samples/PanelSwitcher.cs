@@ -15,6 +15,8 @@ namespace ODDGames.UITest.Samples
         private GameObject formPanel;
         private GameObject dragPanel;
         private GameObject keyboardPanel;
+        private GameObject advancedPanel;
+        private GameObject gestureCube;
 
         private void Awake()
         {
@@ -25,6 +27,19 @@ namespace ODDGames.UITest.Samples
             formPanel = FindChildByName(transform, "SampleFormPanel");
             dragPanel = FindChildByName(transform, "SampleDragPanel");
             keyboardPanel = FindChildByName(transform, "SampleKeyboardPanel");
+            advancedPanel = FindChildByName(transform, "SampleAdvancedPanel");
+
+            // Find the 3D gesture cube (it's not a child of canvas and may be inactive)
+            // Search all transforms including inactive ones
+            var allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+            foreach (var t in allTransforms)
+            {
+                if (t.name == "GestureTarget" && t.hideFlags == HideFlags.None)
+                {
+                    gestureCube = t.gameObject;
+                    break;
+                }
+            }
 
             // Wire up main menu buttons
             if (mainMenu != null)
@@ -34,6 +49,7 @@ namespace ODDGames.UITest.Samples
                 WireButton(mainMenu, "FormsButton", () => ShowPanel(formPanel));
                 WireButton(mainMenu, "DragButton", () => ShowPanel(dragPanel));
                 WireButton(mainMenu, "KeyboardButton", () => ShowPanel(keyboardPanel));
+                WireButton(mainMenu, "AdvancedButton", () => ShowPanel(advancedPanel));
             }
 
             // Wire up back buttons
@@ -42,6 +58,7 @@ namespace ODDGames.UITest.Samples
             WireBackButton(formPanel);
             WireBackButton(dragPanel);
             WireBackButton(keyboardPanel);
+            WireBackButton(advancedPanel);
 
             // Wire up simple button result
             if (buttonPanel != null)
@@ -129,6 +146,13 @@ namespace ODDGames.UITest.Samples
             if (formPanel != null) formPanel.SetActive(false);
             if (dragPanel != null) dragPanel.SetActive(false);
             if (keyboardPanel != null) keyboardPanel.SetActive(false);
+            if (advancedPanel != null) advancedPanel.SetActive(false);
+
+            // Show/hide 3D gesture cube based on which panel is active
+            if (gestureCube != null)
+            {
+                gestureCube.SetActive(panelToShow == advancedPanel);
+            }
 
             // Show the requested panel
             if (panelToShow != null) panelToShow.SetActive(true);

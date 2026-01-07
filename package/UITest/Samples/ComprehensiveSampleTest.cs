@@ -94,6 +94,35 @@ namespace ODDGames.UITest.Samples
             await Click("BackButton");
             await Wait("MainMenu", seconds: 5);
 
+            // ==========================================
+            // Advanced Input (DoubleClick, Scroll, Swipe, Touch Gestures)
+            // ==========================================
+            await Click("AdvancedButton", throwIfMissing: false, searchTime: 2);
+            var advancedPanel = await Find<RectTransform>("SampleAdvancedPanel", throwIfMissing: false, seconds: 2);
+            if (advancedPanel != null)
+            {
+                // Double-click test
+                await DoubleClick("DoubleClickButton", throwIfMissing: false, searchTime: 2);
+
+                // Scroll wheel test (negative = scroll down)
+                await Scroll("ScrollArea", -120f, throwIfMissing: false, searchTime: 2);
+
+                // Swipe test (duration 1s for visibility)
+                await Swipe("SwipeArea", SwipeDirection.Left, duration: 1f, throwIfMissing: false, searchTime: 2);
+                await Swipe("SwipeArea", SwipeDirection.Right, duration: 1f, throwIfMissing: false, searchTime: 2);
+
+                // Touch gesture tests (pinch, rotate, two-finger swipe)
+                await Pinch("GestureTarget", 0.5f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Pinch in
+                await Pinch("GestureTarget", 2.0f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Pinch out
+                await Rotate("GestureTarget", 90f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Rotate 90 degrees
+                await TwoFingerSwipe("GestureTarget", SwipeDirection.Up, duration: 0.5f, throwIfMissing: false, searchTime: 2);
+
+                CaptureScreenshot("advanced_input_complete");
+
+                // Navigate back to main menu
+                await Click("BackButton", throwIfMissing: false, searchTime: 2);
+            }
+
             CaptureScreenshot("test_complete");
         }
     }

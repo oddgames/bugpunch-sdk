@@ -91,6 +91,17 @@ namespace ODDGames.UITest
             All = Active | Enabled
         }
 
+        /// <summary>
+        /// Direction for swipe gestures.
+        /// </summary>
+        public enum SwipeDirection
+        {
+            Left,
+            Right,
+            Up,
+            Down
+        }
+
         public static int Interval { get; set; } = 100;
         static readonly List<Type> clickablesList = new() { typeof(Selectable) };
         static Type[] clickablesArray = { typeof(Selectable) };
@@ -1469,6 +1480,506 @@ namespace ODDGames.UITest
             await ActionComplete();
         }
 
+        /// <summary>
+        /// Double-clicks on a UI element by name.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="throwIfMissing">Whether to throw if element not found</param>
+        /// <param name="searchTime">Timeout for finding the element</param>
+        protected async UniTask DoubleClick(string search, bool throwIfMissing = true, float searchTime = 10)
+        {
+            Debug.Log($"[UITEST] DoubleClick [{search}]");
+
+            var target = await Find<IPointerClickHandler>(search, throwIfMissing, searchTime);
+            if (target == null) return;
+
+            if (target is UnityEngine.Component c)
+            {
+                Vector2 screenPosition = GetScreenPosition(c.gameObject);
+                await InjectMouseDoubleClick(screenPosition);
+                await ActionComplete();
+            }
+        }
+
+        /// <summary>
+        /// Double-clicks at screen center.
+        /// </summary>
+        protected async UniTask DoubleClick()
+        {
+            Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            Debug.Log($"[UITEST] DoubleClick (screen center) at ({screenCenter.x:F0}, {screenCenter.y:F0})");
+
+            await InjectMouseDoubleClick(screenCenter);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Injects a mouse double-click at the specified screen position.
+        /// </summary>
+        private static async UniTask InjectMouseDoubleClick(Vector2 screenPosition)
+        {
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[UITEST] DoubleClick - No mouse device found");
+                return;
+            }
+
+            // First click
+            await InjectMouseClick(screenPosition);
+
+            // Short delay between clicks (typical double-click threshold is ~500ms)
+            await UniTask.Delay(50, true);
+
+            // Second click
+            await InjectMouseClick(screenPosition);
+        }
+
+        /// <summary>
+        /// Scrolls the mouse wheel at the specified element or screen center.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the element to scroll on</param>
+        /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
+        /// <param name="throwIfMissing">Whether to throw if element not found</param>
+        /// <param name="searchTime">Timeout for finding the element</param>
+        protected async UniTask Scroll(string search, float delta, bool throwIfMissing = true, float searchTime = 10)
+        {
+            Debug.Log($"[UITEST] Scroll [{search}] delta={delta}");
+
+            var target = await Find<RectTransform>(search, throwIfMissing, searchTime);
+            if (target == null) return;
+
+            Vector2 screenPos = GetScreenPosition(target.gameObject);
+            await InjectMouseScroll(screenPos, delta);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Scrolls the mouse wheel at screen center.
+        /// </summary>
+        /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
+        protected async UniTask Scroll(float delta)
+        {
+            Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            Debug.Log($"[UITEST] Scroll (screen center) delta={delta}");
+
+            await InjectMouseScroll(screenCenter, delta);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Injects a mouse scroll event at the specified position.
+        /// </summary>
+        private static async UniTask InjectMouseScroll(Vector2 screenPosition, float delta)
+        {
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[UITEST] Scroll - No mouse device found");
+                return;
+            }
+
+            // Move mouse to position first
+            using (StateEvent.From(mouse, out var posPtr))
+            {
+                mouse.position.WriteValueIntoEvent(screenPosition, posPtr);
+                InputSystem.QueueEvent(posPtr);
+            }
+
+            await UniTask.Yield();
+
+            // Send scroll event
+            using (StateEvent.From(mouse, out var scrollPtr))
+            {
+                mouse.position.WriteValueIntoEvent(screenPosition, scrollPtr);
+                mouse.scroll.WriteValueIntoEvent(new Vector2(0, delta * 120), scrollPtr); // 120 is standard scroll delta unit
+                InputSystem.QueueEvent(scrollPtr);
+            }
+
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Swipes on an element in the specified direction.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="direction">Swipe direction (Left, Right, Up, Down)</param>
+        /// <param name="distance">Swipe distance as percentage of screen height (0.2 = 20%)</param>
+        /// <param name="duration">Duration of the swipe</param>
+        /// <param name="throwIfMissing">Whether to throw if element not found</param>
+        /// <param name="searchTime">Timeout for finding the element</param>
+        protected async UniTask Swipe(string search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, bool throwIfMissing = true, float searchTime = 10)
+        {
+            float distancePixels = distance * Screen.height;
+            Vector2 delta = direction switch
+            {
+                SwipeDirection.Left => new Vector2(-distancePixels, 0),
+                SwipeDirection.Right => new Vector2(distancePixels, 0),
+                SwipeDirection.Up => new Vector2(0, distancePixels),
+                SwipeDirection.Down => new Vector2(0, -distancePixels),
+                _ => Vector2.zero
+            };
+
+            Debug.Log($"[UITEST] Swipe [{search}] {direction} duration={duration}s distance={distance:P0} ({distancePixels:F0}px)");
+
+            await Drag(search, delta, duration, throwIfMissing, searchTime);
+        }
+
+        /// <summary>
+        /// Swipes at screen center in the specified direction.
+        /// </summary>
+        /// <param name="direction">Swipe direction (Left, Right, Up, Down)</param>
+        /// <param name="distance">Swipe distance as percentage of screen height (0.2 = 20%)</param>
+        /// <param name="duration">Duration of the swipe</param>
+        protected async UniTask Swipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        {
+            float distancePixels = distance * Screen.height;
+            Vector2 delta = direction switch
+            {
+                SwipeDirection.Left => new Vector2(-distancePixels, 0),
+                SwipeDirection.Right => new Vector2(distancePixels, 0),
+                SwipeDirection.Up => new Vector2(0, distancePixels),
+                SwipeDirection.Down => new Vector2(0, -distancePixels),
+                _ => Vector2.zero
+            };
+
+            Debug.Log($"[UITEST] Swipe (screen center) {direction} distance={distance:P0} ({distancePixels:F0}px)");
+
+            await Drag(delta, duration);
+        }
+
+        /// <summary>
+        /// Performs a pinch gesture on an element.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="scale">Scale factor: &gt;1 = zoom in (fingers spread), &lt;1 = zoom out (fingers pinch)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerDistance">Starting distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
+        /// <param name="throwIfMissing">Whether to throw if element not found</param>
+        /// <param name="searchTime">Timeout for finding the element</param>
+        protected async UniTask Pinch(string search, float scale, float duration = 0.5f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
+        {
+            float distancePixels = fingerDistance * Screen.height;
+            Debug.Log($"[UITEST] Pinch [{search}] scale={scale} duration={duration}s fingerDistance={fingerDistance:P0} ({distancePixels:F0}px)");
+
+            var target = await Find<Transform>(search, throwIfMissing, searchTime);
+            if (target == null) return;
+
+            Vector2 center = GetScreenPosition(target.gameObject);
+            await PinchAt(center, scale, duration, distancePixels);
+        }
+
+        /// <summary>
+        /// Performs a pinch gesture at screen center.
+        /// </summary>
+        /// <param name="scale">Scale factor: &gt;1 = zoom in (fingers spread), &lt;1 = zoom out (fingers pinch)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerDistance">Starting distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
+        protected async UniTask Pinch(float scale, float duration = 0.5f, float fingerDistance = 0.05f)
+        {
+            Vector2 center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            float distancePixels = fingerDistance * Screen.height;
+            Debug.Log($"[UITEST] Pinch (screen center) scale={scale} fingerDistance={fingerDistance:P0} ({distancePixels:F0}px)");
+
+            await PinchAt(center, scale, duration, distancePixels);
+        }
+
+        /// <summary>
+        /// Performs a pinch gesture at the specified screen position.
+        /// </summary>
+        private async UniTask PinchAt(Vector2 center, float scale, float duration, float fingerDistancePixels)
+        {
+            float endDistance = fingerDistancePixels * scale;
+
+            Vector2 finger1Start = center + new Vector2(-fingerDistancePixels, 0);
+            Vector2 finger2Start = center + new Vector2(fingerDistancePixels, 0);
+            Vector2 finger1End = center + new Vector2(-endDistance, 0);
+            Vector2 finger2End = center + new Vector2(endDistance, 0);
+
+            await InjectTwoFingerGesture(finger1Start, finger1End, finger2Start, finger2End, duration);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Performs a two-finger swipe gesture on an element.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="direction">Swipe direction</param>
+        /// <param name="distance">Swipe distance as percentage of screen height (0.2 = 20%)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerSpacing">Distance between the two fingers as percentage of screen height (0.03 = 3%)</param>
+        /// <param name="throwIfMissing">Whether to throw if element not found</param>
+        /// <param name="searchTime">Timeout for finding the element</param>
+        protected async UniTask TwoFingerSwipe(string search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f, bool throwIfMissing = true, float searchTime = 10)
+        {
+            float distancePixels = distance * Screen.height;
+            float spacingPixels = fingerSpacing * Screen.height;
+            Debug.Log($"[UITEST] TwoFingerSwipe [{search}] {direction} duration={duration}s distance={distance:P0} ({distancePixels:F0}px) spacing={fingerSpacing:P0} ({spacingPixels:F0}px)");
+
+            var target = await Find<Transform>(search, throwIfMissing, searchTime);
+            if (target == null)
+            {
+                Debug.LogWarning($"[UITEST] TwoFingerSwipe - target '{search}' not found");
+                return;
+            }
+
+            Vector2 center = GetScreenPosition(target.gameObject);
+            await TwoFingerSwipeAt(center, direction, distancePixels, duration, spacingPixels);
+        }
+
+        /// <summary>
+        /// Performs a two-finger swipe gesture at screen center.
+        /// </summary>
+        /// <param name="direction">Swipe direction</param>
+        /// <param name="distance">Swipe distance as percentage of screen height (0.2 = 20%)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerSpacing">Distance between the two fingers as percentage of screen height (0.03 = 3%)</param>
+        protected async UniTask TwoFingerSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        {
+            Vector2 center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            float distancePixels = distance * Screen.height;
+            float spacingPixels = fingerSpacing * Screen.height;
+            Debug.Log($"[UITEST] TwoFingerSwipe (screen center) {direction} distance={distance:P0} ({distancePixels:F0}px) spacing={fingerSpacing:P0} ({spacingPixels:F0}px)");
+
+            await TwoFingerSwipeAt(center, direction, distancePixels, duration, spacingPixels);
+        }
+
+        /// <summary>
+        /// Performs a two-finger swipe at the specified screen position.
+        /// </summary>
+        private async UniTask TwoFingerSwipeAt(Vector2 center, SwipeDirection direction, float distancePixels, float duration, float spacingPixels)
+        {
+            Vector2 delta = direction switch
+            {
+                SwipeDirection.Left => new Vector2(-distancePixels, 0),
+                SwipeDirection.Right => new Vector2(distancePixels, 0),
+                SwipeDirection.Up => new Vector2(0, distancePixels),
+                SwipeDirection.Down => new Vector2(0, -distancePixels),
+                _ => Vector2.zero
+            };
+
+            float halfSpacing = spacingPixels / 2f;
+            Vector2 finger1Start = center + new Vector2(-halfSpacing, 0);
+            Vector2 finger2Start = center + new Vector2(halfSpacing, 0);
+            Vector2 finger1End = finger1Start + delta;
+            Vector2 finger2End = finger2Start + delta;
+
+            await InjectTwoFingerGesture(finger1Start, finger1End, finger2Start, finger2End, duration);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Performs a two-finger rotation gesture on an element.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="degrees">Rotation angle in degrees (positive = clockwise)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerDistance">Distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
+        /// <param name="throwIfMissing">Whether to throw if element not found</param>
+        /// <param name="searchTime">Timeout for finding the element</param>
+        protected async UniTask Rotate(string search, float degrees, float duration = 0.5f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
+        {
+            float radiusPixels = fingerDistance * Screen.height;
+            Debug.Log($"[UITEST] Rotate [{search}] {degrees} degrees duration={duration}s fingerDistance={fingerDistance:P0} ({radiusPixels:F0}px)");
+
+            var target = await Find<Transform>(search, throwIfMissing, searchTime);
+            if (target == null)
+            {
+                Debug.LogWarning($"[UITEST] Rotate - target '{search}' not found");
+                return;
+            }
+
+            var center = GetScreenPosition(target.gameObject);
+            await RotateAt(center, degrees, duration, radiusPixels);
+        }
+
+        /// <summary>
+        /// Performs a two-finger rotation gesture at the center of the screen.
+        /// </summary>
+        /// <param name="degrees">Rotation angle in degrees (positive = clockwise)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerDistance">Distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
+        protected async UniTask Rotate(float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
+        {
+            var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            float radiusPixels = fingerDistance * Screen.height;
+            Debug.Log($"[UITEST] Rotate (screen center) {degrees} degrees fingerDistance={fingerDistance:P0} ({radiusPixels:F0}px)");
+
+            await RotateAt(center, degrees, duration, radiusPixels);
+        }
+
+        /// <summary>
+        /// Performs a rotation gesture at the specified screen position.
+        /// </summary>
+        private static async UniTask RotateAt(Vector2 center, float degrees, float duration, float radiusPixels)
+        {
+            float startAngle = 0f;
+            float endAngle = degrees * Mathf.Deg2Rad;
+
+            await InjectTwoFingerRotation(center, radiusPixels, startAngle, endAngle, duration);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Injects a two-finger rotation gesture. Uses circular interpolation for smooth rotation.
+        /// </summary>
+        private static async UniTask InjectTwoFingerRotation(Vector2 center, float radius, float startAngle, float endAngle, float duration)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[UITEST] Rotate - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            int steps = Mathf.Max(10, (int)(duration * 60));
+            int delayPerStep = Mathf.Max(1, (int)(duration * 1000 / steps));
+
+            // Calculate initial positions
+            Vector2 finger1Start = center + new Vector2(Mathf.Cos(startAngle) * radius, Mathf.Sin(startAngle) * radius);
+            Vector2 finger2Start = center + new Vector2(Mathf.Cos(startAngle + Mathf.PI) * radius, Mathf.Sin(startAngle + Mathf.PI) * radius);
+
+            // Begin touches
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(1, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(finger1Start, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(2, beginPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(finger2Start, beginPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+
+                InputSystem.QueueEvent(beginPtr);
+            }
+
+            await UniTask.Yield();
+
+            // Move touches in a circular path
+            for (int i = 1; i <= steps; i++)
+            {
+                float t = (float)i / steps;
+                float currentAngle = Mathf.Lerp(startAngle, endAngle, t);
+
+                Vector2 pos1 = center + new Vector2(Mathf.Cos(currentAngle) * radius, Mathf.Sin(currentAngle) * radius);
+                Vector2 pos2 = center + new Vector2(Mathf.Cos(currentAngle + Mathf.PI) * radius, Mathf.Sin(currentAngle + Mathf.PI) * radius);
+
+                using (StateEvent.From(touchscreen, out var movePtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(1, movePtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(pos1, movePtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+
+                    touchscreen.touches[1].touchId.WriteValueIntoEvent(2, movePtr);
+                    touchscreen.touches[1].position.WriteValueIntoEvent(pos2, movePtr);
+                    touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+
+                    InputSystem.QueueEvent(movePtr);
+                }
+
+                await UniTask.Delay(delayPerStep, true);
+            }
+
+            // End touches
+            Vector2 finger1End = center + new Vector2(Mathf.Cos(endAngle) * radius, Mathf.Sin(endAngle) * radius);
+            Vector2 finger2End = center + new Vector2(Mathf.Cos(endAngle + Mathf.PI) * radius, Mathf.Sin(endAngle + Mathf.PI) * radius);
+
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(1, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(finger1End, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(2, endPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(finger2End, endPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+
+                InputSystem.QueueEvent(endPtr);
+            }
+
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a two-finger touch gesture using the Input System.
+        /// </summary>
+        private static async UniTask InjectTwoFingerGesture(Vector2 finger1Start, Vector2 finger1End, Vector2 finger2Start, Vector2 finger2End, float duration)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                // Add a touchscreen if none exists
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[UITEST] TwoFingerGesture - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            int steps = Mathf.Max(10, (int)(duration * 60));
+            int delayPerStep = Mathf.Max(1, (int)(duration * 1000 / steps));
+
+            // Begin touches
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(1, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(finger1Start, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(2, beginPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(finger2Start, beginPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+
+                InputSystem.QueueEvent(beginPtr);
+            }
+
+            await UniTask.Yield();
+
+            // Move touches
+            for (int i = 1; i <= steps; i++)
+            {
+                float t = (float)i / steps;
+                Vector2 pos1 = Vector2.Lerp(finger1Start, finger1End, t);
+                Vector2 pos2 = Vector2.Lerp(finger2Start, finger2End, t);
+
+                using (StateEvent.From(touchscreen, out var movePtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(1, movePtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(pos1, movePtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+
+                    touchscreen.touches[1].touchId.WriteValueIntoEvent(2, movePtr);
+                    touchscreen.touches[1].position.WriteValueIntoEvent(pos2, movePtr);
+                    touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+
+                    InputSystem.QueueEvent(movePtr);
+                }
+
+                await UniTask.Delay(delayPerStep, true);
+            }
+
+            // End touches
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(1, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(finger1End, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(2, endPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(finger2End, endPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+
+                InputSystem.QueueEvent(endPtr);
+            }
+
+            await UniTask.Yield();
+        }
+
         protected async UniTask Drag(Vector2 direction, float duration = 0.5f)
         {
             Vector2 startPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
@@ -1627,6 +2138,7 @@ namespace ODDGames.UITest
         /// <summary>
         /// Selects a dropdown option by index using actual clicks.
         /// Clicks the dropdown to open it, then clicks the option at the specified index.
+        /// Supports both legacy Dropdown and TMP_Dropdown.
         /// </summary>
         /// <param name="search">Name or search pattern for the dropdown</param>
         /// <param name="optionIndex">Index of the option to select (0-based)</param>
@@ -1636,48 +2148,96 @@ namespace ODDGames.UITest
         {
             Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) [{search}] option index={optionIndex}");
 
-            var dropdown = await Find<Dropdown>(search, throwIfMissing, searchTime);
-            if (dropdown == null) return;
+            // Try to find legacy Dropdown first, then TMP_Dropdown
+            var legacyDropdown = await Find<Dropdown>(search, false, searchTime / 2);
+            var tmpDropdown = legacyDropdown == null ? await Find<TMP_Dropdown>(search, false, searchTime / 2) : null;
+
+            GameObject dropdownGO = null;
+            if (legacyDropdown != null)
+                dropdownGO = legacyDropdown.gameObject;
+            else if (tmpDropdown != null)
+                dropdownGO = tmpDropdown.gameObject;
+
+            if (dropdownGO == null)
+            {
+                if (throwIfMissing)
+                    throw new TestException($"ClickDropdown - Could not find Dropdown or TMP_Dropdown '{search}'");
+                return;
+            }
 
             // Click the dropdown to open it
-            Vector2 dropdownPos = GetScreenPosition(dropdown.gameObject);
+            Vector2 dropdownPos = GetScreenPosition(dropdownGO);
             await InjectMouseClick(dropdownPos);
 
-            // Wait for dropdown list to appear
-            await UniTask.Delay(100, true);
+            // Wait for dropdown list to appear and stabilize
+            await UniTask.Delay(150, true);
 
-            // The dropdown creates a "Dropdown List" child with items named "Item 0: <label>", "Item 1: <label>", etc.
-            // We need to find and click the correct item
-            var dropdownList = dropdown.transform.Find("Dropdown List");
+            // Find the dropdown list - it's created as a child when opened
+            Transform dropdownList = dropdownGO.transform.Find("Dropdown List");
             if (dropdownList == null)
             {
-                Debug.LogWarning($"[UITEST] ClickDropdown - Dropdown list not found after clicking");
+                // Try finding it in the scene (some implementations create it elsewhere)
+                var allDropdownLists = GameObject.FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                foreach (var t in allDropdownLists)
+                {
+                    if (t.name == "Dropdown List" && t.gameObject.activeInHierarchy)
+                    {
+                        dropdownList = t;
+                        break;
+                    }
+                }
+            }
+
+            if (dropdownList == null)
+            {
+                Debug.LogWarning($"[UITEST] ClickDropdown - Dropdown list not found after clicking '{search}'");
                 return;
             }
 
             // Find the content container with the items
-            var content = dropdownList.Find("Viewport/Content");
+            Transform content = dropdownList.Find("Viewport/Content");
+            if (content == null)
+            {
+                // Try alternative paths
+                content = dropdownList.Find("Content");
+                if (content == null)
+                {
+                    // Search recursively for Content
+                    content = FindChildRecursive(dropdownList, "Content");
+                }
+            }
+
             if (content == null)
             {
                 Debug.LogWarning($"[UITEST] ClickDropdown - Content not found in dropdown list");
                 return;
             }
 
-            // Find the item at the target index
+            // Find the item at the target index - items are named "Item N: Label" or just "Item N"
             Transform targetItem = null;
+            int itemCount = 0;
             for (int i = 0; i < content.childCount; i++)
             {
                 var child = content.GetChild(i);
-                if (child.name.StartsWith($"Item {optionIndex}:") || child.name == $"Item {optionIndex}")
+                // Skip template items (usually inactive)
+                if (!child.gameObject.activeInHierarchy)
+                    continue;
+
+                // Check if this is the item we want
+                if (child.name.StartsWith("Item "))
                 {
-                    targetItem = child;
-                    break;
+                    if (itemCount == optionIndex)
+                    {
+                        targetItem = child;
+                        break;
+                    }
+                    itemCount++;
                 }
             }
 
             if (targetItem == null)
             {
-                Debug.LogWarning($"[UITEST] ClickDropdown - Item at index {optionIndex} not found");
+                Debug.LogWarning($"[UITEST] ClickDropdown - Item at index {optionIndex} not found (found {itemCount} items)");
                 return;
             }
 
@@ -1690,6 +2250,7 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Selects a dropdown option by label text using actual clicks.
+        /// Supports both legacy Dropdown and TMP_Dropdown.
         /// </summary>
         /// <param name="search">Name or search pattern for the dropdown</param>
         /// <param name="optionLabel">The text label of the option to select</param>
@@ -1699,18 +2260,39 @@ namespace ODDGames.UITest
         {
             Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) [{search}] option='{optionLabel}'");
 
-            var dropdown = await Find<Dropdown>(search, throwIfMissing, searchTime);
-            if (dropdown == null) return;
+            // Try to find legacy Dropdown first, then TMP_Dropdown
+            var legacyDropdown = await Find<Dropdown>(search, false, searchTime / 2);
+            var tmpDropdown = legacyDropdown == null ? await Find<TMP_Dropdown>(search, false, searchTime / 2) : null;
 
-            // Find the index of the option with the matching label
             int optionIndex = -1;
-            for (int i = 0; i < dropdown.options.Count; i++)
+
+            if (legacyDropdown != null)
             {
-                if (dropdown.options[i].text == optionLabel)
+                for (int i = 0; i < legacyDropdown.options.Count; i++)
                 {
-                    optionIndex = i;
-                    break;
+                    if (legacyDropdown.options[i].text == optionLabel)
+                    {
+                        optionIndex = i;
+                        break;
+                    }
                 }
+            }
+            else if (tmpDropdown != null)
+            {
+                for (int i = 0; i < tmpDropdown.options.Count; i++)
+                {
+                    if (tmpDropdown.options[i].text == optionLabel)
+                    {
+                        optionIndex = i;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                if (throwIfMissing)
+                    throw new TestException($"ClickDropdown - Could not find Dropdown or TMP_Dropdown '{search}'");
+                return;
             }
 
             if (optionIndex < 0)
@@ -1720,6 +2302,22 @@ namespace ODDGames.UITest
             }
 
             await ClickDropdown(search, optionIndex, throwIfMissing, searchTime: 0.5f);
+        }
+
+        /// <summary>
+        /// Finds a child transform recursively by name.
+        /// </summary>
+        private static Transform FindChildRecursive(Transform parent, string name)
+        {
+            foreach (Transform child in parent)
+            {
+                if (child.name == name)
+                    return child;
+                var found = FindChildRecursive(child, name);
+                if (found != null)
+                    return found;
+            }
+            return null;
         }
 
         /// <summary>

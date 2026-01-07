@@ -113,6 +113,16 @@ public class LoginTest : UITestBehaviour
 - `ClickDropdown(name, label)` - Select dropdown option by label text
 - `ClickSlider(name, percent)` - Click slider at percentage position (0-1)
 - `DragSlider(name, fromPercent, toPercent)` - Drag slider between positions
+- `DoubleClick(name)` - Double-click a UI element
+- `Scroll(name, delta)` - Scroll wheel input on an element
+
+#### Gestures
+All gesture distances use percentage of screen height (e.g., 0.2 = 20%) for device independence.
+
+- `Swipe(name, direction, distance)` - Swipe gesture (Left, Right, Up, Down)
+- `Pinch(name, scale, fingerDistance)` - Two-finger pinch (scale < 1 = pinch in, scale > 1 = pinch out)
+- `TwoFingerSwipe(name, direction, distance, fingerSpacing)` - Two-finger swipe gesture
+- `Rotate(name, degrees, fingerDistance)` - Two-finger rotation gesture (positive = clockwise)
 
 #### Finding Elements
 - `Find<T>(name)` - Find component by name (supports wildcards)

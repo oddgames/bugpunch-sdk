@@ -2,11 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.19] - 2026-01-07
+
+### Fixed
+- TouchPhase injection now uses enum values directly (fixed `ArgumentException: Expecting control of type 'UInt16'`)
+- Gesture methods (`Pinch`, `Rotate`, `TwoFingerSwipe`) now use `Find<Transform>` to work with both UI and 3D objects
+- `PanelSwitcher` now finds inactive 3D objects using `Resources.FindObjectsOfTypeAll<Transform>()`
+- `DoubleClick` signature simplified with consistent parameter ordering
+
+### Changed
+- Standardized debug logging across all gesture methods (removed verbose internal logs)
+- `RotateAt` refactored to remove redundant calculations
+- Sample `GestureCube` added for 3D gesture demonstrations
+- Sample `GestureTargetUI` added for UI gesture demonstrations
+
 ## [1.0.18] - 2026-01-07
 
 ### Fixed
 - `Find<RectTransform>` and other non-Behaviour component types now work correctly
 - Drag and drop operations can now find elements properly
+- `ClickDropdown` now supports both legacy `Dropdown` and `TMP_Dropdown` components
+- `ClickDropdown` uses more robust item finding (handles different Unity naming patterns)
 
 ### Added
 - `DragTo(source, target)` - Drag one element to another for drag-and-drop testing
@@ -14,6 +30,12 @@ All notable changes to this project will be documented in this file.
 - `ClickDropdown(name, label)` - Select dropdown option by label text using realistic clicks
 - `ClickSlider(name, percent)` - Click slider at percentage position (0-1)
 - `DragSlider(name, fromPercent, toPercent)` - Drag slider between positions
+- `DoubleClick(name)` - Double-click an element
+- `Scroll(name, delta)` - Scroll wheel input on an element
+- `Swipe(name, direction)` - Swipe gesture helper (Left, Right, Up, Down)
+- `Pinch(name, scale)` - Two-finger pinch gesture (scale < 1 = pinch in, scale > 1 = pinch out)
+- `TwoFingerSwipe(name, direction)` - Two-finger swipe gesture
+- `Rotate(name, degrees)` - Two-finger rotation gesture
 - `DraggableUI` and `DropZoneUI` sample components for drag-and-drop demos
 - `PanelSwitcher` component for sample scene navigation
 
@@ -21,6 +43,8 @@ All notable changes to this project will be documented in this file.
 - Simplified `ComprehensiveSampleTest` for faster execution
 - Removed EzGUI support (moved to separate package)
 - Removed verbose iteration logging from Find method
+- Gesture methods (`Swipe`, `Pinch`, `TwoFingerSwipe`, `Rotate`) now use screen-relative percentages instead of fixed pixels for device independence
+- Added `fingerDistance` and `fingerSpacing` parameters to gesture methods for customization
 
 ## [1.0.17] - 2025-01-07
 

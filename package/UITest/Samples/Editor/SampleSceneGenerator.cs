@@ -29,6 +29,7 @@ namespace ODDGames.UITest.Samples.Editor
             CreateFormPanel(canvas.transform);
             CreateDragPanel(canvas.transform);
             CreateKeyboardPanel(canvas.transform);
+            CreateAdvancedPanel(canvas.transform);
 
             // Add test behaviour
             var testRunner = new GameObject("ComprehensiveSampleTest");
@@ -44,11 +45,12 @@ namespace ODDGames.UITest.Samples.Editor
             CreateText(mainMenu.transform, "Title", "UITest Sample", 32, new Vector2(0, 180));
             CreateText(mainMenu.transform, "Subtitle", "Comprehensive Test Scene", 16, new Vector2(0, 140));
 
-            CreateButton(mainMenu.transform, "SettingsButton", "Settings", new Vector2(0, 60));
-            CreateButton(mainMenu.transform, "ButtonsButton", "Buttons", new Vector2(0, 10));
-            CreateButton(mainMenu.transform, "FormsButton", "Forms", new Vector2(0, -40));
-            CreateButton(mainMenu.transform, "DragButton", "Drag & Drop", new Vector2(0, -90));
-            CreateButton(mainMenu.transform, "KeyboardButton", "Keyboard", new Vector2(0, -140));
+            CreateButton(mainMenu.transform, "SettingsButton", "Settings", new Vector2(0, 80));
+            CreateButton(mainMenu.transform, "ButtonsButton", "Buttons", new Vector2(0, 35));
+            CreateButton(mainMenu.transform, "FormsButton", "Forms", new Vector2(0, -10));
+            CreateButton(mainMenu.transform, "DragButton", "Drag & Drop", new Vector2(0, -55));
+            CreateButton(mainMenu.transform, "KeyboardButton", "Keyboard", new Vector2(0, -100));
+            CreateButton(mainMenu.transform, "AdvancedButton", "Advanced Input", new Vector2(0, -145));
         }
 
         private static void CreateSettingsPanel(Transform canvas)
@@ -201,6 +203,63 @@ namespace ODDGames.UITest.Samples.Editor
 
             // Back button
             CreateButton(panel.transform, "BackButton", "Back", new Vector2(0, -200));
+        }
+
+        private static void CreateAdvancedPanel(Transform canvas)
+        {
+            // Position panel on the right side so the 3D gesture cube is visible on the left
+            var panel = CreatePanel(canvas, "SampleAdvancedPanel", position: new Vector2(150, 0), size: new Vector2(350, 580));
+            panel.SetActive(false);
+
+            CreateText(panel.transform, "Title", "Advanced Input", 24, new Vector2(0, 250));
+            CreateText(panel.transform, "Subtitle", "Touch Gestures & Mouse", 14, new Vector2(0, 220));
+
+            // Double-click button
+            var doubleClickBtn = CreateButton(panel.transform, "DoubleClickButton", "Double-Click Me", new Vector2(0, 170));
+            var dcFeedback = CreateText(panel.transform, "DoubleClickFeedback", "Double-click count: 0", 12, new Vector2(0, 140));
+
+            // Scroll area
+            CreateText(panel.transform, "ScrollLabel", "Scroll Area:", 12, new Vector2(-120, 100));
+            CreateScrollView(panel.transform, "ScrollArea", new Vector2(50, 70), new Vector2(180, 100));
+
+            // Swipe area
+            CreateText(panel.transform, "SwipeLabel", "Swipe Area:", 12, new Vector2(-120, -10));
+            var swipeArea = CreatePanel(panel.transform, "SwipeArea", new Vector2(50, -20), new Vector2(180, 60));
+            swipeArea.GetComponent<Image>().color = new Color(0.25f, 0.35f, 0.45f);
+            var swipeIndicator = CreateText(swipeArea.transform, "SwipeIndicator", "← Swipe →", 14, Vector2.zero);
+
+            // 3D Gesture target - create a cube in front of the camera
+            CreateText(panel.transform, "GestureLabel", "3D Gesture Target:", 12, new Vector2(0, -80));
+            CreateText(panel.transform, "GestureHint", "Pinch to scale, Rotate, Two-finger pan", 10, new Vector2(0, -95));
+            Create3DGestureTarget();
+
+            // Status display
+            CreateText(panel.transform, "GestureStatus", "Gesture: None", 12, new Vector2(0, -150));
+
+            // Back button - moved up to ensure visibility
+            CreateButton(panel.transform, "BackButton", "Back", new Vector2(0, -200));
+        }
+
+        private static void Create3DGestureTarget()
+        {
+            // Create a 3D cube that responds to gestures
+            // Position it to the left of center so it's visible alongside the offset panel
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = "GestureTarget";
+            cube.transform.position = new Vector3(-2, 0, 3); // Left side, closer to camera
+            cube.transform.localScale = Vector3.one * 2f;
+
+            // Add colorful material
+            var renderer = cube.GetComponent<Renderer>();
+            var material = new Material(Shader.Find("Standard"));
+            material.color = new Color(0.4f, 0.3f, 0.8f);
+            renderer.material = material;
+
+            // Add gesture component
+            cube.AddComponent<GestureCube>();
+
+            // Start inactive - will be shown when Advanced panel opens
+            cube.SetActive(false);
         }
 
         private static void CreateEventSystem()
