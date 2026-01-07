@@ -217,7 +217,7 @@ namespace ODDGames.UITest.Editor
             }
             else
             {
-                ZipFile.CreateFromDirectory(testDataPath, zipPath, CompressionLevel.Optimal, false);
+                ZipFile.CreateFromDirectory(testDataPath, zipPath, System.IO.Compression.CompressionLevel.Optimal, false);
                 Debug.Log($"[UITestRecorder] Test data zipped to recording: {zipPath}");
             }
         }
@@ -232,7 +232,7 @@ namespace ODDGames.UITest.Editor
             }
 
             string zipPath = Path.Combine(recordingFolder, "testdata.zip");
-            ZipFile.CreateFromDirectory(persistentDataFolder, zipPath, CompressionLevel.Optimal, false);
+            ZipFile.CreateFromDirectory(persistentDataFolder, zipPath, System.IO.Compression.CompressionLevel.Optimal, false);
             Debug.Log($"[UITestRecorder] Current persistent data zipped to recording: {zipPath}");
         }
 
