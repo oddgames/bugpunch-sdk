@@ -597,7 +597,7 @@ namespace ODDGames.UITest
         }
 
 #if UNITY_EDITOR
-        [UnityEditor.MenuItem("Window/UI Test Behaviours/Create Test Recorder")]
+        [UnityEditor.MenuItem("Window/Analysis/UI Automation/Create Test Recorder")]
         static void CreateRecorder()
         {
             if (Instance != null)
