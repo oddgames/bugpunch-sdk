@@ -8,11 +8,6 @@ namespace ODDGames.UITest.Editor
 {
     public class UITestRecordingSetupWindow : EditorWindow
     {
-        const string TEST_DATA_PATH_PREF = "TOR.UITestRecorder.TestDataPath";
-        const string TEST_DATA_MODE_PREF = "TOR.UITestRecorder.TestDataMode";
-        const string PENDING_TEST_DATA_SOURCE_PREF = "TOR.UITestRecorder.PendingTestDataSource";
-        const string PENDING_RECORDING_FOLDER_PREF = "TOR.UITestRecorder.PendingRecordingFolder";
-
         enum TestDataMode { Current, Custom }
 
         static readonly string[] testDataModeLabels = { "Current", "Custom" };
@@ -36,8 +31,8 @@ namespace ODDGames.UITest.Editor
         void OnEnable()
         {
             recordingName = $"Recording_{DateTime.Now:yyyyMMdd_HHmm}";
-            testDataPath = EditorPrefs.GetString(TEST_DATA_PATH_PREF, "");
-            testDataMode = (TestDataMode)EditorPrefs.GetInt(TEST_DATA_MODE_PREF, 0);
+            testDataPath = UITestSettings.TestDataPath;
+            testDataMode = (TestDataMode)UITestSettings.TestDataMode;
             ValidatePath();
         }
 
@@ -148,8 +143,8 @@ namespace ODDGames.UITest.Editor
 
         void SavePrefs()
         {
-            EditorPrefs.SetString(TEST_DATA_PATH_PREF, testDataPath);
-            EditorPrefs.SetInt(TEST_DATA_MODE_PREF, (int)testDataMode);
+            UITestSettings.TestDataPath = testDataPath;
+            UITestSettings.TestDataMode = (int)testDataMode;
         }
 
         void StartRecording()
@@ -162,7 +157,7 @@ namespace ODDGames.UITest.Editor
             string recordingFolder = Path.Combine(Application.dataPath, "UITestBehaviours", "GeneratedTests", recordingName);
             Directory.CreateDirectory(recordingFolder);
 
-            EditorPrefs.SetString(PENDING_RECORDING_FOLDER_PREF, recordingFolder);
+            UITestSettings.PendingRecordingFolder = recordingFolder;
 
             try
             {
@@ -170,12 +165,12 @@ namespace ODDGames.UITest.Editor
                 {
                     CopyTestDataToPersistentPath();
                     CopyTestDataToRecordingFolder(recordingFolder);
-                    EditorPrefs.SetString(PENDING_TEST_DATA_SOURCE_PREF, testDataPath);
+                    UITestSettings.PendingTestDataSource = testDataPath;
                 }
                 else
                 {
                     CopyCurrentPersistentDataToRecordingFolder(recordingFolder);
-                    EditorPrefs.DeleteKey(PENDING_TEST_DATA_SOURCE_PREF);
+                    UITestSettings.PendingTestDataSource = "";
                 }
             }
             catch (Exception ex)
@@ -222,7 +217,7 @@ namespace ODDGames.UITest.Editor
             }
             else
             {
-                ZipFile.CreateFromDirectory(testDataPath, zipPath, System.IO.Compression.CompressionLevel.Optimal, false);
+                ZipFile.CreateFromDirectory(testDataPath, zipPath, CompressionLevel.Optimal, false);
                 Debug.Log($"[UITestRecorder] Test data zipped to recording: {zipPath}");
             }
         }
@@ -237,7 +232,7 @@ namespace ODDGames.UITest.Editor
             }
 
             string zipPath = Path.Combine(recordingFolder, "testdata.zip");
-            ZipFile.CreateFromDirectory(persistentDataFolder, zipPath, System.IO.Compression.CompressionLevel.Optimal, false);
+            ZipFile.CreateFromDirectory(persistentDataFolder, zipPath, CompressionLevel.Optimal, false);
             Debug.Log($"[UITestRecorder] Current persistent data zipped to recording: {zipPath}");
         }
 

@@ -16,8 +16,6 @@ namespace ODDGames.UITest
 
         public string LastRecordingFolder { get; private set; }
 
-        const string TEST_DATA_SOURCE_PREF = "TOR.UITestRecorder.PendingTestDataSource";
-        const string RECORDING_FOLDER_PREF = "TOR.UITestRecorder.PendingRecordingFolder";
 
         float recordingStartTime;
         StringBuilder logBuilder;
@@ -295,11 +293,11 @@ namespace ODDGames.UITest
 
             string testDataSource = null;
 #if UNITY_EDITOR
-            LastRecordingFolder = UnityEditor.EditorPrefs.GetString(RECORDING_FOLDER_PREF, null);
-            UnityEditor.EditorPrefs.DeleteKey(RECORDING_FOLDER_PREF);
+            LastRecordingFolder = ODDGames.UITest.Editor.UITestSettings.PendingRecordingFolder;
+            ODDGames.UITest.Editor.UITestSettings.PendingRecordingFolder = "";
 
-            testDataSource = UnityEditor.EditorPrefs.GetString(TEST_DATA_SOURCE_PREF, null);
-            UnityEditor.EditorPrefs.DeleteKey(TEST_DATA_SOURCE_PREF);
+            testDataSource = ODDGames.UITest.Editor.UITestSettings.PendingTestDataSource;
+            ODDGames.UITest.Editor.UITestSettings.PendingTestDataSource = "";
 #endif
 
             if (string.IsNullOrEmpty(LastRecordingFolder))
@@ -356,7 +354,7 @@ namespace ODDGames.UITest
             File.WriteAllText(Path.Combine(LastRecordingFolder, "prompt.md"), UITestPromptGenerator.GeneratePrompt(CurrentRecording));
 
 #if UNITY_EDITOR
-            UnityEditor.EditorPrefs.SetString("TOR.UITestRecorder.LastRecordingFolder", LastRecordingFolder);
+            ODDGames.UITest.Editor.UITestSettings.LastRecordingFolder = LastRecordingFolder;
 #endif
 
             Debug.Log($"[UITestRecorder] Recording saved to: {LastRecordingFolder}");

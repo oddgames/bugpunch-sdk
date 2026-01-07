@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.21] - 2026-01-07
+
+### Added
+- **UITestSettings** - Centralized settings provider accessible via `Edit > Project Settings > UITest`
+  - Gemini API key configuration with validation
+  - Model selection (gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro, etc.)
+  - Quick actions for test generation and sample scene creation
+- Automatic migration of old `TOR.*` EditorPrefs keys to new `ODDGames.UITest.*` prefix
+
+### Fixed
+- `UITestInputEvents` sibling counting now correctly counts only siblings with the same name (matches `UITestInputInterceptor` behavior)
+
+### Changed
+- All recording components now use centralized `UITestSettings` instead of scattered EditorPrefs
+- Standardized all EditorPrefs keys to use `ODDGames.UITest.*` prefix
+- Removed hardcoded Gemini model - now configurable via settings
+
 ## [1.0.20] - 2026-01-07
 
 ### Fixed

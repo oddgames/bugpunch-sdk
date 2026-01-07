@@ -42,14 +42,8 @@ namespace ODDGames.UITest
                 string targetPath = GetHierarchyPath(target.transform);
                 string textContent = GetTextContent(target);
 
-                // Calculate sibling info
-                int siblingIndex = 0;
-                int siblingCount = 1;
-                if (target.transform.parent != null)
-                {
-                    siblingIndex = target.transform.GetSiblingIndex();
-                    siblingCount = target.transform.parent.childCount;
-                }
+                // Calculate sibling info (only count siblings with the same name)
+                var (siblingIndex, siblingCount) = GetSiblingInfo(target);
 
                 recorder.RecordClick(targetName, targetPath, componentType, parentName, clickPos, textContent, siblingIndex, siblingCount, grandparentName);
             }
@@ -89,14 +83,8 @@ namespace ODDGames.UITest
                 var scrollRect = dragTarget.GetComponentInParent<ScrollRect>();
                 string scrollRectName = scrollRect?.name;
 
-                // Calculate sibling info
-                int siblingIndex = 0;
-                int siblingCount = 1;
-                if (dragTarget.transform.parent != null)
-                {
-                    siblingIndex = dragTarget.transform.GetSiblingIndex();
-                    siblingCount = dragTarget.transform.parent.childCount;
-                }
+                // Calculate sibling info (only count siblings with the same name)
+                var (siblingIndex, siblingCount) = GetSiblingInfo(dragTarget);
 
                 recorder.RecordDrag(
                     targetName,
@@ -143,13 +131,8 @@ namespace ODDGames.UITest
                     targetType = selectable.GetType().Name;
                 }
 
-                int siblingIndex = 0;
-                int siblingCount = 1;
-                if (target.transform.parent != null)
-                {
-                    siblingIndex = target.transform.GetSiblingIndex();
-                    siblingCount = target.transform.parent.childCount;
-                }
+                // Calculate sibling info (only count siblings with the same name)
+                var (siblingIndex, siblingCount) = GetSiblingInfo(target);
 
                 recorder.RecordScroll(
                     targetName,
@@ -200,6 +183,42 @@ namespace ODDGames.UITest
             if (childTmpText != null) return childTmpText.text ?? "";
 
             return "";
+        }
+
+        /// <summary>
+        /// Gets sibling info counting only siblings with the same name.
+        /// This matches the behavior in UITestInputInterceptor.
+        /// </summary>
+        private static (int index, int count) GetSiblingInfo(GameObject go)
+        {
+            if (go == null || go.transform.parent == null)
+                return (0, 1);
+
+            var parent = go.transform.parent;
+            var sameName = new List<Transform>();
+
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                var child = parent.GetChild(i);
+                if (!child.gameObject.activeInHierarchy) continue;
+
+                if (child.name == go.name)
+                {
+                    sameName.Add(child);
+                }
+            }
+
+            int siblingIndex = 0;
+            for (int i = 0; i < sameName.Count; i++)
+            {
+                if (sameName[i] == go.transform)
+                {
+                    siblingIndex = i;
+                    break;
+                }
+            }
+
+            return (siblingIndex, sameName.Count);
         }
     }
 }

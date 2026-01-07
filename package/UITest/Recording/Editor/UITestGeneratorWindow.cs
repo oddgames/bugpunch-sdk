@@ -10,10 +10,6 @@ namespace ODDGames.UITest.Editor
 {
     public class UITestGeneratorWindow : EditorWindow
     {
-        const string GEMINI_API_KEY_PREF = "TOR.UITestGenerator.GeminiApiKey";
-        const string GEMINI_API_KEY_VALIDATED_PREF = "TOR.UITestGenerator.GeminiApiKeyValidated";
-
-        string apiKey;
         string lastRecordingPath;
         string statusMessage;
         bool isGenerating;
@@ -39,7 +35,7 @@ namespace ODDGames.UITest.Editor
             var window = GetWindow<UITestGeneratorWindow>("UI Test Generator");
             window.minSize = new Vector2(500, 400);
 
-            string lastFolder = EditorPrefs.GetString("TOR.UITestRecorder.LastRecordingFolder", "");
+            string lastFolder = UITestSettings.LastRecordingFolder;
             if (!string.IsNullOrEmpty(lastFolder) && Directory.Exists(lastFolder))
             {
                 window.lastRecordingPath = lastFolder;
@@ -50,11 +46,13 @@ namespace ODDGames.UITest.Editor
 
         void OnEnable()
         {
-            apiKey = EditorPrefs.GetString(GEMINI_API_KEY_PREF, "");
-
             if (UITestRecorder.Instance != null && !string.IsNullOrEmpty(UITestRecorder.Instance.LastRecordingFolder))
             {
                 lastRecordingPath = UITestRecorder.Instance.LastRecordingFolder;
+            }
+            else if (string.IsNullOrEmpty(lastRecordingPath))
+            {
+                lastRecordingPath = UITestSettings.LastRecordingFolder;
             }
 
             CheckApiKeyValidation();
@@ -62,46 +60,13 @@ namespace ODDGames.UITest.Editor
 
         void CheckApiKeyValidation()
         {
-            if (string.IsNullOrEmpty(apiKey))
+            if (string.IsNullOrEmpty(UITestSettings.GeminiApiKey))
             {
                 apiKeyStatus = ApiKeyStatus.Unknown;
                 return;
             }
 
-            string validatedData = EditorPrefs.GetString(GEMINI_API_KEY_VALIDATED_PREF, "");
-            if (!string.IsNullOrEmpty(validatedData))
-            {
-                string[] parts = validatedData.Split('|');
-                if (parts.Length == 2 && parts[0] == apiKey)
-                {
-                    if (long.TryParse(parts[1], out long timestamp))
-                    {
-                        var validatedTime = DateTimeOffset.FromUnixTimeSeconds(timestamp).DateTime;
-                        if ((DateTime.UtcNow - validatedTime).TotalHours < 24)
-                        {
-                            apiKeyStatus = ApiKeyStatus.Valid;
-                            return;
-                        }
-                    }
-                }
-            }
-
-            apiKeyStatus = ApiKeyStatus.Unknown;
-        }
-
-        void SaveApiKeyValidation(bool isValid)
-        {
-            if (isValid)
-            {
-                long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                EditorPrefs.SetString(GEMINI_API_KEY_VALIDATED_PREF, $"{apiKey}|{timestamp}");
-                apiKeyStatus = ApiKeyStatus.Valid;
-            }
-            else
-            {
-                EditorPrefs.DeleteKey(GEMINI_API_KEY_VALIDATED_PREF);
-                apiKeyStatus = ApiKeyStatus.Invalid;
-            }
+            apiKeyStatus = UITestSettings.IsGeminiApiKeyValid ? ApiKeyStatus.Valid : ApiKeyStatus.Unknown;
         }
 
         void OnGUI()
@@ -130,15 +95,17 @@ namespace ODDGames.UITest.Editor
 
         void DrawApiKeySection()
         {
-            EditorGUILayout.LabelField("Gemini API Key", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Gemini API", EditorStyles.boldLabel);
 
             EditorGUILayout.BeginHorizontal();
 
+            string apiKey = UITestSettings.GeminiApiKey;
             EditorGUI.BeginChangeCheck();
             apiKey = EditorGUILayout.PasswordField("API Key", apiKey);
             if (EditorGUI.EndChangeCheck())
             {
-                EditorPrefs.SetString(GEMINI_API_KEY_PREF, apiKey);
+                UITestSettings.GeminiApiKey = apiKey;
+                UITestSettings.ClearGeminiApiKeyValidation();
                 apiKeyStatus = ApiKeyStatus.Unknown;
             }
 
@@ -151,9 +118,23 @@ namespace ODDGames.UITest.Editor
 
             EditorGUILayout.EndHorizontal();
 
+            // Model selection
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Model", GUILayout.Width(EditorGUIUtility.labelWidth));
+            string[] models = { "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro" };
+            int currentIndex = Array.IndexOf(models, UITestSettings.GeminiModel);
+            if (currentIndex < 0) currentIndex = 0;
+            EditorGUI.BeginChangeCheck();
+            int newIndex = EditorGUILayout.Popup(currentIndex, models);
+            if (EditorGUI.EndChangeCheck())
+            {
+                UITestSettings.GeminiModel = models[newIndex];
+            }
+            EditorGUILayout.EndHorizontal();
+
             if (string.IsNullOrEmpty(apiKey))
             {
-                EditorGUILayout.HelpBox("Enter your Gemini API key. Get one at: https://aistudio.google.com/apikey", MessageType.Info);
+                EditorGUILayout.HelpBox("Enter your Gemini API key. Get one at: https://aistudio.google.com/apikey\nOr configure in Edit > Project Settings > UITest", MessageType.Info);
             }
             else
             {
@@ -180,20 +161,15 @@ namespace ODDGames.UITest.Editor
             try
             {
                 bool isValid = await TestGeminiApiKey();
-                SaveApiKeyValidation(isValid);
+                UITestSettings.SetGeminiApiKeyValidated(isValid);
+                apiKeyStatus = isValid ? ApiKeyStatus.Valid : ApiKeyStatus.Invalid;
 
-                if (isValid)
-                {
-                    statusMessage = "API key validated successfully!";
-                }
-                else
-                {
-                    statusMessage = "API key validation failed.";
-                }
+                statusMessage = isValid ? "API key validated successfully!" : "API key validation failed.";
             }
             catch (Exception ex)
             {
-                SaveApiKeyValidation(false);
+                UITestSettings.SetGeminiApiKeyValidated(false);
+                apiKeyStatus = ApiKeyStatus.Invalid;
                 statusMessage = $"Validation error: {ex.Message}";
             }
             finally
@@ -208,7 +184,7 @@ namespace ODDGames.UITest.Editor
             using var client = new HttpClient();
             client.Timeout = TimeSpan.FromSeconds(30);
 
-            string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={apiKey}";
+            string url = $"https://generativelanguage.googleapis.com/v1beta/models/{UITestSettings.GeminiModel}:generateContent?key={UITestSettings.GeminiApiKey}";
 
             string json = @"{
                 ""contents"": [{
@@ -288,6 +264,7 @@ namespace ODDGames.UITest.Editor
 
         void DrawGenerateSection()
         {
+            string apiKey = UITestSettings.GeminiApiKey;
             bool canGenerate = !isGenerating &&
                               !string.IsNullOrEmpty(apiKey) &&
                               !string.IsNullOrEmpty(lastRecordingPath) &&
@@ -348,7 +325,8 @@ namespace ODDGames.UITest.Editor
                 try
                 {
                     bool isValid = await TestGeminiApiKey();
-                    SaveApiKeyValidation(isValid);
+                    UITestSettings.SetGeminiApiKeyValidated(isValid);
+                    apiKeyStatus = isValid ? ApiKeyStatus.Valid : ApiKeyStatus.Invalid;
 
                     if (!isValid)
                     {
@@ -360,7 +338,8 @@ namespace ODDGames.UITest.Editor
                 }
                 catch (Exception ex)
                 {
-                    SaveApiKeyValidation(false);
+                    UITestSettings.SetGeminiApiKeyValidated(false);
+                    apiKeyStatus = ApiKeyStatus.Invalid;
                     statusMessage = $"API key validation failed: {ex.Message}";
                     isValidatingKey = false;
                     Repaint();
@@ -457,7 +436,7 @@ namespace ODDGames.UITest.Editor
             using var client = new HttpClient();
             client.Timeout = TimeSpan.FromMinutes(2);
 
-            string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={apiKey}";
+            string url = $"https://generativelanguage.googleapis.com/v1beta/models/{UITestSettings.GeminiModel}:generateContent?key={UITestSettings.GeminiApiKey}";
 
             string escapedPrompt = EscapeJsonString(prompt);
 
