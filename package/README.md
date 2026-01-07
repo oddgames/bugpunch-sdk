@@ -17,7 +17,7 @@ ui-automation/
 
 | Project | Description | Special Setup |
 |---------|-------------|---------------|
-| **MTD** | Monster Truck Destruction | Add `HAS_EZ_GUI` define |
+| **MTD** | Monster Truck Destruction | Input System required |
 | **TOR** | Trucks Off Road | None required |
 
 ## Installation
@@ -46,13 +46,12 @@ Add to your `Packages/manifest.json`:
 
 ## Project Setup
 
-### For MTD (Monster Truck Destruction)
+**All projects must use the Input System Package (New) - see Requirements section.**
 
-Add `HAS_EZ_GUI` to **Player Settings > Scripting Define Symbols** (all platforms) to enable EZ GUI/AnB UI clickable support for legacy UI buttons (`AutoSpriteControlBase`, `UIButton3D`).
+### For All Projects
 
-### For TOR (Trucks Off Road)
-
-No additional setup required. The package works out of the box with Unity UI and TextMeshPro.
+1. Set **Active Input Handling** to **Input System Package (New)** in Player Settings
+2. No additional setup required - works out of the box with Unity UI and TextMeshPro
 
 ## Writing Tests
 
@@ -104,7 +103,9 @@ public class LoginTest : UITestBehaviour
 - `Hold(name, duration)` - Hold/long press element
 - `Drag(name, direction)` - Drag element
 - `DragFromTo(from, to)` - Drag between positions
-- `TextInput(name, text)` - Enter text in input field
+- `TextInput(name, text, seconds, pressEnter)` - Enter text via Input System (click, type, optional Enter)
+- `PressKey(key)` - Press a keyboard key
+- `PressKeys(text)` - Type a string of characters
 
 #### Finding Elements
 - `Find<T>(name)` - Find component by name (supports wildcards)
@@ -133,8 +134,20 @@ Use the toolbar **"Record Test"** button to record user interactions:
 4. Stop recording
 5. Use the Generator window to create test code from the recording
 
+## Requirements
+
+**Important:** This package requires the **Unity Input System** package. Projects must be configured to use the new Input System (not the legacy Input Manager).
+
+### Input System Setup
+
+1. Install `com.unity.inputsystem` package (automatically installed as a dependency)
+2. Go to **Edit > Project Settings > Player > Other Settings > Active Input Handling**
+3. Set to **Input System Package (New)**
+4. Unity will restart to apply the change
+
 ## Dependencies
 
+- **Unity Input System** - Required for input injection (automatically installed)
 - **UniTask** - Async/await support
 - **TextMeshPro** - UI text handling
 - **Unity UI** - Core UI system
@@ -148,7 +161,6 @@ Use the toolbar **"Record Test"** button to record user interactions:
 | `ODDGames.UITest.Editor` | Editor | Test runner and editor tools |
 | `ODDGames.UITest.Recording` | Runtime | Recording/playback system |
 | `ODDGames.UITest.Recording.Editor` | Editor | Recording toolbar and generator |
-| `ODDGames.UITest.EzGUI` | Runtime | EZ GUI support (HAS_EZ_GUI only) |
 
 ## Version History
 

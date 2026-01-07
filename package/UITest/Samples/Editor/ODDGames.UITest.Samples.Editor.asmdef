@@ -4,7 +4,8 @@
     "references": [
         "ODDGames.UITest",
         "ODDGames.UITest.Samples",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"

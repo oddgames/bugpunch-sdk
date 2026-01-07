@@ -2,7 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.17] - 2025-01-07
+
+### Fixed
+- `TextInput` now works with TMP_InputField by using direct text property injection (character-by-character)
+- Sample scenes use TMP_InputField instead of legacy InputField for proper Input System compatibility
+
+## [1.0.16] - 2025-01-07
+
+### Breaking Changes
+- **Removed EZ GUI support**: The `HAS_EZ_GUI` conditional compilation and all EZ GUI/AnB UI SDK integrations have been removed
+
+### Changed
+- `TextInput` now uses Input System injection (click to focus, type characters, optional Enter)
+- Reduced debug logging verbosity (removed per-frame Find/injection logs)
+- Simplified test runner context menus (removed popup dialog)
+
+### Added
+- `KeyPressTest` sample for keyboard input testing
+- Context menu options: Run Test, Run Test (Clear Data), Run Test with Data Folder/Zip
+
 ## [1.0.15] - 2025-01-07
+
+### Breaking Changes
+- **Requires Unity Input System**: Projects must now use the Input System Package (New) - legacy Input Manager is no longer supported
 
 ### Changed
 - Restructured repository: package content now in `package/` subfolder for proper UPM git URL references
@@ -13,8 +36,8 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Test Unity project in `test/` folder for framework development
 - `ClickFeedback` component for visual click confirmation in samples
-- Input System as package dependency
-- PressKey method for keyboard input simulation
+- Input System as package dependency (required)
+- PressKey/PressKeys methods for keyboard input simulation
 
 ### Fixed
 - Input System clicks not reaching UI elements (was using wrong input module)
@@ -28,10 +51,6 @@ All notable changes to this project will be documented in this file.
   - FormInputTest - text input, dropdowns, sliders, form submission
   - DragAndDropTest - scrolling, swiping, drag-and-drop
   - PerformanceTest - framerate monitoring, scene load timing
-- EZ GUI sample tests (HAS_EZ_GUI)
-  - EzGUIButtonTest - UIButton3D and AutoSpriteControlBase interactions
-  - EzGUINavigationTest - MTD-style menu flows
-  - EzGUIPurchaseFlowTest - shop and purchase flow testing
 - SampleSceneGenerator editor tool (UITest > Samples > Generate All Sample Scenes)
 - Assembly definitions for Samples module
 
@@ -45,10 +64,9 @@ All notable changes to this project will be documented in this file.
 - Test generator for creating test code from recordings
 - Editor toolbar integration for recording
 - UITestRunner for batch test execution
-- EZ GUI support (HAS_EZ_GUI define) for MTD project
 - Assembly definitions for proper code organization
 - README documentation
 
 ### Supported Projects
-- MTD (Monster Truck Destruction) - with EZ GUI support
+- MTD (Monster Truck Destruction)
 - TOR (Trucks Off Road)

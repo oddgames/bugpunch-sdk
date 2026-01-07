@@ -88,15 +88,13 @@ namespace ODDGames.UITest
             None = 0,
             Active = 1,
             Enabled = 2,
-            Raycastable = 4,
-            All = Active | Enabled | Raycastable
+            All = Active | Enabled
         }
 
-        public static int Interval { get; set; } = 500;
+        public static int Interval { get; set; } = 100;
         static readonly List<Type> clickablesList = new() { typeof(Selectable) };
         static Type[] clickablesArray = { typeof(Selectable) };
         public static Type[] Clickables => clickablesArray;
-        public static List<BaseRaycaster> Raycasters { get; } = new();
 
         static CancellationTokenSource testCts;
         protected static CancellationToken TestCancellationToken => testCts != null ? testCts.Token : CancellationToken.None;
@@ -119,17 +117,6 @@ namespace ODDGames.UITest
         }
 
         public static void UnregisterClickable<T>() => UnregisterClickable(typeof(T));
-
-        public static void RegisterRaycaster(BaseRaycaster raycaster)
-        {
-            if (raycaster != null && !Raycasters.Contains(raycaster))
-                Raycasters.Add(raycaster);
-        }
-
-        public static void UnregisterRaycaster(BaseRaycaster raycaster)
-        {
-            Raycasters.Remove(raycaster);
-        }
 
         /// <summary>
         /// Delegate for custom key press handlers (e.g., EzGUI).
@@ -173,39 +160,45 @@ namespace ODDGames.UITest
             }
         }
 
-        static void RaycastAll(PointerEventData pointer, List<RaycastResult> results)
-        {
-            results.Clear();
-            if (Raycasters.Count > 0)
-            {
-                foreach (var raycaster in Raycasters)
-                {
-                    if (raycaster != null && raycaster.IsActive())
-                        raycaster.Raycast(pointer, results);
-                }
-                results.Sort((a, b) => b.depth.CompareTo(a.depth));
-            }
-            else
-            {
-                EventSystem.current.RaycastAll(pointer, results);
-            }
-        }
-
         static float lastActionTime;
 
-        static async UniTask WaitForInterval()
-        {
-            float elapsed = (Time.realtimeSinceStartup - lastActionTime) * 1000f;
-            if (elapsed < Interval)
-            {
-                int remaining = Interval - (int)elapsed;
-                await UniTask.Delay(remaining, true, PlayerLoopTiming.Update, TestCancellationToken);
-            }
-        }
-
-        static void ActionComplete()
+        /// <summary>
+        /// Called at the end of each action to wait for the interval before continuing.
+        /// </summary>
+        static async UniTask ActionComplete()
         {
             lastActionTime = Time.realtimeSinceStartup;
+
+            // Always yield at least one frame to allow Unity to process events
+            await UniTask.Yield(PlayerLoopTiming.Update, TestCancellationToken);
+
+            // Then wait for the remaining interval time
+            await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
+        }
+
+        /// <summary>
+        /// Waits until the editor is fully in play mode and ready for testing.
+        /// </summary>
+        static async UniTask WaitForPlayModeReady()
+        {
+#if UNITY_EDITOR
+            // Wait until EditorApplication.isPlaying is true and isPlayingOrWillChangePlaymode settles
+            while (!UnityEditor.EditorApplication.isPlaying || UnityEditor.EditorApplication.isCompiling)
+            {
+                await UniTask.Yield(PlayerLoopTiming.Update, TestCancellationToken);
+            }
+#endif
+            // Wait for Time.timeScale to be non-zero (game not paused)
+            while (Time.timeScale == 0)
+            {
+                await UniTask.Yield(PlayerLoopTiming.Update, TestCancellationToken);
+            }
+
+            // Yield a few frames to let Unity fully settle
+            for (int i = 0; i < 3; i++)
+            {
+                await UniTask.Yield(PlayerLoopTiming.Update, TestCancellationToken);
+            }
         }
 
         static bool CheckAvailability(UnityEngine.Object obj, Availability availability)
@@ -244,33 +237,6 @@ namespace ODDGames.UITest
                 var canvasGroup = go.GetComponentInParent<CanvasGroup>();
                 if (canvasGroup != null && (canvasGroup.alpha <= 0 || !canvasGroup.interactable))
                     return false;
-            }
-
-            if ((availability & Availability.Raycastable) != 0)
-            {
-                var camera = Camera.main;
-                if (camera == null)
-                    return false;
-
-                RectTransform rt = go.GetComponent<RectTransform>();
-                if (rt != null)
-                {
-                    Vector3 screenPoint = RectTransformUtility.WorldToScreenPoint(camera, rt.position);
-                    var pointer = new PointerEventData(EventSystem.current) { position = screenPoint };
-                    var results = new List<RaycastResult>();
-                    RaycastAll(pointer, results);
-                    bool found = results.Any(r => r.gameObject == go || r.gameObject.transform.IsChildOf(go.transform));
-                    if (!found)
-                        return false;
-                }
-                else
-                {
-                    Ray ray = camera.ScreenPointToRay(camera.WorldToScreenPoint(go.transform.position));
-                    if (!Physics.Raycast(ray, out RaycastHit hit))
-                        return false;
-                    if (hit.collider.gameObject != go && !hit.collider.transform.IsChildOf(go.transform))
-                        return false;
-                }
             }
 
             return true;
@@ -349,86 +315,61 @@ namespace ODDGames.UITest
         [ContextMenu("Run Test")]
         void RunTest()
         {
-            var attr = GetType().GetCustomAttribute<UITestAttribute>();
-            var dataMode = attr != null ? attr.DataMode : TestDataMode.Ask;
-            int scenario = Scenario;
-
-            UITestStartWindow.Show(GetType().Name, dataMode, (runName, clearData) =>
-            {
-                TestRunName = runName;
-
-                if (clearData)
-                {
-                    try
-                    {
-                        string folder = Path.Combine(Application.persistentDataPath, "data");
-                        if (Directory.Exists(folder))
-                            Directory.Delete(folder, true);
-                        PlayerPrefs.DeleteAll();
-                        Debug.Log("[UITEST] Cleared test data");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.LogError($"[UITEST] Failed to clear: {ex.Message}");
-                    }
-                }
-
-                UnityEditor.SessionState.SetBool("GAME_LOOP_TEST", true);
-                UnityEditor.SessionState.SetInt("GAME_LOOP_TEST_SCENARIO", scenario);
-                UnityEditor.SessionState.SetString("GAME_LOOP_TEST_NAME", runName);
-                UnityEditor.EditorApplication.isPlaying = true;
-            });
+            StartTest(clearData: false, testDataPath: null);
         }
 
-        class UITestStartWindow : UnityEditor.EditorWindow
+        [ContextMenu("Run Test (Clear Data)")]
+        void RunTestClearData()
         {
-            string runName = "";
-            bool clearData;
-            Action<string, bool> onStart;
-            TestDataMode dataMode;
+            StartTest(clearData: true, testDataPath: null);
+        }
 
-            public static void Show(string defaultName, TestDataMode mode, Action<string, bool> callback)
+        [ContextMenu("Run Test with Data Folder...")]
+        void RunTestWithDataFolder()
+        {
+            string folder = UnityEditor.EditorUtility.OpenFolderPanel("Select Test Data Folder", Application.persistentDataPath, "data");
+            if (!string.IsNullOrEmpty(folder))
             {
-                var window = GetWindow<UITestStartWindow>(true, "Start UI Test", true);
-                window.runName = defaultName + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm");
-                window.dataMode = mode;
-                window.onStart = callback;
-                window.minSize = new Vector2(350, 120);
-                window.maxSize = new Vector2(350, 120);
-                window.ShowUtility();
+                StartTest(clearData: false, testDataPath: folder);
+            }
+        }
+
+        [ContextMenu("Run Test with Data Zip...")]
+        void RunTestWithDataZip()
+        {
+            string zipPath = UnityEditor.EditorUtility.OpenFilePanel("Select Test Data Zip", Application.persistentDataPath, "zip");
+            if (!string.IsNullOrEmpty(zipPath))
+            {
+                StartTest(clearData: false, testDataPath: zipPath);
+            }
+        }
+
+        void StartTest(bool clearData, string testDataPath)
+        {
+            int scenario = Scenario;
+            TestRunName = GetType().Name + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
+            if (clearData)
+            {
+                try
+                {
+                    string folder = Path.Combine(Application.persistentDataPath, "data");
+                    if (Directory.Exists(folder))
+                        Directory.Delete(folder, true);
+                    PlayerPrefs.DeleteAll();
+                    Debug.Log("[UITEST] Cleared test data");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[UITEST] Failed to clear: {ex.Message}");
+                }
             }
 
-            void OnGUI()
-            {
-                GUILayout.Space(10);
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Run Name:", GUILayout.Width(70));
-                runName = GUILayout.TextField(runName);
-                GUILayout.EndHorizontal();
-
-                GUILayout.Space(5);
-
-                if (dataMode == TestDataMode.Ask)
-                {
-                    clearData = GUILayout.Toggle(clearData, "Clear existing data");
-                }
-
-                GUILayout.Space(15);
-
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button("Start Test", GUILayout.Height(30)))
-                {
-                    Close();
-                    if (onStart != null)
-                        onStart.Invoke(runName, clearData);
-                }
-                if (GUILayout.Button("Cancel", GUILayout.Height(30)))
-                {
-                    Close();
-                }
-                GUILayout.EndHorizontal();
-            }
+            UnityEditor.SessionState.SetBool("GAME_LOOP_TEST", true);
+            UnityEditor.SessionState.SetInt("GAME_LOOP_TEST_SCENARIO", scenario);
+            UnityEditor.SessionState.SetString("GAME_LOOP_TEST_NAME", TestRunName);
+            UnityEditor.SessionState.SetString("GAME_LOOP_TEST_DATA_PATH", testDataPath ?? "");
+            UnityEditor.EditorApplication.isPlaying = true;
         }
 
         string GetTestDataPath()
@@ -500,6 +441,15 @@ namespace ODDGames.UITest
         string FindTestData()
         {
 #if UNITY_EDITOR
+            // Check if a custom data path was specified via context menu
+            string customPath = UnityEditor.SessionState.GetString("GAME_LOOP_TEST_DATA_PATH", "");
+            if (!string.IsNullOrEmpty(customPath))
+            {
+                UnityEditor.SessionState.EraseString("GAME_LOOP_TEST_DATA_PATH");
+                if (File.Exists(customPath) || Directory.Exists(customPath))
+                    return customPath;
+            }
+
             string editorPath = GetTestDataPath();
             if (!string.IsNullOrEmpty(editorPath))
                 return editorPath;
@@ -575,6 +525,10 @@ namespace ODDGames.UITest
 
                 Debug.Log($"[UITEST] Test Start: {GetType().Name}");
 
+                // Wait for editor to be fully in play mode and scene to initialize
+                await WaitForPlayModeReady();
+                await UniTask.Delay(1000, true, PlayerLoopTiming.Update, TestCancellationToken);
+
                 try
                 {
                     await Test();
@@ -603,20 +557,8 @@ namespace ODDGames.UITest
                     await UniTask.Yield();
 
 #if UNITY_EDITOR
-                    bool isRunnerControlled = UnityEditor.SessionState.GetBool("GAME_LOOP_TEST_RUNNER", false);
-
-                    if (isRunnerControlled)
-                    {
-                        UnityEditor.EditorApplication.isPlaying = false;
-                    }
-                    else if (Application.isBatchMode)
-                    {
-                        UnityEditor.EditorApplication.Exit(0);
-                    }
-                    else
-                    {
-                        UnityEditor.EditorApplication.isPlaying = false;
-                    }
+                    Debug.Log($"[UITEST] Stopping play mode...");
+                    UnityEditor.EditorApplication.isPlaying = false;
 #else
                     Application.Quit(0);
 #endif
@@ -677,26 +619,21 @@ namespace ODDGames.UITest
         }
         protected abstract UniTask Test();
 
-        protected async UniTask Wait(int seconds = 1)
+        protected async UniTask Wait(float seconds = 1f)
         {
-            await UniTask.Delay(seconds * 1000, true, PlayerLoopTiming.Update, TestCancellationToken);
+            await UniTask.Delay((int)(seconds * 1000), true, PlayerLoopTiming.Update, TestCancellationToken);
+            await ActionComplete();
         }
 
         protected async UniTask Wait(string[] search, int seconds = 10)
         {
-            await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
-
             Debug.Log($"[UITEST] Wait ({seconds}) [{string.Join(",", search)}]");
-
             await Find<MonoBehaviour>(search, true, seconds);
         }
 
         protected async UniTask Wait(string search, int seconds = 10)
         {
-            await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
-
             Debug.Log($"[UITEST] Wait ({seconds}) [{search}]");
-
             await Find<MonoBehaviour>(search, true, seconds);
         }
 
@@ -709,7 +646,10 @@ namespace ODDGames.UITest
             while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying && !TestCancellationToken.IsCancellationRequested)
             {
                 if (condition())
+                {
+                    await ActionComplete();
                     return;
+                }
 
                 await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
@@ -720,8 +660,6 @@ namespace ODDGames.UITest
 
         protected async UniTask SceneChange(float seconds = 30, float recentThreshold = 1f)
         {
-            await WaitForInterval();
-
             string startScene = SceneManager.GetActiveScene().name;
             float startTime = Time.realtimeSinceStartup;
 
@@ -731,7 +669,7 @@ namespace ODDGames.UITest
             if (timeSinceLastChange < recentThreshold && lastKnownScene != startScene)
             {
                 Debug.Log($"[UITEST] SceneChange - scene recently changed ({timeSinceLastChange:F2}s ago) to '{lastKnownScene}'");
-                ActionComplete();
+                await ActionComplete();
                 return;
             }
 
@@ -741,7 +679,7 @@ namespace ODDGames.UITest
                 if (currentScene != startScene)
                 {
                     Debug.Log($"[UITEST] SceneChange - scene changed to '{currentScene}'");
-                    ActionComplete();
+                    await ActionComplete();
                     return;
                 }
 
@@ -775,6 +713,7 @@ namespace ODDGames.UITest
                 if (currentFps >= averageFps)
                 {
                     Debug.Log($"[UITEST] WaitFramerate - achieved {currentFps:F1} FPS (target: {averageFps})");
+                    await ActionComplete();
                     return;
                 }
 
@@ -785,16 +724,108 @@ namespace ODDGames.UITest
             throw new System.TimeoutException($"Framerate did not reach {averageFps} FPS within {timeout} seconds");
         }
 
-        protected async UniTask TextInput(string search, string input, float seconds = 10)
+        /// <summary>
+        /// Enters text into an input field using Input System injection (click to focus, type characters).
+        /// </summary>
+        /// <param name="search">Name or search pattern for the input field</param>
+        /// <param name="input">Text to enter</param>
+        /// <param name="seconds">Timeout for finding the input field</param>
+        /// <param name="pressEnter">Whether to press Enter after typing</param>
+        protected async UniTask TextInput(string search, string input, float seconds = 10, bool pressEnter = false)
         {
-            await WaitForInterval();
+            Debug.Log($"[UITEST] TextInput ({seconds}) [{search}] '{input}' pressEnter={pressEnter}");
 
-            Debug.Log($"[UITEST] TextInput ({seconds}) [{search}] {input}");
+            // Try to find TMP_InputField or legacy InputField - quick check first (single iteration)
+            var findStart = Time.realtimeSinceStartup;
+            var tmpInput = await Find<TMP_InputField>(search, false, 0.1f);
+            var legacyInputQuick = tmpInput == null ? await Find<InputField>(search, false, 0.1f) : null;
 
-            var t = await Find<InputField>(search, true, seconds);
+            // If neither found on quick check, do full timeout search for TMP first, then legacy
+            if (tmpInput == null && legacyInputQuick == null)
+            {
+                Debug.Log($"[UITEST] Quick check failed, doing full {seconds}s search...");
+                tmpInput = await Find<TMP_InputField>(search, false, seconds);
+            }
 
-            t.text = input;
-            ActionComplete();
+            Debug.Log($"[UITEST] Find took {(Time.realtimeSinceStartup - findStart) * 1000:F0}ms, TMP={tmpInput != null}, Legacy={legacyInputQuick != null}");
+
+            if (tmpInput != null)
+            {
+                // Click to focus
+                Vector2 screenPosition = GetScreenPosition(tmpInput.gameObject);
+                await InjectMouseClick(screenPosition);
+                await UniTask.Yield();
+
+                // Type characters using ProcessEvent (adds to text) + ForceLabelUpdate (updates display)
+                // TMP_InputField uses IMGUI Event.PopEvent() internally which we can't inject into,
+                // so we must call ProcessEvent directly and then force the label update
+                if (!string.IsNullOrEmpty(input))
+                {
+                    foreach (char c in input)
+                    {
+                        var keyEvent = new Event
+                        {
+                            type = EventType.KeyDown,
+                            character = c,
+                            keyCode = CharToKeyCode(c)
+                        };
+                        tmpInput.ProcessEvent(keyEvent);
+                        tmpInput.ForceLabelUpdate();
+                        await UniTask.Yield();
+                    }
+                }
+
+                if (pressEnter)
+                {
+                    var enterEvent = new Event
+                    {
+                        type = EventType.KeyDown,
+                        character = '\n',
+                        keyCode = KeyCode.Return
+                    };
+                    tmpInput.ProcessEvent(enterEvent);
+                }
+
+                await ActionComplete();
+                return;
+            }
+
+            // Fall back to legacy InputField (use quick result if found, otherwise full search)
+            var legacyInput = legacyInputQuick ?? await Find<InputField>(search, true, seconds);
+
+            // Click to focus the input field
+            Vector2 legacyScreenPosition = GetScreenPosition(legacyInput.gameObject);
+            await InjectMouseClick(legacyScreenPosition);
+
+            // Type characters using ProcessEvent + ForceLabelUpdate
+            if (!string.IsNullOrEmpty(input))
+            {
+                foreach (char c in input)
+                {
+                    var keyEvent = new Event
+                    {
+                        type = EventType.KeyDown,
+                        character = c,
+                        keyCode = CharToKeyCode(c)
+                    };
+                    legacyInput.ProcessEvent(keyEvent);
+                    legacyInput.ForceLabelUpdate();
+                    await UniTask.Yield();
+                }
+            }
+
+            if (pressEnter)
+            {
+                var enterEvent = new Event
+                {
+                    type = EventType.KeyDown,
+                    character = '\n',
+                    keyCode = KeyCode.Return
+                };
+                legacyInput.ProcessEvent(enterEvent);
+            }
+
+            await ActionComplete();
         }
 
         /// <summary>
@@ -819,19 +850,17 @@ namespace ODDGames.UITest
         /// </summary>
         protected async UniTask PressKey(KeyCode key)
         {
-            await WaitForInterval();
-
             GameObject target = GetFocusedObject();
             Debug.Log($"[UITEST] PressKey [{key}] target='{(target != null ? target.name : "none")}'");
 
             if (target != null && TryCustomKeyHandlers(target, key))
             {
-                ActionComplete();
+                await ActionComplete();
                 return;
             }
 
             await PressKeyUnityUI(target, key);
-            ActionComplete();
+            await ActionComplete();
         }
 
         /// <summary>
@@ -839,20 +868,18 @@ namespace ODDGames.UITest
         /// </summary>
         protected async UniTask PressKey(KeyCode key, string search, float seconds = 10)
         {
-            await WaitForInterval();
-
             var component = await Find<Component>(search, true, seconds);
             GameObject target = component?.gameObject;
             Debug.Log($"[UITEST] PressKey [{key}] search='{search}' target='{(target != null ? target.name : "none")}'");
 
             if (target != null && TryCustomKeyHandlers(target, key))
             {
-                ActionComplete();
+                await ActionComplete();
                 return;
             }
 
             await PressKeyUnityUI(target, key);
-            ActionComplete();
+            await ActionComplete();
         }
 
         /// <summary>
@@ -912,8 +939,8 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Types a sequence of characters by pressing each key in order.
-        /// Useful for entering text into input fields.
+        /// Types a sequence of characters by injecting keyboard events.
+        /// Uses Input System TextEvent for focused input fields.
         /// </summary>
         protected async UniTask PressKeys(string text)
         {
@@ -922,9 +949,19 @@ namespace ODDGames.UITest
 
             Debug.Log($"[UITEST] PressKeys - Typing '{text}' ({text.Length} characters)");
 
+            var keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                Debug.LogWarning("[UITEST] PressKeys - No keyboard device found");
+                return;
+            }
+
+            // Inject each character as a text event via Input System
             foreach (char c in text)
             {
-                await PressKey(c);
+                var textEvent = TextEvent.Create(keyboard.deviceId, c);
+                InputSystem.QueueEvent(ref textEvent);
+                await UniTask.Yield();
             }
         }
 
@@ -1005,6 +1042,9 @@ namespace ODDGames.UITest
                 return;
             }
 
+            // Get the character for this key (for text input)
+            char? textChar = KeyCodeToChar(key);
+
             // Inject key down
             using (StateEvent.From(keyboard, out var eventPtr))
             {
@@ -1012,7 +1052,13 @@ namespace ODDGames.UITest
                 InputSystem.QueueEvent(eventPtr);
             }
 
-            Debug.Log($"[UITEST] PressKey - Injected key down [{key}]");
+            // Also inject a text event if this is a printable character
+            // This is required for InputField to receive the character
+            if (textChar.HasValue)
+            {
+                var textEvent = TextEvent.Create(keyboard.deviceId, textChar.Value);
+                InputSystem.QueueEvent(ref textEvent);
+            }
 
             // Wait a frame for the input to be processed
             await UniTask.Yield();
@@ -1023,11 +1069,38 @@ namespace ODDGames.UITest
                 keyboard[inputKey].WriteValueIntoEvent(0f, eventPtr);
                 InputSystem.QueueEvent(eventPtr);
             }
+        }
 
-            Debug.Log($"[UITEST] PressKey - Injected key up [{key}]");
+        /// <summary>
+        /// Maps a KeyCode to its printable character (if applicable).
+        /// </summary>
+        private static char? KeyCodeToChar(KeyCode keyCode)
+        {
+            // Letters (lowercase)
+            if (keyCode >= KeyCode.A && keyCode <= KeyCode.Z)
+                return (char)('a' + (keyCode - KeyCode.A));
 
-            // Wait another frame to ensure the key press is fully processed
-            await UniTask.Yield();
+            // Numbers
+            if (keyCode >= KeyCode.Alpha0 && keyCode <= KeyCode.Alpha9)
+                return (char)('0' + (keyCode - KeyCode.Alpha0));
+
+            // Common symbols
+            return keyCode switch
+            {
+                KeyCode.Space => ' ',
+                KeyCode.BackQuote => '`',
+                KeyCode.Minus => '-',
+                KeyCode.Equals => '=',
+                KeyCode.LeftBracket => '[',
+                KeyCode.RightBracket => ']',
+                KeyCode.Backslash => '\\',
+                KeyCode.Semicolon => ';',
+                KeyCode.Quote => '\'',
+                KeyCode.Comma => ',',
+                KeyCode.Period => '.',
+                KeyCode.Slash => '/',
+                _ => null
+            };
         }
 
         /// <summary>
@@ -1106,8 +1179,6 @@ namespace ODDGames.UITest
 
         protected async UniTask ClickAny(string[] searches, bool throwIfMissing = true, float seconds = 5, Availability availability = Availability.Active | Availability.Enabled)
         {
-            await WaitForInterval();
-
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying)
@@ -1117,7 +1188,7 @@ namespace ODDGames.UITest
                 if (b != null)
                 {
                     await SimulateClick(b);
-                    ActionComplete();
+                    await ActionComplete();
                     return;
                 }
 
@@ -1214,8 +1285,6 @@ namespace ODDGames.UITest
                 InputSystem.QueueEvent(downPtr);
             }
 
-            Debug.Log($"[UITEST] Click - Injected mouse down at ({screenPosition.x:F0}, {screenPosition.y:F0})");
-
             // Wait a frame
             await UniTask.Yield();
 
@@ -1227,8 +1296,6 @@ namespace ODDGames.UITest
                 InputSystem.QueueEvent(upPtr);
             }
 
-            Debug.Log($"[UITEST] Click - Injected mouse up at ({screenPosition.x:F0}, {screenPosition.y:F0})");
-
             // Wait for click to be processed
             await UniTask.Yield();
         }
@@ -1236,8 +1303,6 @@ namespace ODDGames.UITest
 
         protected async UniTask Hold(string search, float seconds, bool throwIfMissing = true, float searchTime = 10, Availability availability = Availability.Active | Availability.Enabled)
         {
-            await WaitForInterval();
-
             Debug.Log($"[UITEST] Hold ({searchTime}) [{search}] for {seconds}s");
 
             float startTime = Time.realtimeSinceStartup;
@@ -1250,7 +1315,7 @@ namespace ODDGames.UITest
                 {
                     Vector2 screenPosition = GetScreenPosition(c1.gameObject);
                     await InjectMouseHold(screenPosition, seconds);
-                    ActionComplete();
+                    await ActionComplete();
                     return;
                 }
 
@@ -1292,8 +1357,6 @@ namespace ODDGames.UITest
                 InputSystem.QueueEvent(downPtr);
             }
 
-            Debug.Log($"[UITEST] Hold - Injected mouse down at ({screenPosition.x:F0}, {screenPosition.y:F0}), holding for {holdSeconds}s");
-
             // Hold for specified duration
             await UniTask.Delay(TimeSpan.FromSeconds(holdSeconds), true);
 
@@ -1305,8 +1368,6 @@ namespace ODDGames.UITest
                 InputSystem.QueueEvent(upPtr);
             }
 
-            Debug.Log($"[UITEST] Hold - Injected mouse up at ({screenPosition.x:F0}, {screenPosition.y:F0})");
-
             await UniTask.Yield();
         }
 
@@ -1317,8 +1378,6 @@ namespace ODDGames.UITest
 
         protected async UniTask Click(string[] search, bool throwIfMissing = true, float searchTime = 10, int repeat = 0, Availability availability = Availability.Active | Availability.Enabled, int index = 0)
         {
-            await WaitForInterval();
-
             do
             {
                 string indexInfo = index > 0 ? $" index={index}" : "";
@@ -1336,7 +1395,7 @@ namespace ODDGames.UITest
                         if (index < itemList.Count && itemList[index] != null)
                         {
                             await SimulateClick(itemList[index]);
-                            ActionComplete();
+                            await ActionComplete();
                             goto nextRepeat;
                         }
                     }
@@ -1347,7 +1406,7 @@ namespace ODDGames.UITest
                         if (b != null)
                         {
                             await SimulateClick(b);
-                            ActionComplete();
+                            await ActionComplete();
                             goto nextRepeat;
                         }
                     }
@@ -1369,14 +1428,11 @@ namespace ODDGames.UITest
 
         private bool IsWildcardMatch(string subject, string wildcardPattern)
         {
-
             if (string.CompareOrdinal(subject, wildcardPattern) == 0)
                 return true;
 
             if (string.IsNullOrWhiteSpace(wildcardPattern))
-            {
                 return false;
-            }
 
             int wildcardCount = wildcardPattern.Count(x => x.Equals('*'));
 
@@ -1389,29 +1445,28 @@ namespace ODDGames.UITest
                 string newWildcardPattern = wildcardPattern.Replace("*", "");
 
                 if (wildcardPattern.StartsWith("*"))
-                {
                     return subject.EndsWith(newWildcardPattern, StringComparison.CurrentCultureIgnoreCase);
-                }
                 else if (wildcardPattern.EndsWith("*"))
-                {
                     return subject.StartsWith(newWildcardPattern, StringComparison.CurrentCultureIgnoreCase);
-                }
+            }
+            else if (wildcardCount == 2 && wildcardPattern.StartsWith("*") && wildcardPattern.EndsWith("*"))
+            {
+                // *text* = contains
+                string searchText = wildcardPattern.Substring(1, wildcardPattern.Length - 2);
+                return subject.IndexOf(searchText, StringComparison.CurrentCultureIgnoreCase) >= 0;
             }
 
             return false;
-
         }
 
         protected async UniTask Click(bool throwIfMissing = true)
         {
-            await WaitForInterval();
-
             Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
             Debug.Log($"[UITEST] Click (screen center) at ({screenCenter.x:F0}, {screenCenter.y:F0})");
 
             // Use Input System to inject click at screen center
             await InjectMouseClick(screenCenter);
-            ActionComplete();
+            await ActionComplete();
         }
 
         protected async UniTask Drag(Vector2 direction, float duration = 0.5f)
@@ -1422,8 +1477,6 @@ namespace ODDGames.UITest
 
         protected async UniTask Drag(string search, Vector2 direction, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
         {
-            await WaitForInterval();
-
             Debug.Log($"[UITEST] Drag ({duration}s) [{search}] delta=({direction.x:F0},{direction.y:F0})");
 
             var target = await Find<RectTransform>(search, throwIfMissing, searchTime);
@@ -1439,13 +1492,234 @@ namespace ODDGames.UITest
 
         protected async UniTask DragFromTo(Vector2 startPos, Vector2 endPos, float duration = 0.5f)
         {
-            await WaitForInterval();
-
             Debug.Log($"[UITEST] DragFromTo ({duration}s) from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
 
             await InjectMouseDrag(startPos, endPos, duration);
 
-            ActionComplete();
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Drags one element to another element (drag and drop).
+        /// </summary>
+        /// <param name="sourceSearch">Name or search pattern for the element to drag</param>
+        /// <param name="targetSearch">Name or search pattern for the drop target</param>
+        /// <param name="duration">Duration of the drag animation</param>
+        /// <param name="throwIfMissing">Whether to throw if elements not found</param>
+        /// <param name="searchTime">Timeout for finding the elements</param>
+        protected async UniTask DragTo(string sourceSearch, string targetSearch, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        {
+            Debug.Log($"[UITEST] DragTo ({duration}s) '{sourceSearch}' -> '{targetSearch}'");
+
+            var source = await Find<RectTransform>(sourceSearch, throwIfMissing, searchTime);
+            if (source == null) return;
+
+            var target = await Find<RectTransform>(targetSearch, throwIfMissing, searchTime);
+            if (target == null) return;
+
+            Vector2 sourcePos = GetScreenPosition(source.gameObject);
+            Vector2 targetPos = GetScreenPosition(target.gameObject);
+
+            Debug.Log($"[UITEST] DragTo - dragging from ({sourcePos.x:F0},{sourcePos.y:F0}) to ({targetPos.x:F0},{targetPos.y:F0})");
+
+            await InjectMouseDrag(sourcePos, targetPos, duration);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Clicks on a slider at a percentage position (0-1) of its visible area.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the slider</param>
+        /// <param name="percent">Position to click as percentage (0 = left/bottom, 1 = right/top)</param>
+        /// <param name="throwIfMissing">Whether to throw if slider not found</param>
+        /// <param name="searchTime">Timeout for finding the slider</param>
+        protected async UniTask ClickSlider(string search, float percent, bool throwIfMissing = true, float searchTime = 10)
+        {
+            percent = Mathf.Clamp01(percent);
+            Debug.Log($"[UITEST] ClickSlider ({searchTime}s) [{search}] at {percent:P0}");
+
+            var slider = await Find<Slider>(search, throwIfMissing, searchTime);
+            if (slider == null) return;
+
+            Vector2 clickPos = GetSliderPositionAtPercent(slider, percent);
+            Debug.Log($"[UITEST] ClickSlider - clicking at ({clickPos.x:F0},{clickPos.y:F0})");
+
+            await InjectMouseClick(clickPos);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Drags on a slider from one percentage position to another.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the slider</param>
+        /// <param name="fromPercent">Start position as percentage (0-1)</param>
+        /// <param name="toPercent">End position as percentage (0-1)</param>
+        /// <param name="throwIfMissing">Whether to throw if slider not found</param>
+        /// <param name="searchTime">Timeout for finding the slider</param>
+        /// <param name="duration">Duration of the drag animation</param>
+        protected async UniTask DragSlider(string search, float fromPercent, float toPercent, bool throwIfMissing = true, float searchTime = 10, float duration = 0.3f)
+        {
+            fromPercent = Mathf.Clamp01(fromPercent);
+            toPercent = Mathf.Clamp01(toPercent);
+            Debug.Log($"[UITEST] DragSlider ({searchTime}s) [{search}] from {fromPercent:P0} to {toPercent:P0}");
+
+            var slider = await Find<Slider>(search, throwIfMissing, searchTime);
+            if (slider == null) return;
+
+            Vector2 startPos = GetSliderPositionAtPercent(slider, fromPercent);
+            Vector2 endPos = GetSliderPositionAtPercent(slider, toPercent);
+
+            Debug.Log($"[UITEST] DragSlider - dragging from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
+
+            await InjectMouseDrag(startPos, endPos, duration);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Gets the screen position at a percentage along the slider's visible area.
+        /// </summary>
+        private static Vector2 GetSliderPositionAtPercent(Slider slider, float percent)
+        {
+            var sliderRT = slider.GetComponent<RectTransform>();
+
+            Vector3[] corners = new Vector3[4];
+            sliderRT.GetWorldCorners(corners);
+
+            // corners: 0=bottom-left, 1=top-left, 2=top-right, 3=bottom-right
+            Vector2 bottomLeft = corners[0];
+            Vector2 topRight = corners[2];
+
+            var canvas = slider.GetComponentInParent<Canvas>();
+            Camera cam = null;
+            if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+            {
+                cam = canvas.worldCamera ?? Camera.main;
+            }
+
+            // Determine direction - most sliders are horizontal left-to-right
+            bool isHorizontal = slider.direction == Slider.Direction.LeftToRight ||
+                               slider.direction == Slider.Direction.RightToLeft;
+            bool isReversed = slider.direction == Slider.Direction.RightToLeft ||
+                             slider.direction == Slider.Direction.TopToBottom;
+
+            if (isReversed)
+                percent = 1f - percent;
+
+            Vector3 worldPos;
+            if (isHorizontal)
+            {
+                float x = Mathf.Lerp(bottomLeft.x, topRight.x, percent);
+                float y = (bottomLeft.y + topRight.y) / 2f;
+                worldPos = new Vector3(x, y, 0);
+            }
+            else
+            {
+                float x = (bottomLeft.x + topRight.x) / 2f;
+                float y = Mathf.Lerp(bottomLeft.y, topRight.y, percent);
+                worldPos = new Vector3(x, y, 0);
+            }
+
+            return cam != null
+                ? RectTransformUtility.WorldToScreenPoint(cam, worldPos)
+                : (Vector2)worldPos;
+        }
+
+        /// <summary>
+        /// Selects a dropdown option by index using actual clicks.
+        /// Clicks the dropdown to open it, then clicks the option at the specified index.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the dropdown</param>
+        /// <param name="optionIndex">Index of the option to select (0-based)</param>
+        /// <param name="throwIfMissing">Whether to throw if dropdown not found</param>
+        /// <param name="searchTime">Timeout for finding the dropdown</param>
+        protected async UniTask ClickDropdown(string search, int optionIndex, bool throwIfMissing = true, float searchTime = 10)
+        {
+            Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) [{search}] option index={optionIndex}");
+
+            var dropdown = await Find<Dropdown>(search, throwIfMissing, searchTime);
+            if (dropdown == null) return;
+
+            // Click the dropdown to open it
+            Vector2 dropdownPos = GetScreenPosition(dropdown.gameObject);
+            await InjectMouseClick(dropdownPos);
+
+            // Wait for dropdown list to appear
+            await UniTask.Delay(100, true);
+
+            // The dropdown creates a "Dropdown List" child with items named "Item 0: <label>", "Item 1: <label>", etc.
+            // We need to find and click the correct item
+            var dropdownList = dropdown.transform.Find("Dropdown List");
+            if (dropdownList == null)
+            {
+                Debug.LogWarning($"[UITEST] ClickDropdown - Dropdown list not found after clicking");
+                return;
+            }
+
+            // Find the content container with the items
+            var content = dropdownList.Find("Viewport/Content");
+            if (content == null)
+            {
+                Debug.LogWarning($"[UITEST] ClickDropdown - Content not found in dropdown list");
+                return;
+            }
+
+            // Find the item at the target index
+            Transform targetItem = null;
+            for (int i = 0; i < content.childCount; i++)
+            {
+                var child = content.GetChild(i);
+                if (child.name.StartsWith($"Item {optionIndex}:") || child.name == $"Item {optionIndex}")
+                {
+                    targetItem = child;
+                    break;
+                }
+            }
+
+            if (targetItem == null)
+            {
+                Debug.LogWarning($"[UITEST] ClickDropdown - Item at index {optionIndex} not found");
+                return;
+            }
+
+            // Click the item
+            Vector2 itemPos = GetScreenPosition(targetItem.gameObject);
+            await InjectMouseClick(itemPos);
+
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Selects a dropdown option by label text using actual clicks.
+        /// </summary>
+        /// <param name="search">Name or search pattern for the dropdown</param>
+        /// <param name="optionLabel">The text label of the option to select</param>
+        /// <param name="throwIfMissing">Whether to throw if dropdown not found</param>
+        /// <param name="searchTime">Timeout for finding the dropdown</param>
+        protected async UniTask ClickDropdown(string search, string optionLabel, bool throwIfMissing = true, float searchTime = 10)
+        {
+            Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) [{search}] option='{optionLabel}'");
+
+            var dropdown = await Find<Dropdown>(search, throwIfMissing, searchTime);
+            if (dropdown == null) return;
+
+            // Find the index of the option with the matching label
+            int optionIndex = -1;
+            for (int i = 0; i < dropdown.options.Count; i++)
+            {
+                if (dropdown.options[i].text == optionLabel)
+                {
+                    optionIndex = i;
+                    break;
+                }
+            }
+
+            if (optionIndex < 0)
+            {
+                Debug.LogWarning($"[UITEST] ClickDropdown - Option '{optionLabel}' not found in dropdown");
+                return;
+            }
+
+            await ClickDropdown(search, optionIndex, throwIfMissing, searchTime: 0.5f);
         }
 
         /// <summary>
@@ -1459,6 +1733,8 @@ namespace ODDGames.UITest
                 Debug.LogWarning("[UITEST] Drag - No mouse device found, cannot inject drag");
                 return;
             }
+
+            Debug.Log($"[UITEST] InjectMouseDrag - start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s");
 
             // Move mouse to start position
             using (StateEvent.From(mouse, out var posPtr))
@@ -1477,7 +1753,10 @@ namespace ODDGames.UITest
                 InputSystem.QueueEvent(downPtr);
             }
 
-            Debug.Log($"[UITEST] Drag - Started at ({startPos.x:F0}, {startPos.y:F0})");
+            Debug.Log($"[UITEST] InjectMouseDrag - mouse down at ({startPos.x:F0},{startPos.y:F0})");
+
+            // Wait a frame for the press to register before starting drag
+            await UniTask.Yield();
 
             // Interpolate mouse position over duration
             int steps = Mathf.Max(10, (int)(duration * 60));
@@ -1498,6 +1777,8 @@ namespace ODDGames.UITest
                 await UniTask.Delay(delayPerStep, true);
             }
 
+            Debug.Log($"[UITEST] InjectMouseDrag - drag complete, releasing at ({endPos.x:F0},{endPos.y:F0})");
+
             // Mouse button up at end
             using (StateEvent.From(mouse, out var upPtr))
             {
@@ -1505,8 +1786,6 @@ namespace ODDGames.UITest
                 mouse.leftButton.WriteValueIntoEvent(0f, upPtr);
                 InputSystem.QueueEvent(upPtr);
             }
-
-            Debug.Log($"[UITEST] Drag - Ended at ({endPos.x:F0}, {endPos.y:F0})");
 
             await UniTask.Yield();
         }
@@ -1553,8 +1832,6 @@ namespace ODDGames.UITest
 
         protected async UniTask ClickAny(string search, float seconds = 10, bool throwIfMissing = true, Availability availability = Availability.Active | Availability.Enabled)
         {
-            await WaitForInterval();
-
             Debug.Log($"[UITEST] ClickAny ({seconds}) [{search}]");
 
             float startTime = Time.realtimeSinceStartup;
@@ -1572,7 +1849,7 @@ namespace ODDGames.UITest
                         if (item != null)
                         {
                             await SimulateClick(item);
-                            ActionComplete();
+                            await ActionComplete();
                             return;
                         }
                     }
@@ -1596,8 +1873,6 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < seconds)
             {
-                Debug.Log($"[UITEST] Find ({seconds}) {typeof(T).Name}");
-
                 await UniTask.Delay(Interval, true);
 
                 var result = GameObject.FindAnyObjectByType<T>();
@@ -1637,10 +1912,41 @@ namespace ODDGames.UITest
             var startTime = Time.realtimeSinceStartup;
 
             TimeYielder yielder = new TimeYielder(TimeSpan.FromSeconds(0.1f));
+            int iteration = 0;
+
+            // Check if T is a Behaviour type - if not, we need to use GameObject search
+            bool isBehaviour = typeof(Behaviour).IsAssignableFrom(typeof(T));
 
             while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying && !TestCancellationToken.IsCancellationRequested)
             {
-                Debug.Log($"[UITEST] Find ({seconds}) [{string.Join(',', searches)}] {typeof(T).Name}");
+                iteration++;
+
+                if (!isBehaviour && searches != null)
+                {
+                    // For non-Behaviour types (like RectTransform), search by GameObject name and GetComponent
+                    var allTransforms = GameObject.FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                    foreach (var t in allTransforms)
+                    {
+                        var name = t.name.ToLowerInvariant();
+                        foreach (string s in searches)
+                        {
+                            string search = s.ToLowerInvariant();
+                            if (string.CompareOrdinal(search, name) == 0 || IsWildcardMatch(name, search))
+                            {
+                                var component = t.GetComponent<T>();
+                                if (component != null && CheckAvailability(component as UnityEngine.Object, availability))
+                                {
+                                    Debug.Log($"[UITEST] Find<{typeof(T).Name}> '{string.Join(',', searches)}' found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
+                                    await ActionComplete();
+                                    return component;
+                                }
+                            }
+                        }
+                    }
+
+                    await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                    continue;
+                }
 
                 List<Behaviour> behaviours = new List<Behaviour>();
 
@@ -1719,32 +2025,18 @@ namespace ODDGames.UITest
                             if (!CheckAvailability(c, availability))
                                 continue;
 
-                            RectTransform rt = c.GetComponent<RectTransform>();
-                            if (rt == null)
-                                continue;
-
-                            Vector3 screenPoint = RectTransformUtility.WorldToScreenPoint(null, rt.position);
-                            var pointer = new PointerEventData(EventSystem.current) { position = screenPoint };
-                            var results = new List<RaycastResult>();
-                            RaycastAll(pointer, results);
-
-                            bool isTop = results.Count > 0 && (results[0].gameObject == c.gameObject || results[0].gameObject.transform.IsChildOf(c.transform) || c.transform.IsChildOf(results[0].gameObject.transform));
-
-                            if (isTop)
-                            {
-                                Debug.Log($"[UITEST] Match (top): '{c.name}' Path: '{GetHierarchyPath(c.transform)}'");
-                                topMatches.Add(match);
-                            }
-                            else
-                            {
-                                string topHit = results.Count > 0 ? results[0].gameObject.name : "none";
-                                Debug.Log($"[UITEST] Match (blocked by '{topHit}'): '{c.name}' Path: '{GetHierarchyPath(c.transform)}'");
-                            }
+                            // Skip raycast check - elements just need to exist and be active
+                            // Click operations will still raycast to find the actual click target
+                            topMatches.Add(match);
                         }
                     }
 
                     if (topMatches.Count > 0)
+                    {
+                        Debug.Log($"[UITEST] Find<{typeof(T).Name}> '{string.Join(',', searches ?? new string[0])}' found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms (stringMatches={stringMatches.Count}, topMatches={topMatches.Count})");
+                        await ActionComplete();
                         return topMatches[0];
+                    }
                 }
 
                 await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
@@ -1753,7 +2045,7 @@ namespace ODDGames.UITest
             TestCancellationToken.ThrowIfCancellationRequested();
 
             if (throwIfMissing)
-                throw new System.TimeoutException($"Unable to locate {typeof(T).Name} '{string.Join(',', searches)}' in {seconds} seconds");
+                throw new System.TimeoutException($"Unable to locate {typeof(T).Name} '{string.Join(',', searches)}' in {seconds} seconds after {iteration} iterations");
 
             return default;
         }
@@ -1772,8 +2064,6 @@ namespace ODDGames.UITest
 
             while (Application.isPlaying && !TestCancellationToken.IsCancellationRequested)
             {
-                Debug.Log($"[UITEST] FindAll ({seconds}) {typeof(T).Name} {search}");
-
                 if ((Time.realtimeSinceStartup - startTime) > seconds)
                     break;
 

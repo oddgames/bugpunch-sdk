@@ -3,7 +3,8 @@
     "rootNamespace": "ODDGames.UITest.Samples",
     "references": [
         "ODDGames.UITest",
-        "UniTask"
+        "UniTask",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

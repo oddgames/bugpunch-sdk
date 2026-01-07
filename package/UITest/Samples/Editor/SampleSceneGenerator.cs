@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -8,83 +9,117 @@ using UnityEngine.UI;
 namespace ODDGames.UITest.Samples.Editor
 {
     /// <summary>
-    /// Editor tool to generate sample test scenes for UITest demonstration.
-    /// Creates fully functional UI scenes that work with the sample tests.
+    /// Editor tool to generate the comprehensive sample test scene for UITest demonstration.
+    /// Creates a fully functional UI scene that works with ComprehensiveSampleTest.
     /// </summary>
     public static class SampleSceneGenerator
     {
-        [MenuItem("Window/UI Test Behaviours/Samples/Generate Button Sample Scene")]
-        public static void GenerateButtonSampleScene()
+        [MenuItem("Window/Analysis/UI Automation/Generate Sample Scene")]
+        public static void GenerateComprehensiveSampleScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
             CreateEventSystem();
             var canvas = CreateCanvas();
 
-            // Create main panel
-            var panel = CreatePanel(canvas.transform, "SampleButtonPanel");
+            // Create all panels
+            CreateMainMenuPanel(canvas.transform);
+            CreateSettingsPanel(canvas.transform);
+            CreateButtonPanel(canvas.transform);
+            CreateFormPanel(canvas.transform);
+            CreateDragPanel(canvas.transform);
+            CreateKeyboardPanel(canvas.transform);
 
-            // Title
-            CreateText(panel.transform, "Title", "Button Interaction Sample", 24, new Vector2(0, 180));
+            // Add test behaviour
+            var testRunner = new GameObject("ComprehensiveSampleTest");
+            testRunner.AddComponent<ComprehensiveSampleTest>();
+
+            MarkSceneDirty(scene, "ComprehensiveSampleScene");
+        }
+
+        private static void CreateMainMenuPanel(Transform canvas)
+        {
+            var mainMenu = CreatePanel(canvas, "MainMenu");
+
+            CreateText(mainMenu.transform, "Title", "UITest Sample", 32, new Vector2(0, 180));
+            CreateText(mainMenu.transform, "Subtitle", "Comprehensive Test Scene", 16, new Vector2(0, 140));
+
+            CreateButton(mainMenu.transform, "SettingsButton", "Settings", new Vector2(0, 60));
+            CreateButton(mainMenu.transform, "ButtonsButton", "Buttons", new Vector2(0, 10));
+            CreateButton(mainMenu.transform, "FormsButton", "Forms", new Vector2(0, -40));
+            CreateButton(mainMenu.transform, "DragButton", "Drag & Drop", new Vector2(0, -90));
+            CreateButton(mainMenu.transform, "KeyboardButton", "Keyboard", new Vector2(0, -140));
+        }
+
+        private static void CreateSettingsPanel(Transform canvas)
+        {
+            var settingsPanel = CreatePanel(canvas, "SettingsPanel");
+            settingsPanel.SetActive(false);
+
+            CreateText(settingsPanel.transform, "Title", "Settings", 28, new Vector2(0, 180));
+            CreateToggle(settingsPanel.transform, "SoundToggle", "Sound Effects", new Vector2(0, 100));
+            CreateToggle(settingsPanel.transform, "MusicToggle", "Music", new Vector2(0, 50));
+            CreateSlider(settingsPanel.transform, "SettingsVolumeSlider", new Vector2(0, 0));
+            CreateButton(settingsPanel.transform, "GraphicsOption", "Graphics: High", new Vector2(0, -60));
+            CreateButton(settingsPanel.transform, "BackButton", "Back", new Vector2(0, -140));
+        }
+
+        private static void CreateButtonPanel(Transform canvas)
+        {
+            var panel = CreatePanel(canvas, "SampleButtonPanel", size: new Vector2(400, 580));
+            panel.SetActive(false);
+
+            CreateText(panel.transform, "Title", "Button Tests", 24, new Vector2(0, 250));
 
             // Result label
-            var resultLabel = CreateText(panel.transform, "ResultLabel", "Click a button...", 16, new Vector2(0, 140));
+            CreateText(panel.transform, "ResultLabel", "Click a button...", 16, new Vector2(0, 210));
 
             // Simple button
-            var simpleBtn = CreateButton(panel.transform, "SimpleButton", "Simple Button", new Vector2(0, 80));
+            CreateButton(panel.transform, "SimpleButton", "Simple Button", new Vector2(0, 160));
 
             // Toggle
-            CreateToggle(panel.transform, "SampleToggle", "Sample Toggle", new Vector2(0, 30));
+            CreateToggle(panel.transform, "SampleToggle", "Sample Toggle", new Vector2(0, 110));
 
             // Item buttons (for index testing)
             for (int i = 0; i < 3; i++)
             {
-                CreateButton(panel.transform, "ItemButton", $"Item {i + 1}", new Vector2(0, -20 - (i * 40)));
+                CreateButton(panel.transform, "ItemButton", $"Item {i + 1}", new Vector2(0, 60 - (i * 40)));
             }
 
             // Counter section
-            var counterLabel = CreateText(panel.transform, "CounterLabel", "Counter: 0", 16, new Vector2(0, -150));
-            CreateButton(panel.transform, "IncrementButton", "Increment", new Vector2(0, -180));
+            CreateText(panel.transform, "CounterLabel", "Counter: 0", 16, new Vector2(0, -70));
+            CreateButton(panel.transform, "IncrementButton", "Increment", new Vector2(0, -100));
 
             // Disabled button
-            var disabledBtn = CreateButton(panel.transform, "DisabledButton", "Disabled", new Vector2(0, -230));
+            var disabledBtn = CreateButton(panel.transform, "DisabledButton", "Disabled", new Vector2(-80, -150));
             disabledBtn.interactable = false;
 
             // Hold button
-            CreateButton(panel.transform, "HoldButton", "Hold Me", new Vector2(0, -280));
+            CreateButton(panel.transform, "HoldButton", "Hold Me", new Vector2(80, -150));
 
-            // Add test behaviour
-            var testRunner = new GameObject("ButtonInteractionTest");
-            testRunner.AddComponent<ButtonInteractionTest>();
-
-            MarkSceneDirty(scene, "ButtonSampleScene");
+            // Back button
+            CreateButton(panel.transform, "BackButton", "Back", new Vector2(0, -210));
         }
 
-        [MenuItem("Window/UI Test Behaviours/Samples/Generate Form Sample Scene")]
-        public static void GenerateFormSampleScene()
+        private static void CreateFormPanel(Transform canvas)
         {
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+            var panel = CreatePanel(canvas, "SampleFormPanel");
+            panel.SetActive(false);
 
-            CreateEventSystem();
-            var canvas = CreateCanvas();
+            CreateText(panel.transform, "Title", "Form Input", 24, new Vector2(0, 220));
 
-            var panel = CreatePanel(canvas.transform, "SampleFormPanel");
-
-            // Title
-            CreateText(panel.transform, "Title", "Form Input Sample", 24, new Vector2(0, 220));
-
-            // Username input
+            // Username input (TMP_InputField)
             CreateText(panel.transform, "UsernameLabel", "Username:", 14, new Vector2(-100, 170));
             CreateInputField(panel.transform, "UsernameInput", "Enter username...", new Vector2(50, 170));
 
-            // Email input
+            // Email input (legacy InputField to test both code paths)
             CreateText(panel.transform, "EmailLabel", "Email:", 14, new Vector2(-100, 120));
-            CreateInputField(panel.transform, "EmailInput", "Enter email...", new Vector2(50, 120));
+            CreateLegacyInputField(panel.transform, "EmailInput", "Enter email...", new Vector2(50, 120));
 
             // Password input
             CreateText(panel.transform, "PasswordLabel", "Password:", 14, new Vector2(-100, 70));
             var passwordInput = CreateInputField(panel.transform, "PasswordInput", "Enter password...", new Vector2(50, 70));
-            passwordInput.contentType = InputField.ContentType.Password;
+            passwordInput.contentType = TMP_InputField.ContentType.Password;
 
             // Dropdown
             CreateText(panel.transform, "CategoryLabel", "Category:", 14, new Vector2(-100, 20));
@@ -104,97 +139,74 @@ namespace ODDGames.UITest.Samples.Editor
             var successMsg = CreateText(panel.transform, "SuccessMessage", "Form submitted successfully!", 18, new Vector2(0, -180));
             successMsg.gameObject.SetActive(false);
 
-            // Add test behaviour
-            var testRunner = new GameObject("FormInputTest");
-            testRunner.AddComponent<FormInputTest>();
-
-            MarkSceneDirty(scene, "FormSampleScene");
+            // Back button
+            CreateButton(panel.transform, "BackButton", "Back", new Vector2(0, -220));
         }
 
-        [MenuItem("Window/UI Test Behaviours/Samples/Generate Drag Sample Scene")]
-        public static void GenerateDragSampleScene()
+        private static void CreateDragPanel(Transform canvas)
         {
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+            var panel = CreatePanel(canvas, "SampleDragPanel", size: new Vector2(400, 560));
+            panel.SetActive(false);
 
-            CreateEventSystem();
-            var canvas = CreateCanvas();
-
-            var panel = CreatePanel(canvas.transform, "SampleDragPanel");
-
-            // Title
-            CreateText(panel.transform, "Title", "Drag & Drop Sample", 24, new Vector2(0, 220));
+            CreateText(panel.transform, "Title", "Drag & Drop", 24, new Vector2(0, 240));
 
             // Scroll view
-            CreateScrollView(panel.transform, "ScrollView", new Vector2(0, 50), new Vector2(300, 200));
+            CreateScrollView(panel.transform, "ScrollView", new Vector2(0, 90), new Vector2(300, 150));
 
             // Horizontal carousel
-            CreateScrollView(panel.transform, "Carousel", new Vector2(0, -120), new Vector2(350, 80), horizontal: true);
+            CreateScrollView(panel.transform, "Carousel", new Vector2(0, -40), new Vector2(350, 70), horizontal: true);
 
             // Draggable item
-            var draggable = CreatePanel(panel.transform, "DraggableItem", new Vector2(-100, -220), new Vector2(80, 80));
+            var draggable = CreatePanel(panel.transform, "DraggableItem", new Vector2(-100, -140), new Vector2(70, 70));
             draggable.GetComponent<Image>().color = new Color(0.3f, 0.6f, 1f);
+            draggable.AddComponent<DraggableUI>();
             CreateText(draggable.transform, "Label", "Drag", 12, Vector2.zero);
 
             // Drop zone
-            var dropZone = CreatePanel(panel.transform, "DropZone", new Vector2(100, -220), new Vector2(100, 100));
+            var dropZone = CreatePanel(panel.transform, "DropZone", new Vector2(100, -140), new Vector2(90, 90));
             dropZone.GetComponent<Image>().color = new Color(0.3f, 0.8f, 0.3f, 0.5f);
+            dropZone.AddComponent<DropZoneUI>();
             CreateText(dropZone.transform, "Label", "Drop Here", 12, Vector2.zero);
 
-            // Add test behaviour
-            var testRunner = new GameObject("DragAndDropTest");
-            testRunner.AddComponent<DragAndDropTest>();
-
-            MarkSceneDirty(scene, "DragSampleScene");
+            // Back button
+            CreateButton(panel.transform, "BackButton", "Back", new Vector2(0, -220));
         }
 
-        [MenuItem("Window/UI Test Behaviours/Samples/Generate Navigation Sample Scene")]
-        public static void GenerateNavigationSampleScene()
+        private static void CreateKeyboardPanel(Transform canvas)
         {
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+            var panel = CreatePanel(canvas, "SampleKeyboardPanel");
+            panel.SetActive(false);
 
-            CreateEventSystem();
-            var canvas = CreateCanvas();
+            CreateText(panel.transform, "Title", "Keyboard Input", 24, new Vector2(0, 180));
 
-            // Main Menu
-            var mainMenu = CreatePanel(canvas.transform, "MainMenu");
+            // Key press target
+            var target = CreateButton(panel.transform, "KeyPressTarget", "Press Space", new Vector2(0, 100));
 
-            CreateText(mainMenu.transform, "Title", "Main Menu", 32, new Vector2(0, 150));
-            CreateButton(mainMenu.transform, "PlayButton", "Play", new Vector2(0, 60));
-            CreateButton(mainMenu.transform, "SettingsButton", "Settings", new Vector2(0, 0));
-            CreateButton(mainMenu.transform, "CreditsButton", "Credits", new Vector2(0, -60));
-            CreateButton(mainMenu.transform, "QuitButton", "Quit", new Vector2(0, -120));
+            // Status label
+            CreateText(panel.transform, "KeyStatusLabel", "Press keys...", 16, new Vector2(0, 50));
 
-            // Settings Panel (hidden)
-            var settingsPanel = CreatePanel(canvas.transform, "SettingsPanel");
-            settingsPanel.SetActive(false);
+            // Input field for typing
+            CreateText(panel.transform, "TypeLabel", "Type here:", 14, new Vector2(-80, 0));
+            CreateLegacyInputField(panel.transform, "KeyboardInput", "Type something...", new Vector2(50, 0));
 
-            CreateText(settingsPanel.transform, "Title", "Settings", 28, new Vector2(0, 150));
-            CreateToggle(settingsPanel.transform, "SoundToggle", "Sound Effects", new Vector2(0, 80));
-            CreateToggle(settingsPanel.transform, "MusicToggle", "Music", new Vector2(0, 40));
-            CreateSlider(settingsPanel.transform, "VolumeSlider", new Vector2(0, 0));
-            CreateButton(settingsPanel.transform, "GraphicsOption", "Graphics: High", new Vector2(0, -50));
-            CreateButton(settingsPanel.transform, "BackButton", "Back", new Vector2(0, -120));
+            // Second input for tab navigation
+            CreateText(panel.transform, "Tab2Label", "Tab to:", 14, new Vector2(-80, -50));
+            CreateLegacyInputField(panel.transform, "SecondInput", "Second field...", new Vector2(50, -50));
 
-            // Credits Panel (hidden)
-            var creditsPanel = CreatePanel(canvas.transform, "CreditsPanel");
-            creditsPanel.SetActive(false);
+            // Arrow navigation indicator
+            CreateText(panel.transform, "ArrowLabel", "Arrow navigation:", 14, new Vector2(0, -100));
+            var indicator = CreatePanel(panel.transform, "ArrowIndicator", new Vector2(0, -140), new Vector2(100, 30));
+            indicator.GetComponent<Image>().color = new Color(0.4f, 0.6f, 0.8f);
+            CreateText(indicator.transform, "Label", "[ Selected ]", 12, Vector2.zero);
 
-            CreateText(creditsPanel.transform, "Title", "Credits", 28, new Vector2(0, 150));
-            CreateText(creditsPanel.transform, "Content", "Made with UITest\nSample Project", 16, new Vector2(0, 50));
-            CreateButton(creditsPanel.transform, "BackButton", "Back", new Vector2(0, -100));
-
-            // Add test behaviour
-            var testRunner = new GameObject("BasicNavigationTest");
-            testRunner.AddComponent<BasicNavigationTest>();
-
-            MarkSceneDirty(scene, "NavigationSampleScene");
+            // Back button
+            CreateButton(panel.transform, "BackButton", "Back", new Vector2(0, -200));
         }
 
         private static void CreateEventSystem()
         {
             var go = new GameObject("EventSystem");
             go.AddComponent<EventSystem>();
-            // Use InputSystemUIInputModule for Input System compatibility
             go.AddComponent<InputSystemUIInputModule>();
         }
 
@@ -205,6 +217,10 @@ namespace ODDGames.UITest.Samples.Editor
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             go.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             go.AddComponent<GraphicRaycaster>();
+
+            // Add panel switcher to handle navigation
+            go.AddComponent<PanelSwitcher>();
+
             return canvas;
         }
 
@@ -241,9 +257,37 @@ namespace ODDGames.UITest.Samples.Editor
             text.fontSize = fontSize;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = GetDefaultFont();
+            text.material = GetDefaultFontMaterial();
 
             return text;
+        }
+
+        private static Material GetDefaultFontMaterial()
+        {
+            // Use the default UI font material
+            var font = GetDefaultFont();
+            return font != null ? font.material : null;
+        }
+
+        private static Font _cachedFont;
+        private static Font GetDefaultFont()
+        {
+            if (_cachedFont != null)
+                return _cachedFont;
+
+            // Try multiple font paths for different Unity versions
+            _cachedFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (_cachedFont == null)
+                _cachedFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            if (_cachedFont == null)
+            {
+                // Get system fonts and use Arial or first available
+                var fonts = Font.GetOSInstalledFontNames();
+                var fontName = System.Array.Find(fonts, f => f.Contains("Arial")) ?? fonts[0];
+                _cachedFont = Font.CreateDynamicFontFromOSFont(fontName, 14);
+            }
+            return _cachedFont;
         }
 
         private static Button CreateButton(Transform parent, string name, string label, Vector2 position)
@@ -263,7 +307,6 @@ namespace ODDGames.UITest.Samples.Editor
             var button = go.AddComponent<Button>();
             button.targetGraphic = image;
 
-            // Add click feedback - turns green when clicked
             go.AddComponent<ClickFeedback>();
 
             CreateText(go.transform, "Text", label, 14, Vector2.zero);
@@ -313,7 +356,65 @@ namespace ODDGames.UITest.Samples.Editor
             return toggle;
         }
 
-        private static InputField CreateInputField(Transform parent, string name, string placeholder, Vector2 position)
+        private static TMP_InputField CreateInputField(Transform parent, string name, string placeholder, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(200, 30);
+            rect.anchoredPosition = position;
+
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.15f, 0.15f, 0.15f);
+
+            var inputField = go.AddComponent<TMP_InputField>();
+
+            // Text area
+            var textArea = new GameObject("Text Area");
+            textArea.transform.SetParent(go.transform, false);
+            var textAreaRect = textArea.AddComponent<RectTransform>();
+            textAreaRect.anchorMin = Vector2.zero;
+            textAreaRect.anchorMax = Vector2.one;
+            textAreaRect.offsetMin = new Vector2(10, 5);
+            textAreaRect.offsetMax = new Vector2(-10, -5);
+
+            // Main text
+            var textGo = new GameObject("Text");
+            textGo.transform.SetParent(textArea.transform, false);
+            var textRect = textGo.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var text = textGo.AddComponent<TextMeshProUGUI>();
+            text.color = Color.white;
+            text.alignment = TextAlignmentOptions.MidlineLeft;
+            text.fontSize = 14;
+
+            // Placeholder
+            var placeholderGo = new GameObject("Placeholder");
+            placeholderGo.transform.SetParent(textArea.transform, false);
+            var phRect = placeholderGo.AddComponent<RectTransform>();
+            phRect.anchorMin = Vector2.zero;
+            phRect.anchorMax = Vector2.one;
+            phRect.sizeDelta = Vector2.zero;
+            var phText = placeholderGo.AddComponent<TextMeshProUGUI>();
+            phText.text = placeholder;
+            phText.color = new Color(0.5f, 0.5f, 0.5f);
+            phText.fontStyle = FontStyles.Italic;
+            phText.alignment = TextAlignmentOptions.MidlineLeft;
+            phText.fontSize = 14;
+
+            inputField.textViewport = textAreaRect;
+            inputField.textComponent = text;
+            inputField.placeholder = phText;
+
+            return inputField;
+        }
+
+        private static InputField CreateLegacyInputField(Transform parent, string name, string placeholder, Vector2 position)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -329,6 +430,7 @@ namespace ODDGames.UITest.Samples.Editor
 
             var inputField = go.AddComponent<InputField>();
 
+            // Main text
             var textGo = new GameObject("Text");
             textGo.transform.SetParent(go.transform, false);
             var textRect = textGo.AddComponent<RectTransform>();
@@ -337,10 +439,13 @@ namespace ODDGames.UITest.Samples.Editor
             textRect.offsetMin = new Vector2(10, 5);
             textRect.offsetMax = new Vector2(-10, -5);
             var text = textGo.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.color = Color.white;
             text.alignment = TextAnchor.MiddleLeft;
+            text.fontSize = 14;
+            text.font = GetDefaultFont();
+            text.material = GetDefaultFontMaterial();
 
+            // Placeholder
             var placeholderGo = new GameObject("Placeholder");
             placeholderGo.transform.SetParent(go.transform, false);
             var phRect = placeholderGo.AddComponent<RectTransform>();
@@ -350,10 +455,12 @@ namespace ODDGames.UITest.Samples.Editor
             phRect.offsetMax = new Vector2(-10, -5);
             var phText = placeholderGo.AddComponent<Text>();
             phText.text = placeholder;
-            phText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             phText.color = new Color(0.5f, 0.5f, 0.5f);
             phText.fontStyle = FontStyle.Italic;
             phText.alignment = TextAnchor.MiddleLeft;
+            phText.fontSize = 14;
+            phText.font = GetDefaultFont();
+            phText.material = GetDefaultFontMaterial();
 
             inputField.textComponent = text;
             inputField.placeholder = phText;
@@ -377,17 +484,147 @@ namespace ODDGames.UITest.Samples.Editor
 
             var dropdown = go.AddComponent<Dropdown>();
 
-            var label = CreateText(go.transform, "Label", "Option 1", 14, Vector2.zero);
-            label.GetComponent<RectTransform>().anchorMin = Vector2.zero;
-            label.GetComponent<RectTransform>().anchorMax = Vector2.one;
-            label.GetComponent<RectTransform>().offsetMin = new Vector2(10, 0);
-            label.GetComponent<RectTransform>().offsetMax = new Vector2(-30, 0);
+            // Caption label - create directly for proper stretching
+            var labelGo = new GameObject("Label");
+            labelGo.transform.SetParent(go.transform, false);
+            var labelRect = labelGo.AddComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.sizeDelta = Vector2.zero;
+            labelRect.offsetMin = new Vector2(10, 0);
+            labelRect.offsetMax = new Vector2(-30, 0);
+            var label = labelGo.AddComponent<Text>();
+            label.text = "Option 1";
+            label.fontSize = 14;
             label.alignment = TextAnchor.MiddleLeft;
+            label.color = Color.white;
+            label.font = GetDefaultFont();
+            label.material = GetDefaultFontMaterial();
 
+            // Arrow
+            var arrow = new GameObject("Arrow");
+            arrow.transform.SetParent(go.transform, false);
+            var arrowRect = arrow.AddComponent<RectTransform>();
+            arrowRect.anchorMin = new Vector2(1, 0.5f);
+            arrowRect.anchorMax = new Vector2(1, 0.5f);
+            arrowRect.sizeDelta = new Vector2(20, 20);
+            arrowRect.anchoredPosition = new Vector2(-15, 0);
+            var arrowText = arrow.AddComponent<Text>();
+            arrowText.text = "▼";
+            arrowText.font = GetDefaultFont();
+            arrowText.material = GetDefaultFontMaterial();
+            arrowText.fontSize = 12;
+            arrowText.alignment = TextAnchor.MiddleCenter;
+            arrowText.color = Color.white;
+
+            // Template
+            var template = new GameObject("Template");
+            template.transform.SetParent(go.transform, false);
+            var templateRect = template.AddComponent<RectTransform>();
+            templateRect.anchorMin = new Vector2(0, 0);
+            templateRect.anchorMax = new Vector2(1, 0);
+            templateRect.pivot = new Vector2(0.5f, 1);
+            templateRect.anchoredPosition = Vector2.zero;
+            templateRect.sizeDelta = new Vector2(0, 150);
+            var templateImage = template.AddComponent<Image>();
+            templateImage.color = new Color(0.25f, 0.25f, 0.25f);
+            var scrollRect = template.AddComponent<ScrollRect>();
+
+            // Viewport
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(template.transform, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            viewportRect.pivot = new Vector2(0, 1);
+            viewport.AddComponent<Image>().color = Color.clear;
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
+
+            // Content
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0, 1);
+            contentRect.anchorMax = new Vector2(1, 1);
+            contentRect.pivot = new Vector2(0.5f, 1);
+            contentRect.sizeDelta = new Vector2(0, 28);
+            contentRect.anchoredPosition = Vector2.zero;
+
+            // Item
+            var item = new GameObject("Item");
+            item.transform.SetParent(content.transform, false);
+            var itemRect = item.AddComponent<RectTransform>();
+            itemRect.anchorMin = new Vector2(0, 0.5f);
+            itemRect.anchorMax = new Vector2(1, 0.5f);
+            itemRect.sizeDelta = new Vector2(0, 28);
+            itemRect.anchoredPosition = Vector2.zero;
+            var itemToggle = item.AddComponent<Toggle>();
+
+            // Item background
+            var itemBg = new GameObject("Item Background");
+            itemBg.transform.SetParent(item.transform, false);
+            var itemBgRect = itemBg.AddComponent<RectTransform>();
+            itemBgRect.anchorMin = Vector2.zero;
+            itemBgRect.anchorMax = Vector2.one;
+            itemBgRect.sizeDelta = Vector2.zero;
+            var itemBgImage = itemBg.AddComponent<Image>();
+            itemBgImage.color = new Color(0.3f, 0.3f, 0.3f);
+
+            // Item checkmark
+            var checkmark = new GameObject("Item Checkmark");
+            checkmark.transform.SetParent(item.transform, false);
+            var checkRect = checkmark.AddComponent<RectTransform>();
+            checkRect.anchorMin = new Vector2(0, 0.5f);
+            checkRect.anchorMax = new Vector2(0, 0.5f);
+            checkRect.sizeDelta = new Vector2(20, 20);
+            checkRect.anchoredPosition = new Vector2(10, 0);
+            var checkText = checkmark.AddComponent<Text>();
+            checkText.text = "✓";
+            checkText.font = GetDefaultFont();
+            checkText.material = GetDefaultFontMaterial();
+            checkText.fontSize = 14;
+            checkText.alignment = TextAnchor.MiddleCenter;
+            checkText.color = Color.white;
+
+            // Item label - create directly instead of using CreateText to get proper stretching
+            var itemLabelGo = new GameObject("Item Label");
+            itemLabelGo.transform.SetParent(item.transform, false);
+            var itemLabelRect = itemLabelGo.AddComponent<RectTransform>();
+            itemLabelRect.anchorMin = Vector2.zero;
+            itemLabelRect.anchorMax = Vector2.one;
+            itemLabelRect.sizeDelta = Vector2.zero;
+            itemLabelRect.offsetMin = new Vector2(25, 0);
+            itemLabelRect.offsetMax = new Vector2(-10, 0);
+            var itemLabel = itemLabelGo.AddComponent<Text>();
+            itemLabel.text = "Option";
+            itemLabel.fontSize = 14;
+            itemLabel.alignment = TextAnchor.MiddleLeft;
+            itemLabel.color = Color.white;
+            itemLabel.font = GetDefaultFont();
+            itemLabel.material = GetDefaultFontMaterial();
+
+            // Configure toggle
+            itemToggle.targetGraphic = itemBgImage;
+            itemToggle.graphic = checkText;
+            itemToggle.isOn = true;
+
+            // Configure scroll rect
+            scrollRect.content = contentRect;
+            scrollRect.viewport = viewportRect;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+            // Configure dropdown
+            dropdown.template = templateRect;
             dropdown.captionText = label;
+            dropdown.itemText = itemLabel;
             dropdown.options.Add(new Dropdown.OptionData("Option 1"));
             dropdown.options.Add(new Dropdown.OptionData("Option 2"));
             dropdown.options.Add(new Dropdown.OptionData("Option 3"));
+
+            template.SetActive(false);
 
             return dropdown;
         }
@@ -405,35 +642,39 @@ namespace ODDGames.UITest.Samples.Editor
 
             var slider = go.AddComponent<Slider>();
 
-            // Background
+            // Background (track)
             var bg = new GameObject("Background");
             bg.transform.SetParent(go.transform, false);
             var bgRect = bg.AddComponent<RectTransform>();
-            bgRect.anchorMin = Vector2.zero;
-            bgRect.anchorMax = Vector2.one;
+            bgRect.anchorMin = new Vector2(0, 0.25f);
+            bgRect.anchorMax = new Vector2(1, 0.75f);
             bgRect.sizeDelta = Vector2.zero;
+            bgRect.anchoredPosition = Vector2.zero;
             var bgImage = bg.AddComponent<Image>();
-            bgImage.color = new Color(0.2f, 0.2f, 0.2f);
+            bgImage.color = new Color(0.4f, 0.4f, 0.4f);
 
-            // Fill area
+            // Fill area - spans the full slider width
             var fillArea = new GameObject("Fill Area");
             fillArea.transform.SetParent(go.transform, false);
             var fillAreaRect = fillArea.AddComponent<RectTransform>();
-            fillAreaRect.anchorMin = Vector2.zero;
-            fillAreaRect.anchorMax = Vector2.one;
+            fillAreaRect.anchorMin = new Vector2(0, 0.25f);
+            fillAreaRect.anchorMax = new Vector2(1, 0.75f);
             fillAreaRect.offsetMin = new Vector2(5, 0);
             fillAreaRect.offsetMax = new Vector2(-5, 0);
 
+            // Fill - stretches from left to handle position
             var fill = new GameObject("Fill");
             fill.transform.SetParent(fillArea.transform, false);
             var fillRect = fill.AddComponent<RectTransform>();
             fillRect.anchorMin = Vector2.zero;
-            fillRect.anchorMax = Vector2.one;
+            fillRect.anchorMax = new Vector2(0, 1);
+            fillRect.pivot = new Vector2(0, 0.5f);
             fillRect.sizeDelta = Vector2.zero;
+            fillRect.anchoredPosition = Vector2.zero;
             var fillImage = fill.AddComponent<Image>();
             fillImage.color = new Color(0.3f, 0.6f, 1f);
 
-            // Handle
+            // Handle slide area
             var handleArea = new GameObject("Handle Slide Area");
             handleArea.transform.SetParent(go.transform, false);
             var handleAreaRect = handleArea.AddComponent<RectTransform>();
@@ -442,10 +683,15 @@ namespace ODDGames.UITest.Samples.Editor
             handleAreaRect.offsetMin = new Vector2(10, 0);
             handleAreaRect.offsetMax = new Vector2(-10, 0);
 
+            // Handle
             var handle = new GameObject("Handle");
             handle.transform.SetParent(handleArea.transform, false);
             var handleRect = handle.AddComponent<RectTransform>();
+            handleRect.anchorMin = new Vector2(0, 0);
+            handleRect.anchorMax = new Vector2(0, 1);
+            handleRect.pivot = new Vector2(0.5f, 0.5f);
             handleRect.sizeDelta = new Vector2(20, 0);
+            handleRect.anchoredPosition = Vector2.zero;
             var handleImage = handle.AddComponent<Image>();
             handleImage.color = Color.white;
 
@@ -502,17 +748,16 @@ namespace ODDGames.UITest.Samples.Editor
                 layout.childForceExpandWidth = false;
                 layout.childForceExpandHeight = true;
 
-                // Add items
                 for (int i = 0; i < 8; i++)
                 {
                     var item = new GameObject($"CarouselItem{i}");
                     item.transform.SetParent(content.transform, false);
                     var itemRect = item.AddComponent<RectTransform>();
-                    itemRect.sizeDelta = new Vector2(100, 60);
+                    itemRect.sizeDelta = new Vector2(80, 50);
                     var itemImage = item.AddComponent<Image>();
                     itemImage.color = new Color(Random.Range(0.3f, 0.8f), Random.Range(0.3f, 0.8f), Random.Range(0.3f, 0.8f));
                     var le = item.AddComponent<LayoutElement>();
-                    le.minWidth = 100;
+                    le.minWidth = 80;
                 }
             }
             else
@@ -528,18 +773,17 @@ namespace ODDGames.UITest.Samples.Editor
                 layout.childForceExpandWidth = true;
                 layout.childForceExpandHeight = false;
 
-                // Add items
-                for (int i = 0; i < 15; i++)
+                for (int i = 0; i < 12; i++)
                 {
                     var item = new GameObject($"ListItem{i}");
                     item.transform.SetParent(content.transform, false);
                     var itemImage = item.AddComponent<Image>();
                     itemImage.color = new Color(0.25f, 0.25f, 0.25f);
                     var le = item.AddComponent<LayoutElement>();
-                    le.minHeight = 40;
-                    le.preferredHeight = 40;
+                    le.minHeight = 30;
+                    le.preferredHeight = 30;
 
-                    CreateText(item.transform, "Label", $"List Item {i + 1}", 14, Vector2.zero);
+                    CreateText(item.transform, "Label", $"Item {i + 1}", 12, Vector2.zero);
                 }
             }
 

@@ -12,13 +12,12 @@ ui-automation/
 │   │   ├── UITestBehaviour.cs
 │   │   ├── Editor/
 │   │   ├── Recording/
-│   │   └── EzGUI/            # HAS_EZ_GUI only
+│   │   └── Samples/
 │   ├── README.md
 │   ├── CHANGELOG.md
 │   └── LICENSE
 ├── test/                     # Test Unity project
 │   ├── Assets/
-│   │   └── Plugins/EzGUI/    # EzGUI stubs for testing
 │   ├── Packages/
 │   └── ProjectSettings/
 ├── .gitignore
@@ -42,9 +41,6 @@ Test project references locally:
 ### versionDefines (auto-detected from packages)
 - `UNITY_RECORDER` - Defined when `com.unity.recorder` is installed
 - `HAS_TOOLBAR_EXTENDER` - Defined when `com.marijnzwemmer.unity-toolbar-extender` is installed
-
-### Project Defines (must be added manually)
-- `HAS_EZ_GUI` - Add to MTD project for AnB UI SDK (EZ GUI) support
 
 ## Adding New Conditional Features
 
@@ -77,7 +73,57 @@ Two approaches for recording UI events:
 The package requires Unity's new Input System (`com.unity.inputsystem`):
 - Test playback uses `InputSystem.QueueEvent()` for true input injection
 - Recording uses `Mouse.current`, `Keyboard.current`, `EnhancedTouchSupport`
-- Projects should have `activeInputHandler` set to `3` (Both) or `1` (New only)
+- Projects must have `activeInputHandler` set to `2` (New only)
+
+**IMPORTANT**: Always use realistic input injection via the helpers. Never bypass the UI by setting values directly (e.g., `dropdown.value = 1` or `slider.value = 0.5f`). This ensures tests exercise the actual UI interaction path.
+
+## Advanced Control Helpers
+
+For complex UI controls that need precise positioning, use the specialized helpers instead of generic Click/Drag:
+
+### Sliders
+Sliders use percentage-based positioning (0-1) on the visible area:
+
+```csharp
+// Click at 75% position on a horizontal slider
+await ClickSlider("VolumeSlider", 0.75f);
+
+// Drag from 25% to 75% position
+await DragSlider("VolumeSlider", 0.25f, 0.75f);
+```
+
+These helpers:
+- Find the Slider component by name/pattern
+- Calculate screen position based on the slider's RectTransform bounds
+- Handle horizontal (LeftToRight, RightToLeft) and vertical (BottomToTop, TopToBottom) directions
+- Use standard Click/Drag input injection under the hood
+
+### Dropdowns
+Use the ClickDropdown helper to select options via realistic clicks:
+
+```csharp
+// Select by index (0-based)
+await ClickDropdown("CategoryDropdown", 1);
+
+// Select by label text
+await ClickDropdown("CategoryDropdown", "Option 2");
+```
+
+This clicks the dropdown to open it, then clicks the target option in the dynamically created list.
+
+### Drag and Drop
+Use the drag helpers for element-to-element or position-based dragging:
+
+```csharp
+// Drag one element to another by name
+await DragTo("DraggableItem", "DropZone", duration: 0.5f);
+
+// Drag from element in a direction
+await Drag("ScrollView", new Vector2(0, -200), duration: 0.5f);
+
+// Drag from specific screen positions
+await DragFromTo(new Vector2(100, 200), new Vector2(300, 200), duration: 0.5f);
+```
 
 ## Deploy Command
 
@@ -89,6 +135,5 @@ Run `/deploy` to:
 ## Test Project
 
 The `test/` folder contains a Unity project for development testing:
-- Has Input System set to "Both" mode
+- Has Input System set to "New" mode only
 - References the package via `file:../../package`
-- Includes EzGUI stubs in `Assets/Plugins/EzGUI/` for testing EzGUI integration
