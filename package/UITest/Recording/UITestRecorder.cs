@@ -293,11 +293,17 @@ namespace ODDGames.UITest
 
             string testDataSource = null;
 #if UNITY_EDITOR
-            LastRecordingFolder = ODDGames.UITest.Editor.UITestSettings.PendingRecordingFolder;
-            ODDGames.UITest.Editor.UITestSettings.PendingRecordingFolder = "";
+            // Read from UITestSettings via EditorPrefs (same keys used by UITestSettings)
+            const string pendingFolderKey = "ODDGames.UITest.PendingRecordingFolder";
+            const string pendingTestDataKey = "ODDGames.UITest.PendingTestDataSource";
 
-            testDataSource = ODDGames.UITest.Editor.UITestSettings.PendingTestDataSource;
-            ODDGames.UITest.Editor.UITestSettings.PendingTestDataSource = "";
+            LastRecordingFolder = UnityEditor.EditorPrefs.GetString(pendingFolderKey, "");
+            if (!string.IsNullOrEmpty(LastRecordingFolder))
+                UnityEditor.EditorPrefs.DeleteKey(pendingFolderKey);
+
+            testDataSource = UnityEditor.EditorPrefs.GetString(pendingTestDataKey, "");
+            if (!string.IsNullOrEmpty(testDataSource))
+                UnityEditor.EditorPrefs.DeleteKey(pendingTestDataKey);
 #endif
 
             if (string.IsNullOrEmpty(LastRecordingFolder))
@@ -354,7 +360,8 @@ namespace ODDGames.UITest
             File.WriteAllText(Path.Combine(LastRecordingFolder, "prompt.md"), UITestPromptGenerator.GeneratePrompt(CurrentRecording));
 
 #if UNITY_EDITOR
-            ODDGames.UITest.Editor.UITestSettings.LastRecordingFolder = LastRecordingFolder;
+            // Save to UITestSettings via EditorPrefs (same key used by UITestSettings)
+            UnityEditor.EditorPrefs.SetString("ODDGames.UITest.LastRecordingFolder", LastRecordingFolder);
 #endif
 
             Debug.Log($"[UITestRecorder] Recording saved to: {LastRecordingFolder}");
