@@ -132,6 +132,8 @@ Run `/deploy` to:
 2. Commit and push pending changes
 3. Get latest commit hash (for updating project manifests manually)
 
+**IMPORTANT**: Do NOT commit or push changes unless explicitly asked via `/deploy`. All code changes should remain local until the user requests deployment.
+
 ## Test Project
 
 The `test/` folder contains a Unity project for development testing:

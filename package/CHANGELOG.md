@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.22] - 2026-01-07
+
+### Fixed
+- Ambiguous `CompressionLevel` reference (System.IO.Compression vs UnityEngine)
+- Runtime/Editor assembly boundary issue in `UITestRecorder` (now uses EditorPrefs directly)
+
 ## [1.0.21] - 2026-01-07
 
 ### Added
