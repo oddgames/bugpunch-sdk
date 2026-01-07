@@ -101,11 +101,18 @@ public class LoginTest : UITestBehaviour
 - `Click(name)` - Click a UI element by name
 - `ClickAny(name)` - Click any matching element
 - `Hold(name, duration)` - Hold/long press element
-- `Drag(name, direction)` - Drag element
-- `DragFromTo(from, to)` - Drag between positions
+- `Drag(name, direction)` - Drag element in a direction
+- `DragTo(source, target)` - Drag one element to another (drag and drop)
+- `DragFromTo(from, to)` - Drag between screen positions
 - `TextInput(name, text, seconds, pressEnter)` - Enter text via Input System (click, type, optional Enter)
 - `PressKey(key)` - Press a keyboard key
 - `PressKeys(text)` - Type a string of characters
+
+#### Complex Controls
+- `ClickDropdown(name, index)` - Select dropdown option by index using realistic clicks
+- `ClickDropdown(name, label)` - Select dropdown option by label text
+- `ClickSlider(name, percent)` - Click slider at percentage position (0-1)
+- `DragSlider(name, fromPercent, toPercent)` - Drag slider between positions
 
 #### Finding Elements
 - `Find<T>(name)` - Find component by name (supports wildcards)

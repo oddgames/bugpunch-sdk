@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.18] - 2026-01-07
+
+### Fixed
+- `Find<RectTransform>` and other non-Behaviour component types now work correctly
+- Drag and drop operations can now find elements properly
+
+### Added
+- `DragTo(source, target)` - Drag one element to another for drag-and-drop testing
+- `ClickDropdown(name, index)` - Select dropdown option by index using realistic clicks
+- `ClickDropdown(name, label)` - Select dropdown option by label text using realistic clicks
+- `ClickSlider(name, percent)` - Click slider at percentage position (0-1)
+- `DragSlider(name, fromPercent, toPercent)` - Drag slider between positions
+- `DraggableUI` and `DropZoneUI` sample components for drag-and-drop demos
+- `PanelSwitcher` component for sample scene navigation
+
+### Changed
+- Simplified `ComprehensiveSampleTest` for faster execution
+- Removed EzGUI support (moved to separate package)
+- Removed verbose iteration logging from Find method
+
 ## [1.0.17] - 2025-01-07
 
 ### Fixed
