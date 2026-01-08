@@ -181,7 +181,7 @@ namespace ODDGames.UITest
             public static Search ByAdjacent(string textPattern, Adjacent direction = Adjacent.Right) => new Search().AdjacentTo(textPattern, direction);
 
             /// <summary>Search by custom predicate on the GameObject.</summary>
-            public static Search Where(Func<GameObject, bool> predicate) => new Search().WithPredicate(predicate);
+            public static Search Where(Func<GameObject, bool> predicate) => new Search().With(predicate);
 
             // Chainable instance methods
 
@@ -207,7 +207,7 @@ namespace ODDGames.UITest
             }
 
             /// <summary>Add a custom GameObject predicate (chainable version).</summary>
-            public Search WithPredicate(Func<GameObject, bool> predicate)
+            public Search With(Func<GameObject, bool> predicate)
             {
                 bool negate = _nextNegate;
                 _nextNegate = false;

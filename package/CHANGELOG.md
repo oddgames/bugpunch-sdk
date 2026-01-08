@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.24] - 2026-01-09
+
+### Changed
+- **`Search.WithPredicate()`** renamed to **`Search.With()`** for API consistency
+  - `With<T>(predicate)` for component predicates (unchanged)
+  - `With(predicate)` for GameObject predicates (renamed from `WithPredicate`)
+
 ## [1.0.23] - 2026-01-08
 
 ### Added
