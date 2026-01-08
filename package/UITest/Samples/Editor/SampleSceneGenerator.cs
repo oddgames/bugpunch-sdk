@@ -17,25 +17,43 @@ namespace ODDGames.UITest.Samples.Editor
         [MenuItem("Window/Analysis/UI Automation/Generate Sample Scene")]
         public static void GenerateComprehensiveSampleScene()
         {
+            GenerateSampleSceneInternal<ComprehensiveSampleTest>("ComprehensiveSampleScene");
+        }
+
+        [MenuItem("Window/Analysis/UI Automation/Generate Search Test Scene")]
+        public static void GenerateSearchTestScene()
+        {
+            GenerateSampleSceneInternal<SearchFeatureTest>("SearchTestScene", createSearchTestPanel: true);
+        }
+
+        private static void GenerateSampleSceneInternal<T>(string sceneName, bool createSearchTestPanel = false) where T : MonoBehaviour
+        {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
             CreateEventSystem();
             var canvas = CreateCanvas();
 
-            // Create all panels
-            CreateMainMenuPanel(canvas.transform);
-            CreateSettingsPanel(canvas.transform);
-            CreateButtonPanel(canvas.transform);
-            CreateFormPanel(canvas.transform);
-            CreateDragPanel(canvas.transform);
-            CreateKeyboardPanel(canvas.transform);
-            CreateAdvancedPanel(canvas.transform);
+            if (createSearchTestPanel)
+            {
+                CreateSearchTestPanel(canvas.transform);
+            }
+            else
+            {
+                // Create all panels for comprehensive test
+                CreateMainMenuPanel(canvas.transform);
+                CreateSettingsPanel(canvas.transform);
+                CreateButtonPanel(canvas.transform);
+                CreateFormPanel(canvas.transform);
+                CreateDragPanel(canvas.transform);
+                CreateKeyboardPanel(canvas.transform);
+                CreateAdvancedPanel(canvas.transform);
+            }
 
             // Add test behaviour
-            var testRunner = new GameObject("ComprehensiveSampleTest");
-            testRunner.AddComponent<ComprehensiveSampleTest>();
+            var testRunner = new GameObject(typeof(T).Name);
+            testRunner.AddComponent<T>();
 
-            MarkSceneDirty(scene, "ComprehensiveSampleScene");
+            MarkSceneDirty(scene, sceneName);
         }
 
         private static void CreateMainMenuPanel(Transform canvas)
@@ -850,6 +868,76 @@ namespace ODDGames.UITest.Samples.Editor
             scrollRect.content = contentRect;
 
             return scrollRect;
+        }
+
+        private static void CreateSearchTestPanel(Transform canvas)
+        {
+            var panel = CreatePanel(canvas, "SearchTestPanel", size: new Vector2(500, 600));
+
+            CreateText(panel.transform, "Title", "Search Feature Test", 24, new Vector2(0, 260));
+
+            // ==========================================
+            // Name-based search targets
+            // ==========================================
+            CreateButton(panel.transform, "NameButton", "Name Button", new Vector2(-150, 200));
+            CreateButton(panel.transform, "btn_play_icon", "Glob Pattern", new Vector2(0, 200));
+            CreateButton(panel.transform, "AnotherButton", "Another", new Vector2(150, 200));
+
+            // ==========================================
+            // Text-based search targets
+            // ==========================================
+            CreateButton(panel.transform, "TextButton1", "Click Me", new Vector2(-150, 150));
+            CreateButton(panel.transform, "TextButton2", "Press Me", new Vector2(0, 150));
+            CreateButton(panel.transform, "TextButton3", "Tap Me", new Vector2(150, 150));
+
+            // ==========================================
+            // Type-based search targets
+            // ==========================================
+            CreateToggle(panel.transform, "SearchToggle1", "Toggle A", new Vector2(-100, 100));
+            CreateToggle(panel.transform, "SearchToggle2", "Toggle B", new Vector2(100, 100));
+            CreateSlider(panel.transform, "SearchSlider", new Vector2(0, 50));
+
+            // ==========================================
+            // Hierarchy path targets
+            // ==========================================
+            var childPanel = CreatePanel(panel.transform, "ChildPanel", new Vector2(0, -10), new Vector2(400, 80));
+            childPanel.GetComponent<Image>().color = new Color(0.25f, 0.25f, 0.3f);
+            CreateButton(childPanel.transform, "ChildButton", "Child", new Vector2(-100, 0));
+            CreateButton(childPanel.transform, "DeepButton", "Deep", new Vector2(100, 0));
+
+            // ==========================================
+            // Chaining test targets
+            // ==========================================
+            CreateButton(panel.transform, "ChainButton", "Chain Test", new Vector2(-150, -80));
+            var submitBtn = CreateButton(panel.transform, "SubmitButton", "Submit", new Vector2(0, -80));
+            var confirmBtn = CreateButton(panel.transform, "ConfirmButton", "OK", new Vector2(150, -80));
+
+            // ==========================================
+            // Property check targets
+            // ==========================================
+            var disabledBtn = CreateButton(panel.transform, "DisabledButton", "Disabled", new Vector2(-150, -130));
+            disabledBtn.interactable = false;
+
+            var offToggle = CreateToggle(panel.transform, "OffToggle", "Off Toggle", new Vector2(50, -130));
+            offToggle.isOn = false;
+
+            // ==========================================
+            // List items for index testing
+            // ==========================================
+            for (int i = 0; i < 3; i++)
+            {
+                CreateButton(panel.transform, "ListItem", $"List Item {i + 1}", new Vector2(-150 + (i * 150), -180));
+            }
+
+            // ==========================================
+            // Simple button for implicit conversion test
+            // ==========================================
+            CreateButton(panel.transform, "SimpleButton", "Simple", new Vector2(0, -230));
+
+            // ==========================================
+            // Any match target
+            // ==========================================
+            CreateButton(panel.transform, "AnyMatch", "Any Match", new Vector2(0, -280));
         }
 
         private static void MarkSceneDirty(UnityEngine.SceneManagement.Scene scene, string name)

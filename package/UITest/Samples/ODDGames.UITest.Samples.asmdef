@@ -4,7 +4,8 @@
     "references": [
         "ODDGames.UITest",
         "UniTask",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

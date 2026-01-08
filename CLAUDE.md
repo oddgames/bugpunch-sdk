@@ -130,12 +130,59 @@ await DragFromTo(new Vector2(100, 200), new Vector2(300, 200), duration: 0.5f);
 Run `/deploy` to:
 1. Version bump and changelog update
 2. Commit and push pending changes
-3. Get latest commit hash (for updating project manifests manually)
+3. Create and push git tag (e.g., `v1.0.23`)
+
+Projects can reference specific versions via git tag:
+```json
+"com.oddgames.uitest": "https://github.com/nickhudson4/tool_ui_automation.git?path=package#v1.0.23"
+```
 
 **IMPORTANT**: Do NOT commit or push changes unless explicitly asked via `/deploy`. All code changes should remain local until the user requests deployment.
+
+## Samples vs Tests
+
+**Samples** (`package/UITest/Samples/`):
+- Runtime UI tests that extend `UITestBehaviour`
+- Run by attaching to a GameObject in a scene
+- Used for demonstrating framework capabilities and real UI testing
+- NOT visible in Unity Test Runner
+- Examples: `ComprehensiveSampleTest.cs`, `SearchMethodTests.cs`
+
+**Tests** (`test/Assets/Tests/`):
+- NUnit tests that show up in Unity Test Runner
+- Use `[Test]` attribute and run via Test Runner window
+- Located in the test Unity project, NOT in the package
+- Used for unit testing framework internals (Search matching, scoring algorithms, etc.)
+
+When adding new Search features like `ByAdjacent`:
+1. Add unit tests in `test/Assets/Tests/` (NUnit) to test the scoring/matching logic
+2. Add sample usage in `package/UITest/Samples/` to demonstrate real-world usage
 
 ## Test Project
 
 The `test/` folder contains a Unity project for development testing:
 - Has Input System set to "New" mode only
 - References the package via `file:../../package`
+
+## Change History
+
+Keep this section updated when making significant API changes. This helps track breaking changes and new features.
+
+### Recent Changes (Local/Uncommitted)
+
+(No uncommitted changes)
+
+### v1.0.23 - 2026-01-08
+
+**Removed `Availability` enum** - Availability filtering moved into Search class
+- Removed: `Availability` enum (`None`, `Active`, `Enabled`, `All`)
+- Removed: `Availability` parameter from `Find`, `FindAll`, `Click`, `ClickAny`, `Hold` methods
+- Added: `Search.IncludeInactive()` - chainable method to include inactive GameObjects
+- Added: `Search.IncludeDisabled()` - chainable method to include disabled/non-interactable components
+- Migration: `Find<T>(search, true, 10, Availability.Active)` → `Find<T>(search, true, 10)` (default behavior)
+- Migration: To include inactive: `Find<T>(search.IncludeInactive(), true, 10)`
+
+**Added `Search.ByAdjacent()`** - Find interactables by adjacent text labels
+- `Search.ByAdjacent("Username:", Adjacent.Right)` - finds input field to the right of "Username:" text
+- Supports all four directions: `Right`, `Left`, `Below`, `Above`
+- Uses spatial proximity scoring, not hierarchy

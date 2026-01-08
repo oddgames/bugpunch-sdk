@@ -1,4 +1,4 @@
-Deploy the UITest package - version bump and push.
+Deploy the UITest package - version bump, tag, and push.
 
 ## Steps
 
@@ -19,8 +19,15 @@ Deploy the UITest package - version bump and push.
    - Stage all pending changes including version bump and docs
    - Commit with message: "v{version} - {brief description of changes}"
    - Push to origin
-   - Get the full commit hash
 
-4. **Report deployment status**
+4. **Create and push git tag**
+   - Create annotated tag: `git tag -a v{version} -m "Release v{version}"`
+   - Push tag to origin: `git push origin v{version}`
+
+5. **Report deployment status**
    - Show the new package version
-   - Show the full commit hash for updating project manifests
+   - Show the git tag for referencing in manifests
+   - Show example manifest entry:
+     ```json
+     "com.oddgames.uitest": "https://github.com/nickhudson4/tool_ui_automation.git?path=package#v{version}"
+     ```

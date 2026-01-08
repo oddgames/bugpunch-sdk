@@ -21,106 +21,125 @@ namespace ODDGames.UITest.Samples
         protected override async UniTask Test()
         {
             // Wait for main menu
-            await Wait("MainMenu", seconds: 10);
+            await Wait(Search.ByName("MainMenu"), seconds: 10);
 
             // ==========================================
             // Navigation & Settings
             // ==========================================
-            await Click("SettingsButton");
-            await Wait("SettingsPanel", seconds: 5);
+            // Search by name pattern
+            await Click(Search.ByName("Settings*"));
+            await Wait(Search.ByName("SettingsPanel"), seconds: 5);
 
-            await Click("SoundToggle");
-            await Click("MusicToggle");
-            await Click("BackButton");
-            await Wait("MainMenu", seconds: 5);
+            // Search by component type
+            await Click(Search.ByType<Toggle>().Name("SoundToggle"));
+            await Click(Search.ByType<Toggle>().Name("MusicToggle"));
+            await Click("Back");
+            await Wait(Search.ByName("MainMenu"), seconds: 5);
 
             // ==========================================
             // Buttons
             // ==========================================
-            await Click("ButtonsButton");
-            await Wait("SampleButtonPanel", seconds: 5);
+            // Search by text content
+            await Click(Search.ByText("Buttons"));
+            await Wait(Search.ByName("SampleButtonPanel"), seconds: 5);
 
-            await Click("SimpleButton");
-            await Click("SampleToggle");
-            await Click("ItemButton", index: 1);
-            await Click("IncrementButton", repeat: 3);
+            // Search by sprite name
+            await Click(Search.BySprite("btn_*_icon"), throwIfMissing: false, searchTime: 2);
+            // Fallback to simple button if sprite not found
+            await Click("Simple Button", throwIfMissing: false, searchTime: 1);
 
-            await Click("BackButton");
-            await Wait("MainMenu", seconds: 5);
+            await Click(Search.ByType<Toggle>().Name("SampleToggle"));
+            await Click("Item 2", index: 0); // Click second item button by its text
+            // Search with component property check
+            await Click(Search.ByType<Button>().Name("IncrementButton").With<Button>(b => b.interactable), repeat: 3);
+
+            await Click("Back");
+            await Wait(Search.ByName("MainMenu"), seconds: 5);
 
             // ==========================================
             // Forms
             // ==========================================
-            await Click("FormsButton");
-            await Wait("SampleFormPanel", seconds: 5);
+            // Search by path pattern
+            await Click(Search.ByPath("*Menu*/*FormsButton*"), throwIfMissing: false, searchTime: 2);
+            // Fallback to text
+            await Click("Forms", throwIfMissing: false, searchTime: 1);
+            await Wait(Search.ByName("SampleFormPanel"), seconds: 5);
 
-            await TextInput("UsernameInput", "Test");
-            await TextInput("EmailInput", "t@t.com");
-            await ClickDropdown("CategoryDropdown", 1, throwIfMissing: false, searchTime: 2);
-            await ClickSlider("VolumeSlider", 0.75f, throwIfMissing: false, searchTime: 2);
-            await Click("AgreeToggle");
-            await Click("SubmitButton");
+            // Form elements can be found by their adjacent label text
+            await TextInput(Search.ByAdjacent("Username:"), "Test");
+            await TextInput(Search.ByAdjacent("Email:"), "t@t.com");
+            await ClickDropdown(Search.ByAdjacent("Category:"), 1, throwIfMissing: false, searchTime: 2);
+            // Slider control - click at 75% position
+            await ClickSlider(Search.ByAdjacent("Volume:"), 0.75f, throwIfMissing: false, searchTime: 2);
+            // Search for any toggle that's not already on
+            await Click(Search.ByType<Toggle>().Text("I agree*").With<Toggle>(t => !t.isOn), throwIfMissing: false, searchTime: 2);
+            // Fallback if already toggled
+            await Click("I agree to terms", throwIfMissing: false, searchTime: 1);
+            await Click(Search.ByText("Submit"));
 
-            await Click("BackButton");
-            await Wait("MainMenu", seconds: 5);
+            await Click("Back");
+            await Wait(Search.ByName("MainMenu"), seconds: 5);
 
             // ==========================================
             // Drag and Drop
             // ==========================================
-            await Click("DragButton");
-            await Wait("SampleDragPanel", seconds: 5);
+            await Click("Drag & Drop");
+            await Wait(Search.ByName("SampleDragPanel"), seconds: 5);
 
-            // Test scroll
-            await Drag("ScrollView", new Vector2(0, -100), duration: 0.3f, throwIfMissing: false);
+            // Test scroll - container elements use ByName
+            await Drag(Search.ByName("ScrollView"), new Vector2(0, -100), duration: 0.3f, throwIfMissing: false);
 
-            // Test drag and drop
-            await DragTo("DraggableItem", "DropZone", duration: 0.5f, throwIfMissing: false, searchTime: 2);
+            // Test drag and drop - draggable elements use ByName
+            await DragTo(Search.ByName("DraggableItem"), Search.ByName("DropZone"), duration: 0.5f, throwIfMissing: false, searchTime: 2);
             CaptureScreenshot("after_drag_drop");
 
-            await Click("BackButton");
-            await Wait("MainMenu", seconds: 5);
+            await Click("Back");
+            await Wait(Search.ByName("MainMenu"), seconds: 5);
 
             // ==========================================
             // Keyboard
             // ==========================================
-            await Click("KeyboardButton");
-            await Wait("SampleKeyboardPanel", seconds: 5);
+            await Click("Keyboard");
+            await Wait(Search.ByName("SampleKeyboardPanel"), seconds: 5);
 
-            await Click("KeyboardInput");
+            await Click(Search.ByName("KeyboardInput")); // Input fields are clicked by name
             await PressKeys("Hi");
             await PressKey(KeyCode.Tab);
             await PressKey(KeyCode.Escape);
 
-            await Click("BackButton");
-            await Wait("MainMenu", seconds: 5);
+            await Click("Back");
+            await Wait(Search.ByName("MainMenu"), seconds: 5);
 
             // ==========================================
             // Advanced Input (DoubleClick, Scroll, Swipe, Touch Gestures)
             // ==========================================
-            await Click("AdvancedButton", throwIfMissing: false, searchTime: 2);
-            var advancedPanel = await Find<RectTransform>("SampleAdvancedPanel", throwIfMissing: false, seconds: 2);
+            // Search combining name pattern and text content
+            await Click(Search.ByName("*Button").Text("Advanced"), throwIfMissing: false, searchTime: 2);
+            // Fallback to text
+            await Click("Advanced Input", throwIfMissing: false, searchTime: 1);
+            var advancedPanel = await Find<RectTransform>(Search.ByName("SampleAdvancedPanel"), throwIfMissing: false, seconds: 2);
             if (advancedPanel != null)
             {
                 // Double-click test
-                await DoubleClick("DoubleClickButton", throwIfMissing: false, searchTime: 2);
+                await DoubleClick("Double-Click Me", throwIfMissing: false, searchTime: 2);
 
-                // Scroll wheel test (negative = scroll down)
-                await Scroll("ScrollArea", -120f, throwIfMissing: false, searchTime: 2);
+                // Scroll wheel test (negative = scroll down) - area elements use ByName
+                await Scroll(Search.ByName("ScrollArea"), -120f, throwIfMissing: false, searchTime: 2);
 
                 // Swipe test (duration 1s for visibility)
-                await Swipe("SwipeArea", SwipeDirection.Left, duration: 1f, throwIfMissing: false, searchTime: 2);
-                await Swipe("SwipeArea", SwipeDirection.Right, duration: 1f, throwIfMissing: false, searchTime: 2);
+                await Swipe(Search.ByName("SwipeArea"), SwipeDirection.Left, duration: 1f, throwIfMissing: false, searchTime: 2);
+                await Swipe(Search.ByName("SwipeArea"), SwipeDirection.Right, duration: 1f, throwIfMissing: false, searchTime: 2);
 
-                // Touch gesture tests (pinch, rotate, two-finger swipe)
-                await Pinch("GestureTarget", 0.5f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Pinch in
-                await Pinch("GestureTarget", 2.0f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Pinch out
-                await Rotate("GestureTarget", 90f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Rotate 90 degrees
-                await TwoFingerSwipe("GestureTarget", SwipeDirection.Up, duration: 0.5f, throwIfMissing: false, searchTime: 2);
+                // Touch gesture tests (pinch, rotate, two-finger swipe) - 3D objects use ByName
+                await Pinch(Search.ByName("GestureTarget"), 0.5f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Pinch in
+                await Pinch(Search.ByName("GestureTarget"), 2.0f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Pinch out
+                await Rotate(Search.ByName("GestureTarget"), 90f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Rotate 90 degrees
+                await TwoFingerSwipe(Search.ByName("GestureTarget"), SwipeDirection.Up, duration: 0.5f, throwIfMissing: false, searchTime: 2);
 
                 CaptureScreenshot("advanced_input_complete");
 
                 // Navigate back to main menu
-                await Click("BackButton", throwIfMissing: false, searchTime: 2);
+                await Click("Back", throwIfMissing: false, searchTime: 2);
             }
 
             CaptureScreenshot("test_complete");

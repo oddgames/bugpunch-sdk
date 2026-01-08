@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.23] - 2026-01-08
+
+### Added
+- **`Search.ByAdjacent()`** - Find interactables by adjacent text labels using spatial proximity
+  - `Search.ByAdjacent("Username:", Adjacent.Right)` finds input field to the right of "Username:" text
+  - Supports all four directions: `Right`, `Left`, `Below`, `Above`
+  - Uses spatial proximity scoring algorithm, not hierarchy-based
+- **`Search.IncludeInactive()`** - Chainable method to include inactive (SetActive=false) GameObjects in search
+- **`Search.IncludeDisabled()`** - Chainable method to include disabled/non-interactable components in search
+- NUnit tests for `Search.ByAdjacent()` in `test/Assets/Tests/Editor/SearchAdjacentTests.cs`
+- Runtime sample tests for Adjacent search in `SearchMethodTests.cs`
+- Change History section in CLAUDE.md for tracking API changes
+
+### Removed
+- **`Availability` enum** - Replaced with chainable `Search.IncludeInactive()` and `Search.IncludeDisabled()` methods
+- `Availability` parameter from `Find`, `FindAll`, `Click`, `ClickAny`, `Hold` methods
+
+### Changed
+- Default search behavior unchanged (active and enabled only), but now configured via Search instead of method parameter
+- `ComprehensiveSampleTest` updated to use correct Search patterns (`Search.ByName()` for panels, text for buttons)
+- Form inputs now use `Search.ByAdjacent()` to find fields by their label text
+
+### Migration Guide
+```csharp
+// Before (old API):
+await Find<T>(search, true, 10, Availability.Active | Availability.Enabled);
+
+// After (new API):
+await Find<T>(search, true, 10);  // Default: active and enabled only
+await Find<T>(search.IncludeInactive(), true, 10);  // Include inactive
+await Find<T>(search.IncludeDisabled(), true, 10);  // Include disabled
+```
+
 ## [1.0.22] - 2026-01-07
 
 ### Fixed

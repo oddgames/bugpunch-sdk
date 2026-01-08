@@ -77,20 +77,622 @@ namespace ODDGames.UITest
 
         #endregion
 
+        #region Search Query Builder
+
+        /// <summary>
+        /// Fluent builder for searching GameObjects. Supports wildcards (*) in all patterns.
+        ///
+        /// Examples:
+        ///   await Click(Search.ByText("Play"));
+        ///   await Click(Search.BySprite("icon_*"));
+        ///   await Click(Search.ByType&lt;Button&gt;().Text("Start"));
+        ///   await Click(Search.ByName("btn_*").Not.Tag("Disabled"));
+        ///   await Click(Search.ByPath("*/Panel/Buttons/*"));
+        ///   await Click(Search.ByType("Toggle").Sprite("*checkbox*"));
+        ///   await Click(Search.ByAny("*play*"));  // matches name, text, sprite, or path
+        ///
+        /// Hierarchy queries:
+        ///   await Click(Search.ByName("Button").HasParent("Panel"));
+        ///   await Click(Search.ByType&lt;Button&gt;().HasAncestor(Search.ByName("*Settings*")));
+        ///   await Click(Search.ByName("Panel").HasChild(Search.ByText("Submit")));
+        ///   await Click(Search.ByName("Root").HasDescendant(Search.ByType&lt;Toggle&gt;()));
+        /// </summary>
+        /// <summary>
+        /// Direction for adjacent element searches.
+        /// </summary>
+        public enum Adjacent
+        {
+            /// <summary>Find the nearest interactable to the right of the text (same row preferred).</summary>
+            Right,
+            /// <summary>Find the nearest interactable below the text.</summary>
+            Below,
+            /// <summary>Find the nearest interactable to the left of the text.</summary>
+            Left,
+            /// <summary>Find the nearest interactable above the text.</summary>
+            Above
+        }
+
+        public class Search
+        {
+            readonly List<Func<GameObject, bool>> _conditions = new();
+            bool _nextNegate;
+            bool _includeInactive;
+            bool _includeDisabled;
+
+            Search() { }
+
+            /// <summary>Gets whether this search should include inactive GameObjects.</summary>
+            public bool ShouldIncludeInactive => _includeInactive;
+
+            /// <summary>Gets whether this search should include disabled (non-interactable) components.</summary>
+            public bool ShouldIncludeDisabled => _includeDisabled;
+
+            /// <summary>
+            /// Include inactive (SetActive(false)) GameObjects in the search.
+            /// By default, only active GameObjects are searched.
+            /// </summary>
+            public Search IncludeInactive()
+            {
+                _includeInactive = true;
+                return this;
+            }
+
+            /// <summary>
+            /// Include disabled (interactable=false) components in the search.
+            /// By default, only enabled/interactable components are searched.
+            /// </summary>
+            public Search IncludeDisabled()
+            {
+                _includeDisabled = true;
+                return this;
+            }
+
+            // Static factory methods - start a new search
+
+            /// <summary>Search by GameObject name (supports * wildcards).</summary>
+            public static Search ByName(string pattern) => new Search().Name(pattern);
+
+            /// <summary>Search by component type.</summary>
+            public static Search ByType<T>() where T : Component => new Search().Type<T>();
+
+            /// <summary>Search by component type name (supports * wildcards).</summary>
+            public static Search ByType(string typeName) => new Search().Type(typeName);
+
+            /// <summary>Search by text content in Text/TMP_Text (supports * wildcards).</summary>
+            public static Search ByText(string pattern) => new Search().Text(pattern);
+
+            /// <summary>Search by sprite name in Image/SpriteRenderer (supports * wildcards).</summary>
+            public static Search BySprite(string pattern) => new Search().Sprite(pattern);
+
+            /// <summary>Search by hierarchy path (supports * wildcards).</summary>
+            public static Search ByPath(string pattern) => new Search().Path(pattern);
+
+            /// <summary>Search by GameObject tag.</summary>
+            public static Search ByTag(string tag) => new Search().Tag(tag);
+
+            /// <summary>Search by any: name, text, sprite, or path (supports * wildcards).</summary>
+            public static Search ByAny(string pattern) => new Search().Any(pattern);
+
+            /// <summary>
+            /// Search for an interactable element (InputField, Dropdown, Slider, Toggle) that is
+            /// spatially adjacent to a Text/TMP_Text matching the pattern in the specified direction.
+            /// Example: Search.ByAdjacent("Username:", Adjacent.Right) finds the input field to the right of "Username:" text.
+            /// </summary>
+            public static Search ByAdjacent(string textPattern, Adjacent direction = Adjacent.Right) => new Search().AdjacentTo(textPattern, direction);
+
+            /// <summary>Search by custom predicate on the GameObject.</summary>
+            public static Search Where(Func<GameObject, bool> predicate) => new Search().WithPredicate(predicate);
+
+            // Chainable instance methods
+
+            /// <summary>Negates the next condition.</summary>
+            public Search Not { get { _nextNegate = true; return this; } }
+
+            /// <summary>
+            /// Check a property on a component. Returns false if component doesn't exist.
+            /// Example: Search.Type&lt;Slider&gt;().With&lt;Slider&gt;(s => s.value > 0.5f)
+            /// </summary>
+            public Search With<T>(Func<T, bool> predicate) where T : Component
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    var comp = go.GetComponent<T>();
+                    if (comp == null) return negate; // No component = no match (or match if negated)
+                    bool match = predicate(comp);
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>Add a custom GameObject predicate (chainable version).</summary>
+            public Search WithPredicate(Func<GameObject, bool> predicate)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go => negate ? !predicate(go) : predicate(go));
+                return this;
+            }
+
+            /// <summary>
+            /// Match if the immediate parent matches the given Search query.
+            /// Example: Search.ByName("Button").HasParent(Search.ByName("Panel"))
+            /// </summary>
+            public Search HasParent(Search parentSearch)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    if (go.transform.parent == null) return negate;
+                    bool match = parentSearch.Matches(go.transform.parent.gameObject);
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if the immediate parent's name matches the pattern (supports * wildcards).
+            /// Shorthand for HasParent(Search.ByName(pattern)).
+            /// </summary>
+            public Search HasParent(string parentNamePattern)
+            {
+                return HasParent(ByName(parentNamePattern));
+            }
+
+            /// <summary>
+            /// Match if any ancestor (parent, grandparent, etc.) matches the given Search query.
+            /// Example: Search.ByType&lt;Button&gt;().HasAncestor(Search.ByName("*Settings*"))
+            /// </summary>
+            public Search HasAncestor(Search ancestorSearch)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    Transform current = go.transform.parent;
+                    while (current != null)
+                    {
+                        if (ancestorSearch.Matches(current.gameObject))
+                            return !negate;
+                        current = current.parent;
+                    }
+                    return negate;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if any ancestor's name matches the pattern (supports * wildcards).
+            /// Shorthand for HasAncestor(Search.ByName(pattern)).
+            /// </summary>
+            public Search HasAncestor(string ancestorNamePattern)
+            {
+                return HasAncestor(ByName(ancestorNamePattern));
+            }
+
+            /// <summary>
+            /// Match if any immediate child matches the given Search query.
+            /// Example: Search.ByName("Panel").HasChild(Search.ByText("Submit"))
+            /// </summary>
+            public Search HasChild(Search childSearch)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    foreach (Transform child in go.transform)
+                    {
+                        if (childSearch.Matches(child.gameObject))
+                            return !negate;
+                    }
+                    return negate;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if any immediate child's name matches the pattern (supports * wildcards).
+            /// Shorthand for HasChild(Search.ByName(pattern)).
+            /// </summary>
+            public Search HasChild(string childNamePattern)
+            {
+                return HasChild(ByName(childNamePattern));
+            }
+
+            /// <summary>
+            /// Match if any descendant (child, grandchild, etc.) matches the given Search query.
+            /// Example: Search.ByName("Panel").HasDescendant(Search.ByType&lt;Button&gt;())
+            /// </summary>
+            public Search HasDescendant(Search descendantSearch)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    bool found = HasMatchingDescendant(go.transform, descendantSearch);
+                    return negate != found;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if any descendant's name matches the pattern (supports * wildcards).
+            /// Shorthand for HasDescendant(Search.ByName(pattern)).
+            /// </summary>
+            public Search HasDescendant(string descendantNamePattern)
+            {
+                return HasDescendant(ByName(descendantNamePattern));
+            }
+
+            static bool HasMatchingDescendant(Transform parent, Search search)
+            {
+                foreach (Transform child in parent)
+                {
+                    if (search.Matches(child.gameObject))
+                        return true;
+                    if (HasMatchingDescendant(child, search))
+                        return true;
+                }
+                return false;
+            }
+
+            /// <summary>Evaluates if a GameObject matches all conditions.</summary>
+            public bool Matches(GameObject go)
+            {
+                if (go == null) return false;
+                foreach (var condition in _conditions)
+                {
+                    if (!condition(go))
+                        return false;
+                }
+                return true;
+            }
+
+            /// <summary>
+            /// Implicit conversion from string to Search.ByText().
+            /// Allows: await Click((Search)"Play") or passing strings where Search is expected.
+            /// </summary>
+            public static implicit operator Search(string text) => ByText(text);
+
+            // Chainable Add methods (can also be used for chaining after static factory)
+
+            /// <summary>Also match by GameObject name (supports * wildcards).</summary>
+            public Search Name(string pattern)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go => negate != WildcardMatch(go.name, pattern));
+                return this;
+            }
+
+            /// <summary>Also match by component type.</summary>
+            public Search Type<T>() where T : Component
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go => negate != (go.GetComponent<T>() != null));
+                return this;
+            }
+
+            /// <summary>Also match by component type name (supports * wildcards).</summary>
+            public Search Type(string typeName)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    var components = go.GetComponents<Component>();
+                    bool match = components.Any(c => c != null && WildcardMatch(c.GetType().Name, typeName));
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>Also match by text content (supports * wildcards).</summary>
+            public Search Text(string pattern)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go => negate != MatchText(go, pattern));
+                return this;
+            }
+
+            /// <summary>Also match by sprite name (supports * wildcards).</summary>
+            public Search Sprite(string pattern)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go => negate != MatchSprite(go, pattern));
+                return this;
+            }
+
+            /// <summary>Also match by hierarchy path (supports * wildcards).</summary>
+            public Search Path(string pattern)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go => negate != WildcardMatch(GetHierarchyPath(go.transform), pattern));
+                return this;
+            }
+
+            /// <summary>Also match by GameObject tag.</summary>
+            public Search Tag(string tag)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    bool match;
+                    try { match = go.CompareTag(tag); }
+                    catch { match = go.tag.Equals(tag, StringComparison.OrdinalIgnoreCase); }
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>Also match by any: name, text, sprite, or path (supports * wildcards).</summary>
+            public Search Any(string pattern)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    bool match = WildcardMatch(go.name, pattern)
+                              || MatchText(go, pattern)
+                              || MatchSprite(go, pattern)
+                              || WildcardMatch(GetHierarchyPath(go.transform), pattern);
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if this element is an interactable (InputField, Dropdown, Slider, Toggle) that is
+            /// spatially adjacent to a Text/TMP_Text matching the pattern in the specified direction.
+            /// Uses world position to find the nearest interactable.
+            /// Example: Search.ByAdjacent("Username:", Adjacent.Right) finds the input field next to "Username:" text.
+            /// </summary>
+            public Search AdjacentTo(string textPattern, Adjacent direction = Adjacent.Right)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    bool match = IsNearestInteractableToText(go, textPattern, direction);
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Checks if this interactable is the nearest one to any text matching the pattern in the scene.
+            /// Uses world/screen position for spatial proximity, not hierarchy.
+            /// </summary>
+            static bool IsNearestInteractableToText(GameObject interactable, string textPattern, Adjacent direction)
+            {
+                // Must have an interactable component
+                if (!HasInteractableComponent(interactable))
+                    return false;
+
+                var interactableRect = interactable.GetComponent<RectTransform>();
+                if (interactableRect == null)
+                    return false;
+
+                // Find all text elements in the scene matching the pattern
+                var matchingTexts = FindTextsMatchingPattern(textPattern);
+                if (matchingTexts.Count == 0)
+                    return false;
+
+                // For each matching text, check if this interactable is the nearest one in the specified direction
+                foreach (var text in matchingTexts)
+                {
+                    var nearest = FindNearestInteractableInScene(text, direction);
+                    if (nearest == interactable)
+                        return true;
+                }
+
+                return false;
+            }
+
+            /// <summary>Find all Text/TMP_Text GameObjects in the scene matching the pattern.</summary>
+            static List<GameObject> FindTextsMatchingPattern(string pattern)
+            {
+                var result = new List<GameObject>();
+
+                // Check legacy Text components
+                foreach (var text in GameObject.FindObjectsByType<Text>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                {
+                    if (text != null && !string.IsNullOrEmpty(text.text) && WildcardMatch(text.text, pattern))
+                        result.Add(text.gameObject);
+                }
+
+                // Check TMP_Text components
+                foreach (var tmpText in GameObject.FindObjectsByType<TMP_Text>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                {
+                    if (tmpText != null && !string.IsNullOrEmpty(tmpText.text) && WildcardMatch(tmpText.text, pattern))
+                        result.Add(tmpText.gameObject);
+                }
+
+                return result;
+            }
+
+            /// <summary>Check if the GameObject has any interactable component (InputField, TMP_InputField, Dropdown, TMP_Dropdown, Slider, Toggle).</summary>
+            static bool HasInteractableComponent(GameObject go)
+            {
+                return go.GetComponent<InputField>() != null
+                    || go.GetComponent<TMP_InputField>() != null
+                    || go.GetComponent<Dropdown>() != null
+                    || go.GetComponent<TMP_Dropdown>() != null
+                    || go.GetComponent<Slider>() != null
+                    || go.GetComponent<Toggle>() != null;
+            }
+
+            /// <summary>Find the nearest interactable in the entire scene to the text in the specified direction.</summary>
+            static GameObject FindNearestInteractableInScene(GameObject textObj, Adjacent direction)
+            {
+                var textRect = textObj.GetComponent<RectTransform>();
+                if (textRect == null)
+                    return null;
+
+                Vector3 textPos = textRect.position;
+                GameObject nearest = null;
+                float nearestScore = float.MaxValue;
+
+                // Search all interactable types in the scene
+                var interactables = new List<GameObject>();
+                foreach (var c in GameObject.FindObjectsByType<InputField>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    interactables.Add(c.gameObject);
+                foreach (var c in GameObject.FindObjectsByType<TMP_InputField>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    interactables.Add(c.gameObject);
+                foreach (var c in GameObject.FindObjectsByType<Dropdown>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    interactables.Add(c.gameObject);
+                foreach (var c in GameObject.FindObjectsByType<TMP_Dropdown>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    interactables.Add(c.gameObject);
+                foreach (var c in GameObject.FindObjectsByType<Slider>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    interactables.Add(c.gameObject);
+                foreach (var c in GameObject.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    interactables.Add(c.gameObject);
+
+                foreach (var interactable in interactables)
+                {
+                    if (interactable == textObj)
+                        continue;
+
+                    var interactableRect = interactable.GetComponent<RectTransform>();
+                    if (interactableRect == null)
+                        continue;
+
+                    // Skip if not active
+                    if (!interactable.activeInHierarchy)
+                        continue;
+
+                    Vector3 interactablePos = interactableRect.position;
+
+                    // Calculate offset from text to interactable
+                    float dx = interactablePos.x - textPos.x;
+                    float dy = textPos.y - interactablePos.y; // Positive when interactable is below text
+
+                    float score = CalculateAdjacentScore(dx, dy, direction);
+                    if (score < nearestScore)
+                    {
+                        nearestScore = score;
+                        nearest = interactable;
+                    }
+                }
+
+                return nearest;
+            }
+
+            /// <summary>Calculate a score for how well an interactable matches the desired direction from the text.</summary>
+            static float CalculateAdjacentScore(float dx, float dy, Adjacent direction)
+            {
+                const float rowTolerance = 30f; // Elements within 30 units vertically are on "same row"
+                const float colTolerance = 100f; // Elements within 100 units horizontally are "same column"
+
+                switch (direction)
+                {
+                    case Adjacent.Right:
+                        // Must be to the right, prefer same row
+                        if (dx <= 0) return float.MaxValue;
+                        return Mathf.Abs(dy) < rowTolerance ? dx : dx + Mathf.Abs(dy) * 10;
+
+                    case Adjacent.Left:
+                        // Must be to the left, prefer same row
+                        if (dx >= 0) return float.MaxValue;
+                        return Mathf.Abs(dy) < rowTolerance ? -dx : -dx + Mathf.Abs(dy) * 10;
+
+                    case Adjacent.Below:
+                        // Must be below, prefer same column
+                        if (dy <= 0) return float.MaxValue;
+                        return Mathf.Abs(dx) < colTolerance ? dy : dy + Mathf.Abs(dx) * 10;
+
+                    case Adjacent.Above:
+                        // Must be above, prefer same column
+                        if (dy >= 0) return float.MaxValue;
+                        return Mathf.Abs(dx) < colTolerance ? -dy : -dy + Mathf.Abs(dx) * 10;
+
+                    default:
+                        return float.MaxValue;
+                }
+            }
+
+            static bool WildcardMatch(string subject, string pattern)
+            {
+                if (string.IsNullOrEmpty(subject) || string.IsNullOrEmpty(pattern))
+                    return false;
+
+                if (!pattern.Contains('*'))
+                    return subject.Equals(pattern, StringComparison.OrdinalIgnoreCase);
+
+                string[] parts = pattern.Split('*');
+                int subjectIndex = 0;
+                string subjectLower = subject.ToLowerInvariant();
+                string patternLower = pattern.ToLowerInvariant();
+
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    string part = parts[i].ToLowerInvariant();
+                    if (string.IsNullOrEmpty(part)) continue;
+
+                    int foundIndex = subjectLower.IndexOf(part, subjectIndex, StringComparison.Ordinal);
+                    if (foundIndex < 0) return false;
+
+                    if (i == 0 && !patternLower.StartsWith("*") && foundIndex != 0)
+                        return false;
+
+                    if (i == parts.Length - 1 && !patternLower.EndsWith("*"))
+                    {
+                        if (foundIndex + part.Length != subjectLower.Length)
+                            return false;
+                    }
+
+                    subjectIndex = foundIndex + part.Length;
+                }
+
+                return true;
+            }
+
+            static bool MatchText(GameObject go, string pattern)
+            {
+                // Check all legacy Text components
+                foreach (var text in go.GetComponentsInChildren<Text>())
+                {
+                    if (text != null && !string.IsNullOrEmpty(text.text) && WildcardMatch(text.text, pattern))
+                        return true;
+                }
+
+                // Check all TMP_Text components
+                foreach (var tmpText in go.GetComponentsInChildren<TMP_Text>())
+                {
+                    if (tmpText != null && !string.IsNullOrEmpty(tmpText.text) && WildcardMatch(tmpText.text, pattern))
+                        return true;
+                }
+
+                return false;
+            }
+
+            static bool MatchSprite(GameObject go, string pattern)
+            {
+                var image = go.GetComponentInChildren<Image>();
+                if (image != null && image.sprite != null && WildcardMatch(image.sprite.name, pattern))
+                    return true;
+
+                var sr = go.GetComponentInChildren<SpriteRenderer>();
+                if (sr != null && sr.sprite != null && WildcardMatch(sr.sprite.name, pattern))
+                    return true;
+
+                return false;
+            }
+        }
+
+        #endregion
+
         public class TestException : Exception
         {
             public TestException(string message) : base(message) { }
         }
-
-        [Flags]
-        public enum Availability
-        {
-            None = 0,
-            Active = 1,
-            Enabled = 2,
-            All = Active | Enabled
-        }
-
         /// <summary>
         /// Direction for swipe gestures.
         /// </summary>
@@ -103,6 +705,28 @@ namespace ODDGames.UITest
         }
 
         public static int Interval { get; set; } = 100;
+
+        /// <summary>
+        /// When true, increases all intervals and enables verbose logging for debugging tests.
+        /// </summary>
+        public static bool DebugMode { get; set; } = false;
+
+        /// <summary>
+        /// Multiplier for all intervals when DebugMode is enabled. Default is 3x.
+        /// </summary>
+        public static float DebugIntervalMultiplier { get; set; } = 3f;
+
+        /// <summary>
+        /// Gets the effective interval, accounting for debug mode multiplier.
+        /// </summary>
+        static int EffectiveInterval => DebugMode ? (int)(Interval * DebugIntervalMultiplier) : Interval;
+
+        static void LogDebug(string message)
+        {
+            if (DebugMode)
+                Debug.Log($"[UITEST:DEBUG] {message}");
+        }
+
         static readonly List<Type> clickablesList = new() { typeof(Selectable) };
         static Type[] clickablesArray = { typeof(Selectable) };
         public static Type[] Clickables => clickablesArray;
@@ -183,8 +807,10 @@ namespace ODDGames.UITest
             // Always yield at least one frame to allow Unity to process events
             await UniTask.Yield(PlayerLoopTiming.Update, TestCancellationToken);
 
-            // Then wait for the remaining interval time
-            await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
+            // Then wait for the remaining interval time (uses EffectiveInterval for debug mode)
+            int delay = EffectiveInterval;
+            LogDebug($"ActionComplete: waiting {delay}ms");
+            await UniTask.Delay(delay, true, PlayerLoopTiming.Update, TestCancellationToken);
         }
 
         /// <summary>
@@ -212,11 +838,12 @@ namespace ODDGames.UITest
             }
         }
 
-        static bool CheckAvailability(UnityEngine.Object obj, Availability availability)
+        /// <summary>
+        /// Checks if an object meets the availability requirements specified by a Search query.
+        /// By default (no IncludeInactive/IncludeDisabled), requires active and enabled.
+        /// </summary>
+        static bool CheckAvailability(UnityEngine.Object obj, Search search)
         {
-            if (availability == Availability.None)
-                return true;
-
             if (obj == null)
                 return false;
 
@@ -234,13 +861,15 @@ namespace ODDGames.UITest
             if (go == null)
                 return false;
 
-            if ((availability & Availability.Active) != 0)
+            // Check active state (unless IncludeInactive is set)
+            if (search == null || !search.ShouldIncludeInactive)
             {
                 if (!go.activeInHierarchy)
                     return false;
             }
 
-            if ((availability & Availability.Enabled) != 0)
+            // Check enabled/interactable state (unless IncludeDisabled is set)
+            if (search == null || !search.ShouldIncludeDisabled)
             {
                 if (behaviour != null && !behaviour.enabled)
                     return false;
@@ -326,13 +955,19 @@ namespace ODDGames.UITest
         [ContextMenu("Run Test")]
         void RunTest()
         {
-            StartTest(clearData: false, testDataPath: null);
+            StartTest(clearData: false, testDataPath: null, debugMode: false);
+        }
+
+        [ContextMenu("Run Test (Debug)")]
+        void RunTestDebug()
+        {
+            StartTest(clearData: false, testDataPath: null, debugMode: true);
         }
 
         [ContextMenu("Run Test (Clear Data)")]
         void RunTestClearData()
         {
-            StartTest(clearData: true, testDataPath: null);
+            StartTest(clearData: true, testDataPath: null, debugMode: false);
         }
 
         [ContextMenu("Run Test with Data Folder...")]
@@ -341,7 +976,7 @@ namespace ODDGames.UITest
             string folder = UnityEditor.EditorUtility.OpenFolderPanel("Select Test Data Folder", Application.persistentDataPath, "data");
             if (!string.IsNullOrEmpty(folder))
             {
-                StartTest(clearData: false, testDataPath: folder);
+                StartTest(clearData: false, testDataPath: folder, debugMode: false);
             }
         }
 
@@ -351,11 +986,11 @@ namespace ODDGames.UITest
             string zipPath = UnityEditor.EditorUtility.OpenFilePanel("Select Test Data Zip", Application.persistentDataPath, "zip");
             if (!string.IsNullOrEmpty(zipPath))
             {
-                StartTest(clearData: false, testDataPath: zipPath);
+                StartTest(clearData: false, testDataPath: zipPath, debugMode: false);
             }
         }
 
-        void StartTest(bool clearData, string testDataPath)
+        void StartTest(bool clearData, string testDataPath, bool debugMode)
         {
             int scenario = Scenario;
             TestRunName = GetType().Name + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -380,6 +1015,7 @@ namespace ODDGames.UITest
             UnityEditor.SessionState.SetInt("GAME_LOOP_TEST_SCENARIO", scenario);
             UnityEditor.SessionState.SetString("GAME_LOOP_TEST_NAME", TestRunName);
             UnityEditor.SessionState.SetString("GAME_LOOP_TEST_DATA_PATH", testDataPath ?? "");
+            UnityEditor.SessionState.SetBool("GAME_LOOP_TEST_DEBUG", debugMode);
             UnityEditor.EditorApplication.isPlaying = true;
         }
 
@@ -515,9 +1151,11 @@ namespace ODDGames.UITest
             {
                 testScenario = UnityEditor.SessionState.GetInt("GAME_LOOP_TEST_SCENARIO", 0);
                 TestRunName = UnityEditor.SessionState.GetString("GAME_LOOP_TEST_NAME", "");
+                DebugMode = UnityEditor.SessionState.GetBool("GAME_LOOP_TEST_DEBUG", false);
             }
 
             UnityEditor.SessionState.SetBool("GAME_LOOP_TEST", false);
+            UnityEditor.SessionState.SetBool("GAME_LOOP_TEST_DEBUG", false);
 #endif
 
             if (Scenario != 0 && Scenario == testScenario)
@@ -534,7 +1172,15 @@ namespace ODDGames.UITest
                 }
                 testCts = new CancellationTokenSource();
 
-                Debug.Log($"[UITEST] Test Start: {GetType().Name}");
+                if (DebugMode)
+                {
+                    Debug.Log($"[UITEST] Test Start (DEBUG MODE): {GetType().Name}");
+                    Debug.Log($"[UITEST:DEBUG] Interval: {Interval}ms x {DebugIntervalMultiplier} = {EffectiveInterval}ms");
+                }
+                else
+                {
+                    Debug.Log($"[UITEST] Test Start: {GetType().Name}");
+                }
 
                 // Wait for editor to be fully in play mode and scene to initialize
                 await WaitForPlayModeReady();
@@ -630,27 +1276,35 @@ namespace ODDGames.UITest
         }
         protected abstract UniTask Test();
 
+        /// <summary>
+        /// Assert a condition is true. Throws TestException if false.
+        /// </summary>
+        protected void Assert(bool condition, string message = "Assertion failed")
+        {
+            if (!condition)
+            {
+                throw new TestException(message);
+            }
+        }
+
         protected async UniTask Wait(float seconds = 1f)
         {
+            LogDebug($"Wait: {seconds}s");
             await UniTask.Delay((int)(seconds * 1000), true, PlayerLoopTiming.Update, TestCancellationToken);
             await ActionComplete();
         }
 
-        protected async UniTask Wait(string[] search, int seconds = 10)
+        protected async UniTask Wait(Search search, int seconds = 10)
         {
-            Debug.Log($"[UITEST] Wait ({seconds}) [{string.Join(",", search)}]");
-            await Find<MonoBehaviour>(search, true, seconds);
-        }
-
-        protected async UniTask Wait(string search, int seconds = 10)
-        {
-            Debug.Log($"[UITEST] Wait ({seconds}) [{search}]");
+            Debug.Log($"[UITEST] Wait ({seconds}s)");
+            LogDebug($"Wait: with {seconds}s timeout");
             await Find<MonoBehaviour>(search, true, seconds);
         }
 
         protected async UniTask WaitFor(Func<bool> condition, float seconds = 60, string description = "condition")
         {
             Debug.Log($"[UITEST] WaitFor ({seconds}) [{description}]");
+            LogDebug($"WaitFor: '{description}' with {seconds}s timeout");
 
             var startTime = Time.realtimeSinceStartup;
 
@@ -658,11 +1312,12 @@ namespace ODDGames.UITest
             {
                 if (condition())
                 {
+                    LogDebug($"WaitFor: '{description}' satisfied after {Time.realtimeSinceStartup - startTime:F2}s");
                     await ActionComplete();
                     return;
                 }
 
-                await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
 
             TestCancellationToken.ThrowIfCancellationRequested();
@@ -694,7 +1349,7 @@ namespace ODDGames.UITest
                     return;
                 }
 
-                await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
 
             TestCancellationToken.ThrowIfCancellationRequested();
@@ -738,13 +1393,13 @@ namespace ODDGames.UITest
         /// <summary>
         /// Enters text into an input field using Input System injection (click to focus, type characters).
         /// </summary>
-        /// <param name="search">Name or search pattern for the input field</param>
+        /// <param name="search">Search query for the input field</param>
         /// <param name="input">Text to enter</param>
         /// <param name="seconds">Timeout for finding the input field</param>
         /// <param name="pressEnter">Whether to press Enter after typing</param>
-        protected async UniTask TextInput(string search, string input, float seconds = 10, bool pressEnter = false)
+        protected async UniTask TextInput(Search search, string input, float seconds = 10, bool pressEnter = false)
         {
-            Debug.Log($"[UITEST] TextInput ({seconds}) [{search}] '{input}' pressEnter={pressEnter}");
+            Debug.Log($"[UITEST] TextInput ({seconds}) '{input}' pressEnter={pressEnter}");
 
             // Try to find TMP_InputField or legacy InputField - quick check first (single iteration)
             var findStart = Time.realtimeSinceStartup;
@@ -875,13 +1530,13 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Simulates a key press on a specific target found by search pattern.
+        /// Simulates a key press on a specific target found by search query.
         /// </summary>
-        protected async UniTask PressKey(KeyCode key, string search, float seconds = 10)
+        protected async UniTask PressKey(KeyCode key, Search search, float seconds = 10)
         {
             var component = await Find<Component>(search, true, seconds);
             GameObject target = component?.gameObject;
-            Debug.Log($"[UITEST] PressKey [{key}] search='{search}' target='{(target != null ? target.name : "none")}'");
+            Debug.Log($"[UITEST] PressKey [{key}] target='{(target != null ? target.name : "none")}'");
 
             if (target != null && TryCustomKeyHandlers(target, key))
             {
@@ -1188,19 +1843,23 @@ namespace ODDGames.UITest
             await ClickAny(searches, throwIfMissing: true, seconds: 5);
         }
 
-        protected async UniTask ClickAny(string[] searches, bool throwIfMissing = true, float seconds = 5, Availability availability = Availability.Active | Availability.Enabled)
+        protected async UniTask ClickAny(string[] searches, bool throwIfMissing = true, float seconds = 5)
         {
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying)
             {
-                var b = await Find<IPointerClickHandler>(searches, false, 0.5f, availability, Clickables);
-
-                if (b != null)
+                // Try each search pattern
+                foreach (var searchPattern in searches)
                 {
-                    await SimulateClick(b);
-                    await ActionComplete();
-                    return;
+                    var b = await Find<IPointerClickHandler>(Search.ByAny(searchPattern), throwIfMissing: false, seconds: 0.1f);
+
+                    if (b != null)
+                    {
+                        await SimulateClick(b);
+                        await ActionComplete();
+                        return;
+                    }
                 }
 
                 await UniTask.Delay(100, true);
@@ -1227,6 +1886,7 @@ namespace ODDGames.UITest
 
                 // Get screen position of target
                 Vector2 screenPosition = GetScreenPosition(component.gameObject);
+                LogDebug($"SimulateClick: screen position ({screenPosition.x:F0}, {screenPosition.y:F0})");
 
                 // Use Input System to inject mouse click
                 await InjectMouseClick(screenPosition);
@@ -1312,15 +1972,15 @@ namespace ODDGames.UITest
         }
 
 
-        protected async UniTask Hold(string search, float seconds, bool throwIfMissing = true, float searchTime = 10, Availability availability = Availability.Active | Availability.Enabled)
+        protected async UniTask Hold(Search search, float seconds, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Hold ({searchTime}) [{search}] for {seconds}s");
+            Debug.Log($"[UITEST] Hold ({searchTime}) for {seconds}s");
 
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
             {
-                var b = await Find<IPointerDownHandler>(search, false, 0.5f, availability, Clickables);
+                var b = await Find<IPointerDownHandler>(search, false, 0.5f);
 
                 if (b != null && b is UnityEngine.Component c1)
                 {
@@ -1335,7 +1995,7 @@ namespace ODDGames.UITest
 
             if (throwIfMissing)
             {
-                throw new TestException($"Hold on '{search}' could not find any matching target within {searchTime}s");
+                throw new TestException($"Hold could not find any matching target within {searchTime}s");
             }
         }
 
@@ -1382,53 +2042,53 @@ namespace ODDGames.UITest
             await UniTask.Yield();
         }
 
-        protected async UniTask Click(string search = "", bool throwIfMissing = true, float searchTime = 10, int repeat = 0, Availability availability = Availability.Active | Availability.Enabled, int index = 0)
-        {
-            await Click(new string[] { search }, throwIfMissing, searchTime, repeat, availability, index);
-        }
-
-        protected async UniTask Click(string[] search, bool throwIfMissing = true, float searchTime = 10, int repeat = 0, Availability availability = Availability.Active | Availability.Enabled, int index = 0)
+        /// <summary>
+        /// Clicks on a UI element matching the Search query.
+        /// Supports implicit string conversion: Click("ButtonName") becomes Click(Search.ByText("ButtonName"))
+        /// Use search.IncludeInactive() to find inactive GameObjects.
+        /// Use search.IncludeDisabled() to find disabled/non-interactable components.
+        /// </summary>
+        protected async UniTask Click(Search search, bool throwIfMissing = true, float searchTime = 10, int repeat = 0, int index = 0)
         {
             do
             {
                 string indexInfo = index > 0 ? $" index={index}" : "";
-                Debug.Log($"[UITEST] Click ({searchTime}) [{string.Join(", ", search)}]{indexInfo}");
+                Debug.Log($"[UITEST] Click (Search) timeout={searchTime}s{indexInfo}");
+                LogDebug($"Click: using Search query with {searchTime}s timeout{indexInfo}");
 
                 float startTime = Time.realtimeSinceStartup;
+                int searchIterations = 0;
+                var findMode = search.ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
 
                 while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
                 {
-                    if (index > 0)
-                    {
-                        var items = await FindAll<IPointerClickHandler>(search[0].ToLower(), 0.5f, availability, Clickables);
-                        var itemList = items.ToList();
+                    searchIterations++;
 
-                        if (index < itemList.Count && itemList[index] != null)
-                        {
-                            await SimulateClick(itemList[index]);
-                            await ActionComplete();
-                            goto nextRepeat;
-                        }
-                    }
-                    else
-                    {
-                        var b = await Find<IPointerClickHandler>(search, false, 0.5f, availability, Clickables);
+                    // Find all clickable objects and filter by Search query
+                    var allClickables = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None)
+                        .Where(b => b != null && b is IPointerClickHandler && CheckAvailability(b, search) && search.Matches(b.gameObject))
+                        .ToList();
 
-                        if (b != null)
-                        {
-                            await SimulateClick(b);
-                            await ActionComplete();
-                            goto nextRepeat;
-                        }
+                    LogDebug($"Click: iteration {searchIterations}, found {allClickables.Count} matching clickables");
+
+                    if (allClickables.Count > index)
+                    {
+                        var target = allClickables[index];
+                        LogDebug($"Click: found target at index {index} after {searchIterations} iterations ({Time.realtimeSinceStartup - startTime:F2}s): {GetHierarchyPath(target.transform)}");
+                        await SimulateClick(target);
+                        await ActionComplete();
+                        goto nextRepeat;
                     }
 
                     await UniTask.Delay(100, true);
                 }
 
+                LogDebug($"Click: target not found after {searchIterations} iterations ({Time.realtimeSinceStartup - startTime:F2}s)");
+
                 if (throwIfMissing)
                 {
                     string indexMsg = index > 0 ? $" at index {index}" : "";
-                    throw new TestException($"Click on '{string.Join(", ", search)}'{indexMsg} could not find any matching target within {searchTime}s");
+                    throw new TestException($"Click (Search){indexMsg} could not find any matching target within {searchTime}s");
                 }
 
                 nextRepeat:
@@ -1439,56 +2099,95 @@ namespace ODDGames.UITest
 
         private bool IsWildcardMatch(string subject, string wildcardPattern)
         {
+            if (string.IsNullOrEmpty(subject) || string.IsNullOrWhiteSpace(wildcardPattern))
+                return false;
+
             if (string.CompareOrdinal(subject, wildcardPattern) == 0)
                 return true;
 
-            if (string.IsNullOrWhiteSpace(wildcardPattern))
-                return false;
-
-            int wildcardCount = wildcardPattern.Count(x => x.Equals('*'));
-
-            if (wildcardCount <= 0)
+            // No wildcards - exact match (case insensitive)
+            if (!wildcardPattern.Contains('*'))
             {
                 return subject.Equals(wildcardPattern, StringComparison.CurrentCultureIgnoreCase);
             }
-            else if (wildcardCount == 1)
-            {
-                string newWildcardPattern = wildcardPattern.Replace("*", "");
 
-                if (wildcardPattern.StartsWith("*"))
-                    return subject.EndsWith(newWildcardPattern, StringComparison.CurrentCultureIgnoreCase);
-                else if (wildcardPattern.EndsWith("*"))
-                    return subject.StartsWith(newWildcardPattern, StringComparison.CurrentCultureIgnoreCase);
-            }
-            else if (wildcardCount == 2 && wildcardPattern.StartsWith("*") && wildcardPattern.EndsWith("*"))
+            // Convert glob pattern to regex-like matching
+            // Split by * and match each part in sequence
+            string[] parts = wildcardPattern.Split('*');
+            int subjectIndex = 0;
+            string subjectLower = subject.ToLowerInvariant();
+
+            for (int i = 0; i < parts.Length; i++)
             {
-                // *text* = contains
-                string searchText = wildcardPattern.Substring(1, wildcardPattern.Length - 2);
-                return subject.IndexOf(searchText, StringComparison.CurrentCultureIgnoreCase) >= 0;
+                string part = parts[i].ToLowerInvariant();
+
+                if (string.IsNullOrEmpty(part))
+                    continue;
+
+                int foundIndex = subjectLower.IndexOf(part, subjectIndex, StringComparison.Ordinal);
+
+                if (foundIndex < 0)
+                    return false;
+
+                // First part must match at start if pattern doesn't start with *
+                if (i == 0 && !wildcardPattern.StartsWith("*") && foundIndex != 0)
+                    return false;
+
+                // Last part must match at end if pattern doesn't end with *
+                if (i == parts.Length - 1 && !wildcardPattern.EndsWith("*"))
+                {
+                    if (foundIndex + part.Length != subjectLower.Length)
+                        return false;
+                }
+
+                subjectIndex = foundIndex + part.Length;
             }
 
-            return false;
+            return true;
         }
 
         protected async UniTask Click(bool throwIfMissing = true)
         {
-            Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            Debug.Log($"[UITEST] Click (screen center) at ({screenCenter.x:F0}, {screenCenter.y:F0})");
+            await ClickAt(0.5f, 0.5f);
+        }
 
-            // Use Input System to inject click at screen center
-            await InjectMouseClick(screenCenter);
+        /// <summary>
+        /// Clicks at a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0 = bottom, 1 = top)</param>
+        protected async UniTask ClickAt(float xPercent, float yPercent)
+        {
+            Vector2 pos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
+            Debug.Log($"[UITEST] ClickAt ({xPercent:P0}, {yPercent:P0}) at ({pos.x:F0}, {pos.y:F0})");
+
+            await InjectMouseClick(pos);
             await ActionComplete();
         }
 
         /// <summary>
-        /// Double-clicks on a UI element by name.
+        /// Double-clicks at a screen position specified as percentages (0-1).
         /// </summary>
-        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0 = bottom, 1 = top)</param>
+        protected async UniTask DoubleClickAt(float xPercent, float yPercent)
+        {
+            Vector2 pos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
+            Debug.Log($"[UITEST] DoubleClickAt ({xPercent:P0}, {yPercent:P0}) at ({pos.x:F0}, {pos.y:F0})");
+
+            await InjectMouseDoubleClick(pos);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Double-clicks on a UI element.
+        /// </summary>
+        /// <param name="search">Search query for the element</param>
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
-        protected async UniTask DoubleClick(string search, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask DoubleClick(Search search, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] DoubleClick [{search}]");
+            Debug.Log($"[UITEST] DoubleClick");
 
             var target = await Find<IPointerClickHandler>(search, throwIfMissing, searchTime);
             if (target == null) return;
@@ -1538,13 +2237,13 @@ namespace ODDGames.UITest
         /// <summary>
         /// Scrolls the mouse wheel at the specified element or screen center.
         /// </summary>
-        /// <param name="search">Name or search pattern for the element to scroll on</param>
+        /// <param name="search">Search query for the element to scroll on</param>
         /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
-        protected async UniTask Scroll(string search, float delta, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Scroll(Search search, float delta, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Scroll [{search}] delta={delta}");
+            Debug.Log($"[UITEST] Scroll delta={delta}");
 
             var target = await Find<RectTransform>(search, throwIfMissing, searchTime);
             if (target == null) return;
@@ -1564,6 +2263,21 @@ namespace ODDGames.UITest
             Debug.Log($"[UITEST] Scroll (screen center) delta={delta}");
 
             await InjectMouseScroll(screenCenter, delta);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Scrolls the mouse wheel at a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0 = bottom, 1 = top)</param>
+        /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
+        protected async UniTask ScrollAt(float xPercent, float yPercent, float delta)
+        {
+            Vector2 pos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
+            Debug.Log($"[UITEST] ScrollAt ({xPercent:P0}, {yPercent:P0}) delta={delta} at ({pos.x:F0}, {pos.y:F0})");
+
+            await InjectMouseScroll(pos, delta);
             await ActionComplete();
         }
 
@@ -1602,13 +2316,13 @@ namespace ODDGames.UITest
         /// <summary>
         /// Swipes on an element in the specified direction.
         /// </summary>
-        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="search">Search query for the element</param>
         /// <param name="direction">Swipe direction (Left, Right, Up, Down)</param>
         /// <param name="distance">Swipe distance as percentage of screen height (0.2 = 20%)</param>
         /// <param name="duration">Duration of the swipe</param>
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
-        protected async UniTask Swipe(string search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Swipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, bool throwIfMissing = true, float searchTime = 10)
         {
             float distancePixels = distance * Screen.height;
             Vector2 delta = direction switch
@@ -1620,7 +2334,8 @@ namespace ODDGames.UITest
                 _ => Vector2.zero
             };
 
-            Debug.Log($"[UITEST] Swipe [{search}] {direction} duration={duration}s distance={distance:P0} ({distancePixels:F0}px)");
+            Debug.Log($"[UITEST] Swipe {direction} duration={duration}s distance={distance:P0} ({distancePixels:F0}px)");
+            LogDebug($"Swipe: delta=({delta.x:F0}, {delta.y:F0}), Screen.height={Screen.height}");
 
             await Drag(search, delta, duration, throwIfMissing, searchTime);
         }
@@ -1633,6 +2348,19 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the swipe</param>
         protected async UniTask Swipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
         {
+            await SwipeAt(0.5f, 0.5f, direction, distance, duration);
+        }
+
+        /// <summary>
+        /// Swipes at a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0 = bottom, 1 = top)</param>
+        /// <param name="direction">Swipe direction</param>
+        /// <param name="distance">Swipe distance as percentage of screen height (0.2 = 20%)</param>
+        /// <param name="duration">Duration of the swipe</param>
+        protected async UniTask SwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        {
             float distancePixels = distance * Screen.height;
             Vector2 delta = direction switch
             {
@@ -1643,24 +2371,24 @@ namespace ODDGames.UITest
                 _ => Vector2.zero
             };
 
-            Debug.Log($"[UITEST] Swipe (screen center) {direction} distance={distance:P0} ({distancePixels:F0}px)");
+            Debug.Log($"[UITEST] SwipeAt ({xPercent:P0}, {yPercent:P0}) {direction} distance={distance:P0} ({distancePixels:F0}px)");
 
-            await Drag(delta, duration);
+            await DragAt(xPercent, yPercent, delta, duration);
         }
 
         /// <summary>
         /// Performs a pinch gesture on an element.
         /// </summary>
-        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="search">Search query for the element</param>
         /// <param name="scale">Scale factor: &gt;1 = zoom in (fingers spread), &lt;1 = zoom out (fingers pinch)</param>
         /// <param name="duration">Duration of the gesture</param>
         /// <param name="fingerDistance">Starting distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
-        protected async UniTask Pinch(string search, float scale, float duration = 0.5f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Pinch(Search search, float scale, float duration = 0.5f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
         {
             float distancePixels = fingerDistance * Screen.height;
-            Debug.Log($"[UITEST] Pinch [{search}] scale={scale} duration={duration}s fingerDistance={fingerDistance:P0} ({distancePixels:F0}px)");
+            Debug.Log($"[UITEST] Pinch scale={scale} duration={duration}s fingerDistance={fingerDistance:P0} ({distancePixels:F0}px)");
 
             var target = await Find<Transform>(search, throwIfMissing, searchTime);
             if (target == null) return;
@@ -1677,9 +2405,22 @@ namespace ODDGames.UITest
         /// <param name="fingerDistance">Starting distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
         protected async UniTask Pinch(float scale, float duration = 0.5f, float fingerDistance = 0.05f)
         {
-            Vector2 center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            await PinchAt(0.5f, 0.5f, scale, duration, fingerDistance);
+        }
+
+        /// <summary>
+        /// Performs a pinch gesture at a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0 = bottom, 1 = top)</param>
+        /// <param name="scale">Scale factor: &gt;1 = zoom in (fingers spread), &lt;1 = zoom out (fingers pinch)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerDistance">Starting distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
+        protected async UniTask PinchAt(float xPercent, float yPercent, float scale, float duration = 0.5f, float fingerDistance = 0.05f)
+        {
+            Vector2 center = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             float distancePixels = fingerDistance * Screen.height;
-            Debug.Log($"[UITEST] Pinch (screen center) scale={scale} fingerDistance={fingerDistance:P0} ({distancePixels:F0}px)");
+            Debug.Log($"[UITEST] PinchAt ({xPercent:P0}, {yPercent:P0}) scale={scale} fingerDistance={fingerDistance:P0} ({distancePixels:F0}px)");
 
             await PinchAt(center, scale, duration, distancePixels);
         }
@@ -1703,23 +2444,23 @@ namespace ODDGames.UITest
         /// <summary>
         /// Performs a two-finger swipe gesture on an element.
         /// </summary>
-        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="search">Search query for the element</param>
         /// <param name="direction">Swipe direction</param>
         /// <param name="distance">Swipe distance as percentage of screen height (0.2 = 20%)</param>
         /// <param name="duration">Duration of the gesture</param>
         /// <param name="fingerSpacing">Distance between the two fingers as percentage of screen height (0.03 = 3%)</param>
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
-        protected async UniTask TwoFingerSwipe(string search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask TwoFingerSwipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f, bool throwIfMissing = true, float searchTime = 10)
         {
             float distancePixels = distance * Screen.height;
             float spacingPixels = fingerSpacing * Screen.height;
-            Debug.Log($"[UITEST] TwoFingerSwipe [{search}] {direction} duration={duration}s distance={distance:P0} ({distancePixels:F0}px) spacing={fingerSpacing:P0} ({spacingPixels:F0}px)");
+            Debug.Log($"[UITEST] TwoFingerSwipe {direction} duration={duration}s distance={distance:P0} ({distancePixels:F0}px) spacing={fingerSpacing:P0} ({spacingPixels:F0}px)");
 
             var target = await Find<Transform>(search, throwIfMissing, searchTime);
             if (target == null)
             {
-                Debug.LogWarning($"[UITEST] TwoFingerSwipe - target '{search}' not found");
+                Debug.LogWarning($"[UITEST] TwoFingerSwipe - target not found");
                 return;
             }
 
@@ -1736,10 +2477,24 @@ namespace ODDGames.UITest
         /// <param name="fingerSpacing">Distance between the two fingers as percentage of screen height (0.03 = 3%)</param>
         protected async UniTask TwoFingerSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
-            Vector2 center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            await TwoFingerSwipeAt(0.5f, 0.5f, direction, distance, duration, fingerSpacing);
+        }
+
+        /// <summary>
+        /// Performs a two-finger swipe gesture at a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0 = bottom, 1 = top)</param>
+        /// <param name="direction">Swipe direction</param>
+        /// <param name="distance">Swipe distance as percentage of screen height (0.2 = 20%)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerSpacing">Distance between the two fingers as percentage of screen height (0.03 = 3%)</param>
+        protected async UniTask TwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        {
+            Vector2 center = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             float distancePixels = distance * Screen.height;
             float spacingPixels = fingerSpacing * Screen.height;
-            Debug.Log($"[UITEST] TwoFingerSwipe (screen center) {direction} distance={distance:P0} ({distancePixels:F0}px) spacing={fingerSpacing:P0} ({spacingPixels:F0}px)");
+            Debug.Log($"[UITEST] TwoFingerSwipeAt ({xPercent:P0}, {yPercent:P0}) {direction} distance={distance:P0} ({distancePixels:F0}px)");
 
             await TwoFingerSwipeAt(center, direction, distancePixels, duration, spacingPixels);
         }
@@ -1771,21 +2526,21 @@ namespace ODDGames.UITest
         /// <summary>
         /// Performs a two-finger rotation gesture on an element.
         /// </summary>
-        /// <param name="search">Name or search pattern for the element</param>
+        /// <param name="search">Search query for the element</param>
         /// <param name="degrees">Rotation angle in degrees (positive = clockwise)</param>
         /// <param name="duration">Duration of the gesture</param>
         /// <param name="fingerDistance">Distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
-        protected async UniTask Rotate(string search, float degrees, float duration = 0.5f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Rotate(Search search, float degrees, float duration = 0.5f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
         {
             float radiusPixels = fingerDistance * Screen.height;
-            Debug.Log($"[UITEST] Rotate [{search}] {degrees} degrees duration={duration}s fingerDistance={fingerDistance:P0} ({radiusPixels:F0}px)");
+            Debug.Log($"[UITEST] Rotate {degrees} degrees duration={duration}s fingerDistance={fingerDistance:P0} ({radiusPixels:F0}px)");
 
             var target = await Find<Transform>(search, throwIfMissing, searchTime);
             if (target == null)
             {
-                Debug.LogWarning($"[UITEST] Rotate - target '{search}' not found");
+                Debug.LogWarning($"[UITEST] Rotate - target not found");
                 return;
             }
 
@@ -1801,9 +2556,22 @@ namespace ODDGames.UITest
         /// <param name="fingerDistance">Distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
         protected async UniTask Rotate(float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
         {
-            var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            await RotateAt(0.5f, 0.5f, degrees, duration, fingerDistance);
+        }
+
+        /// <summary>
+        /// Performs a two-finger rotation gesture at a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0 = bottom, 1 = top)</param>
+        /// <param name="degrees">Rotation angle in degrees (positive = clockwise)</param>
+        /// <param name="duration">Duration of the gesture</param>
+        /// <param name="fingerDistance">Distance of each finger from center as percentage of screen height (0.05 = 5%)</param>
+        protected async UniTask RotateAt(float xPercent, float yPercent, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
+        {
+            var center = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             float radiusPixels = fingerDistance * Screen.height;
-            Debug.Log($"[UITEST] Rotate (screen center) {degrees} degrees fingerDistance={fingerDistance:P0} ({radiusPixels:F0}px)");
+            Debug.Log($"[UITEST] RotateAt ({xPercent:P0}, {yPercent:P0}) {degrees} degrees fingerDistance={fingerDistance:P0} ({radiusPixels:F0}px)");
 
             await RotateAt(center, degrees, duration, radiusPixels);
         }
@@ -1986,9 +2754,23 @@ namespace ODDGames.UITest
             await DragFromTo(startPos, startPos + direction, duration);
         }
 
-        protected async UniTask Drag(string search, Vector2 direction, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        /// <summary>
+        /// Drags from a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0 = bottom, 1 = top)</param>
+        /// <param name="direction">Drag direction in pixels</param>
+        /// <param name="duration">Duration of the drag</param>
+        protected async UniTask DragAt(float xPercent, float yPercent, Vector2 direction, float duration = 0.5f)
         {
-            Debug.Log($"[UITEST] Drag ({duration}s) [{search}] delta=({direction.x:F0},{direction.y:F0})");
+            Vector2 startPos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
+            Debug.Log($"[UITEST] DragAt ({xPercent:P0}, {yPercent:P0}) delta=({direction.x:F0},{direction.y:F0})");
+            await DragFromTo(startPos, startPos + direction, duration);
+        }
+
+        protected async UniTask Drag(Search search, Vector2 direction, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        {
+            Debug.Log($"[UITEST] Drag ({duration}s) delta=({direction.x:F0},{direction.y:F0})");
 
             var target = await Find<RectTransform>(search, throwIfMissing, searchTime);
             if (target == null) return;
@@ -2013,14 +2795,14 @@ namespace ODDGames.UITest
         /// <summary>
         /// Drags one element to another element (drag and drop).
         /// </summary>
-        /// <param name="sourceSearch">Name or search pattern for the element to drag</param>
-        /// <param name="targetSearch">Name or search pattern for the drop target</param>
+        /// <param name="sourceSearch">Search query for the element to drag</param>
+        /// <param name="targetSearch">Search query for the drop target</param>
         /// <param name="duration">Duration of the drag animation</param>
         /// <param name="throwIfMissing">Whether to throw if elements not found</param>
         /// <param name="searchTime">Timeout for finding the elements</param>
-        protected async UniTask DragTo(string sourceSearch, string targetSearch, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask DragTo(Search sourceSearch, Search targetSearch, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] DragTo ({duration}s) '{sourceSearch}' -> '{targetSearch}'");
+            Debug.Log($"[UITEST] DragTo ({duration}s)");
 
             var source = await Find<RectTransform>(sourceSearch, throwIfMissing, searchTime);
             if (source == null) return;
@@ -2040,14 +2822,14 @@ namespace ODDGames.UITest
         /// <summary>
         /// Clicks on a slider at a percentage position (0-1) of its visible area.
         /// </summary>
-        /// <param name="search">Name or search pattern for the slider</param>
+        /// <param name="search">Search query for the slider</param>
         /// <param name="percent">Position to click as percentage (0 = left/bottom, 1 = right/top)</param>
         /// <param name="throwIfMissing">Whether to throw if slider not found</param>
         /// <param name="searchTime">Timeout for finding the slider</param>
-        protected async UniTask ClickSlider(string search, float percent, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask ClickSlider(Search search, float percent, bool throwIfMissing = true, float searchTime = 10)
         {
             percent = Mathf.Clamp01(percent);
-            Debug.Log($"[UITEST] ClickSlider ({searchTime}s) [{search}] at {percent:P0}");
+            Debug.Log($"[UITEST] ClickSlider ({searchTime}s) at {percent:P0}");
 
             var slider = await Find<Slider>(search, throwIfMissing, searchTime);
             if (slider == null) return;
@@ -2062,17 +2844,17 @@ namespace ODDGames.UITest
         /// <summary>
         /// Drags on a slider from one percentage position to another.
         /// </summary>
-        /// <param name="search">Name or search pattern for the slider</param>
+        /// <param name="search">Search query for the slider</param>
         /// <param name="fromPercent">Start position as percentage (0-1)</param>
         /// <param name="toPercent">End position as percentage (0-1)</param>
         /// <param name="throwIfMissing">Whether to throw if slider not found</param>
         /// <param name="searchTime">Timeout for finding the slider</param>
         /// <param name="duration">Duration of the drag animation</param>
-        protected async UniTask DragSlider(string search, float fromPercent, float toPercent, bool throwIfMissing = true, float searchTime = 10, float duration = 0.3f)
+        protected async UniTask DragSlider(Search search, float fromPercent, float toPercent, bool throwIfMissing = true, float searchTime = 10, float duration = 0.3f)
         {
             fromPercent = Mathf.Clamp01(fromPercent);
             toPercent = Mathf.Clamp01(toPercent);
-            Debug.Log($"[UITEST] DragSlider ({searchTime}s) [{search}] from {fromPercent:P0} to {toPercent:P0}");
+            Debug.Log($"[UITEST] DragSlider ({searchTime}s) from {fromPercent:P0} to {toPercent:P0}");
 
             var slider = await Find<Slider>(search, throwIfMissing, searchTime);
             if (slider == null) return;
@@ -2140,134 +2922,66 @@ namespace ODDGames.UITest
         /// Clicks the dropdown to open it, then clicks the option at the specified index.
         /// Supports both legacy Dropdown and TMP_Dropdown.
         /// </summary>
-        /// <param name="search">Name or search pattern for the dropdown</param>
+        /// <param name="search">Search query for the dropdown</param>
         /// <param name="optionIndex">Index of the option to select (0-based)</param>
         /// <param name="throwIfMissing">Whether to throw if dropdown not found</param>
         /// <param name="searchTime">Timeout for finding the dropdown</param>
-        protected async UniTask ClickDropdown(string search, int optionIndex, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask ClickDropdown(Search search, int optionIndex, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) [{search}] option index={optionIndex}");
+            Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) option index={optionIndex}");
 
             // Try to find legacy Dropdown first, then TMP_Dropdown
             var legacyDropdown = await Find<Dropdown>(search, false, searchTime / 2);
             var tmpDropdown = legacyDropdown == null ? await Find<TMP_Dropdown>(search, false, searchTime / 2) : null;
 
             GameObject dropdownGO = null;
+            RectTransform template = null;
+
             if (legacyDropdown != null)
+            {
                 dropdownGO = legacyDropdown.gameObject;
+                template = legacyDropdown.template;
+            }
             else if (tmpDropdown != null)
+            {
                 dropdownGO = tmpDropdown.gameObject;
+                template = tmpDropdown.template;
+            }
 
             if (dropdownGO == null)
             {
                 if (throwIfMissing)
-                    throw new TestException($"ClickDropdown - Could not find Dropdown or TMP_Dropdown '{search}'");
+                    throw new TestException($"ClickDropdown - Could not find Dropdown or TMP_Dropdown");
                 return;
             }
 
-            // Click the dropdown to open it
-            Vector2 dropdownPos = GetScreenPosition(dropdownGO);
-            await InjectMouseClick(dropdownPos);
-
-            // Wait for dropdown list to appear and stabilize
-            await UniTask.Delay(150, true);
-
-            // Find the dropdown list - it's created as a child when opened
-            Transform dropdownList = dropdownGO.transform.Find("Dropdown List");
-            if (dropdownList == null)
-            {
-                // Try finding it in the scene (some implementations create it elsewhere)
-                var allDropdownLists = GameObject.FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-                foreach (var t in allDropdownLists)
-                {
-                    if (t.name == "Dropdown List" && t.gameObject.activeInHierarchy)
-                    {
-                        dropdownList = t;
-                        break;
-                    }
-                }
-            }
-
-            if (dropdownList == null)
-            {
-                Debug.LogWarning($"[UITEST] ClickDropdown - Dropdown list not found after clicking '{search}'");
-                return;
-            }
-
-            // Find the content container with the items
-            Transform content = dropdownList.Find("Viewport/Content");
-            if (content == null)
-            {
-                // Try alternative paths
-                content = dropdownList.Find("Content");
-                if (content == null)
-                {
-                    // Search recursively for Content
-                    content = FindChildRecursive(dropdownList, "Content");
-                }
-            }
-
-            if (content == null)
-            {
-                Debug.LogWarning($"[UITEST] ClickDropdown - Content not found in dropdown list");
-                return;
-            }
-
-            // Find the item at the target index - items are named "Item N: Label" or just "Item N"
-            Transform targetItem = null;
-            int itemCount = 0;
-            for (int i = 0; i < content.childCount; i++)
-            {
-                var child = content.GetChild(i);
-                // Skip template items (usually inactive)
-                if (!child.gameObject.activeInHierarchy)
-                    continue;
-
-                // Check if this is the item we want
-                if (child.name.StartsWith("Item "))
-                {
-                    if (itemCount == optionIndex)
-                    {
-                        targetItem = child;
-                        break;
-                    }
-                    itemCount++;
-                }
-            }
-
-            if (targetItem == null)
-            {
-                Debug.LogWarning($"[UITEST] ClickDropdown - Item at index {optionIndex} not found (found {itemCount} items)");
-                return;
-            }
-
-            // Click the item
-            Vector2 itemPos = GetScreenPosition(targetItem.gameObject);
-            await InjectMouseClick(itemPos);
-
-            await ActionComplete();
+            await ClickDropdownItem(dropdownGO, template, optionIndex);
         }
 
         /// <summary>
         /// Selects a dropdown option by label text using actual clicks.
         /// Supports both legacy Dropdown and TMP_Dropdown.
         /// </summary>
-        /// <param name="search">Name or search pattern for the dropdown</param>
+        /// <param name="search">Search query for the dropdown</param>
         /// <param name="optionLabel">The text label of the option to select</param>
         /// <param name="throwIfMissing">Whether to throw if dropdown not found</param>
         /// <param name="searchTime">Timeout for finding the dropdown</param>
-        protected async UniTask ClickDropdown(string search, string optionLabel, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask ClickDropdown(Search search, string optionLabel, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) [{search}] option='{optionLabel}'");
+            Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) option='{optionLabel}'");
 
             // Try to find legacy Dropdown first, then TMP_Dropdown
             var legacyDropdown = await Find<Dropdown>(search, false, searchTime / 2);
             var tmpDropdown = legacyDropdown == null ? await Find<TMP_Dropdown>(search, false, searchTime / 2) : null;
 
             int optionIndex = -1;
+            GameObject dropdownGO = null;
+            RectTransform template = null;
 
             if (legacyDropdown != null)
             {
+                dropdownGO = legacyDropdown.gameObject;
+                template = legacyDropdown.template;
                 for (int i = 0; i < legacyDropdown.options.Count; i++)
                 {
                     if (legacyDropdown.options[i].text == optionLabel)
@@ -2279,6 +2993,8 @@ namespace ODDGames.UITest
             }
             else if (tmpDropdown != null)
             {
+                dropdownGO = tmpDropdown.gameObject;
+                template = tmpDropdown.template;
                 for (int i = 0; i < tmpDropdown.options.Count; i++)
                 {
                     if (tmpDropdown.options[i].text == optionLabel)
@@ -2301,23 +3017,56 @@ namespace ODDGames.UITest
                 return;
             }
 
-            await ClickDropdown(search, optionIndex, throwIfMissing, searchTime: 0.5f);
+            // Use the already-found dropdown directly
+            await ClickDropdownItem(dropdownGO, template, optionIndex);
         }
 
         /// <summary>
-        /// Finds a child transform recursively by name.
+        /// Internal method to click a dropdown item after the dropdown has been found.
         /// </summary>
-        private static Transform FindChildRecursive(Transform parent, string name)
+        private async UniTask ClickDropdownItem(GameObject dropdownGO, RectTransform template, int optionIndex)
         {
-            foreach (Transform child in parent)
+            // Capture existing toggles before opening dropdown
+            var existingToggles = new HashSet<Toggle>(
+                GameObject.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+
+            // Click the dropdown to open it
+            Vector2 dropdownPos = GetScreenPosition(dropdownGO);
+            await InjectMouseClick(dropdownPos);
+
+            // Wait for new toggles to appear (the dropdown items)
+            Toggle[] newToggles = null;
+            float waitTime = 0f;
+            const float maxWaitTime = 0.5f;
+
+            while (waitTime < maxWaitTime)
             {
-                if (child.name == name)
-                    return child;
-                var found = FindChildRecursive(child, name);
-                if (found != null)
-                    return found;
+                await UniTask.DelayFrame(1);
+
+                var allToggles = GameObject.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+                // Find toggles that are new (created by opening the dropdown) and not part of the template
+                newToggles = allToggles
+                    .Where(t => !existingToggles.Contains(t))
+                    .Where(t => t.gameObject.activeInHierarchy)
+                    .Where(t => template == null || (!t.transform.IsChildOf(template) && t.transform != template))
+                    .OrderBy(t => t.transform.GetSiblingIndex())
+                    .ToArray();
+
+                if (newToggles.Length > optionIndex)
+                {
+                    var targetToggle = newToggles[optionIndex];
+                    Vector2 itemPos = GetScreenPosition(targetToggle.gameObject);
+                    await InjectMouseClick(itemPos);
+                    await ActionComplete();
+                    return;
+                }
+
+                await UniTask.Delay(50, true);
+                waitTime += 0.05f;
             }
-            return null;
+
+            Debug.LogWarning($"[UITEST] ClickDropdown - Item at index {optionIndex} not found (found {newToggles?.Length ?? 0} new toggles)");
         }
 
         /// <summary>
@@ -2393,7 +3142,7 @@ namespace ODDGames.UITest
 
             Debug.Log($"[UITEST] SimulatePlay ({seconds}) [{string.Join(',', targets)}]");
 
-            await UniTask.Delay(Interval, true);
+            await UniTask.Delay(EffectiveInterval, true);
 
             var startTime = Time.realtimeSinceStartup;
 
@@ -2408,7 +3157,7 @@ namespace ODDGames.UITest
 
         private async UniTaskVoid SimulatePlayTarget(string t, float startTime, int seconds)
         {
-            var target = await Find<IPointerDownHandler>(t, true, seconds, Clickables);
+            var target = await Find<IPointerDownHandler>(Search.ByAny(t), throwIfMissing: true, seconds: seconds);
             if (target == null || !(target is UnityEngine.Component component))
                 return;
 
@@ -2428,9 +3177,9 @@ namespace ODDGames.UITest
 
 
 
-        protected async UniTask ClickAny(string search, float seconds = 10, bool throwIfMissing = true, Availability availability = Availability.Active | Availability.Enabled)
+        protected async UniTask ClickAny(Search search, float seconds = 10, bool throwIfMissing = true)
         {
-            Debug.Log($"[UITEST] ClickAny ({seconds}) [{search}]");
+            Debug.Log($"[UITEST] ClickAny ({seconds})");
 
             float startTime = Time.realtimeSinceStartup;
 
@@ -2438,7 +3187,7 @@ namespace ODDGames.UITest
             {
                 try
                 {
-                    var list = await FindAll<IPointerClickHandler>(search.ToLower(), 0.5f, availability, Clickables);
+                    var list = await FindAll<IPointerClickHandler>(search, 0.5f);
                     var rnd = new System.Random((int)DateTime.Now.Millisecond);
                     var clicktargets = list.OrderBy(i => rnd.Next());
 
@@ -2459,27 +3208,46 @@ namespace ODDGames.UITest
 
             if (throwIfMissing)
             {
-                throw new TestException($"ClickAny on '{search}' could not find any matching target within {seconds}s");
+                throw new TestException($"ClickAny could not find any matching target within {seconds}s");
             }
         }
 
 
-        protected async UniTask<T> Find<T>(bool throwIfMissing = true, float seconds = 10, Availability availability = Availability.Active | Availability.Enabled)
+        /// <summary>
+        /// Finds a component by type. By default only active and enabled components are returned.
+        /// </summary>
+        /// <param name="throwIfMissing">Whether to throw if not found</param>
+        /// <param name="seconds">Timeout in seconds</param>
+        /// <param name="includeInactive">Include inactive GameObjects</param>
+        /// <param name="includeDisabled">Include disabled/non-interactable components</param>
+        protected async UniTask<T> Find<T>(bool throwIfMissing = true, float seconds = 10, bool includeInactive = false, bool includeDisabled = false)
             where T : MonoBehaviour
         {
             var startTime = Time.realtimeSinceStartup;
+            var findMode = includeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
 
             while ((Time.realtimeSinceStartup - startTime) < seconds)
             {
-                await UniTask.Delay(Interval, true);
+                await UniTask.Delay(EffectiveInterval, true);
 
-                var result = GameObject.FindAnyObjectByType<T>();
+                var result = GameObject.FindAnyObjectByType<T>(findMode);
 
                 if (result == null)
                     continue;
 
-                if (!CheckAvailability(result, availability))
+                // Check availability manually for the non-Search version
+                if (!includeInactive && !result.gameObject.activeInHierarchy)
                     continue;
+
+                if (!includeDisabled)
+                {
+                    if (!result.enabled)
+                        continue;
+
+                    var canvasGroup = result.GetComponentInParent<CanvasGroup>();
+                    if (canvasGroup != null && (canvasGroup.alpha <= 0 || !canvasGroup.interactable))
+                        continue;
+                }
 
                 return result;
             }
@@ -2490,251 +3258,107 @@ namespace ODDGames.UITest
             return default;
         }
 
-        protected UniTask<T> Find<T>(string search, bool throwIfMissing = true, float seconds = 10, params Type[] filterTypes)
-        {
-            return Find<T>(new string[] { search }, throwIfMissing, seconds, Availability.Active | Availability.Enabled, filterTypes);
-        }
-
-        protected UniTask<T> Find<T>(string search, bool throwIfMissing, float seconds, Availability availability, params Type[] filterTypes)
-        {
-            return Find<T>(new string[] { search }, throwIfMissing, seconds, availability, filterTypes);
-        }
-
-        protected UniTask<T> Find<T>(string[] searches, bool throwIfMissing, float seconds, params Type[] filterTypes)
-        {
-            return Find<T>(searches, throwIfMissing, seconds, Availability.Active | Availability.Enabled, filterTypes);
-        }
-
-        protected async UniTask<T> Find<T>(string[] searches = null, bool throwIfMissing = true, float seconds = 10, Availability availability = Availability.Active | Availability.Enabled, params Type[] filterTypes)
+        /// <summary>
+        /// Finds a component matching the Search query.
+        /// Supports implicit string conversion: Find&lt;Button&gt;("Play") becomes Find&lt;Button&gt;(Search.ByText("Play"))
+        /// Use search.IncludeInactive() to find inactive GameObjects.
+        /// Use search.IncludeDisabled() to find disabled/non-interactable components.
+        /// </summary>
+        protected async UniTask<T> Find<T>(Search search, bool throwIfMissing = true, float seconds = 10)
         {
             var startTime = Time.realtimeSinceStartup;
+            LogDebug($"Find<{typeof(T).Name}>: using Search query with {seconds}s timeout, includeInactive={search.ShouldIncludeInactive}, includeDisabled={search.ShouldIncludeDisabled}");
 
-            TimeYielder yielder = new TimeYielder(TimeSpan.FromSeconds(0.1f));
             int iteration = 0;
-
-            // Check if T is a Behaviour type - if not, we need to use GameObject search
-            bool isBehaviour = typeof(Behaviour).IsAssignableFrom(typeof(T));
+            var findMode = search.ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
 
             while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying && !TestCancellationToken.IsCancellationRequested)
             {
                 iteration++;
 
-                if (!isBehaviour && searches != null)
+                // Find all objects of type T that match the search query
+                var allObjects = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None);
+
+                foreach (var obj in allObjects)
                 {
-                    // For non-Behaviour types (like RectTransform), search by GameObject name and GetComponent
-                    var allTransforms = GameObject.FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-                    foreach (var t in allTransforms)
+                    if (obj == null) continue;
+                    if (!CheckAvailability(obj, search)) continue;
+                    if (!search.Matches(obj.gameObject)) continue;
+
+                    // Check if this object or its components match type T
+                    if (obj is T match)
                     {
-                        var name = t.name.ToLowerInvariant();
-                        foreach (string s in searches)
-                        {
-                            string search = s.ToLowerInvariant();
-                            if (string.CompareOrdinal(search, name) == 0 || IsWildcardMatch(name, search))
-                            {
-                                var component = t.GetComponent<T>();
-                                if (component != null && CheckAvailability(component as UnityEngine.Object, availability))
-                                {
-                                    Debug.Log($"[UITEST] Find<{typeof(T).Name}> '{string.Join(',', searches)}' found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
-                                    await ActionComplete();
-                                    return component;
-                                }
-                            }
-                        }
-                    }
-
-                    await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
-                    continue;
-                }
-
-                List<Behaviour> behaviours = new List<Behaviour>();
-
-                if (filterTypes == null || filterTypes.Length == 0)
-                {
-                    behaviours.AddRange(GameObject.FindObjectsByType<Behaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
-                }
-                else
-                {
-                    foreach (var filterType in filterTypes)
-                        behaviours.AddRange(GameObject.FindObjectsByType(filterType, FindObjectsInactive.Exclude, FindObjectsSortMode.None).OfType<Behaviour>());
-                }
-
-                if (searches == null)
-                {
-                    var first = behaviours.OfType<T>().FirstOrDefault(b => CheckAvailability(b as UnityEngine.Object, availability));
-                    if (first != null)
-                        return first;
-                    continue;
-                }
-
-                List<T> stringMatches = new List<T>();
-
-                foreach (var behaviour in behaviours)
-                {
-                    if (behaviour == null)
-                        continue;
-
-                    if (behaviour is T item)
-                    {
-                        foreach (string s in searches)
-                        {
-                            string search = s.ToLowerInvariant();
-                            var name = behaviour.name.ToLowerInvariant();
-
-                            if (string.CompareOrdinal(search, name) == 0 || IsWildcardMatch(name, search))
-                            {
-                                stringMatches.Add(item);
-                                break;
-                            }
-
-                            var path = GetHierarchyPath(behaviour.transform).ToLowerInvariant();
-                            if (string.CompareOrdinal(search, path) == 0 || IsWildcardMatch(path, search))
-                            {
-                                stringMatches.Add(item);
-                                break;
-                            }
-
-                            if (TryGetComponentInChildren(behaviour.gameObject, out Text t2) && t2 != null && IsWildcardMatch(t2.text != null ? t2.text.ToLowerInvariant() : "", search))
-                            {
-                                stringMatches.Add(item);
-                                break;
-                            }
-
-                            if (TryGetComponentInChildren(behaviour.gameObject, out TMP_Text t3) && t3 != null && IsWildcardMatch(t3.text != null ? t3.text.ToLowerInvariant() : "", search))
-                            {
-                                stringMatches.Add(item);
-                                break;
-                            }
-
-                            await yielder.YieldOptional();
-                        }
-                    }
-
-                    await yielder.YieldOptional();
-                }
-
-                if (stringMatches.Count > 0)
-                {
-                    var topMatches = new List<T>();
-
-                    foreach (var match in stringMatches)
-                    {
-                        if (match is UnityEngine.Component c)
-                        {
-                            if (!CheckAvailability(c, availability))
-                                continue;
-
-                            // Skip raycast check - elements just need to exist and be active
-                            // Click operations will still raycast to find the actual click target
-                            topMatches.Add(match);
-                        }
-                    }
-
-                    if (topMatches.Count > 0)
-                    {
-                        Debug.Log($"[UITEST] Find<{typeof(T).Name}> '{string.Join(',', searches ?? new string[0])}' found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms (stringMatches={stringMatches.Count}, topMatches={topMatches.Count})");
+                        Debug.Log($"[UITEST] Find<{typeof(T).Name}> (Search) found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
                         await ActionComplete();
-                        return topMatches[0];
+                        return match;
+                    }
+
+                    var component = obj.GetComponent<T>();
+                    if (component != null)
+                    {
+                        Debug.Log($"[UITEST] Find<{typeof(T).Name}> (Search) found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
+                        await ActionComplete();
+                        return component;
                     }
                 }
 
-                await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
 
             TestCancellationToken.ThrowIfCancellationRequested();
 
             if (throwIfMissing)
-                throw new System.TimeoutException($"Unable to locate {typeof(T).Name} '{string.Join(',', searches)}' in {seconds} seconds after {iteration} iterations");
+                throw new TimeoutException($"Unable to locate {typeof(T).Name} matching Search query in {seconds} seconds after {iteration} iterations");
 
             return default;
         }
 
 
-        protected UniTask<IEnumerable<T>> FindAll<T>(string search, float seconds, params Type[] filterTypes)
-        {
-            return FindAll<T>(search, seconds, Availability.Active | Availability.Enabled, filterTypes);
-        }
-
-        protected async UniTask<IEnumerable<T>> FindAll<T>(string search = "", float seconds = 10, Availability availability = Availability.Active | Availability.Enabled, params Type[] filterTypes)
+        /// <summary>
+        /// Finds all components matching the Search query.
+        /// Supports implicit string conversion.
+        /// Use search.IncludeInactive() to find inactive GameObjects.
+        /// Use search.IncludeDisabled() to find disabled/non-interactable components.
+        /// </summary>
+        protected async UniTask<IEnumerable<T>> FindAll<T>(Search search, float seconds = 10)
         {
             var startTime = Time.realtimeSinceStartup;
-
-            TimeYielder yielder = new TimeYielder(TimeSpan.FromSeconds(0.1f));
+            var findMode = search.ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
 
             while (Application.isPlaying && !TestCancellationToken.IsCancellationRequested)
             {
                 if ((Time.realtimeSinceStartup - startTime) > seconds)
                     break;
 
-                List<Behaviour> behaviours = new List<Behaviour>();
+                var allObjects = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None);
+                var matches = new List<T>();
 
-                if (filterTypes == null || filterTypes.Length == 0)
+                foreach (var obj in allObjects)
                 {
-                    behaviours.AddRange(GameObject.FindObjectsByType<Behaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
-                }
-                else
-                {
-                    foreach (var filterType in filterTypes)
-                        behaviours.AddRange(GameObject.FindObjectsByType(filterType, FindObjectsInactive.Exclude, FindObjectsSortMode.None).OfType<Behaviour>());
-                }
+                    if (obj == null) continue;
+                    if (!CheckAvailability(obj, search)) continue;
+                    if (!search.Matches(obj.gameObject)) continue;
 
-                if (string.IsNullOrEmpty(search))
-                    return behaviours.OfType<T>().Where(b => CheckAvailability(b as UnityEngine.Object, availability));
-
-                List<T> stringMatches = new List<T>();
-
-                foreach (var behaviour in behaviours)
-                {
-                    if (behaviour == null)
-                        continue;
-
-                    if (behaviour is T item)
+                    if (obj is T match)
                     {
-                        var name = behaviour.name.ToLowerInvariant();
-
-                        if (string.CompareOrdinal(search, name) == 0 || IsWildcardMatch(name, search))
-                        {
-                            stringMatches.Add(item);
-                            continue;
-                        }
-
-                        var path = GetHierarchyPath(behaviour.transform).ToLower();
-
-                        if (string.CompareOrdinal(search, path) == 0 || IsWildcardMatch(path, search))
-                        {
-                            stringMatches.Add(item);
-                            continue;
-                        }
-
-                        if (TryGetComponentInChildren(behaviour.gameObject, out Text t2) && t2 != null)
-                            if (IsWildcardMatch(t2.text != null ? t2.text.ToLowerInvariant() : "", search))
-                            {
-                                stringMatches.Add(item);
-                                continue;
-                            }
-
-                        if (TryGetComponentInChildren(behaviour.gameObject, out TMP_Text t3) && t3 != null)
-                            if (IsWildcardMatch(t3.text != null ? t3.text.ToLowerInvariant() : "", search))
-                            {
-                                stringMatches.Add(item);
-                                continue;
-                            }
+                        matches.Add(match);
                     }
-
-                    await yielder.YieldOptional();
+                    else
+                    {
+                        var component = obj.GetComponent<T>();
+                        if (component != null)
+                            matches.Add(component);
+                    }
                 }
 
-                if (stringMatches.Count > 0)
-                {
-                    var results = stringMatches.Where(m => CheckAvailability(m as UnityEngine.Object, availability)).ToList();
-                    if (results.Count > 0)
-                        return results;
-                }
+                if (matches.Count > 0)
+                    return matches;
 
-                await UniTask.Delay(Interval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
 
             TestCancellationToken.ThrowIfCancellationRequested();
-            throw new System.TimeoutException($"Unable to locate {typeof(T).Name} '{search}' in {seconds} seconds");
+            return Enumerable.Empty<T>();
         }
     }
 }
