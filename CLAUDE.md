@@ -75,7 +75,17 @@ The package requires Unity's new Input System (`com.unity.inputsystem`):
 - Recording uses `Mouse.current`, `Keyboard.current`, `EnhancedTouchSupport`
 - Projects must have `activeInputHandler` set to `2` (New only)
 
-**IMPORTANT**: Always use realistic input injection via the helpers. Never bypass the UI by setting values directly (e.g., `dropdown.value = 1` or `slider.value = 0.5f`). This ensures tests exercise the actual UI interaction path.
+**CRITICAL**: Always use realistic input injection via the helpers. NEVER bypass the UI by setting values directly. This is the core philosophy of this testing framework - tests must exercise the actual UI interaction path exactly as a user would.
+
+Forbidden patterns (do NOT use these):
+- `dropdown.value = 1` - instead use `ClickDropdown()`
+- `slider.value = 0.5f` - instead use `ClickSlider()` or `DragSlider()`
+- `inputField.text = "..."` - instead use `Type()`
+- `toggle.isOn = true` - instead use `Click()`
+- `scrollRect.normalizedPosition = ...` - instead use drag gestures via `InjectMouseDrag()`
+- Any direct component value manipulation
+
+The framework exists specifically to simulate real user input through the Input System. Direct manipulation defeats the purpose of UI testing.
 
 ## Advanced Control Helpers
 

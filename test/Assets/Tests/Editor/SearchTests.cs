@@ -1086,5 +1086,235 @@ namespace ODDGames.UITest.Tests
         }
 
         #endregion
+
+        #region GetParent Tests
+
+        [Test]
+        public void GetParent_ComponentInParent_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            parent.AddComponent<CanvasGroup>();
+            var child = CreateTestObject("ChildButton", parent.transform);
+            child.AddComponent<Button>();
+
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [Test]
+        public void GetParent_NoComponentInParent_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            child.AddComponent<Button>();
+
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            Assert.IsFalse(search.Matches(child));
+        }
+
+        [Test]
+        public void GetParent_WithPredicate_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var cg = parent.AddComponent<CanvasGroup>();
+            cg.alpha = 0.8f;
+            var child = CreateTestObject("ChildButton", parent.transform);
+            child.AddComponent<Button>();
+
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [Test]
+        public void GetParent_WithPredicate_PredicateFails_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var cg = parent.AddComponent<CanvasGroup>();
+            cg.alpha = 0.3f;
+            var child = CreateTestObject("ChildButton", parent.transform);
+            child.AddComponent<Button>();
+
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
+            Assert.IsFalse(search.Matches(child));
+        }
+
+        [Test]
+        public void GetParent_ExcludesSelf()
+        {
+            var go = CreateTestObject("SelfTest");
+            go.AddComponent<Button>();
+            go.AddComponent<CanvasGroup>();
+
+            // GetParent should NOT find component on self
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        #endregion
+
+        #region GetChild Tests
+
+        [Test]
+        public void GetChild_ComponentInChildren_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentSlot");
+            var child = CreateTestObject("ChildImage", parent.transform);
+            child.AddComponent<Image>();
+
+            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>();
+            Assert.IsTrue(search.Matches(parent));
+        }
+
+        [Test]
+        public void GetChild_NoComponentInChildren_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentSlot");
+            var child = CreateTestObject("ChildEmpty", parent.transform);
+
+            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>();
+            Assert.IsFalse(search.Matches(parent));
+        }
+
+        [Test]
+        public void GetChild_WithPredicate_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentSlot");
+            var child = CreateTestObject("ChildImage", parent.transform);
+            var image = child.AddComponent<Image>();
+            var texture = new Texture2D(1, 1);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
+            image.sprite = sprite;
+
+            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>(img => img.sprite != null);
+            Assert.IsTrue(search.Matches(parent));
+
+            Object.DestroyImmediate(sprite);
+            Object.DestroyImmediate(texture);
+        }
+
+        [Test]
+        public void GetChild_WithPredicate_PredicateFails_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentSlot");
+            var child = CreateTestObject("ChildImage", parent.transform);
+            var image = child.AddComponent<Image>();
+            image.sprite = null;
+
+            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>(img => img.sprite != null);
+            Assert.IsFalse(search.Matches(parent));
+        }
+
+        [Test]
+        public void GetChild_ExcludesSelf()
+        {
+            var go = CreateTestObject("SelfTest");
+            go.AddComponent<Image>();
+
+            // GetChild should NOT find component on self
+            var search = UITestBehaviour.Search.ByName("SelfTest").GetChild<Image>();
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        #endregion
+
+        #region Ordering Tests (Skip, First, Last)
+
+        [Test]
+        public void Skip_ReturnsCorrectSkipCount()
+        {
+            var search = UITestBehaviour.Search.ByName("Item*").Skip(2);
+            // Can't easily test ordering without runtime, but verify the property
+            Assert.IsTrue(search.HasPostProcessing);
+        }
+
+        [Test]
+        public void First_SetsPostProcessing()
+        {
+            var search = UITestBehaviour.Search.ByName("Item*").First();
+            Assert.IsTrue(search.HasPostProcessing);
+        }
+
+        [Test]
+        public void Last_SetsPostProcessing()
+        {
+            var search = UITestBehaviour.Search.ByName("Item*").Last();
+            Assert.IsTrue(search.HasPostProcessing);
+        }
+
+        [Test]
+        public void OrderByPosition_SetsPostProcessing()
+        {
+            var search = UITestBehaviour.Search.ByName("Item*").OrderByPosition();
+            Assert.IsTrue(search.HasPostProcessing);
+        }
+
+        [Test]
+        public void ApplyPostProcessing_Skip_Works()
+        {
+            var go1 = CreateTestObject("Item1");
+            var go2 = CreateTestObject("Item2");
+            var go3 = CreateTestObject("Item3");
+
+            var search = UITestBehaviour.Search.ByName("Item*").Skip(1);
+            var input = new[] { go1, go2, go3 };
+            var result = search.ApplyPostProcessing(input).ToList();
+
+            Assert.AreEqual(2, result.Count);
+            Assert.AreEqual(go2, result[0]);
+            Assert.AreEqual(go3, result[1]);
+        }
+
+        [Test]
+        public void ApplyPostProcessing_SkipAndFirst_Works()
+        {
+            var go1 = CreateTestObject("Item1");
+            var go2 = CreateTestObject("Item2");
+            var go3 = CreateTestObject("Item3");
+
+            var search = UITestBehaviour.Search.ByName("Item*").Skip(1).First();
+            var input = new[] { go1, go2, go3 };
+            var result = search.ApplyPostProcessing(input).ToList();
+
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(go2, result[0]);
+        }
+
+        #endregion
+
+        #region Negation with New Methods
+
+        [Test]
+        public void Not_GetParent_Works()
+        {
+            var parent1 = CreateTestObject("WithCanvasGroup");
+            parent1.AddComponent<CanvasGroup>();
+            var child1 = CreateTestObject("Child1", parent1.transform);
+            child1.AddComponent<Button>();
+
+            var parent2 = CreateTestObject("WithoutCanvasGroup");
+            var child2 = CreateTestObject("Child2", parent2.transform);
+            child2.AddComponent<Button>();
+
+            var search = UITestBehaviour.Search.ByType<Button>().Not.GetParent<CanvasGroup>();
+            Assert.IsFalse(search.Matches(child1));
+            Assert.IsTrue(search.Matches(child2));
+        }
+
+        [Test]
+        public void Not_GetChild_Works()
+        {
+            var parent1 = CreateTestObject("ParentWithImage");
+            var child1 = CreateTestObject("ImageChild", parent1.transform);
+            child1.AddComponent<Image>();
+
+            var parent2 = CreateTestObject("ParentWithoutImage");
+            var child2 = CreateTestObject("EmptyChild", parent2.transform);
+
+            var search = UITestBehaviour.Search.ByName("Parent*").Not.GetChild<Image>();
+            Assert.IsFalse(search.Matches(parent1));
+            Assert.IsTrue(search.Matches(parent2));
+        }
+
+        #endregion
     }
 }

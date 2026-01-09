@@ -112,6 +112,31 @@ namespace ODDGames.UITest
             Above
         }
 
+        /// <summary>
+        /// Screen regions for positional filtering. Screen is divided into a 3x3 grid.
+        /// </summary>
+        public enum ScreenRegion
+        {
+            /// <summary>Top-left third of the screen.</summary>
+            TopLeft,
+            /// <summary>Top-center third of the screen.</summary>
+            TopCenter,
+            /// <summary>Top-right third of the screen.</summary>
+            TopRight,
+            /// <summary>Middle-left third of the screen.</summary>
+            MiddleLeft,
+            /// <summary>Center of the screen.</summary>
+            Center,
+            /// <summary>Middle-right third of the screen.</summary>
+            MiddleRight,
+            /// <summary>Bottom-left third of the screen.</summary>
+            BottomLeft,
+            /// <summary>Bottom-center third of the screen.</summary>
+            BottomCenter,
+            /// <summary>Bottom-right third of the screen.</summary>
+            BottomRight
+        }
+
         public class Search
         {
             readonly List<Func<GameObject, bool>> _conditions = new();
@@ -326,6 +351,428 @@ namespace ODDGames.UITest
                 return HasDescendant(ByName(descendantNamePattern));
             }
 
+            /// <summary>
+            /// Match if a component of type T exists in the parent chain (using GetComponentInParent).
+            /// Example: Search.ByType&lt;Button&gt;().GetParent&lt;CanvasGroup&gt;()
+            /// </summary>
+            public Search GetParent<T>() where T : Component
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    var comp = go.GetComponentInParent<T>();
+                    // GetComponentInParent also returns components on self, so check parent chain only
+                    if (comp != null && comp.gameObject == go)
+                        comp = go.transform.parent?.GetComponentInParent<T>();
+                    bool match = comp != null;
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if a component of type T exists in the parent chain that satisfies the predicate.
+            /// Example: Search.ByType&lt;Button&gt;().GetParent&lt;CanvasGroup&gt;(cg => cg.alpha > 0)
+            /// </summary>
+            public Search GetParent<T>(Func<T, bool> predicate) where T : Component
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    Transform current = go.transform.parent;
+                    while (current != null)
+                    {
+                        var comp = current.GetComponent<T>();
+                        if (comp != null && predicate(comp))
+                            return !negate;
+                        current = current.parent;
+                    }
+                    return negate;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if a component of type T exists in children (using GetComponentInChildren).
+            /// Example: Search.ByName("Slot*").GetChild&lt;Image&gt;()
+            /// </summary>
+            public Search GetChild<T>() where T : Component
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    var comp = go.GetComponentInChildren<T>();
+                    // GetComponentInChildren also returns components on self, so check children only
+                    if (comp != null && comp.gameObject == go)
+                    {
+                        comp = null;
+                        foreach (Transform child in go.transform)
+                        {
+                            comp = child.GetComponentInChildren<T>();
+                            if (comp != null) break;
+                        }
+                    }
+                    bool match = comp != null;
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if a component of type T exists in children that satisfies the predicate.
+            /// Example: Search.ByName("Slot*").GetChild&lt;Image&gt;(img => img.sprite != null)
+            /// </summary>
+            public Search GetChild<T>(Func<T, bool> predicate) where T : Component
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    bool found = FindMatchingChildComponent(go.transform, predicate, skipSelf: true);
+                    return negate != found;
+                });
+                return this;
+            }
+
+            static bool FindMatchingChildComponent<T>(Transform parent, Func<T, bool> predicate, bool skipSelf) where T : Component
+            {
+                if (!skipSelf)
+                {
+                    var comp = parent.GetComponent<T>();
+                    if (comp != null && predicate(comp))
+                        return true;
+                }
+                foreach (Transform child in parent)
+                {
+                    if (FindMatchingChildComponent(child, predicate, skipSelf: false))
+                        return true;
+                }
+                return false;
+            }
+
+            /// <summary>
+            /// Filter to elements whose screen position is within the specified region.
+            /// Screen is divided into a 3x3 grid.
+            /// Example: Search.ByType&lt;Button&gt;().InRegion(ScreenRegion.TopRight)
+            /// </summary>
+            public Search InRegion(ScreenRegion region)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    bool match = IsInScreenRegion(go, region);
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Filter to elements whose screen position is within the specified custom bounds (normalized 0-1).
+            /// Example: Search.ByType&lt;Button&gt;().InRegion(0.5f, 0.5f, 1f, 1f) // Right-top quadrant
+            /// </summary>
+            public Search InRegion(float xMin, float yMin, float xMax, float yMax)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    bool match = IsInScreenBounds(go, xMin, yMin, xMax, yMax);
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Gets the screen position of a GameObject (works with UI RectTransform, Renderer bounds, or transform position).
+            /// </summary>
+            static Vector2 GetScreenPositionForSearch(GameObject go)
+            {
+                // Try RectTransform first (UI elements)
+                if (go.TryGetComponent<RectTransform>(out var rect))
+                {
+                    Vector3[] corners = new Vector3[4];
+                    rect.GetWorldCorners(corners);
+                    Vector3 center = (corners[0] + corners[2]) / 2f;
+
+                    var canvas = go.GetComponentInParent<Canvas>();
+                    if (canvas != null && canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+                    {
+                        return center;
+                    }
+                    else
+                    {
+                        Camera cam = canvas?.worldCamera ?? Camera.main;
+                        return cam != null ? RectTransformUtility.WorldToScreenPoint(cam, center) : (Vector2)center;
+                    }
+                }
+
+                // Try Renderer bounds (3D objects)
+                if (go.TryGetComponent<Renderer>(out var renderer))
+                {
+                    Camera cam = Camera.main;
+                    if (cam != null)
+                    {
+                        return cam.WorldToScreenPoint(renderer.bounds.center);
+                    }
+                }
+
+                // Fallback to transform position
+                {
+                    Camera cam = Camera.main;
+                    return cam != null ? (Vector2)cam.WorldToScreenPoint(go.transform.position) : Vector2.zero;
+                }
+            }
+
+            static bool IsInScreenRegion(GameObject go, ScreenRegion region)
+            {
+                Vector2 screenPos = GetScreenPositionForSearch(go);
+
+                // Normalize to 0-1 range
+                float normalizedX = screenPos.x / Screen.width;
+                float normalizedY = screenPos.y / Screen.height;
+
+                // Determine region bounds (3x3 grid)
+                return region switch
+                {
+                    ScreenRegion.TopLeft => normalizedX < 0.333f && normalizedY > 0.666f,
+                    ScreenRegion.TopCenter => normalizedX >= 0.333f && normalizedX < 0.666f && normalizedY > 0.666f,
+                    ScreenRegion.TopRight => normalizedX >= 0.666f && normalizedY > 0.666f,
+                    ScreenRegion.MiddleLeft => normalizedX < 0.333f && normalizedY >= 0.333f && normalizedY <= 0.666f,
+                    ScreenRegion.Center => normalizedX >= 0.333f && normalizedX < 0.666f && normalizedY >= 0.333f && normalizedY <= 0.666f,
+                    ScreenRegion.MiddleRight => normalizedX >= 0.666f && normalizedY >= 0.333f && normalizedY <= 0.666f,
+                    ScreenRegion.BottomLeft => normalizedX < 0.333f && normalizedY < 0.333f,
+                    ScreenRegion.BottomCenter => normalizedX >= 0.333f && normalizedX < 0.666f && normalizedY < 0.333f,
+                    ScreenRegion.BottomRight => normalizedX >= 0.666f && normalizedY < 0.333f,
+                    _ => false
+                };
+            }
+
+            static bool IsInScreenBounds(GameObject go, float xMin, float yMin, float xMax, float yMax)
+            {
+                Vector2 screenPos = GetScreenPositionForSearch(go);
+
+                float normalizedX = screenPos.x / Screen.width;
+                float normalizedY = screenPos.y / Screen.height;
+
+                return normalizedX >= xMin && normalizedX <= xMax && normalizedY >= yMin && normalizedY <= yMax;
+            }
+
+            // Ordering and filtering - these are stored as post-processing operations
+            int _skipCount;
+            int _takeCount = -1; // -1 means take all
+            bool _takeLast;
+            Func<IEnumerable<GameObject>, IEnumerable<GameObject>> _orderBy;
+
+            // Target transformation - applied to each matched object after all filtering
+            Func<GameObject, GameObject> _targetTransform;
+
+            /// <summary>
+            /// Take only the first matching element (by screen position, top-left to bottom-right).
+            /// Example: Search.ByName("ListItem*").First()
+            /// </summary>
+            public Search First()
+            {
+                _takeCount = 1;
+                _takeLast = false;
+                _orderBy ??= OrderByScreenPosition;
+                return this;
+            }
+
+            /// <summary>
+            /// Take only the last matching element (by screen position, top-left to bottom-right).
+            /// Example: Search.ByName("ListItem*").Last()
+            /// </summary>
+            public Search Last()
+            {
+                _takeCount = 1;
+                _takeLast = true;
+                _orderBy ??= OrderByScreenPosition;
+                return this;
+            }
+
+            /// <summary>
+            /// Skip the first N matching elements.
+            /// Example: Search.ByName("Tab*").Skip(2).First() // Get the 3rd tab
+            /// </summary>
+            public Search Skip(int count)
+            {
+                _skipCount = count;
+                return this;
+            }
+
+            /// <summary>
+            /// Order matches by a component property value.
+            /// Example: Search.ByType&lt;Slider&gt;().OrderBy&lt;Slider&gt;(s => s.value).First()
+            /// </summary>
+            public Search OrderBy<T>(Func<T, float> selector) where T : Component
+            {
+                _orderBy = objects => objects.OrderBy(go =>
+                {
+                    var comp = go.GetComponent<T>();
+                    return comp != null ? selector(comp) : float.MaxValue;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Order matches by a component property value (descending).
+            /// Example: Search.ByType&lt;Slider&gt;().OrderByDescending&lt;Slider&gt;(s => s.value).First()
+            /// </summary>
+            public Search OrderByDescending<T>(Func<T, float> selector) where T : Component
+            {
+                _orderBy = objects => objects.OrderByDescending(go =>
+                {
+                    var comp = go.GetComponent<T>();
+                    return comp != null ? selector(comp) : float.MinValue;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Explicitly order by screen position (top-left to bottom-right reading order).
+            /// This is the default order for First() and Last().
+            /// Example: Search.ByName("Item*").OrderByPosition().Skip(3).First()
+            /// </summary>
+            public Search OrderByPosition()
+            {
+                _orderBy = OrderByScreenPosition;
+                return this;
+            }
+
+            static IEnumerable<GameObject> OrderByScreenPosition(IEnumerable<GameObject> objects)
+            {
+                var objectsList = objects.ToList();
+                Debug.Log($"[UITEST] OrderByScreenPosition: Ordering {objectsList.Count} objects");
+                foreach (var go in objectsList)
+                {
+                    Vector2 screenPos = GetScreenPositionForSearch(go);
+                    float sortKey = -screenPos.y * 10000 + screenPos.x;
+                    Debug.Log($"[UITEST] OrderByScreenPosition: {go.name} at screenPos={screenPos}, sortKey={sortKey}");
+                }
+
+                return objectsList.OrderBy(go =>
+                {
+                    Vector2 screenPos = GetScreenPositionForSearch(go);
+
+                    // Top-left to bottom-right: prioritize Y (descending), then X (ascending)
+                    // Higher Y = top, so negate it. Lower X = left.
+                    return -screenPos.y * 10000 + screenPos.x;
+                });
+            }
+
+            /// <summary>
+            /// After finding the matching element, return its parent instead.
+            /// Example: Search.ByText("Title").Parent() - finds element with text, returns its parent
+            /// </summary>
+            public Search Parent()
+            {
+                var previous = _targetTransform;
+                _targetTransform = go =>
+                {
+                    var target = previous != null ? previous(go) : go;
+                    return target?.transform.parent?.gameObject;
+                };
+                return this;
+            }
+
+            /// <summary>
+            /// After finding the matching element, return a child by index.
+            /// Example: Search.ByName("Container").Child(0) - finds Container, returns its first child
+            /// </summary>
+            public Search Child(int index)
+            {
+                var previous = _targetTransform;
+                _targetTransform = go =>
+                {
+                    var target = previous != null ? previous(go) : go;
+                    if (target == null) return null;
+                    var transform = target.transform;
+                    if (index < 0 || index >= transform.childCount) return null;
+                    return transform.GetChild(index).gameObject;
+                };
+                return this;
+            }
+
+            /// <summary>
+            /// After finding the matching element, return a sibling by offset.
+            /// Example: Search.ByText("Label").Sibling(1) - finds Label, returns the next sibling
+            /// Example: Search.ByText("Label").Sibling(-1) - finds Label, returns the previous sibling
+            /// </summary>
+            public Search Sibling(int offset)
+            {
+                var previous = _targetTransform;
+                _targetTransform = go =>
+                {
+                    var target = previous != null ? previous(go) : go;
+                    if (target == null) return null;
+                    var transform = target.transform;
+                    var parent = transform.parent;
+                    if (parent == null) return null;
+
+                    int currentIndex = transform.GetSiblingIndex();
+                    int newIndex = currentIndex + offset;
+                    if (newIndex < 0 || newIndex >= parent.childCount) return null;
+                    return parent.GetChild(newIndex).gameObject;
+                };
+                return this;
+            }
+
+            /// <summary>
+            /// Gets whether this search has any post-processing (Skip, First, Last, OrderBy, target transform).
+            /// </summary>
+            public bool HasPostProcessing => _skipCount > 0 || _takeCount >= 0 || _orderBy != null || _targetTransform != null;
+
+            /// <summary>
+            /// Gets whether this search has a target transformation (Parent, Child, Sibling).
+            /// When true, Find should collect matches regardless of component type T, then check T after transformation.
+            /// </summary>
+            public bool HasTargetTransform => _targetTransform != null;
+
+            /// <summary>
+            /// Apply post-processing (ordering, skip, take, target transform) to a list of matching GameObjects.
+            /// Returns the filtered/ordered/transformed results.
+            /// </summary>
+            public IEnumerable<GameObject> ApplyPostProcessing(IEnumerable<GameObject> matches)
+            {
+                // Materialize input to avoid multiple enumeration issues
+                var result = matches.ToList().AsEnumerable();
+
+                Debug.Log($"[UITEST] ApplyPostProcessing: Input count={result.Count()}, _skipCount={_skipCount}, _takeCount={_takeCount}, _takeLast={_takeLast}, _orderBy={(_orderBy != null ? "set" : "null")}, _targetTransform={(_targetTransform != null ? "set" : "null")}");
+                Debug.Log($"[UITEST] ApplyPostProcessing: Input objects: {string.Join(", ", result.Select(go => go.name))}");
+
+                if (_orderBy != null)
+                {
+                    result = _orderBy(result).ToList(); // Materialize after ordering
+                    Debug.Log($"[UITEST] ApplyPostProcessing: After OrderBy: {string.Join(", ", result.Select(go => go.name))}");
+                }
+
+                if (_skipCount > 0)
+                {
+                    result = result.Skip(_skipCount).ToList(); // Materialize after skip
+                    Debug.Log($"[UITEST] ApplyPostProcessing: After Skip({_skipCount}): {string.Join(", ", result.Select(go => go.name))}");
+                }
+
+                if (_takeCount >= 0)
+                {
+                    result = _takeLast ? result.TakeLast(_takeCount).ToList() : result.Take(_takeCount).ToList(); // Materialize after take
+                    Debug.Log($"[UITEST] ApplyPostProcessing: After Take({_takeCount}, takeLast={_takeLast}): {string.Join(", ", result.Select(go => go.name))}");
+                }
+
+                // Apply target transformation (Parent, Child, Sibling) after filtering
+                if (_targetTransform != null)
+                {
+                    result = result.Select(_targetTransform).Where(go => go != null).ToList(); // Materialize after transform
+                    Debug.Log($"[UITEST] ApplyPostProcessing: After TargetTransform: {string.Join(", ", result.Select(go => go.name))}");
+                }
+
+                Debug.Log($"[UITEST] ApplyPostProcessing: Final result count={result.Count()}");
+                return result;
+            }
+
             static bool HasMatchingDescendant(Transform parent, Search search)
             {
                 foreach (Transform child in parent)
@@ -518,15 +965,10 @@ namespace ODDGames.UITest
                 return result;
             }
 
-            /// <summary>Check if the GameObject has any interactable component (InputField, TMP_InputField, Dropdown, TMP_Dropdown, Slider, Toggle).</summary>
+            /// <summary>Check if the GameObject has any Selectable component (Button, Toggle, Slider, InputField, Dropdown, Scrollbar, or custom).</summary>
             static bool HasInteractableComponent(GameObject go)
             {
-                return go.GetComponent<InputField>() != null
-                    || go.GetComponent<TMP_InputField>() != null
-                    || go.GetComponent<Dropdown>() != null
-                    || go.GetComponent<TMP_Dropdown>() != null
-                    || go.GetComponent<Slider>() != null
-                    || go.GetComponent<Toggle>() != null;
+                return go.GetComponent<Selectable>() != null;
             }
 
             /// <summary>Find the nearest interactable in the entire scene to the text in the specified direction.</summary>
@@ -540,32 +982,20 @@ namespace ODDGames.UITest
                 GameObject nearest = null;
                 float nearestScore = float.MaxValue;
 
-                // Search all interactable types in the scene
-                var interactables = new List<GameObject>();
-                foreach (var c in GameObject.FindObjectsByType<InputField>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                    interactables.Add(c.gameObject);
-                foreach (var c in GameObject.FindObjectsByType<TMP_InputField>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                    interactables.Add(c.gameObject);
-                foreach (var c in GameObject.FindObjectsByType<Dropdown>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                    interactables.Add(c.gameObject);
-                foreach (var c in GameObject.FindObjectsByType<TMP_Dropdown>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                    interactables.Add(c.gameObject);
-                foreach (var c in GameObject.FindObjectsByType<Slider>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                    interactables.Add(c.gameObject);
-                foreach (var c in GameObject.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-                    interactables.Add(c.gameObject);
+                // Search all Selectable components in the scene (Button, Toggle, Slider, InputField, Dropdown, Scrollbar, etc.)
+                var selectables = GameObject.FindObjectsByType<Selectable>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
 
-                foreach (var interactable in interactables)
+                foreach (var selectable in selectables)
                 {
-                    if (interactable == textObj)
+                    if (selectable.gameObject == textObj)
                         continue;
 
-                    var interactableRect = interactable.GetComponent<RectTransform>();
+                    var interactableRect = selectable.GetComponent<RectTransform>();
                     if (interactableRect == null)
                         continue;
 
                     // Skip if not active
-                    if (!interactable.activeInHierarchy)
+                    if (!selectable.gameObject.activeInHierarchy)
                         continue;
 
                     Vector3 interactablePos = interactableRect.position;
@@ -578,7 +1008,7 @@ namespace ODDGames.UITest
                     if (score < nearestScore)
                     {
                         nearestScore = score;
-                        nearest = interactable;
+                        nearest = selectable.gameObject;
                     }
                 }
 
@@ -1186,19 +1616,23 @@ namespace ODDGames.UITest
                 await WaitForPlayModeReady();
                 await UniTask.Delay(1000, true, PlayerLoopTiming.Update, TestCancellationToken);
 
+                float testStartTime = Time.realtimeSinceStartup;
                 try
                 {
                     await Test();
-                    Debug.Log($"[UITEST] Test PASSED: {GetType().Name}");
+                    float duration = Time.realtimeSinceStartup - testStartTime;
+                    Debug.Log($"[UITEST] Test PASSED: {GetType().Name} Duration: {duration:F2}s");
                 }
                 catch (OperationCanceledException)
                 {
-                    Debug.Log($"[UITEST] Test CANCELLED: {GetType().Name}");
+                    float duration = Time.realtimeSinceStartup - testStartTime;
+                    Debug.Log($"[UITEST] Test CANCELLED: {GetType().Name} Duration: {duration:F2}s");
                 }
                 catch (Exception ex)
                 {
+                    float duration = Time.realtimeSinceStartup - testStartTime;
                     Debug.LogException(ex);
-                    Debug.Log($"[UITEST] Test FAILED: {GetType().Name}");
+                    Debug.Log($"[UITEST] Test FAILED: {GetType().Name} Duration: {duration:F2}s");
                 }
                 finally
                 {
@@ -1419,7 +1853,7 @@ namespace ODDGames.UITest
             {
                 // Click to focus
                 Vector2 screenPosition = GetScreenPosition(tmpInput.gameObject);
-                await InjectMouseClick(screenPosition);
+                await InjectPointerTap(screenPosition);
                 await UniTask.Yield();
 
                 // Type characters using ProcessEvent (adds to text) + ForceLabelUpdate (updates display)
@@ -1461,7 +1895,7 @@ namespace ODDGames.UITest
 
             // Click to focus the input field
             Vector2 legacyScreenPosition = GetScreenPosition(legacyInput.gameObject);
-            await InjectMouseClick(legacyScreenPosition);
+            await InjectPointerTap(legacyScreenPosition);
 
             // Type characters using ProcessEvent + ForceLabelUpdate
             if (!string.IsNullOrEmpty(input))
@@ -1889,7 +2323,7 @@ namespace ODDGames.UITest
                 LogDebug($"SimulateClick: screen position ({screenPosition.x:F0}, {screenPosition.y:F0})");
 
                 // Use Input System to inject mouse click
-                await InjectMouseClick(screenPosition);
+                await InjectPointerTap(screenPosition);
             }
         }
 
@@ -1927,10 +2361,17 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Injects a mouse click at the specified screen position using the Input System.
+        /// Injects a click/tap at the specified screen position.
+        /// Uses touch on mobile (iOS/Android), mouse on desktop.
         /// </summary>
-        private static async UniTask InjectMouseClick(Vector2 screenPosition)
+        private static async UniTask InjectPointerTap(Vector2 screenPosition)
         {
+            if (ShouldUseTouchInput())
+            {
+                await InjectTouchTap(screenPosition);
+                return;
+            }
+
             var mouse = Mouse.current;
             if (mouse == null)
             {
@@ -1938,36 +2379,72 @@ namespace ODDGames.UITest
                 return;
             }
 
-            // Move mouse to position
-            using (StateEvent.From(mouse, out var posPtr))
-            {
-                mouse.position.WriteValueIntoEvent(screenPosition, posPtr);
-                InputSystem.QueueEvent(posPtr);
-            }
+            // Use MouseState struct for complete state control
+            var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
 
-            // Wait a frame for position update
+            // Move mouse to position
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update(); // Force event processing
             await UniTask.Yield();
 
             // Mouse button down
-            using (StateEvent.From(mouse, out var downPtr))
-            {
-                mouse.position.WriteValueIntoEvent(screenPosition, downPtr);
-                mouse.leftButton.WriteValueIntoEvent(1f, downPtr);
-                InputSystem.QueueEvent(downPtr);
-            }
-
-            // Wait a frame
+            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update(); // Force event processing
             await UniTask.Yield();
 
             // Mouse button up
-            using (StateEvent.From(mouse, out var upPtr))
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update(); // Force event processing
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a single-finger tap gesture using the Input System.
+        /// Used on mobile platforms (iOS/Android).
+        /// </summary>
+        private static async UniTask InjectTouchTap(Vector2 screenPosition)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
             {
-                mouse.position.WriteValueIntoEvent(screenPosition, upPtr);
-                mouse.leftButton.WriteValueIntoEvent(0f, upPtr);
-                InputSystem.QueueEvent(upPtr);
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[UITEST] TouchTap - Could not create touchscreen device");
+                    return;
+                }
             }
 
-            // Wait for click to be processed
+            const int touchId = 1; // Touch IDs must be non-zero
+
+            // Touch began
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, beginPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update(); // Force event processing
+
+            await UniTask.Yield();
+
+            // Touch ended (tap is just began + ended at same position)
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, endPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update(); // Force event processing
+
             await UniTask.Yield();
         }
 
@@ -1985,7 +2462,7 @@ namespace ODDGames.UITest
                 if (b != null && b is UnityEngine.Component c1)
                 {
                     Vector2 screenPosition = GetScreenPosition(c1.gameObject);
-                    await InjectMouseHold(screenPosition, seconds);
+                    await InjectPointerHold(screenPosition, seconds);
                     await ActionComplete();
                     return;
                 }
@@ -2000,10 +2477,17 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Injects a mouse hold (press and hold for duration) at the specified screen position.
+        /// Injects a hold/long-press at the specified screen position.
+        /// Uses touch on mobile (iOS/Android), mouse on desktop.
         /// </summary>
-        private static async UniTask InjectMouseHold(Vector2 screenPosition, float holdSeconds)
+        private static async UniTask InjectPointerHold(Vector2 screenPosition, float holdSeconds)
         {
+            if (ShouldUseTouchInput())
+            {
+                await InjectTouchHold(screenPosition, holdSeconds);
+                return;
+            }
+
             var mouse = Mouse.current;
             if (mouse == null)
             {
@@ -2011,32 +2495,85 @@ namespace ODDGames.UITest
                 return;
             }
 
-            // Move mouse to position
-            using (StateEvent.From(mouse, out var posPtr))
-            {
-                mouse.position.WriteValueIntoEvent(screenPosition, posPtr);
-                InputSystem.QueueEvent(posPtr);
-            }
+            // Use MouseState struct for complete state control
+            var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
 
+            // Move mouse to position
+            InputSystem.QueueStateEvent(mouse, mouseState);
             await UniTask.Yield();
 
             // Mouse button down
-            using (StateEvent.From(mouse, out var downPtr))
-            {
-                mouse.position.WriteValueIntoEvent(screenPosition, downPtr);
-                mouse.leftButton.WriteValueIntoEvent(1f, downPtr);
-                InputSystem.QueueEvent(downPtr);
-            }
+            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            InputSystem.QueueStateEvent(mouse, mouseState);
 
             // Hold for specified duration
             await UniTask.Delay(TimeSpan.FromSeconds(holdSeconds), true);
 
             // Mouse button up
-            using (StateEvent.From(mouse, out var upPtr))
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a touch hold/long-press gesture using the Input System.
+        /// Used on mobile platforms (iOS/Android).
+        /// </summary>
+        private static async UniTask InjectTouchHold(Vector2 screenPosition, float holdSeconds)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
             {
-                mouse.position.WriteValueIntoEvent(screenPosition, upPtr);
-                mouse.leftButton.WriteValueIntoEvent(0f, upPtr);
-                InputSystem.QueueEvent(upPtr);
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[UITEST] TouchHold - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            const int touchId = 1; // Touch IDs must be non-zero
+
+            // Touch began
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, beginPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+                InputSystem.QueueEvent(beginPtr);
+            }
+
+            await UniTask.Yield();
+
+            // Hold for specified duration (touch stays in Stationary phase)
+            float elapsed = 0f;
+            while (elapsed < holdSeconds)
+            {
+                using (StateEvent.From(touchscreen, out var stationaryPtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, stationaryPtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, stationaryPtr);
+                    touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, stationaryPtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Stationary, stationaryPtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, stationaryPtr);
+                    InputSystem.QueueEvent(stationaryPtr);
+                }
+
+                await UniTask.Yield();
+                elapsed += Time.deltaTime;
+            }
+
+            // Touch ended
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, endPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+                InputSystem.QueueEvent(endPtr);
             }
 
             await UniTask.Yield();
@@ -2047,6 +2584,7 @@ namespace ODDGames.UITest
         /// Supports implicit string conversion: Click("ButtonName") becomes Click(Search.ByText("ButtonName"))
         /// Use search.IncludeInactive() to find inactive GameObjects.
         /// Use search.IncludeDisabled() to find disabled/non-interactable components.
+        /// Supports post-processing: First(), Last(), Skip(), OrderBy().
         /// </summary>
         protected async UniTask Click(Search search, bool throwIfMissing = true, float searchTime = 10, int repeat = 0, int index = 0)
         {
@@ -2065,15 +2603,28 @@ namespace ODDGames.UITest
                     searchIterations++;
 
                     // Find all clickable objects and filter by Search query
+                    // Use GroupBy to deduplicate by GameObject (multiple MonoBehaviours on same object)
                     var allClickables = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None)
                         .Where(b => b != null && b is IPointerClickHandler && CheckAvailability(b, search) && search.Matches(b.gameObject))
+                        .GroupBy(b => b.gameObject)
+                        .Select(g => g.First())
                         .ToList();
 
-                    LogDebug($"Click: iteration {searchIterations}, found {allClickables.Count} matching clickables");
-
-                    if (allClickables.Count > index)
+                    // Apply post-processing (ordering, skip, take) if specified
+                    IEnumerable<MonoBehaviour> processed = allClickables;
+                    if (search.HasPostProcessing)
                     {
-                        var target = allClickables[index];
+                        processed = search.ApplyPostProcessing(allClickables.Select(b => b.gameObject))
+                            .Select(go => go.GetComponent<MonoBehaviour>())
+                            .Where(b => b != null && b is IPointerClickHandler);
+                    }
+
+                    var finalList = processed.ToList();
+                    LogDebug($"Click: iteration {searchIterations}, found {allClickables.Count} matching clickables, {finalList.Count} after post-processing");
+
+                    if (finalList.Count > index)
+                    {
+                        var target = finalList[index];
                         LogDebug($"Click: found target at index {index} after {searchIterations} iterations ({Time.realtimeSinceStartup - startTime:F2}s): {GetHierarchyPath(target.transform)}");
                         await SimulateClick(target);
                         await ActionComplete();
@@ -2161,7 +2712,7 @@ namespace ODDGames.UITest
             Vector2 pos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             Debug.Log($"[UITEST] ClickAt ({xPercent:P0}, {yPercent:P0}) at ({pos.x:F0}, {pos.y:F0})");
 
-            await InjectMouseClick(pos);
+            await InjectPointerTap(pos);
             await ActionComplete();
         }
 
@@ -2225,13 +2776,13 @@ namespace ODDGames.UITest
             }
 
             // First click
-            await InjectMouseClick(screenPosition);
+            await InjectPointerTap(screenPosition);
 
             // Short delay between clicks (typical double-click threshold is ~500ms)
             await UniTask.Delay(50, true);
 
             // Second click
-            await InjectMouseClick(screenPosition);
+            await InjectPointerTap(screenPosition);
         }
 
         /// <summary>
@@ -2299,6 +2850,7 @@ namespace ODDGames.UITest
                 mouse.position.WriteValueIntoEvent(screenPosition, posPtr);
                 InputSystem.QueueEvent(posPtr);
             }
+            InputSystem.Update(); // Force event processing
 
             await UniTask.Yield();
 
@@ -2309,6 +2861,7 @@ namespace ODDGames.UITest
                 mouse.scroll.WriteValueIntoEvent(new Vector2(0, delta * 120), scrollPtr); // 120 is standard scroll delta unit
                 InputSystem.QueueEvent(scrollPtr);
             }
+            InputSystem.Update(); // Force event processing
 
             await UniTask.Yield();
         }
@@ -2610,17 +3163,23 @@ namespace ODDGames.UITest
             // Calculate initial positions
             Vector2 finger1Start = center + new Vector2(Mathf.Cos(startAngle) * radius, Mathf.Sin(startAngle) * radius);
             Vector2 finger2Start = center + new Vector2(Mathf.Cos(startAngle + Mathf.PI) * radius, Mathf.Sin(startAngle + Mathf.PI) * radius);
+            Vector2 prev1 = finger1Start;
+            Vector2 prev2 = finger2Start;
 
             // Begin touches
             using (StateEvent.From(touchscreen, out var beginPtr))
             {
                 touchscreen.touches[0].touchId.WriteValueIntoEvent(1, beginPtr);
                 touchscreen.touches[0].position.WriteValueIntoEvent(finger1Start, beginPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
                 touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
 
                 touchscreen.touches[1].touchId.WriteValueIntoEvent(2, beginPtr);
                 touchscreen.touches[1].position.WriteValueIntoEvent(finger2Start, beginPtr);
+                touchscreen.touches[1].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
                 touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, beginPtr);
 
                 InputSystem.QueueEvent(beginPtr);
             }
@@ -2635,20 +3194,28 @@ namespace ODDGames.UITest
 
                 Vector2 pos1 = center + new Vector2(Mathf.Cos(currentAngle) * radius, Mathf.Sin(currentAngle) * radius);
                 Vector2 pos2 = center + new Vector2(Mathf.Cos(currentAngle + Mathf.PI) * radius, Mathf.Sin(currentAngle + Mathf.PI) * radius);
+                Vector2 delta1 = pos1 - prev1;
+                Vector2 delta2 = pos2 - prev2;
 
                 using (StateEvent.From(touchscreen, out var movePtr))
                 {
                     touchscreen.touches[0].touchId.WriteValueIntoEvent(1, movePtr);
                     touchscreen.touches[0].position.WriteValueIntoEvent(pos1, movePtr);
+                    touchscreen.touches[0].delta.WriteValueIntoEvent(delta1, movePtr);
                     touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
 
                     touchscreen.touches[1].touchId.WriteValueIntoEvent(2, movePtr);
                     touchscreen.touches[1].position.WriteValueIntoEvent(pos2, movePtr);
+                    touchscreen.touches[1].delta.WriteValueIntoEvent(delta2, movePtr);
                     touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, movePtr);
 
                     InputSystem.QueueEvent(movePtr);
                 }
 
+                prev1 = pos1;
+                prev2 = pos2;
                 await UniTask.Delay(delayPerStep, true);
             }
 
@@ -2660,11 +3227,15 @@ namespace ODDGames.UITest
             {
                 touchscreen.touches[0].touchId.WriteValueIntoEvent(1, endPtr);
                 touchscreen.touches[0].position.WriteValueIntoEvent(finger1End, endPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
                 touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
 
                 touchscreen.touches[1].touchId.WriteValueIntoEvent(2, endPtr);
                 touchscreen.touches[1].position.WriteValueIntoEvent(finger2End, endPtr);
+                touchscreen.touches[1].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
                 touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(0f, endPtr);
 
                 InputSystem.QueueEvent(endPtr);
             }
@@ -2691,17 +3262,23 @@ namespace ODDGames.UITest
 
             int steps = Mathf.Max(10, (int)(duration * 60));
             int delayPerStep = Mathf.Max(1, (int)(duration * 1000 / steps));
+            Vector2 prev1 = finger1Start;
+            Vector2 prev2 = finger2Start;
 
             // Begin touches
             using (StateEvent.From(touchscreen, out var beginPtr))
             {
                 touchscreen.touches[0].touchId.WriteValueIntoEvent(1, beginPtr);
                 touchscreen.touches[0].position.WriteValueIntoEvent(finger1Start, beginPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
                 touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
 
                 touchscreen.touches[1].touchId.WriteValueIntoEvent(2, beginPtr);
                 touchscreen.touches[1].position.WriteValueIntoEvent(finger2Start, beginPtr);
+                touchscreen.touches[1].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
                 touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, beginPtr);
 
                 InputSystem.QueueEvent(beginPtr);
             }
@@ -2714,20 +3291,28 @@ namespace ODDGames.UITest
                 float t = (float)i / steps;
                 Vector2 pos1 = Vector2.Lerp(finger1Start, finger1End, t);
                 Vector2 pos2 = Vector2.Lerp(finger2Start, finger2End, t);
+                Vector2 delta1 = pos1 - prev1;
+                Vector2 delta2 = pos2 - prev2;
 
                 using (StateEvent.From(touchscreen, out var movePtr))
                 {
                     touchscreen.touches[0].touchId.WriteValueIntoEvent(1, movePtr);
                     touchscreen.touches[0].position.WriteValueIntoEvent(pos1, movePtr);
+                    touchscreen.touches[0].delta.WriteValueIntoEvent(delta1, movePtr);
                     touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
 
                     touchscreen.touches[1].touchId.WriteValueIntoEvent(2, movePtr);
                     touchscreen.touches[1].position.WriteValueIntoEvent(pos2, movePtr);
+                    touchscreen.touches[1].delta.WriteValueIntoEvent(delta2, movePtr);
                     touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, movePtr);
 
                     InputSystem.QueueEvent(movePtr);
                 }
 
+                prev1 = pos1;
+                prev2 = pos2;
                 await UniTask.Delay(delayPerStep, true);
             }
 
@@ -2736,11 +3321,15 @@ namespace ODDGames.UITest
             {
                 touchscreen.touches[0].touchId.WriteValueIntoEvent(1, endPtr);
                 touchscreen.touches[0].position.WriteValueIntoEvent(finger1End, endPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
                 touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
 
                 touchscreen.touches[1].touchId.WriteValueIntoEvent(2, endPtr);
                 touchscreen.touches[1].position.WriteValueIntoEvent(finger2End, endPtr);
+                touchscreen.touches[1].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
                 touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(0f, endPtr);
 
                 InputSystem.QueueEvent(endPtr);
             }
@@ -2787,7 +3376,7 @@ namespace ODDGames.UITest
         {
             Debug.Log($"[UITEST] DragFromTo ({duration}s) from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
 
-            await InjectMouseDrag(startPos, endPos, duration);
+            await InjectPointerDrag(startPos, endPos, duration);
 
             await ActionComplete();
         }
@@ -2815,7 +3404,7 @@ namespace ODDGames.UITest
 
             Debug.Log($"[UITEST] DragTo - dragging from ({sourcePos.x:F0},{sourcePos.y:F0}) to ({targetPos.x:F0},{targetPos.y:F0})");
 
-            await InjectMouseDrag(sourcePos, targetPos, duration);
+            await InjectPointerDrag(sourcePos, targetPos, duration);
             await ActionComplete();
         }
 
@@ -2837,7 +3426,7 @@ namespace ODDGames.UITest
             Vector2 clickPos = GetSliderPositionAtPercent(slider, percent);
             Debug.Log($"[UITEST] ClickSlider - clicking at ({clickPos.x:F0},{clickPos.y:F0})");
 
-            await InjectMouseClick(clickPos);
+            await InjectPointerTap(clickPos);
             await ActionComplete();
         }
 
@@ -2864,7 +3453,7 @@ namespace ODDGames.UITest
 
             Debug.Log($"[UITEST] DragSlider - dragging from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
 
-            await InjectMouseDrag(startPos, endPos, duration);
+            await InjectPointerDrag(startPos, endPos, duration);
             await ActionComplete();
         }
 
@@ -2915,6 +3504,320 @@ namespace ODDGames.UITest
             return cam != null
                 ? RectTransformUtility.WorldToScreenPoint(cam, worldPos)
                 : (Vector2)worldPos;
+        }
+
+        /// <summary>
+        /// Scrolls a ScrollRect using drag gestures until the target element becomes visible on screen, then returns it.
+        /// Uses realistic input injection (drag gestures) - does not manipulate scroll position directly.
+        /// </summary>
+        /// <param name="scrollViewSearch">Search query for the ScrollRect</param>
+        /// <param name="targetSearch">Search query for the target element inside the scroll view</param>
+        /// <param name="maxScrollAttempts">Maximum number of scroll attempts before giving up</param>
+        /// <param name="throwIfMissing">Whether to throw if elements not found</param>
+        /// <param name="searchTime">Initial timeout for finding elements</param>
+        /// <returns>The target GameObject once visible, or null if not found</returns>
+        protected async UniTask<GameObject> ScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20, bool throwIfMissing = true, float searchTime = 5)
+        {
+            Debug.Log($"[UITEST] ScrollTo - searching for scroll view and target");
+
+            // Find the ScrollRect
+            var scrollRect = await Find<ScrollRect>(scrollViewSearch, throwIfMissing, searchTime);
+            if (scrollRect == null) return null;
+
+            var viewport = scrollRect.viewport ?? scrollRect.GetComponent<RectTransform>();
+            var content = scrollRect.content;
+
+            if (content == null)
+            {
+                if (throwIfMissing)
+                    throw new TestException("ScrollTo - ScrollRect has no content RectTransform assigned");
+                return null;
+            }
+
+            // Get viewport bounds for visibility checks
+            var canvas = scrollRect.GetComponentInParent<Canvas>();
+            Camera cam = null;
+            if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+                cam = canvas.worldCamera ?? Camera.main;
+
+            // Calculate scroll distances based on viewport size
+            Vector3[] viewportCorners = new Vector3[4];
+            viewport.GetWorldCorners(viewportCorners);
+
+            // For ScreenSpaceOverlay, world corners ARE screen coordinates
+            // For other render modes, convert using the camera
+            Vector2 viewportMin, viewportMax;
+            if (canvas != null && canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+            {
+                viewportMin = viewportCorners[0];
+                viewportMax = viewportCorners[2];
+            }
+            else
+            {
+                viewportMin = RectTransformUtility.WorldToScreenPoint(cam, viewportCorners[0]);
+                viewportMax = RectTransformUtility.WorldToScreenPoint(cam, viewportCorners[2]);
+            }
+
+            float viewportHeight = Mathf.Abs(viewportMax.y - viewportMin.y);
+            float viewportWidth = Mathf.Abs(viewportMax.x - viewportMin.x);
+            // Use 40% of the smaller dimension to ensure drag stays within viewport bounds
+            float scrollDistance = Mathf.Min(viewportHeight, viewportWidth) * 0.4f;
+
+            Debug.Log($"[UITEST] ScrollTo - viewport: {viewport.name}, renderMode={canvas?.renderMode}, cam={cam}");
+            Debug.Log($"[UITEST] ScrollTo - viewportMin={viewportMin}, viewportMax={viewportMax}, size=({viewportWidth}, {viewportHeight})");
+            Debug.Log($"[UITEST] ScrollTo - Screen.width={Screen.width}, Screen.height={Screen.height}");
+
+            Vector2 scrollCenter = (viewportMin + viewportMax) / 2f;
+            Debug.Log($"[UITEST] ScrollTo - scrollCenter=({scrollCenter.x:F0},{scrollCenter.y:F0})");
+
+            // Try to find target - first check if already visible
+            var findMode = targetSearch.ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
+            int scrollAttempts = 0;
+
+            while (scrollAttempts < maxScrollAttempts && Application.isPlaying)
+            {
+                await UniTask.Yield(); // Ensure layout is updated
+
+                // Search for target element within the content
+                var allTargets = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None)
+                    .Where(b => b != null && targetSearch.Matches(b.gameObject) && IsDescendantOf(b.transform, content))
+                    .Select(b => b.gameObject)
+                    .Distinct()
+                    .ToList();
+
+                // Check if any target is visible in viewport
+                foreach (var target in allTargets)
+                {
+                    if (IsVisibleInViewport(target, viewport, cam))
+                    {
+                        Debug.Log($"[UITEST] ScrollTo - found visible target: {GetHierarchyPath(target.transform)}");
+                        return target;
+                    }
+                }
+
+                Vector2 dragDirection = Vector2.zero;
+                bool canScrollVertical = scrollRect.vertical;
+                bool canScrollHorizontal = scrollRect.horizontal;
+
+                if (allTargets.Count > 0)
+                {
+                    // Target exists but not visible - determine drag direction based on target position
+                    var target = allTargets[0];
+                    var targetRect = target.GetComponent<RectTransform>();
+
+                    if (targetRect != null)
+                    {
+                        Vector3[] targetCorners = new Vector3[4];
+                        targetRect.GetWorldCorners(targetCorners);
+
+                        // Get current viewport corners (fresh read)
+                        Vector3[] currentViewportCorners = new Vector3[4];
+                        viewport.GetWorldCorners(currentViewportCorners);
+
+                        float targetCenterY = (targetCorners[0].y + targetCorners[2].y) / 2f;
+                        float viewportCenterY = (currentViewportCorners[0].y + currentViewportCorners[2].y) / 2f;
+                        float targetCenterX = (targetCorners[0].x + targetCorners[2].x) / 2f;
+                        float viewportCenterX = (currentViewportCorners[0].x + currentViewportCorners[2].x) / 2f;
+
+                        if (canScrollVertical)
+                        {
+                            if (targetCenterY < viewportCenterY)
+                            {
+                                // Target is below viewport (lower Y) - drag UP to bring lower content into view
+                                // (dragging up on screen scrolls content upward, revealing lower content)
+                                dragDirection.y = scrollDistance;
+                            }
+                            else
+                            {
+                                // Target is above viewport (higher Y) - drag DOWN to bring upper content into view
+                                dragDirection.y = -scrollDistance;
+                            }
+                        }
+
+                        if (canScrollHorizontal)
+                        {
+                            if (targetCenterX > viewportCenterX)
+                            {
+                                // Target is to the right - drag left to scroll content right
+                                dragDirection.x = -scrollDistance;
+                            }
+                            else
+                            {
+                                // Target is to the left - drag right to scroll content left
+                                dragDirection.x = scrollDistance;
+                            }
+                        }
+
+                        Debug.Log($"[UITEST] ScrollTo - target found but not visible, scroll attempt {scrollAttempts + 1}, drag=({dragDirection.x:F0},{dragDirection.y:F0})");
+                    }
+                }
+                else
+                {
+                    // No targets found yet - do a sequential search by scrolling through content
+                    Debug.Log($"[UITEST] ScrollTo - no targets found yet, scroll attempt {scrollAttempts + 1}");
+
+                    // Scroll down/right to search through content
+                    // Drag UP to bring lower content into view (scroll down through list)
+                    if (canScrollVertical)
+                    {
+                        dragDirection.y = scrollDistance; // Drag UP to scroll down through content
+                    }
+                    if (canScrollHorizontal)
+                    {
+                        dragDirection.x = -scrollDistance; // Drag LEFT to scroll right through content
+                    }
+                }
+
+                if (dragDirection == Vector2.zero)
+                {
+                    Debug.LogWarning("[UITEST] ScrollTo - ScrollRect has no scroll direction enabled");
+                    break;
+                }
+
+                // Perform drag gesture using realistic input injection
+                float posBefore = scrollRect.vertical ? scrollRect.verticalNormalizedPosition : scrollRect.horizontalNormalizedPosition;
+
+                // Debug: Log what the raycast would hit at the drag start position
+                var pointerData = new PointerEventData(EventSystem.current) { position = scrollCenter };
+                var raycastResults = new List<RaycastResult>();
+                EventSystem.current.RaycastAll(pointerData, raycastResults);
+                Debug.Log($"[UITEST] ScrollTo - drag start ({scrollCenter.x:F0},{scrollCenter.y:F0}), raycast hits: {raycastResults.Count}");
+                foreach (var hit in raycastResults.Take(3))
+                {
+                    Debug.Log($"[UITEST] ScrollTo - raycast hit: {hit.gameObject.name} at depth {hit.depth}");
+                }
+
+                await InjectPointerDrag(scrollCenter, scrollCenter + dragDirection, 0.15f);
+                await UniTask.Delay(100, true); // Wait for scroll to settle
+                float posAfter = scrollRect.vertical ? scrollRect.verticalNormalizedPosition : scrollRect.horizontalNormalizedPosition;
+                Debug.Log($"[UITEST] ScrollTo - scroll position changed: {posBefore:F3} -> {posAfter:F3}");
+
+                scrollAttempts++;
+            }
+
+            if (throwIfMissing)
+                throw new TestException($"ScrollTo - Could not find visible target after {maxScrollAttempts} scroll attempts");
+
+            return null;
+        }
+
+        /// <summary>
+        /// Scrolls a ScrollRect until the target element becomes visible, then clicks on it.
+        /// </summary>
+        /// <param name="scrollViewSearch">Search query for the ScrollRect</param>
+        /// <param name="targetSearch">Search query for the target element to click</param>
+        /// <param name="maxScrollAttempts">Maximum number of scroll attempts</param>
+        /// <param name="throwIfMissing">Whether to throw if not found</param>
+        /// <param name="searchTime">Initial timeout for finding scroll view</param>
+        protected async UniTask ScrollToAndClick(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20, bool throwIfMissing = true, float searchTime = 5)
+        {
+            var target = await ScrollTo(scrollViewSearch, targetSearch, maxScrollAttempts, throwIfMissing, searchTime);
+            if (target != null)
+            {
+                Vector2 screenPos = GetScreenPosition(target);
+                await InjectPointerTap(screenPos);
+                await ActionComplete();
+            }
+        }
+
+        /// <summary>
+        /// Checks if a GameObject is a descendant of the given parent transform.
+        /// </summary>
+        private static bool IsDescendantOf(Transform child, Transform parent)
+        {
+            Transform current = child;
+            while (current != null)
+            {
+                if (current == parent)
+                    return true;
+                current = current.parent;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if a GameObject is visible within a viewport RectTransform.
+        /// Uses RectTransformUtility for accurate visibility detection regardless of canvas mode.
+        /// </summary>
+        private static bool IsVisibleInViewport(GameObject go, RectTransform viewport, Camera cam)
+        {
+            var rect = go.GetComponent<RectTransform>();
+            if (rect == null)
+            {
+                Debug.Log($"[UITEST] IsVisibleInViewport: {go.name} has no RectTransform");
+                return false;
+            }
+
+            // Get element's world corners
+            Vector3[] elementCorners = new Vector3[4];
+            rect.GetWorldCorners(elementCorners);
+
+            // Get viewport's world corners
+            Vector3[] viewportCorners = new Vector3[4];
+            viewport.GetWorldCorners(viewportCorners);
+
+            // Calculate bounds in world space
+            float elementMinX = Mathf.Min(elementCorners[0].x, elementCorners[1].x, elementCorners[2].x, elementCorners[3].x);
+            float elementMaxX = Mathf.Max(elementCorners[0].x, elementCorners[1].x, elementCorners[2].x, elementCorners[3].x);
+            float elementMinY = Mathf.Min(elementCorners[0].y, elementCorners[1].y, elementCorners[2].y, elementCorners[3].y);
+            float elementMaxY = Mathf.Max(elementCorners[0].y, elementCorners[1].y, elementCorners[2].y, elementCorners[3].y);
+
+            float viewportMinX = Mathf.Min(viewportCorners[0].x, viewportCorners[1].x, viewportCorners[2].x, viewportCorners[3].x);
+            float viewportMaxX = Mathf.Max(viewportCorners[0].x, viewportCorners[1].x, viewportCorners[2].x, viewportCorners[3].x);
+            float viewportMinY = Mathf.Min(viewportCorners[0].y, viewportCorners[1].y, viewportCorners[2].y, viewportCorners[3].y);
+            float viewportMaxY = Mathf.Max(viewportCorners[0].y, viewportCorners[1].y, viewportCorners[2].y, viewportCorners[3].y);
+
+            // Check for overlap (element is at least partially visible)
+            // Using 20% visibility threshold - element must have at least 20% overlap
+            float elementWidth = elementMaxX - elementMinX;
+            float elementHeight = elementMaxY - elementMinY;
+
+            float overlapX = Mathf.Max(0, Mathf.Min(elementMaxX, viewportMaxX) - Mathf.Max(elementMinX, viewportMinX));
+            float overlapY = Mathf.Max(0, Mathf.Min(elementMaxY, viewportMaxY) - Mathf.Max(elementMinY, viewportMinY));
+
+            float overlapArea = overlapX * overlapY;
+            float elementArea = elementWidth * elementHeight;
+            float overlapPercent = elementArea > 0 ? overlapArea / elementArea : 0;
+
+            bool isVisible = overlapPercent >= 0.2f; // 20% visibility threshold
+
+            Debug.Log($"[UITEST] IsVisibleInViewport: {go.name} element=({elementMinX:F1},{elementMinY:F1})-({elementMaxX:F1},{elementMaxY:F1}), viewport=({viewportMinX:F1},{viewportMinY:F1})-({viewportMaxX:F1},{viewportMaxY:F1}), overlap={overlapPercent:P0}, visible={isVisible}");
+
+            return isVisible;
+        }
+
+        /// <summary>
+        /// Legacy overload for compatibility - converts min/max to viewport rect check.
+        /// </summary>
+        private static bool IsVisibleInViewport(GameObject go, Vector2 viewportMin, Vector2 viewportMax, Camera cam)
+        {
+            var rect = go.GetComponent<RectTransform>();
+            if (rect == null) return false;
+
+            // Get element's world corners
+            Vector3[] elementCorners = new Vector3[4];
+            rect.GetWorldCorners(elementCorners);
+
+            float elementMinX = Mathf.Min(elementCorners[0].x, elementCorners[1].x, elementCorners[2].x, elementCorners[3].x);
+            float elementMaxX = Mathf.Max(elementCorners[0].x, elementCorners[1].x, elementCorners[2].x, elementCorners[3].x);
+            float elementMinY = Mathf.Min(elementCorners[0].y, elementCorners[1].y, elementCorners[2].y, elementCorners[3].y);
+            float elementMaxY = Mathf.Max(elementCorners[0].y, elementCorners[1].y, elementCorners[2].y, elementCorners[3].y);
+
+            float elementWidth = elementMaxX - elementMinX;
+            float elementHeight = elementMaxY - elementMinY;
+
+            float overlapX = Mathf.Max(0, Mathf.Min(elementMaxX, viewportMax.x) - Mathf.Max(elementMinX, viewportMin.x));
+            float overlapY = Mathf.Max(0, Mathf.Min(elementMaxY, viewportMax.y) - Mathf.Max(elementMinY, viewportMin.y));
+
+            float overlapArea = overlapX * overlapY;
+            float elementArea = elementWidth * elementHeight;
+            float overlapPercent = elementArea > 0 ? overlapArea / elementArea : 0;
+
+            bool isVisible = overlapPercent >= 0.2f;
+
+            Debug.Log($"[UITEST] IsVisibleInViewport: {go.name} element=({elementMinX:F1},{elementMinY:F1})-({elementMaxX:F1},{elementMaxY:F1}), viewport=({viewportMin.x:F1},{viewportMin.y:F1})-({viewportMax.x:F1},{viewportMax.y:F1}), overlap={overlapPercent:P0}, visible={isVisible}");
+
+            return isVisible;
         }
 
         /// <summary>
@@ -3032,7 +3935,7 @@ namespace ODDGames.UITest
 
             // Click the dropdown to open it
             Vector2 dropdownPos = GetScreenPosition(dropdownGO);
-            await InjectMouseClick(dropdownPos);
+            await InjectPointerTap(dropdownPos);
 
             // Wait for new toggles to appear (the dropdown items)
             Toggle[] newToggles = null;
@@ -3057,7 +3960,7 @@ namespace ODDGames.UITest
                 {
                     var targetToggle = newToggles[optionIndex];
                     Vector2 itemPos = GetScreenPosition(targetToggle.gameObject);
-                    await InjectMouseClick(itemPos);
+                    await InjectPointerTap(itemPos);
                     await ActionComplete();
                     return;
                 }
@@ -3070,69 +3973,183 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Returns true if we should use touch input instead of mouse.
+        /// On mobile platforms or when no mouse is available but touchscreen is.
+        /// </summary>
+        private static bool ShouldUseTouchInput()
+        {
+#if UNITY_IOS || UNITY_ANDROID
+            return true;
+#else
+            // On desktop, use mouse if available, otherwise fall back to touch
+            return Mouse.current == null && Touchscreen.current != null;
+#endif
+        }
+
+        /// <summary>
+        /// Injects a drag gesture using the appropriate input method for the platform.
+        /// Uses touch on mobile (iOS/Android), mouse on desktop.
+        /// </summary>
+        private static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration)
+        {
+            if (ShouldUseTouchInput())
+            {
+                await InjectTouchDrag(startPos, endPos, duration);
+                return;
+            }
+
+            await InjectMouseDrag(startPos, endPos, duration);
+        }
+
+        /// <summary>
         /// Injects a mouse drag from start to end position using the Input System.
+        /// Uses frame-based yields to ensure Unity processes events each frame (matching touch behavior).
         /// </summary>
         private static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration)
         {
             var mouse = Mouse.current;
             if (mouse == null)
             {
-                Debug.LogWarning("[UITEST] Drag - No mouse device found, cannot inject drag");
+                Debug.LogWarning("[UITEST] MouseDrag - No mouse device found, cannot inject drag");
                 return;
             }
 
-            Debug.Log($"[UITEST] InjectMouseDrag - start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s");
+            Debug.Log($"[UITEST] MouseDrag - start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s");
+
+            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60)); // ~60fps
+            Vector2 previousPos = startPos;
 
             // Move mouse to start position
             using (StateEvent.From(mouse, out var posPtr))
             {
                 mouse.position.WriteValueIntoEvent(startPos, posPtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, posPtr);
                 InputSystem.QueueEvent(posPtr);
             }
-
+            InputSystem.Update(); // Force event processing
             await UniTask.Yield();
 
             // Mouse button down at start
             using (StateEvent.From(mouse, out var downPtr))
             {
                 mouse.position.WriteValueIntoEvent(startPos, downPtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, downPtr);
                 mouse.leftButton.WriteValueIntoEvent(1f, downPtr);
                 InputSystem.QueueEvent(downPtr);
             }
+            InputSystem.Update(); // Force event processing
+            await UniTask.Yield(); // Allow PointerDown to register
 
-            Debug.Log($"[UITEST] InjectMouseDrag - mouse down at ({startPos.x:F0},{startPos.y:F0})");
+            Debug.Log($"[UITEST] MouseDrag - mouse down at ({startPos.x:F0},{startPos.y:F0})");
 
-            // Wait a frame for the press to register before starting drag
-            await UniTask.Yield();
-
-            // Interpolate mouse position over duration
-            int steps = Mathf.Max(10, (int)(duration * 60));
-            int delayPerStep = Mathf.Max(1, (int)(duration * 1000 / steps));
-
-            for (int i = 1; i <= steps; i++)
+            // Interpolate mouse position over duration with frame-based yields (like touch)
+            for (int i = 1; i <= totalFrames; i++)
             {
-                float t = (float)i / steps;
+                float t = (float)i / totalFrames;
                 Vector2 currentPos = Vector2.Lerp(startPos, endPos, t);
+                Vector2 delta = currentPos - previousPos;
 
                 using (StateEvent.From(mouse, out var movePtr))
                 {
                     mouse.position.WriteValueIntoEvent(currentPos, movePtr);
+                    mouse.delta.WriteValueIntoEvent(delta, movePtr);
                     mouse.leftButton.WriteValueIntoEvent(1f, movePtr);
                     InputSystem.QueueEvent(movePtr);
                 }
+                InputSystem.Update(); // Force event processing each frame
 
-                await UniTask.Delay(delayPerStep, true);
+                previousPos = currentPos;
+                await UniTask.Yield(); // Frame-based to ensure event processing
             }
-
-            Debug.Log($"[UITEST] InjectMouseDrag - drag complete, releasing at ({endPos.x:F0},{endPos.y:F0})");
 
             // Mouse button up at end
             using (StateEvent.From(mouse, out var upPtr))
             {
                 mouse.position.WriteValueIntoEvent(endPos, upPtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, upPtr);
                 mouse.leftButton.WriteValueIntoEvent(0f, upPtr);
                 InputSystem.QueueEvent(upPtr);
             }
+            InputSystem.Update(); // Force event processing
+
+            Debug.Log($"[UITEST] MouseDrag - mouse up at ({endPos.x:F0},{endPos.y:F0})");
+
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a single-finger touch drag gesture using the Input System.
+        /// Used on mobile platforms (iOS/Android).
+        /// </summary>
+        private static async UniTask InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[UITEST] TouchDrag - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            Debug.Log($"[UITEST] InjectTouchDrag - start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s");
+
+            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60)); // ~60fps
+            Vector2 previousPos = startPos;
+            const int touchId = 1; // Touch IDs must be non-zero
+
+            // Touch began at start position
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(startPos, beginPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update(); // Force event processing
+            await UniTask.Yield();
+
+            Debug.Log($"[UITEST] InjectTouchDrag - touch began at ({startPos.x:F0},{startPos.y:F0})");
+
+            // Move touch through interpolated positions
+            for (int i = 1; i <= totalFrames; i++)
+            {
+                float t = (float)i / totalFrames;
+                Vector2 currentPos = Vector2.Lerp(startPos, endPos, t);
+                Vector2 delta = currentPos - previousPos;
+
+                using (StateEvent.From(touchscreen, out var movePtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, movePtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(currentPos, movePtr);
+                    touchscreen.touches[0].delta.WriteValueIntoEvent(delta, movePtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
+                    InputSystem.QueueEvent(movePtr);
+                }
+                InputSystem.Update(); // Force event processing each frame
+
+                previousPos = currentPos;
+                await UniTask.Yield();
+            }
+
+            Debug.Log($"[UITEST] InjectTouchDrag - touch ended at ({endPos.x:F0},{endPos.y:F0})");
+
+            // Touch ended at end position
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(endPos, endPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update(); // Force event processing
 
             await UniTask.Yield();
         }
@@ -3169,7 +4186,7 @@ namespace ODDGames.UITest
                 int holdDuration = UnityEngine.Random.Range(300, Mathf.Min(3000, seconds * 1000));
                 float holdSeconds = holdDuration / 1000f;
 
-                await InjectMouseHold(screenPosition, holdSeconds);
+                await InjectPointerHold(screenPosition, holdSeconds);
 
                 await UniTask.Delay(UnityEngine.Random.Range(10, 100), true);
             }
@@ -3276,29 +4293,103 @@ namespace ODDGames.UITest
             {
                 iteration++;
 
-                // Find all objects of type T that match the search query
-                var allObjects = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None);
-
-                foreach (var obj in allObjects)
+                // When the search has a target transform (Parent/Child/Sibling), we need to search all GameObjects
+                // because the source object may not have a MonoBehaviour (e.g., a Panel with only Image component)
+                if (search.HasTargetTransform)
                 {
-                    if (obj == null) continue;
-                    if (!CheckAvailability(obj, search)) continue;
-                    if (!search.Matches(obj.gameObject)) continue;
+                    var allTransforms = GameObject.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None);
+                    var matchingGameObjects = new List<GameObject>();
 
-                    // Check if this object or its components match type T
-                    if (obj is T match)
+                    foreach (var transform in allTransforms)
                     {
-                        Debug.Log($"[UITEST] Find<{typeof(T).Name}> (Search) found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
-                        await ActionComplete();
-                        return match;
+                        if (transform == null) continue;
+                        var go = transform.gameObject;
+                        if (!search.Matches(go)) continue;
+                        matchingGameObjects.Add(go);
                     }
 
-                    var component = obj.GetComponent<T>();
-                    if (component != null)
+                    if (matchingGameObjects.Count > 0)
                     {
-                        Debug.Log($"[UITEST] Find<{typeof(T).Name}> (Search) found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
-                        await ActionComplete();
-                        return component;
+                        var transformedGos = search.ApplyPostProcessing(matchingGameObjects).ToList();
+                        foreach (var go in transformedGos)
+                        {
+                            if (go == null) continue;
+
+                            // Check availability on the transformed target
+                            var anyComponent = go.GetComponent<Component>();
+                            if (anyComponent != null && !CheckAvailability(anyComponent, search)) continue;
+
+                            var component = go.GetComponent<T>();
+                            if (component != null)
+                            {
+                                Debug.Log($"[UITEST] Find<{typeof(T).Name}> (Search with transform) found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
+                                await ActionComplete();
+                                return component;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Standard path: find MonoBehaviours that match and have component T
+                    var allObjects = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None);
+                    var matches = new List<(MonoBehaviour obj, T result)>();
+
+                    // Track which GameObjects we've already processed to avoid duplicates
+                    var processedGameObjects = new HashSet<GameObject>();
+
+                    foreach (var obj in allObjects)
+                    {
+                        if (obj == null) continue;
+
+                        // Skip if we've already processed this GameObject
+                        if (!processedGameObjects.Add(obj.gameObject)) continue;
+
+                        if (!CheckAvailability(obj, search)) continue;
+                        if (!search.Matches(obj.gameObject)) continue;
+
+                        // Check if this object or its components match type T
+                        if (obj is T match)
+                        {
+                            matches.Add((obj, match));
+                        }
+                        else
+                        {
+                            var component = obj.GetComponent<T>();
+                            if (component != null)
+                                matches.Add((obj, component));
+                        }
+                    }
+
+                    // Apply post-processing if specified (ordering, skip, take, etc.)
+                    if (matches.Count > 0)
+                    {
+                        if (search.HasPostProcessing)
+                        {
+                            var orderedGos = search.ApplyPostProcessing(matches.Select(m => m.obj.gameObject)).ToList();
+                            foreach (var go in orderedGos)
+                            {
+                                if (go == null) continue;
+
+                                var component = go.GetComponent<T>();
+                                if (component != null)
+                                {
+                                    Debug.Log($"[UITEST] Find<{typeof(T).Name}> (Search) found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
+                                    await ActionComplete();
+                                    return component;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var first = matches.FirstOrDefault();
+                            if (first.result != null)
+                            {
+                                Debug.Log($"[UITEST] Find<{typeof(T).Name}> (Search) found on iteration {iteration} after {(Time.realtimeSinceStartup - startTime) * 1000:F0}ms");
+                                await ActionComplete();
+                                return first.result;
+                            }
+                        }
                     }
                 }
 
@@ -3319,6 +4410,7 @@ namespace ODDGames.UITest
         /// Supports implicit string conversion.
         /// Use search.IncludeInactive() to find inactive GameObjects.
         /// Use search.IncludeDisabled() to find disabled/non-interactable components.
+        /// Supports post-processing: First(), Last(), Skip(), OrderBy().
         /// </summary>
         protected async UniTask<IEnumerable<T>> FindAll<T>(Search search, float seconds = 10)
         {
@@ -3330,29 +4422,75 @@ namespace ODDGames.UITest
                 if ((Time.realtimeSinceStartup - startTime) > seconds)
                     break;
 
-                var allObjects = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None);
-                var matches = new List<T>();
-
-                foreach (var obj in allObjects)
+                // When the search has a target transform (Parent/Child/Sibling), we need to search all GameObjects
+                // because the source object may not have a MonoBehaviour (e.g., a Panel with only Image component)
+                if (search.HasTargetTransform)
                 {
-                    if (obj == null) continue;
-                    if (!CheckAvailability(obj, search)) continue;
-                    if (!search.Matches(obj.gameObject)) continue;
+                    var allTransforms = GameObject.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None);
+                    var matchingGameObjects = new List<GameObject>();
 
-                    if (obj is T match)
+                    foreach (var transform in allTransforms)
                     {
-                        matches.Add(match);
+                        if (transform == null) continue;
+                        var go = transform.gameObject;
+                        if (!search.Matches(go)) continue;
+                        matchingGameObjects.Add(go);
                     }
-                    else
+
+                    if (matchingGameObjects.Count > 0)
                     {
-                        var component = obj.GetComponent<T>();
-                        if (component != null)
-                            matches.Add(component);
+                        var transformedGos = search.ApplyPostProcessing(matchingGameObjects).ToList();
+                        return transformedGos
+                            .Where(go => go != null)
+                            .Select(go => go.GetComponent<T>())
+                            .Where(c => c != null);
                     }
                 }
+                else
+                {
+                    // Standard path: find MonoBehaviours that match and have component T
+                    var allObjects = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None);
+                    var matches = new List<(MonoBehaviour obj, T result)>();
 
-                if (matches.Count > 0)
-                    return matches;
+                    // Track which GameObjects we've already processed to avoid duplicates
+                    var processedGameObjects = new HashSet<GameObject>();
+
+                    foreach (var obj in allObjects)
+                    {
+                        if (obj == null) continue;
+
+                        // Skip if we've already processed this GameObject
+                        if (!processedGameObjects.Add(obj.gameObject)) continue;
+
+                        if (!CheckAvailability(obj, search)) continue;
+                        if (!search.Matches(obj.gameObject)) continue;
+
+                        if (obj is T match)
+                        {
+                            matches.Add((obj, match));
+                        }
+                        else
+                        {
+                            var component = obj.GetComponent<T>();
+                            if (component != null)
+                                matches.Add((obj, component));
+                        }
+                    }
+
+                    if (matches.Count > 0)
+                    {
+                        // Apply post-processing if specified (ordering, skip, take, etc.)
+                        if (search.HasPostProcessing)
+                        {
+                            var orderedGos = search.ApplyPostProcessing(matches.Select(m => m.obj.gameObject)).ToList();
+                            return orderedGos
+                                .Where(go => go != null)
+                                .Select(go => go.GetComponent<T>())
+                                .Where(c => c != null);
+                        }
+                        return matches.Select(m => m.result);
+                    }
+                }
 
                 await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }

@@ -1,0 +1,2419 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.InputSystem.LowLevel;
+using UnityEngine.TestTools;
+using TMPro;
+using Cysharp.Threading.Tasks;
+
+namespace ODDGames.UITest.Tests
+{
+    /// <summary>
+    /// PlayMode tests for Search API.
+    /// All tests run in PlayMode to ensure proper runtime behavior.
+    /// </summary>
+    [TestFixture]
+    public class SearchPlayModeTests
+    {
+        private GameObject _canvas;
+        private Canvas _canvasComponent;
+        private EventSystem _eventSystem;
+        private List<GameObject> _createdObjects;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _createdObjects = new List<GameObject>();
+
+            // Destroy any lingering EventSystems from previous failed tests
+            var existingEventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None);
+            foreach (var es in existingEventSystems)
+            {
+                Object.DestroyImmediate(es.gameObject);
+            }
+
+            // Reset Input System state to clear any leftover mouse button/touch states
+            // This is critical for run-all mode where previous tests may leave mouse buttons pressed
+            var mouse = Mouse.current;
+            if (mouse != null)
+            {
+                // Reset mouse state by queueing a clean state event
+                using (StateEvent.From(mouse, out var statePtr))
+                {
+                    mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
+                    mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
+                    mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
+                    mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
+                    mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
+                    InputSystem.QueueEvent(statePtr);
+                }
+                InputSystem.Update();
+            }
+
+            // Create EventSystem
+            var esGO = new GameObject("EventSystem");
+            _eventSystem = esGO.AddComponent<EventSystem>();
+            esGO.AddComponent<InputSystemUIInputModule>();
+            _createdObjects.Add(esGO);
+
+            // Create Canvas
+            _canvas = new GameObject("TestCanvas");
+            _canvasComponent = _canvas.AddComponent<Canvas>();
+            _canvasComponent.renderMode = RenderMode.ScreenSpaceOverlay;
+            var scaler = _canvas.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+            _canvas.AddComponent<GraphicRaycaster>();
+            _createdObjects.Add(_canvas);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            // Reset Input System state before destroying objects
+            // This ensures the next test starts with a clean input state
+            var mouse = Mouse.current;
+            if (mouse != null)
+            {
+                using (StateEvent.From(mouse, out var statePtr))
+                {
+                    mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
+                    mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
+                    mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
+                    mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
+                    mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
+                    InputSystem.QueueEvent(statePtr);
+                }
+                InputSystem.Update();
+            }
+
+            // Destroy in reverse order (children before parents for safety)
+            for (int i = _createdObjects.Count - 1; i >= 0; i--)
+            {
+                var obj = _createdObjects[i];
+                if (obj != null)
+                    Object.DestroyImmediate(obj);
+            }
+            _createdObjects.Clear();
+
+            // Clear references to destroyed objects
+            _canvas = null;
+            _canvasComponent = null;
+            _eventSystem = null;
+
+            // Force cleanup any orphaned test objects by name pattern
+            var orphans = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+            foreach (var go in orphans)
+            {
+                if (go != null && (go.name.StartsWith("Test") || go.name.StartsWith("Diag") ||
+                    go.name == "EventSystem" || go.name == "TestCanvas" ||
+                    go.name.Contains("Helper") || go.name.Contains("Debugger")))
+                {
+                    Object.DestroyImmediate(go);
+                }
+            }
+        }
+
+        #region Static Factory Tests - ByName
+
+        [UnityTest]
+        public IEnumerator ByName_ExactMatch_ReturnsTrue()
+        {
+            var go = CreateTestObject("ExactButton");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ExactButton");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_ExactMatch_WrongName_ReturnsFalse()
+        {
+            var go = CreateTestObject("OtherButton");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ExactButton");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_WildcardPrefix_ReturnsTrue()
+        {
+            var go = CreateTestObject("PrefixButton");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Prefix*");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_WildcardSuffix_ReturnsTrue()
+        {
+            var go = CreateTestObject("ButtonSuffix");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("*Suffix");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_WildcardContains_ReturnsTrue()
+        {
+            var go = CreateTestObject("SomeMiddleText");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("*Middle*");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_GlobPattern_ReturnsTrue()
+        {
+            var go = CreateTestObject("btn_play_icon");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("btn_*_icon");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_GlobPattern_WrongPattern_ReturnsFalse()
+        {
+            var go = CreateTestObject("btn_play_button");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("btn_*_icon");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_SpecialCharacters_MatchesExactly()
+        {
+            var go = CreateTestObject("Button (1)");
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName("Button (1)").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("Button (*)").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("*(*)*").Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_UnicodeCharacters_Matches()
+        {
+            var go = CreateTestObject("Кнопка_按钮_ボタン");
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName("Кнопка_按钮_ボタン").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("*按钮*").Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_CaseInsensitive_Matches()
+        {
+            var go = CreateTestObject("MyButton");
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName("mybutton").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("MYBUTTON").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("MyBuTtOn").Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_MultipleWildcards_Matches()
+        {
+            var go = CreateTestObject("Prefix_Middle_Suffix");
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName("*_*_*").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("Prefix*Suffix").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("*Middle*").Matches(go));
+            Assert.IsFalse(UITestBehaviour.Search.ByName("*Other*").Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_ConsecutiveWildcards_Matches()
+        {
+            var go = CreateTestObject("TestButton");
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName("**Button").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("Test**").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("***").Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByName_OnlyWildcard_MatchesAny()
+        {
+            var go = CreateTestObject("AnyName");
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName("*").Matches(go));
+        }
+
+        #endregion
+
+        #region Static Factory Tests - ByType
+
+        [UnityTest]
+        public IEnumerator ByType_Generic_WithComponent_ReturnsTrue()
+        {
+            var go = CreateTestObject("ButtonObj");
+            go.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>();
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByType_Generic_WithoutComponent_ReturnsFalse()
+        {
+            var go = CreateTestObject("EmptyObj");
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>();
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByType_String_WithComponent_ReturnsTrue()
+        {
+            var go = CreateTestObject("ToggleObj");
+            go.AddComponent<Toggle>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType("Toggle");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByType_String_WithoutComponent_ReturnsFalse()
+        {
+            var go = CreateTestObject("EmptyObj");
+            yield return null;
+            var search = UITestBehaviour.Search.ByType("Toggle");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByType_InheritedTypes_Matches()
+        {
+            var go = CreateTestObject("GraphicObj");
+            go.AddComponent<Image>(); // Image inherits from Graphic
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByType<Graphic>().Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByType<Image>().Matches(go));
+            Assert.IsFalse(UITestBehaviour.Search.ByType<RawImage>().Matches(go));
+        }
+
+        #endregion
+
+        #region Static Factory Tests - ByText
+
+        [UnityTest]
+        public IEnumerator ByText_ExactMatch_ReturnsTrue()
+        {
+            var go = CreateButtonWithText("Btn", "Click Me");
+            yield return null;
+            var search = UITestBehaviour.Search.ByText("Click Me");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByText_WildcardPrefix_ReturnsTrue()
+        {
+            var go = CreateButtonWithText("Btn", "Click Me");
+            yield return null;
+            var search = UITestBehaviour.Search.ByText("Click*");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByText_WildcardSuffix_ReturnsTrue()
+        {
+            var go = CreateButtonWithText("Btn", "Click Me");
+            yield return null;
+            var search = UITestBehaviour.Search.ByText("*Me");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByText_NoTextComponent_ReturnsFalse()
+        {
+            var go = CreateTestObject("NoText");
+            yield return null;
+            var search = UITestBehaviour.Search.ByText("Click Me");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByText_NestedTextComponents_FindsInChildren()
+        {
+            var parent = CreateTestObject("Parent");
+            var child = new GameObject("Child");
+            child.transform.SetParent(parent.transform);
+            var tmp = child.AddComponent<TextMeshProUGUI>();
+            tmp.text = "Nested Text";
+            _createdObjects.Add(child);
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByText("Nested Text").Matches(parent));
+        }
+
+        [UnityTest]
+        public IEnumerator ByText_MultipleTextComponents_MatchesAny()
+        {
+            var go = CreateTestObject("MultiText");
+            var child1 = new GameObject("Text1");
+            child1.transform.SetParent(go.transform);
+            var tmp1 = child1.AddComponent<TextMeshProUGUI>();
+            tmp1.text = "First";
+            _createdObjects.Add(child1);
+            var child2 = new GameObject("Text2");
+            child2.transform.SetParent(go.transform);
+            var tmp2 = child2.AddComponent<TextMeshProUGUI>();
+            tmp2.text = "Second";
+            _createdObjects.Add(child2);
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByText("First").Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByText("Second").Matches(go));
+            Assert.IsFalse(UITestBehaviour.Search.ByText("Third").Matches(go));
+        }
+
+        #endregion
+
+        #region Static Factory Tests - ByPath
+
+        [UnityTest]
+        public IEnumerator ByPath_MatchesHierarchy_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByPath("*Parent*/*Child*");
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator ByPath_WrongHierarchy_ReturnsFalse()
+        {
+            var parent = CreateTestObject("OtherPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByPath("*Parent*/*Child*");
+            Assert.IsFalse(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator ByPath_DeepHierarchy_Matches()
+        {
+            var root = CreateTestObject("Canvas");
+            var panel1 = CreateTestObject("MainPanel", root.transform);
+            var panel2 = CreateTestObject("SubPanel", panel1.transform);
+            var button = CreateTestObject("ActionButton", panel2.transform);
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByPath("*Canvas*/*MainPanel*/*SubPanel*/*ActionButton*").Matches(button));
+            Assert.IsTrue(UITestBehaviour.Search.ByPath("*/*/*/*ActionButton*").Matches(button));
+            Assert.IsFalse(UITestBehaviour.Search.ByPath("*WrongPanel*/*ActionButton*").Matches(button));
+        }
+
+        #endregion
+
+        #region Static Factory Tests - ByTag
+
+        [UnityTest]
+        public IEnumerator ByTag_MatchingTag_ReturnsTrue()
+        {
+            var go = CreateTestObject("TaggedObj");
+            go.tag = "Untagged";
+            yield return null;
+            var search = UITestBehaviour.Search.ByTag("Untagged");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByTag_DifferentTag_ReturnsFalse()
+        {
+            var go = CreateTestObject("TaggedObj");
+            go.tag = "Untagged";
+            yield return null;
+            var search = UITestBehaviour.Search.ByTag("MainCamera");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        #endregion
+
+        #region Static Factory Tests - BySprite
+
+        [UnityTest]
+        public IEnumerator BySprite_MatchingSpriteName_ReturnsTrue()
+        {
+            var go = CreateTestObject("SpriteObj");
+            var image = go.AddComponent<Image>();
+            var texture = new Texture2D(1, 1);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
+            sprite.name = "btn_play_icon";
+            image.sprite = sprite;
+            yield return null;
+            var search = UITestBehaviour.Search.BySprite("btn_*_icon");
+            Assert.IsTrue(search.Matches(go));
+            Object.Destroy(sprite);
+            Object.Destroy(texture);
+        }
+
+        [UnityTest]
+        public IEnumerator BySprite_NoSprite_ReturnsFalse()
+        {
+            var go = CreateTestObject("NoSpriteObj");
+            go.AddComponent<Image>();
+            yield return null;
+            var search = UITestBehaviour.Search.BySprite("any_sprite");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator BySprite_WrongSpriteName_ReturnsFalse()
+        {
+            var go = CreateTestObject("SpriteObj");
+            var image = go.AddComponent<Image>();
+            var texture = new Texture2D(1, 1);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
+            sprite.name = "other_sprite";
+            image.sprite = sprite;
+            yield return null;
+            var search = UITestBehaviour.Search.BySprite("btn_*_icon");
+            Assert.IsFalse(search.Matches(go));
+            Object.Destroy(sprite);
+            Object.Destroy(texture);
+        }
+
+        #endregion
+
+        #region Static Factory Tests - ByAny
+
+        [UnityTest]
+        public IEnumerator ByAny_MatchesName_ReturnsTrue()
+        {
+            var go = CreateTestObject("TargetName");
+            yield return null;
+            var search = UITestBehaviour.Search.ByAny("TargetName");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByAny_MatchesText_ReturnsTrue()
+        {
+            var go = CreateButtonWithText("SomeButton", "TargetText");
+            yield return null;
+            var search = UITestBehaviour.Search.ByAny("TargetText");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator ByAny_NoMatch_ReturnsFalse()
+        {
+            var go = CreateButtonWithText("OtherButton", "OtherText");
+            yield return null;
+            var search = UITestBehaviour.Search.ByAny("Target");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        #endregion
+
+        #region Chaining Tests
+
+        [UnityTest]
+        public IEnumerator Chain_TypeAndName_BothMatch_ReturnsTrue()
+        {
+            var go = CreateTestObject("SpecificButton");
+            go.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().Name("Specific*");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Chain_TypeAndName_TypeMismatch_ReturnsFalse()
+        {
+            var go = CreateTestObject("SpecificButton");
+            go.AddComponent<Toggle>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().Name("Specific*");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Chain_TypeAndName_NameMismatch_ReturnsFalse()
+        {
+            var go = CreateTestObject("OtherButton");
+            go.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().Name("Specific*");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Chain_NameAndText_BothMatch_ReturnsTrue()
+        {
+            var go = CreateButtonWithText("SubmitBtn", "Submit");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("*Btn").Text("Submit");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Chain_TypeTextName_AllMatch_ReturnsTrue()
+        {
+            var go = CreateButtonWithText("ConfirmButton", "OK");
+            go.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().Text("OK").Name("*Confirm*");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Chain_TypeAndSprite_BothMatch_ReturnsTrue()
+        {
+            var go = CreateTestObject("ImageObj");
+            var image = go.AddComponent<Image>();
+            var texture = new Texture2D(1, 1);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
+            sprite.name = "icon_settings";
+            image.sprite = sprite;
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Image>().Sprite("icon_*");
+            Assert.IsTrue(search.Matches(go));
+            Object.Destroy(sprite);
+            Object.Destroy(texture);
+        }
+
+        [UnityTest]
+        public IEnumerator Chain_FiveConditions_AllMustMatch()
+        {
+            var go = CreateTestObject("SubmitButton");
+            go.AddComponent<RectTransform>();
+            go.AddComponent<Image>();
+            var btn = go.AddComponent<Button>();
+            btn.interactable = true;
+            go.tag = "Untagged";
+            var textChild = new GameObject("Text");
+            textChild.transform.SetParent(go.transform);
+            var tmp = textChild.AddComponent<TextMeshProUGUI>();
+            tmp.text = "Submit";
+            _createdObjects.Add(textChild);
+            yield return null;
+            var search = UITestBehaviour.Search
+                .ByType<Button>()
+                .Name("*Button")
+                .Text("Submit")
+                .Tag("Untagged")
+                .With<Button>(b => b.interactable);
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Chain_OrderIndependence()
+        {
+            var go = CreateButtonWithText("TestButton", "Click");
+            go.AddComponent<Button>();
+            yield return null;
+            var search1 = UITestBehaviour.Search.ByName("TestButton").Text("Click").Type<Button>();
+            var search2 = UITestBehaviour.Search.ByType<Button>().Name("TestButton").Text("Click");
+            var search3 = UITestBehaviour.Search.ByText("Click").Type<Button>().Name("TestButton");
+            Assert.IsTrue(search1.Matches(go));
+            Assert.IsTrue(search2.Matches(go));
+            Assert.IsTrue(search3.Matches(go));
+        }
+
+        #endregion
+
+        #region With Predicate Tests
+
+        [UnityTest]
+        public IEnumerator With_PredicateTrue_ReturnsTrue()
+        {
+            var go = CreateTestObject("InteractableBtn");
+            var button = go.AddComponent<Button>();
+            button.interactable = true;
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().With<Button>(b => b.interactable);
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator With_PredicateFalse_ReturnsFalse()
+        {
+            var go = CreateTestObject("DisabledBtn");
+            var button = go.AddComponent<Button>();
+            button.interactable = false;
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().With<Button>(b => b.interactable);
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator With_Toggle_IsOnTrue_ReturnsTrue()
+        {
+            var go = CreateTestObject("OnToggle");
+            var toggle = go.AddComponent<Toggle>();
+            toggle.isOn = true;
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Toggle>().With<Toggle>(t => t.isOn);
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator With_Toggle_IsOnFalse_ReturnsFalse()
+        {
+            var go = CreateTestObject("OffToggle");
+            var toggle = go.AddComponent<Toggle>();
+            toggle.isOn = false;
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Toggle>().With<Toggle>(t => t.isOn);
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator With_Slider_ValueCheck_ReturnsTrue()
+        {
+            var go = CreateTestObject("SliderObj");
+            var slider = go.AddComponent<Slider>();
+            slider.value = 0.75f;
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Slider>().With<Slider>(s => s.value > 0.5f);
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator With_MultiplePredicatesOnSameComponent()
+        {
+            var go = CreateTestObject("SliderObj");
+            var slider = go.AddComponent<Slider>();
+            slider.minValue = 0;
+            slider.maxValue = 100;
+            slider.value = 75;
+            slider.interactable = true;
+            yield return null;
+            var search = UITestBehaviour.Search
+                .ByType<Slider>()
+                .With<Slider>(s => s.value > 50)
+                .With<Slider>(s => s.value < 80)
+                .With<Slider>(s => s.interactable);
+            Assert.IsTrue(search.Matches(go));
+            slider.value = 90;
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator With_PredicateOnDifferentComponents()
+        {
+            var go = CreateTestObject("ComplexUI");
+            var btn = go.AddComponent<Button>();
+            btn.interactable = true;
+            var image = go.AddComponent<Image>();
+            image.raycastTarget = true;
+            yield return null;
+            var search = UITestBehaviour.Search
+                .ByName("ComplexUI")
+                .With<Button>(b => b.interactable)
+                .With<Image>(i => i.raycastTarget);
+            Assert.IsTrue(search.Matches(go));
+            image.raycastTarget = false;
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        #endregion
+
+        #region Where Predicate Tests
+
+        [UnityTest]
+        public IEnumerator Where_CustomPredicate_ReturnsTrue()
+        {
+            var go = CreateTestObject("CustomTarget");
+            yield return null;
+            var search = UITestBehaviour.Search.Where(g => g.name == "CustomTarget");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Where_CustomPredicate_ReturnsFalse()
+        {
+            var go = CreateTestObject("OtherObject");
+            yield return null;
+            var search = UITestBehaviour.Search.Where(g => g.name == "CustomTarget");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Where_ComplexPredicate_ReturnsTrue()
+        {
+            var go = CreateTestObject("ActiveEnabled");
+            go.SetActive(true);
+            yield return null;
+            var search = UITestBehaviour.Search.Where(g => g.activeInHierarchy && g.name.Contains("Active"));
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Where_ComplexPredicate_WithClosure()
+        {
+            var go1 = CreateTestObject("Target_1");
+            var go2 = CreateTestObject("Target_2");
+            var go3 = CreateTestObject("Other_3");
+            var validNames = new[] { "Target_1", "Target_2" };
+            yield return null;
+            var search = UITestBehaviour.Search.Where(go => validNames.Contains(go.name));
+            Assert.IsTrue(search.Matches(go1));
+            Assert.IsTrue(search.Matches(go2));
+            Assert.IsFalse(search.Matches(go3));
+        }
+
+        #endregion
+
+        #region Not (Negation) Tests
+
+        [UnityTest]
+        public IEnumerator Not_Name_ExcludesMatch()
+        {
+            var go1 = CreateTestObject("NotThisOne");
+            var go2 = CreateTestObject("NotOther");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Not*").Not.Name("NotThisOne");
+            Assert.IsFalse(search.Matches(go1), "Should NOT match NotThisOne");
+            Assert.IsTrue(search.Matches(go2), "Should match NotOther");
+        }
+
+        [UnityTest]
+        public IEnumerator Not_Type_ExcludesComponent()
+        {
+            var goWithButton = CreateTestObject("WithButton");
+            goWithButton.AddComponent<Button>();
+            var goWithToggle = CreateTestObject("WithToggle");
+            goWithToggle.AddComponent<Toggle>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("With*").Not.Type<Button>();
+            Assert.IsFalse(search.Matches(goWithButton), "Should NOT match object with Button");
+            Assert.IsTrue(search.Matches(goWithToggle), "Should match object with Toggle");
+        }
+
+        [UnityTest]
+        public IEnumerator Not_ChainedMultipleTimes_AllNegated()
+        {
+            var go1 = CreateTestObject("KeepThis");
+            go1.AddComponent<Button>();
+            var go2 = CreateTestObject("ExcludeA");
+            go2.AddComponent<Button>();
+            var go3 = CreateTestObject("ExcludeB");
+            go3.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search
+                .ByType<Button>()
+                .Not.Name("ExcludeA")
+                .Not.Name("ExcludeB");
+            Assert.IsTrue(search.Matches(go1));
+            Assert.IsFalse(search.Matches(go2));
+            Assert.IsFalse(search.Matches(go3));
+        }
+
+        #endregion
+
+        #region Hierarchy Tests - HasParent
+
+        [UnityTest]
+        public IEnumerator HasParent_Search_DirectParentMatches_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ChildButton").HasParent(UITestBehaviour.Search.ByName("ParentPanel"));
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator HasParent_Search_WrongParent_ReturnsFalse()
+        {
+            var parent = CreateTestObject("OtherPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ChildButton").HasParent(UITestBehaviour.Search.ByName("ParentPanel"));
+            Assert.IsFalse(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator HasParent_String_DirectParentMatches_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ChildButton").HasParent("ParentPanel");
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator HasParent_String_Wildcard_ReturnsTrue()
+        {
+            var parent = CreateTestObject("MyParentPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ChildButton").HasParent("*Parent*");
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator HasParent_GrandparentDoesNotMatch()
+        {
+            var grandparent = CreateTestObject("GrandPanel");
+            var parent = CreateTestObject("ParentPanel", grandparent.transform);
+            var child = CreateTestObject("ChildButton", parent.transform);
+            yield return null;
+            var searchParent = UITestBehaviour.Search.ByName("ChildButton").HasParent("ParentPanel");
+            var searchGrandparent = UITestBehaviour.Search.ByName("ChildButton").HasParent("GrandPanel");
+            Assert.IsTrue(searchParent.Matches(child));
+            Assert.IsFalse(searchGrandparent.Matches(child), "HasParent should not match grandparent");
+        }
+
+        #endregion
+
+        #region Hierarchy Tests - HasAncestor
+
+        [UnityTest]
+        public IEnumerator HasAncestor_Search_GrandparentMatches_ReturnsTrue()
+        {
+            var grandparent = CreateTestObject("RootPanel");
+            var parent = CreateTestObject("MiddlePanel", grandparent.transform);
+            var child = CreateTestObject("DeepButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("DeepButton").HasAncestor(UITestBehaviour.Search.ByName("RootPanel"));
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator HasAncestor_Search_NoMatchingAncestor_ReturnsFalse()
+        {
+            var grandparent = CreateTestObject("OtherRoot");
+            var parent = CreateTestObject("MiddlePanel", grandparent.transform);
+            var child = CreateTestObject("DeepButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("DeepButton").HasAncestor(UITestBehaviour.Search.ByName("RootPanel"));
+            Assert.IsFalse(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator HasAncestor_String_DeepHierarchy_ReturnsTrue()
+        {
+            var root = CreateTestObject("AncestorRoot");
+            var level1 = CreateTestObject("Level1", root.transform);
+            var level2 = CreateTestObject("Level2", level1.transform);
+            var level3 = CreateTestObject("Level3", level2.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Level3").HasAncestor("AncestorRoot");
+            Assert.IsTrue(search.Matches(level3));
+        }
+
+        [UnityTest]
+        public IEnumerator HasAncestor_MatchesAtAnyDepth()
+        {
+            var root = CreateTestObject("RootPanel");
+            var level1 = CreateTestObject("Level1", root.transform);
+            var level2 = CreateTestObject("Level2", level1.transform);
+            var level3 = CreateTestObject("Level3", level2.transform);
+            var level4 = CreateTestObject("DeepButton", level3.transform);
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName("DeepButton").HasAncestor("RootPanel").Matches(level4));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("DeepButton").HasAncestor("Level1").Matches(level4));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("DeepButton").HasAncestor("Level2").Matches(level4));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("DeepButton").HasAncestor("Level3").Matches(level4));
+        }
+
+        #endregion
+
+        #region Hierarchy Tests - HasChild
+
+        [UnityTest]
+        public IEnumerator HasChild_Search_DirectChildMatches_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ParentPanel").HasChild(UITestBehaviour.Search.ByName("ChildButton"));
+            Assert.IsTrue(search.Matches(parent));
+        }
+
+        [UnityTest]
+        public IEnumerator HasChild_Search_NoMatchingChild_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("OtherChild", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ParentPanel").HasChild(UITestBehaviour.Search.ByName("ChildButton"));
+            Assert.IsFalse(search.Matches(parent));
+        }
+
+        [UnityTest]
+        public IEnumerator HasChild_String_Wildcard_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("SpecificChildBtn", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ParentPanel").HasChild("*Child*");
+            Assert.IsTrue(search.Matches(parent));
+        }
+
+        [UnityTest]
+        public IEnumerator HasChild_OnlyMatchesDirectChildren()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("ChildPanel", parent.transform);
+            var grandchild = CreateTestObject("GrandchildButton", child.transform);
+            yield return null;
+            var searchChild = UITestBehaviour.Search.ByName("ParentPanel").HasChild("ChildPanel");
+            var searchGrandchild = UITestBehaviour.Search.ByName("ParentPanel").HasChild("GrandchildButton");
+            Assert.IsTrue(searchChild.Matches(parent));
+            Assert.IsFalse(searchGrandchild.Matches(parent), "HasChild should not match grandchildren");
+        }
+
+        #endregion
+
+        #region Hierarchy Tests - HasDescendant
+
+        [UnityTest]
+        public IEnumerator HasDescendant_Search_GrandchildMatches_ReturnsTrue()
+        {
+            var root = CreateTestObject("RootPanel");
+            var middle = CreateTestObject("MiddlePanel", root.transform);
+            var deep = CreateTestObject("DeepButton", middle.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("RootPanel").HasDescendant(UITestBehaviour.Search.ByName("DeepButton"));
+            Assert.IsTrue(search.Matches(root));
+        }
+
+        [UnityTest]
+        public IEnumerator HasDescendant_Search_NoMatchingDescendant_ReturnsFalse()
+        {
+            var root = CreateTestObject("RootPanel");
+            var middle = CreateTestObject("MiddlePanel", root.transform);
+            var deep = CreateTestObject("OtherButton", middle.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("RootPanel").HasDescendant(UITestBehaviour.Search.ByName("DeepButton"));
+            Assert.IsFalse(search.Matches(root));
+        }
+
+        [UnityTest]
+        public IEnumerator HasDescendant_String_DeepHierarchy_ReturnsTrue()
+        {
+            var root = CreateTestObject("DescendantRoot");
+            var level1 = CreateTestObject("Level1", root.transform);
+            var level2 = CreateTestObject("Level2", level1.transform);
+            var level3 = CreateTestObject("TargetDescendant", level2.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("DescendantRoot").HasDescendant("*Target*");
+            Assert.IsTrue(search.Matches(root));
+        }
+
+        [UnityTest]
+        public IEnumerator HasDescendant_MatchesAtAnyDepth()
+        {
+            var root = CreateTestObject("RootPanel");
+            var level1 = CreateTestObject("Level1", root.transform);
+            var level2 = CreateTestObject("Level2", level1.transform);
+            var deepButton = CreateTestObject("DeepButton", level2.transform);
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName("RootPanel").HasDescendant("DeepButton").Matches(root));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("RootPanel").HasDescendant("Level2").Matches(root));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("Level1").HasDescendant("DeepButton").Matches(level1));
+        }
+
+        [UnityTest]
+        public IEnumerator Hierarchy_CombinedParentAndChild()
+        {
+            var root = CreateTestObject("Root");
+            var panel = CreateTestObject("TargetPanel", root.transform);
+            var button = CreateTestObject("TargetButton", panel.transform);
+            yield return null;
+            var search = UITestBehaviour.Search
+                .ByName("TargetPanel")
+                .HasParent("Root")
+                .HasChild("TargetButton");
+            Assert.IsTrue(search.Matches(panel));
+        }
+
+        #endregion
+
+        #region GetParent Tests
+
+        [UnityTest]
+        public IEnumerator GetParent_ComponentInParent_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            parent.AddComponent<CanvasGroup>();
+            var child = CreateTestObject("ChildButton", parent.transform);
+            child.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator GetParent_NoComponentInParent_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var child = CreateTestObject("ChildButton", parent.transform);
+            child.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            Assert.IsFalse(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator GetParent_WithPredicate_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var cg = parent.AddComponent<CanvasGroup>();
+            cg.alpha = 0.8f;
+            var child = CreateTestObject("ChildButton", parent.transform);
+            child.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
+            Assert.IsTrue(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator GetParent_WithPredicate_PredicateFails_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentPanel");
+            var cg = parent.AddComponent<CanvasGroup>();
+            cg.alpha = 0.3f;
+            var child = CreateTestObject("ChildButton", parent.transform);
+            child.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
+            Assert.IsFalse(search.Matches(child));
+        }
+
+        [UnityTest]
+        public IEnumerator GetParent_ExcludesSelf()
+        {
+            var go = CreateTestObject("SelfTest");
+            go.AddComponent<Button>();
+            go.AddComponent<CanvasGroup>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Not_GetParent_Works()
+        {
+            var parent1 = CreateTestObject("WithCanvasGroup");
+            parent1.AddComponent<CanvasGroup>();
+            var child1 = CreateTestObject("Child1", parent1.transform);
+            child1.AddComponent<Button>();
+            var parent2 = CreateTestObject("WithoutCanvasGroup");
+            var child2 = CreateTestObject("Child2", parent2.transform);
+            child2.AddComponent<Button>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByType<Button>().Not.GetParent<CanvasGroup>();
+            Assert.IsFalse(search.Matches(child1));
+            Assert.IsTrue(search.Matches(child2));
+        }
+
+        #endregion
+
+        #region GetChild Tests
+
+        [UnityTest]
+        public IEnumerator GetChild_ComponentInChildren_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentSlot");
+            var child = CreateTestObject("ChildImage", parent.transform);
+            child.AddComponent<Image>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>();
+            Assert.IsTrue(search.Matches(parent));
+        }
+
+        [UnityTest]
+        public IEnumerator GetChild_NoComponentInChildren_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentSlot");
+            var child = CreateTestObject("ChildEmpty", parent.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>();
+            Assert.IsFalse(search.Matches(parent));
+        }
+
+        [UnityTest]
+        public IEnumerator GetChild_WithPredicate_ReturnsTrue()
+        {
+            var parent = CreateTestObject("ParentSlot");
+            var child = CreateTestObject("ChildImage", parent.transform);
+            var image = child.AddComponent<Image>();
+            var texture = new Texture2D(1, 1);
+            var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
+            image.sprite = sprite;
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>(img => img.sprite != null);
+            Assert.IsTrue(search.Matches(parent));
+            Object.Destroy(sprite);
+            Object.Destroy(texture);
+        }
+
+        [UnityTest]
+        public IEnumerator GetChild_WithPredicate_PredicateFails_ReturnsFalse()
+        {
+            var parent = CreateTestObject("ParentSlot");
+            var child = CreateTestObject("ChildImage", parent.transform);
+            var image = child.AddComponent<Image>();
+            image.sprite = null;
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>(img => img.sprite != null);
+            Assert.IsFalse(search.Matches(parent));
+        }
+
+        [UnityTest]
+        public IEnumerator GetChild_ExcludesSelf()
+        {
+            var go = CreateTestObject("SelfTest");
+            go.AddComponent<Image>();
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("SelfTest").GetChild<Image>();
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Not_GetChild_Works()
+        {
+            var parent1 = CreateTestObject("ParentWithImage");
+            var child1 = CreateTestObject("ImageChild", parent1.transform);
+            child1.AddComponent<Image>();
+            var parent2 = CreateTestObject("ParentWithoutImage");
+            var child2 = CreateTestObject("EmptyChild", parent2.transform);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Parent*").Not.GetChild<Image>();
+            Assert.IsFalse(search.Matches(parent1));
+            Assert.IsTrue(search.Matches(parent2));
+        }
+
+        #endregion
+
+        #region Implicit Conversion Tests
+
+        [UnityTest]
+        public IEnumerator ImplicitConversion_String_ToSearch_Works()
+        {
+            var go = CreateButtonWithText("Btn", "Target Text");
+            yield return null;
+            UITestBehaviour.Search search = "Target Text";
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        #endregion
+
+        #region Edge Cases
+
+        [UnityTest]
+        public IEnumerator Search_NullGameObject_ReturnsFalse()
+        {
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Any");
+            Assert.IsFalse(search.Matches(null));
+        }
+
+        [UnityTest]
+        public IEnumerator Search_InactiveGameObject_StillMatches()
+        {
+            var go = CreateTestObject("InactiveObject");
+            go.SetActive(false);
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("InactiveObject");
+            Assert.IsTrue(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Search_EmptyName_ReturnsFalse()
+        {
+            var go = CreateTestObject("");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("");
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator Chain_MultipleConditions_AllMustMatch()
+        {
+            var go = CreateButtonWithText("SubmitButton", "Submit");
+            go.AddComponent<Button>();
+            yield return null;
+            var searchAllMatch = UITestBehaviour.Search
+                .ByType<Button>()
+                .Name("*Button")
+                .Text("Submit");
+            Assert.IsTrue(searchAllMatch.Matches(go));
+            var searchOneFails = UITestBehaviour.Search
+                .ByType<Button>()
+                .Name("*Button")
+                .Text("Cancel");
+            Assert.IsFalse(searchOneFails.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator LongName_Matches()
+        {
+            var longName = new string('A', 500) + "_Button_" + new string('B', 500);
+            var go = CreateTestObject(longName);
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByName(longName).Matches(go));
+            Assert.IsTrue(UITestBehaviour.Search.ByName("*_Button_*").Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator DestroyedGameObject_ReturnsFalse()
+        {
+            var go = CreateTestObject("WillBeDestroyed");
+            var search = UITestBehaviour.Search.ByName("WillBeDestroyed");
+            Assert.IsTrue(search.Matches(go));
+            Object.DestroyImmediate(go);
+            _createdObjects.Remove(go);
+            yield return null;
+            Assert.IsFalse(search.Matches(go));
+        }
+
+        [UnityTest]
+        public IEnumerator DisabledComponents_StillMatch()
+        {
+            var go = CreateTestObject("DisabledButton");
+            var btn = go.AddComponent<Button>();
+            btn.enabled = false;
+            yield return null;
+            Assert.IsTrue(UITestBehaviour.Search.ByType<Button>().Name("DisabledButton").Matches(go));
+        }
+
+        #endregion
+
+        #region Ordering Tests (Skip, First, Last)
+
+        [UnityTest]
+        public IEnumerator Skip_ReturnsCorrectSkipCount()
+        {
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Item*").Skip(2);
+            Assert.IsTrue(search.HasPostProcessing);
+        }
+
+        [UnityTest]
+        public IEnumerator First_SetsPostProcessing()
+        {
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Item*").First();
+            Assert.IsTrue(search.HasPostProcessing);
+        }
+
+        [UnityTest]
+        public IEnumerator Last_SetsPostProcessing()
+        {
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Item*").Last();
+            Assert.IsTrue(search.HasPostProcessing);
+        }
+
+        [UnityTest]
+        public IEnumerator OrderByPosition_SetsPostProcessing()
+        {
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Item*").OrderByPosition();
+            Assert.IsTrue(search.HasPostProcessing);
+        }
+
+        [UnityTest]
+        public IEnumerator ApplyPostProcessing_Skip_Works()
+        {
+            var go1 = CreateTestObject("Item1");
+            var go2 = CreateTestObject("Item2");
+            var go3 = CreateTestObject("Item3");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Item*").Skip(1);
+            var input = new[] { go1, go2, go3 };
+            var result = search.ApplyPostProcessing(input).ToList();
+            Assert.AreEqual(2, result.Count);
+            Assert.AreEqual(go2, result[0]);
+            Assert.AreEqual(go3, result[1]);
+        }
+
+        [UnityTest]
+        public IEnumerator ApplyPostProcessing_SkipAndFirst_Works()
+        {
+            var go1 = CreateTestObject("Item1");
+            var go2 = CreateTestObject("Item2");
+            var go3 = CreateTestObject("Item3");
+            yield return null;
+            var search = UITestBehaviour.Search.ByName("Item*").Skip(1).First();
+            var input = new[] { go1, go2, go3 };
+            var result = search.ApplyPostProcessing(input).ToList();
+            Assert.AreEqual(1, result.Count);
+            Assert.AreEqual(go2, result[0]);
+        }
+
+        [UnityTest]
+        public IEnumerator First_WithoutSkip_GetsFirst()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("OrderedBtn*").First());
+                Assert.IsNotNull(result, "Should find button");
+                Assert.AreEqual("OrderedBtn1", result.name, "First() should return OrderedBtn1 (leftmost)");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Skip_SkipsElements()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("OrderedBtn*").Skip(1).First());
+                Assert.IsNotNull(result, "Should find button after skip");
+                Assert.AreEqual("OrderedBtn2", result.name, "Skip(1).First() should return second button");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Skip2_First_GetsThird()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("OrderedBtn*").Skip(2).First());
+                Assert.IsNotNull(result, "Should find button");
+                Assert.AreEqual("OrderedBtn3", result.name, "Skip(2).First() should return OrderedBtn3");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Skip_ThenLast_Works()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("OrderedBtn*").Skip(1).Last());
+                Assert.IsNotNull(result, "Should find button");
+                Assert.AreEqual("OrderedBtn3", result.name, "Skip(1).Last() should return third button");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator VerticalOrdering_First_GetsTop()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var top = CreateButton("TopBtn", "Top", _canvas.transform, new Vector2(0, 200));
+                var mid = CreateButton("MidBtn", "Mid", _canvas.transform, new Vector2(0, 0));
+                var bot = CreateButton("BotBtn", "Bot", _canvas.transform, new Vector2(0, -200));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("*Btn").First());
+                Assert.IsNotNull(result, "Should find button");
+                Assert.AreEqual("TopBtn", result.name, "First() should return TopBtn (top-most)");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator VerticalOrdering_Last_GetsBottom()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var top = CreateButton("TopBtn", "Top", _canvas.transform, new Vector2(0, 200));
+                var mid = CreateButton("MidBtn", "Mid", _canvas.transform, new Vector2(0, 0));
+                var bot = CreateButton("BotBtn", "Bot", _canvas.transform, new Vector2(0, -200));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("*Btn").Last());
+                Assert.IsNotNull(result, "Should find button");
+                Assert.AreEqual("BotBtn", result.name, "Last() should return BotBtn (bottom-most)");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator FindAll_ReturnsAllInOrder()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindAllHelper>();
+                var results = await test.TestFindAll<Button>(
+                    UITestBehaviour.Search.ByName("OrderedBtn*").OrderByPosition());
+                Assert.AreEqual(3, results.Count, "Should find all 3 buttons");
+                Assert.AreEqual("OrderedBtn1", results[0].name, "First should be OrderedBtn1 (leftmost)");
+                Assert.AreEqual("OrderedBtn2", results[1].name, "Second should be OrderedBtn2 (middle)");
+                Assert.AreEqual("OrderedBtn3", results[2].name, "Third should be OrderedBtn3 (rightmost)");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator OrderBy_SortsCorrectly()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var slider1 = CreateSlider("Slider1", 0.1f, _canvas.transform, new Vector2(-100, 0));
+                var slider2 = CreateSlider("Slider2", 0.9f, _canvas.transform, new Vector2(0, 0));
+                var slider3 = CreateSlider("Slider3", 0.5f, _canvas.transform, new Vector2(100, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var lowest = await test.TestFind<Slider>(
+                    UITestBehaviour.Search.ByName("Slider*").OrderBy<Slider>(s => s.value).First());
+                Assert.IsNotNull(lowest, "Should find slider");
+                Assert.AreEqual("Slider1", lowest.name, "First by value should be Slider1 (0.1)");
+                var highest = await test.TestFind<Slider>(
+                    UITestBehaviour.Search.ByName("Slider*").OrderBy<Slider>(s => s.value).Last());
+                Assert.IsNotNull(highest, "Should find slider");
+                Assert.AreEqual("Slider2", highest.name, "Last by value should be Slider2 (0.9)");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Diagnostic_LogsScreenPositions()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create buttons at known positions
+                var btn1 = CreateButton("DiagBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+                var btn2 = CreateButton("DiagBtn2", "2", _canvas.transform, new Vector2(0, 0));
+                var btn3 = CreateButton("DiagBtn3", "3", _canvas.transform, new Vector2(200, 0));
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                // Log canvas info
+                Debug.Log($"[DIAGNOSTIC] Canvas: renderMode={_canvasComponent.renderMode}, scaleFactor={_canvasComponent.scaleFactor}");
+                Debug.Log($"[DIAGNOSTIC] Screen: {Screen.width}x{Screen.height}");
+
+                // Log each button's position info
+                foreach (var btn in new[] { btn1, btn2, btn3 })
+                {
+                    var rect = btn.GetComponent<RectTransform>();
+                    Vector3[] corners = new Vector3[4];
+                    rect.GetWorldCorners(corners);
+                    Vector3 center = (corners[0] + corners[2]) / 2f;
+
+                    Debug.Log($"[DIAGNOSTIC] {btn.name}: anchoredPos={rect.anchoredPosition}, worldCenter={center}, corners[0]={corners[0]}, corners[2]={corners[2]}");
+                }
+
+                // Test ordering with Debug.Log already in ApplyPostProcessing
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindAllHelper>();
+
+                Debug.Log("[DIAGNOSTIC] === Testing OrderByPosition ===");
+                var results = await test.TestFindAll<Button>(
+                    UITestBehaviour.Search.ByName("DiagBtn*").OrderByPosition());
+
+                Debug.Log($"[DIAGNOSTIC] Results count: {results.Count}");
+                for (int i = 0; i < results.Count; i++)
+                {
+                    Debug.Log($"[DIAGNOSTIC] Result[{i}]: {results[i].name}");
+                }
+
+                // Verify ordering - btn1 should be first (leftmost), btn3 should be last (rightmost)
+                Assert.AreEqual(3, results.Count, "Should find all 3 buttons");
+                Assert.AreEqual("DiagBtn1", results[0].name, "First should be DiagBtn1 (leftmost at x=-200)");
+                Assert.AreEqual("DiagBtn2", results[1].name, "Second should be DiagBtn2 (center at x=0)");
+                Assert.AreEqual("DiagBtn3", results[2].name, "Third should be DiagBtn3 (rightmost at x=200)");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Diagnostic_SkipFirst_Works()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("SkipDiagBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+                var btn2 = CreateButton("SkipDiagBtn2", "2", _canvas.transform, new Vector2(0, 0));
+                var btn3 = CreateButton("SkipDiagBtn3", "3", _canvas.transform, new Vector2(200, 0));
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                Debug.Log("[DIAGNOSTIC] === Testing Skip(1).First() ===");
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+
+                // This should order by position, skip 1, take 1 - returning btn2
+                var result = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("SkipDiagBtn*").Skip(1).First());
+
+                Debug.Log($"[DIAGNOSTIC] Skip(1).First() result: {(result != null ? result.name : "NULL")}");
+
+                Assert.IsNotNull(result, "Should find button after Skip(1).First()");
+                Assert.AreEqual("SkipDiagBtn2", result.name, "Skip(1).First() should return second button");
+            });
+        }
+
+        #endregion
+
+        #region Target Transformation Tests (Parent, Child, Sibling)
+
+        [UnityTest]
+        public IEnumerator Parent_ReturnsParentElement()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var container = CreatePanel("ParentContainer", _canvas.transform, Vector2.zero, new Vector2(200, 100));
+                var child = CreateButton("ChildButton", "Child", container.transform, Vector2.zero);
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<RectTransform>(
+                    UITestBehaviour.Search.ByName("ChildButton").Parent());
+                Assert.IsNotNull(result, "Should find parent");
+                Assert.AreEqual("ParentContainer", result.name, "Parent() should return the parent container");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Child_ReturnsChildAtIndex()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var container = CreatePanel("Container", _canvas.transform, Vector2.zero, new Vector2(200, 100));
+                var child0 = CreateButton("Child0", "First", container.transform, new Vector2(-50, 0));
+                var child1 = CreateButton("Child1", "Second", container.transform, new Vector2(50, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result0 = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("Container").Child(0));
+                Assert.IsNotNull(result0, "Should find child at index 0");
+                Assert.AreEqual("Child0", result0.name);
+                var result1 = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("Container").Child(1));
+                Assert.IsNotNull(result1, "Should find child at index 1");
+                Assert.AreEqual("Child1", result1.name);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Sibling_ReturnsSiblingByOffset()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var container = CreatePanel("Container", _canvas.transform, Vector2.zero, new Vector2(400, 50));
+                var first = CreateButton("First", "1", container.transform, new Vector2(-150, 0));
+                var second = CreateButton("Second", "2", container.transform, new Vector2(-50, 0));
+                var third = CreateButton("Third", "3", container.transform, new Vector2(50, 0));
+                var fourth = CreateButton("Fourth", "4", container.transform, new Vector2(150, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var nextSibling = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("Second").Sibling(1));
+                Assert.IsNotNull(nextSibling, "Should find next sibling");
+                Assert.AreEqual("Third", nextSibling.name);
+                var prevSibling = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("Third").Sibling(-1));
+                Assert.IsNotNull(prevSibling, "Should find previous sibling");
+                Assert.AreEqual("Second", prevSibling.name);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator ChainedTransformations_Work()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var root = CreatePanel("Root", _canvas.transform, Vector2.zero, new Vector2(300, 200));
+                var level1 = CreatePanel("Level1", root.transform, Vector2.zero, new Vector2(250, 150));
+                var level2 = CreatePanel("Level2", level1.transform, Vector2.zero, new Vector2(200, 100));
+                var deepBtn = CreateButton("DeepButton", "Deep", level2.transform, Vector2.zero);
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                // Diagnostic: Log hierarchy
+                Debug.Log($"[DIAGNOSTIC] Hierarchy: Root.childCount={root.transform.childCount}");
+                Debug.Log($"[DIAGNOSTIC] Level1: childCount={level1.transform.childCount}");
+                Debug.Log($"[DIAGNOSTIC] Level2: childCount={level2.transform.childCount}");
+                Debug.Log($"[DIAGNOSTIC] DeepButton parent: {deepBtn.transform.parent.name}");
+
+                // Verify Level2 can be found first
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+
+                Debug.Log("[DIAGNOSTIC] === Testing Find Level2 (no transformation) ===");
+                var level2Result = await test.TestFind<RectTransform>(
+                    UITestBehaviour.Search.ByName("Level2"));
+                Assert.IsNotNull(level2Result, "Should find Level2");
+                Assert.AreEqual("Level2", level2Result.name);
+
+                Debug.Log("[DIAGNOSTIC] === Testing Level2.Child(0) ===");
+                var result = await test.TestFind<RectTransform>(
+                    UITestBehaviour.Search.ByName("Level2").Child(0));
+                Assert.IsNotNull(result, "Should find child");
+                Assert.AreEqual("DeepButton", result.name);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Diagnostic_ChildTransformation()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var container = CreatePanel("DiagContainer", _canvas.transform, Vector2.zero, new Vector2(200, 100));
+                var child = CreateButton("DiagChild", "Child", container.transform, Vector2.zero);
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                Debug.Log($"[DIAGNOSTIC] Container.childCount = {container.transform.childCount}");
+                Debug.Log($"[DIAGNOSTIC] Child0 = {container.transform.GetChild(0).name}");
+
+                // Manually verify the transformation works
+                var search = UITestBehaviour.Search.ByName("DiagContainer").Child(0);
+                Debug.Log($"[DIAGNOSTIC] search.HasPostProcessing = {search.HasPostProcessing}");
+
+                // Apply post-processing manually to see what happens
+                var testInput = new[] { container };
+                var postProcessed = search.ApplyPostProcessing(testInput).ToList();
+                Debug.Log($"[DIAGNOSTIC] PostProcessed count = {postProcessed.Count}");
+                foreach (var go in postProcessed)
+                {
+                    Debug.Log($"[DIAGNOSTIC] PostProcessed item: {(go != null ? go.name : "NULL")}");
+                }
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+
+                var result = await test.TestFind<Button>(
+                    UITestBehaviour.Search.ByName("DiagContainer").Child(0));
+                Assert.IsNotNull(result, "Should find child button via Child(0)");
+                Assert.AreEqual("DiagChild", result.name);
+            });
+        }
+
+        #endregion
+
+        #region ByAdjacent Tests
+
+        [UnityTest]
+        public IEnumerator ByAdjacent_Right_FindsInputToRightOfLabel()
+        {
+            var label = CreateLabel("Username:", new Vector2(-100, 0));
+            var input = CreateInputField("UsernameInput", new Vector2(100, 0));
+            yield return null;
+            var search = UITestBehaviour.Search.ByAdjacent("Username:");
+            bool matches = search.Matches(input);
+            Assert.IsTrue(matches, "Should find input to the right of label");
+        }
+
+        [UnityTest]
+        public IEnumerator ByAdjacent_Right_IgnoresInputToLeft()
+        {
+            var label = CreateLabel("Username:", new Vector2(100, 0));
+            var input = CreateInputField("UsernameInput", new Vector2(-100, 0));
+            yield return null;
+            var search = UITestBehaviour.Search.ByAdjacent("Username:", UITestBehaviour.Adjacent.Right);
+            bool matches = search.Matches(input);
+            Assert.IsFalse(matches, "Should not match input to the left when searching Right");
+        }
+
+        [UnityTest]
+        public IEnumerator ByAdjacent_Right_PrefersCloserInput()
+        {
+            var label = CreateLabel("Field:", new Vector2(-150, 0));
+            var closeInput = CreateInputField("CloseInput", new Vector2(0, 0));
+            var farInput = CreateInputField("FarInput", new Vector2(200, 0));
+            yield return null;
+            var search = UITestBehaviour.Search.ByAdjacent("Field:");
+            Assert.IsTrue(search.Matches(closeInput), "Closer input should match");
+            Assert.IsFalse(search.Matches(farInput), "Farther input should not match");
+        }
+
+        [UnityTest]
+        public IEnumerator ByAdjacent_Left_FindsInputToLeftOfLabel()
+        {
+            var input = CreateInputField("VolumeSlider", new Vector2(-100, 0));
+            var label = CreateLabel("Volume Level", new Vector2(100, 0));
+            yield return null;
+            var search = UITestBehaviour.Search.ByAdjacent("Volume Level", UITestBehaviour.Adjacent.Left);
+            bool matches = search.Matches(input);
+            Assert.IsTrue(matches, "Should find input to the left of label");
+        }
+
+        [UnityTest]
+        public IEnumerator ByAdjacent_Below_FindsInputBelowLabel()
+        {
+            var label = CreateLabel("Description", new Vector2(0, 50));
+            var input = CreateInputField("DescriptionInput", new Vector2(0, -50));
+            yield return null;
+            var search = UITestBehaviour.Search.ByAdjacent("Description", UITestBehaviour.Adjacent.Below);
+            bool matches = search.Matches(input);
+            Assert.IsTrue(matches, "Should find input below label");
+        }
+
+        [UnityTest]
+        public IEnumerator ByAdjacent_Above_FindsInputAboveLabel()
+        {
+            var input = CreateInputField("OptionToggle", new Vector2(0, 50));
+            var label = CreateLabel("Clear Selection", new Vector2(0, -50));
+            yield return null;
+            var search = UITestBehaviour.Search.ByAdjacent("Clear Selection", UITestBehaviour.Adjacent.Above);
+            bool matches = search.Matches(input);
+            Assert.IsTrue(matches, "Should find input above label");
+        }
+
+        [UnityTest]
+        public IEnumerator ByAdjacent_NoMatchingLabel_ReturnsFalse()
+        {
+            var label = CreateLabel("Other Label:", new Vector2(-100, 0));
+            var input = CreateInputField("TestInput", new Vector2(100, 0));
+            yield return null;
+            var search = UITestBehaviour.Search.ByAdjacent("NonExistent:");
+            bool matches = search.Matches(input);
+            Assert.IsFalse(matches, "Should not match when label text doesn't exist");
+        }
+
+        [UnityTest]
+        public IEnumerator ByAdjacent_WildcardPattern_Matches()
+        {
+            var label = CreateLabel("Username:", new Vector2(-100, 0));
+            var input = CreateInputField("UsernameInput", new Vector2(100, 0));
+            yield return null;
+            var search = UITestBehaviour.Search.ByAdjacent("User*");
+            bool matches = search.Matches(input);
+            Assert.IsTrue(matches, "Should match with wildcard pattern");
+        }
+
+        #endregion
+
+        #region ScrollTo Tests
+
+        [UnityTest]
+        public IEnumerator Diagnostic_ScrollTo_Visibility()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var scrollView = CreateScrollView("DiagScrollView", new Vector2(0, 0), new Vector2(300, 200));
+                var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+                var viewport = scrollRect.viewport;
+                var content = scrollRect.content;
+
+                var visibleBtn = CreateScrollButton("DiagVisibleItem", "Visible", content.transform);
+                for (int i = 0; i < 10; i++)
+                {
+                    CreateScrollButton($"DiagHiddenItem{i}", $"Hidden {i}", content.transform);
+                }
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                scrollRect.verticalNormalizedPosition = 1f; // Start at top
+                await UniTask.Yield();
+
+                // Log viewport info
+                Vector3[] viewportCorners = new Vector3[4];
+                viewport.GetWorldCorners(viewportCorners);
+                Debug.Log($"[DIAGNOSTIC] Viewport corners: [{viewportCorners[0]}, {viewportCorners[1]}, {viewportCorners[2]}, {viewportCorners[3]}]");
+                Debug.Log($"[DIAGNOSTIC] Viewport min: {viewportCorners[0]}, max: {viewportCorners[2]}");
+                Debug.Log($"[DIAGNOSTIC] Content height: {content.rect.height}");
+
+                // Log first few item positions
+                var firstBtn = visibleBtn.GetComponent<RectTransform>();
+                Vector3[] corners = new Vector3[4];
+                firstBtn.GetWorldCorners(corners);
+                Vector3 center = (corners[0] + corners[2]) / 2f;
+                Debug.Log($"[DIAGNOSTIC] {visibleBtn.name}: worldCenter={center}, corners[0]={corners[0]}, corners[2]={corners[2]}");
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestScrollHelper>();
+
+                Debug.Log("[DIAGNOSTIC] === Testing ScrollTo with visible item ===");
+                var result = await test.TestScrollTo(
+                    UITestBehaviour.Search.ByName("DiagScrollView"),
+                    UITestBehaviour.Search.ByName("DiagVisibleItem"));
+
+                Debug.Log($"[DIAGNOSTIC] ScrollTo result: {(result != null ? result.name : "NULL")}");
+                Assert.IsNotNull(result, "Should find visible item");
+                Assert.AreEqual("DiagVisibleItem", result.name);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator ScrollTo_FindsVisibleItem_ReturnsImmediately()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var scrollView = CreateScrollView("TestScrollView", new Vector2(0, 0), new Vector2(300, 200));
+                var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+                var content = scrollRect.content;
+
+                // First item is visible, rest are below
+                CreateScrollButton("VisibleItem", "Visible", content.transform);
+                for (int i = 0; i < 10; i++)
+                {
+                    CreateScrollButton($"HiddenItem{i}", $"Hidden {i}", content.transform);
+                }
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                scrollRect.verticalNormalizedPosition = 1f; // Start at top
+                await UniTask.Yield();
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestScrollHelper>();
+                var result = await test.TestScrollTo(
+                    UITestBehaviour.Search.ByName("TestScrollView"),
+                    UITestBehaviour.Search.ByName("VisibleItem"));
+                Assert.IsNotNull(result, "Should find visible item");
+                Assert.AreEqual("VisibleItem", result.name);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator ScrollTo_ScrollsToHiddenItem()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var scrollView = CreateScrollView("TestScrollView", new Vector2(0, 0), new Vector2(300, 200));
+                var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+                var content = scrollRect.content;
+
+                // Create many items so we have content taller than the viewport
+                // Use CreateScrollItem (not Button) so drag events bubble to ScrollRect
+                for (int i = 0; i < 15; i++)
+                {
+                    CreateScrollItem($"Item{i}", $"Item {i}", content.transform);
+                }
+                CreateScrollItem("TargetItem", "Target", content.transform);
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                await UniTask.Yield();
+
+                // Ensure we're at the top
+                scrollRect.verticalNormalizedPosition = 1f;
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                Debug.Log($"[TEST] Content height: {content.rect.height}, Viewport height: {scrollRect.viewport.rect.height}");
+                Debug.Log($"[TEST] Initial scroll position: {scrollRect.verticalNormalizedPosition}");
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestScrollHelper>();
+                var result = await test.TestScrollTo(
+                    UITestBehaviour.Search.ByName("TestScrollView"),
+                    UITestBehaviour.Search.ByName("TargetItem"),
+                    maxScrollAttempts: 20);
+
+                Debug.Log($"[TEST] Final scroll position: {scrollRect.verticalNormalizedPosition}");
+
+                Assert.IsNotNull(result, "Should find target after scrolling");
+                Assert.AreEqual("TargetItem", result.name);
+                Assert.Less(scrollRect.verticalNormalizedPosition, 0.5f, "Should have scrolled down");
+            });
+        }
+
+        /// <summary>
+        /// Manual test for debugging drag input.
+        /// Run this test, then drag the scroll view manually.
+        /// Compare the logged mouse state with synthetic injection.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ScrollTo_DebugDragInput()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var scrollView = CreateScrollView("DebugScrollView", new Vector2(0, 0), new Vector2(300, 200));
+                var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+                var content = scrollRect.content;
+
+                // Create many items
+                for (int i = 0; i < 15; i++)
+                {
+                    CreateScrollButton($"Item{i}", $"Item {i}", content.transform);
+                }
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                scrollRect.verticalNormalizedPosition = 1f;
+                await UniTask.Yield();
+
+                // Add debugger
+                var debuggerGO = new GameObject("DragDebugger");
+                _createdObjects.Add(debuggerGO);
+                var debugger = debuggerGO.AddComponent<DragInputDebugger>();
+                debugger.StartLogging();
+
+                Debug.Log("[DEBUG TEST] === SCROLL VIEW READY ===");
+                Debug.Log($"[DEBUG TEST] Scroll position: {scrollRect.verticalNormalizedPosition}");
+                Debug.Log("[DEBUG TEST] Perform a manual drag on the scroll view now...");
+                Debug.Log("[DEBUG TEST] Waiting 5 seconds for manual input...");
+
+                // Wait for manual input - you can drag the scroll view during this time
+                float startPos = scrollRect.verticalNormalizedPosition;
+                await UniTask.Delay(5000, true);
+                float endPos = scrollRect.verticalNormalizedPosition;
+
+                debugger.StopLogging();
+
+                Debug.Log($"[DEBUG TEST] === MANUAL DRAG COMPLETE ===");
+                Debug.Log($"[DEBUG TEST] Scroll position: {startPos:F3} -> {endPos:F3}");
+                Debug.Log($"[DEBUG TEST] Did scroll change? {startPos != endPos}");
+
+                // Now do synthetic drag
+                Debug.Log("[DEBUG TEST] === NOW DOING SYNTHETIC DRAG ===");
+                scrollRect.verticalNormalizedPosition = 1f;
+                await UniTask.Yield();
+
+                debugger.StartLogging();
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestScrollHelper>();
+
+                // Do the ScrollTo
+                var result = await test.TestScrollTo(
+                    UITestBehaviour.Search.ByName("DebugScrollView"),
+                    UITestBehaviour.Search.ByName("Item14"),
+                    maxScrollAttempts: 3);
+
+                debugger.StopLogging();
+
+                Debug.Log($"[DEBUG TEST] === SYNTHETIC DRAG COMPLETE ===");
+                Debug.Log($"[DEBUG TEST] Scroll position: {scrollRect.verticalNormalizedPosition:F3}");
+
+                // This test is for debugging - don't assert
+                Assert.Pass("Debug test complete - check logs for comparison");
+            });
+        }
+
+        #endregion
+
+        #region InRegion Tests
+
+        [UnityTest]
+        public IEnumerator InRegion_TopLeft_FindsElement()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var topLeftBtn = CreateButton("TopLeftBtn", "TL", _canvas.transform, new Vector2(-400, 250));
+                var bottomRightBtn = CreateButton("BottomRightBtn", "BR", _canvas.transform, new Vector2(400, -250));
+                var centerBtn = CreateButton("CenterBtn", "C", _canvas.transform, new Vector2(0, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var search = UITestBehaviour.Search.ByType<Button>().InRegion(UITestBehaviour.ScreenRegion.TopLeft);
+                Assert.IsTrue(search.Matches(topLeftBtn.gameObject), "TopLeft button should match TopLeft region");
+                Assert.IsFalse(search.Matches(bottomRightBtn.gameObject), "BottomRight button should not match TopLeft region");
+                Assert.IsFalse(search.Matches(centerBtn.gameObject), "Center button should not match TopLeft region");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator InRegion_Center_FindsElement()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var topLeftBtn = CreateButton("TopLeftBtn", "TL", _canvas.transform, new Vector2(-400, 250));
+                var bottomRightBtn = CreateButton("BottomRightBtn", "BR", _canvas.transform, new Vector2(400, -250));
+                var centerBtn = CreateButton("CenterBtn", "C", _canvas.transform, new Vector2(0, 0));
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                var search = UITestBehaviour.Search.ByType<Button>().InRegion(UITestBehaviour.ScreenRegion.Center);
+                Assert.IsFalse(search.Matches(topLeftBtn.gameObject), "TopLeft button should not match Center region");
+                Assert.IsFalse(search.Matches(bottomRightBtn.gameObject), "BottomRight button should not match Center region");
+                Assert.IsTrue(search.Matches(centerBtn.gameObject), "Center button should match Center region");
+            });
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        private GameObject CreateTestObject(string name, Transform parent = null)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent ?? _canvas.transform, false);
+            _createdObjects.Add(go);
+            return go;
+        }
+
+        private GameObject CreateButtonWithText(string name, string text, Transform parent = null)
+        {
+            var go = CreateTestObject(name, parent);
+            go.AddComponent<RectTransform>();
+            go.AddComponent<Image>();
+            go.AddComponent<Button>();
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(go.transform);
+            var tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            _createdObjects.Add(textGO);
+            return go;
+        }
+
+        private Button CreateScrollButton(string name, string text, Transform parent)
+        {
+            // Button for use in ScrollView with VerticalLayoutGroup - no explicit positioning needed
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(0, 40); // Width controlled by layout, height is 40
+            var layoutElement = go.AddComponent<LayoutElement>();
+            layoutElement.preferredHeight = 40;
+            layoutElement.flexibleWidth = 1;
+            go.AddComponent<Image>().color = new Color(0.3f, 0.3f, 0.3f);
+            var button = go.AddComponent<Button>();
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(go.transform, false);
+            _createdObjects.Add(textGO);
+            var textRect = textGO.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.alignment = TextAlignmentOptions.Center;
+            return button;
+        }
+
+        /// <summary>
+        /// Creates a scroll item WITHOUT a Button component (just Image + Text).
+        /// This allows drag events to properly bubble to the ScrollRect.
+        /// </summary>
+        private GameObject CreateScrollItem(string name, string text, Transform parent)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(0, 40);
+            var layoutElement = go.AddComponent<LayoutElement>();
+            layoutElement.preferredHeight = 40;
+            layoutElement.flexibleWidth = 1;
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.25f, 0.25f, 0.25f);
+            // NO Button component - drag events will bubble to ScrollRect
+
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(go.transform, false);
+            _createdObjects.Add(textGO);
+            var textRect = textGO.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.alignment = TextAlignmentOptions.Center;
+            return go;
+        }
+
+        private Button CreateButton(string name, string text, Transform parent, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(100, 40);
+            rect.anchoredPosition = position;
+            go.AddComponent<Image>();
+            var button = go.AddComponent<Button>();
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(go.transform, false);
+            _createdObjects.Add(textGO);
+            var textRect = textGO.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.alignment = TextAlignmentOptions.Center;
+            return button;
+        }
+
+        private Slider CreateSlider(string name, float value, Transform parent, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(160, 20);
+            rect.anchoredPosition = position;
+            var slider = go.AddComponent<Slider>();
+            slider.minValue = 0f;
+            slider.maxValue = 1f;
+            slider.value = value;
+            return slider;
+        }
+
+        private GameObject CreatePanel(string name, Transform parent, Vector2 position, Vector2 size)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = size;
+            rect.anchoredPosition = position;
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.2f, 0.2f, 0.2f, 0.9f);
+            return go;
+        }
+
+        private GameObject CreateScrollView(string name, Vector2 position, Vector2 size)
+        {
+            // Match the working sample structure:
+            // - Mask on ScrollView (not viewport) with showMaskGraphic = true
+            // - No Image on Content (children have Images for raycast)
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = size;
+            rect.anchoredPosition = position;
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.15f, 0.15f, 0.15f);
+            go.AddComponent<Mask>().showMaskGraphic = true; // Mask on ScrollView, not viewport
+            var scrollRect = go.AddComponent<ScrollRect>();
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped; // Prevent elastic bouncing
+            scrollRect.inertia = false; // Disable inertia for predictable test behavior
+
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(go.transform, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            // No Mask on viewport - it's on the parent ScrollView
+            scrollRect.viewport = viewportRect;
+
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0, 1);
+            contentRect.anchorMax = new Vector2(1, 1);
+            contentRect.pivot = new Vector2(0.5f, 1);
+            contentRect.sizeDelta = new Vector2(0, size.y * 2);
+            // NO Image on content - child items provide raycast targets
+            // This ensures drag events bubble up to ScrollRect properly
+
+            // Add VerticalLayoutGroup for proper item placement
+            var layoutGroup = content.AddComponent<VerticalLayoutGroup>();
+            layoutGroup.childAlignment = TextAnchor.UpperCenter;
+            layoutGroup.childControlWidth = true;
+            layoutGroup.childControlHeight = false;
+            layoutGroup.childForceExpandWidth = true;
+            layoutGroup.childForceExpandHeight = false;
+            layoutGroup.spacing = 5;
+            layoutGroup.padding = new RectOffset(5, 5, 5, 5);
+            // Add ContentSizeFitter to auto-resize based on children
+            var sizeFitter = content.AddComponent<ContentSizeFitter>();
+            sizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scrollRect.content = contentRect;
+            return go;
+        }
+
+        private GameObject CreateLabel(string text, Vector2 position)
+        {
+            var go = new GameObject($"Label_{text}");
+            go.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(100, 30);
+            rect.anchoredPosition = position;
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            return go;
+        }
+
+        private GameObject CreateInputField(string name, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(150, 30);
+            rect.anchoredPosition = position;
+            go.AddComponent<Image>();
+            var textArea = new GameObject("Text Area");
+            textArea.transform.SetParent(go.transform, false);
+            var textAreaRect = textArea.AddComponent<RectTransform>();
+            textAreaRect.anchorMin = Vector2.zero;
+            textAreaRect.anchorMax = Vector2.one;
+            textAreaRect.sizeDelta = Vector2.zero;
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(textArea.transform, false);
+            var textRect = textGO.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var inputText = textGO.AddComponent<TextMeshProUGUI>();
+            var inputField = go.AddComponent<TMP_InputField>();
+            inputField.textViewport = textAreaRect;
+            inputField.textComponent = inputText;
+            return go;
+        }
+
+        #endregion
+    }
+
+    #region Test Helper Components
+
+    [UITest(Scenario = 9999, Feature = "Test Helper", Story = "Scroll Helper")]
+    public class TestScrollHelper : UITestBehaviour
+    {
+        protected override UniTask Test() => UniTask.CompletedTask;
+        private void Awake() { enabled = false; }
+        public async UniTask<GameObject> TestScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20)
+        {
+            return await ScrollTo(scrollViewSearch, targetSearch, maxScrollAttempts, throwIfMissing: false, searchTime: 2);
+        }
+        public async UniTask TestScrollToAndClick(Search scrollViewSearch, Search targetSearch)
+        {
+            await ScrollToAndClick(scrollViewSearch, targetSearch, throwIfMissing: true, searchTime: 2);
+        }
+    }
+
+    [UITest(Scenario = 9998, Feature = "Test Helper", Story = "Find Helper")]
+    public class TestFindHelper : UITestBehaviour
+    {
+        private void Awake() { enabled = false; }
+        protected override UniTask Test() => UniTask.CompletedTask;
+        public async UniTask<T> TestFind<T>(Search search, bool throwIfMissing = true) where T : Component
+        {
+            return await Find<T>(search, throwIfMissing, seconds: 2);
+        }
+    }
+
+    [UITest(Scenario = 9997, Feature = "Test Helper", Story = "FindAll Helper")]
+    public class TestFindAllHelper : UITestBehaviour
+    {
+        private void Awake() { enabled = false; }
+        protected override UniTask Test() => UniTask.CompletedTask;
+        public async UniTask<List<T>> TestFindAll<T>(Search search) where T : Component
+        {
+            var results = await FindAll<T>(search, seconds: 2);
+            return results.ToList();
+        }
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Debug component to log mouse/pointer state each frame.
+    /// Attach to scene to compare real vs synthetic drag input.
+    /// </summary>
+    public class DragInputDebugger : MonoBehaviour
+    {
+        private bool _logging = false;
+        private int _frameCount = 0;
+        private UnityEngine.InputSystem.Mouse _mouse;
+        private EventSystem _eventSystem;
+
+        public void StartLogging()
+        {
+            _logging = true;
+            _frameCount = 0;
+            _mouse = UnityEngine.InputSystem.Mouse.current;
+            _eventSystem = EventSystem.current;
+            Debug.Log("[DragDebug] === LOGGING STARTED ===");
+        }
+
+        public void StopLogging()
+        {
+            _logging = false;
+            Debug.Log("[DragDebug] === LOGGING STOPPED ===");
+        }
+
+        private void OnDestroy()
+        {
+            // Clean up references when destroyed
+            _logging = false;
+            _mouse = null;
+            _eventSystem = null;
+        }
+
+        private void Update()
+        {
+            if (!_logging || _mouse == null) return;
+
+            // Safety check for destroyed EventSystem
+            if (_eventSystem == null || !_eventSystem.gameObject.activeInHierarchy)
+            {
+                _logging = false;
+                return;
+            }
+
+            _frameCount++;
+
+            var pos = _mouse.position.ReadValue();
+            var delta = _mouse.delta.ReadValue();
+            var leftBtn = _mouse.leftButton.isPressed;
+            var wasPressed = _mouse.leftButton.wasPressedThisFrame;
+            var wasReleased = _mouse.leftButton.wasReleasedThisFrame;
+
+            // Get current pointer data from InputSystemUIInputModule
+            string pointerInfo = "N/A";
+            if (_eventSystem != null && _eventSystem.currentInputModule is UnityEngine.InputSystem.UI.InputSystemUIInputModule)
+            {
+                var pointerData = new PointerEventData(_eventSystem) { position = pos };
+                var raycastResults = new List<RaycastResult>();
+                _eventSystem.RaycastAll(pointerData, raycastResults);
+                pointerInfo = raycastResults.Count > 0 ? raycastResults[0].gameObject.name : "none";
+            }
+
+            // Only log when there's activity
+            if (leftBtn || delta.sqrMagnitude > 0 || wasPressed || wasReleased)
+            {
+                Debug.Log($"[DragDebug] F{_frameCount}: pos=({pos.x:F1},{pos.y:F1}) delta=({delta.x:F2},{delta.y:F2}) btn={leftBtn} pressed={wasPressed} released={wasReleased} hit={pointerInfo}");
+            }
+        }
+    }
+}

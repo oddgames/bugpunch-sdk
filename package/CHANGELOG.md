@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.25] - 2026-01-09
+
+### Added
+- **`Search.First()`** - Take only the first matching element by screen position (top-left to bottom-right)
+- **`Search.Last()`** - Take only the last matching element by screen position
+- **`Search.Skip(n)`** - Skip the first N matching elements
+- **`Search.OrderBy<T>(selector)`** - Order matches by a component property value
+- **`Search.OrderByDescending<T>(selector)`** - Order matches by a component property value (descending)
+- **`Search.OrderByPosition()`** - Explicitly order by screen position
+- **`Search.GetParent<T>()`** - Find component in parent hierarchy (with optional predicate)
+- **`Search.GetChild<T>()`** - Find component in children hierarchy (with optional predicate)
+- **`Search.InRegion(ScreenRegion)`** - Filter elements by screen region (TopLeft, Center, BottomRight, etc.)
+- **`Search.InScrollView(name)`** - Filter to elements inside a specific ScrollRect
+- **`ScrollTo(scrollViewSearch, targetSearch)`** - Auto-scroll a ScrollRect until target element is visible
+- **`ScreenRegion` enum** - TopLeft, TopCenter, TopRight, MiddleLeft, Center, MiddleRight, BottomLeft, BottomCenter, BottomRight
+- PlayMode tests for new Search methods in `test/Assets/Tests/PlayMode/`
+- UITest Explorer window for browsing and running tests (`Window/Analysis/UI Automation/Test Explorer`)
+
+### Fixed
+- Input System event processing in batch test mode - added `InputSystem.Update()` calls to force event processing
+- Test cleanup between runs - Input System state now properly reset in SetUp/TearDown
+- ScrollRect drag direction - fixed inverted scroll direction in `ScrollTo` method
+- Mouse drag injection now properly sets delta values for ScrollRect compatibility
+
+### Changed
+- All input injection methods (`InjectMouseDrag`, `InjectTouchDrag`, `InjectPointerTap`, `InjectTouchTap`, `InjectMouseScroll`) now call `InputSystem.Update()` after queueing events to ensure reliable event processing in test environments
+
 ## [1.0.24] - 2026-01-09
 
 ### Changed

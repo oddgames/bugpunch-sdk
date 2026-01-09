@@ -81,6 +81,30 @@ namespace ODDGames.UITest.Samples
             await Test_ByAdjacent_Above();
             await Test_ByAdjacent_MultipleNearby();
 
+            // New methods: GetParent, GetChild, ordering
+            await Test_GetParent();
+            await Test_GetParent_WithPredicate();
+            await Test_GetChild();
+            await Test_GetChild_WithPredicate();
+            await Test_First();
+            await Test_Last();
+            await Test_Skip();
+            await Test_First_VerifyOrder();
+            await Test_Last_VerifyOrder();
+            await Test_Skip_VerifyOrder();
+
+            // InRegion tests
+            await Test_InRegion();
+
+            // Target transformation tests
+            await Test_Parent();
+            await Test_Child();
+            await Test_Sibling();
+
+            // ScrollTo tests
+            await Test_ScrollTo();
+            await Test_ScrollToAndClick();
+
             // Summary
             Debug.Log($"[UITEST] Search Method Tests Complete: {_testsPassed} passed, {_testsFailed} failed");
             Assert(_testsFailed == 0, $"Some tests failed: {_testsFailed} failures");
@@ -349,6 +373,205 @@ namespace ODDGames.UITest.Samples
 
         #endregion
 
+        #region New Method Tests
+
+        private async UniTask Test_GetParent()
+        {
+            // Find button whose parent has CanvasGroup
+            var result = await Find<Button>(
+                Search.ByName("GetParentChildBtn").GetParent<CanvasGroup>(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("GetParent<T>", result != null && result.name == "GetParentChildBtn");
+        }
+
+        private async UniTask Test_GetParent_WithPredicate()
+        {
+            // Find button whose parent has CanvasGroup with alpha > 0.5
+            var result = await Find<Button>(
+                Search.ByName("GetParentChildBtn").GetParent<CanvasGroup>(cg => cg.alpha > 0.5f),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("GetParent<T> (predicate)", result != null);
+        }
+
+        private async UniTask Test_GetChild()
+        {
+            // Find panel that has a child Image component
+            var result = await Find<RectTransform>(
+                Search.ByName("GetChildParent").GetChild<Image>(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("GetChild<T>", result != null && result.name == "GetChildParent");
+        }
+
+        private async UniTask Test_GetChild_WithPredicate()
+        {
+            // Find panel that has a child Image with raycastTarget enabled
+            var result = await Find<RectTransform>(
+                Search.ByName("GetChildParent").GetChild<Image>(img => img.raycastTarget),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("GetChild<T> (predicate)", result != null);
+        }
+
+        private async UniTask Test_First()
+        {
+            // Find first of multiple ordered items
+            var result = await Find<Button>(
+                Search.ByName("OrderedBtn*").First(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("First", result != null);
+        }
+
+        private async UniTask Test_Last()
+        {
+            // Find last of multiple ordered items
+            var result = await Find<Button>(
+                Search.ByName("OrderedBtn*").Last(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Last", result != null);
+        }
+
+        private async UniTask Test_Skip()
+        {
+            // Skip first item and get next
+            var result = await Find<Button>(
+                Search.ByName("OrderedBtn*").Skip(1).First(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Skip", result != null);
+        }
+
+        private async UniTask Test_First_VerifyOrder()
+        {
+            // Verify First returns the top-left most button (OrderedBtn1 is leftmost)
+            var result = await Find<Button>(
+                Search.ByName("OrderedBtn*").First(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("First (verify order)", result != null && result.name == "OrderedBtn1");
+        }
+
+        private async UniTask Test_Last_VerifyOrder()
+        {
+            // Verify Last returns the bottom-right most button (OrderedBtn3 is rightmost)
+            var result = await Find<Button>(
+                Search.ByName("OrderedBtn*").Last(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Last (verify order)", result != null && result.name == "OrderedBtn3");
+        }
+
+        private async UniTask Test_Skip_VerifyOrder()
+        {
+            // Skip 1 should return OrderedBtn2 (the second from left)
+            var result = await Find<Button>(
+                Search.ByName("OrderedBtn*").Skip(1).First(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Skip (verify order)", result != null && result.name == "OrderedBtn2");
+        }
+
+        private async UniTask Test_InRegion()
+        {
+            // The TopLeftButton should be in TopLeft region
+            var result = await Find<Button>(
+                Search.ByName("TopLeftButton").InRegion(ScreenRegion.TopLeft),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("InRegion (TopLeft)", result != null && result.name == "TopLeftButton");
+
+            // Verify it's NOT in BottomRight region
+            var wrongRegion = await Find<Button>(
+                Search.ByName("TopLeftButton").InRegion(ScreenRegion.BottomRight),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("InRegion (negative)", wrongRegion == null);
+        }
+
+        private async UniTask Test_Parent()
+        {
+            // Find a button by its text, then get its parent
+            var result = await Find<RectTransform>(
+                Search.ByName("ParentTestChild").Parent(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Parent()", result != null && result.name == "ParentTestContainer");
+        }
+
+        private async UniTask Test_Child()
+        {
+            // Find a container, then get its first child
+            var result = await Find<RectTransform>(
+                Search.ByName("ChildTestContainer").Child(0),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Child(0)", result != null && result.name == "ChildTestFirst");
+
+            // Get second child
+            var second = await Find<RectTransform>(
+                Search.ByName("ChildTestContainer").Child(1),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Child(1)", second != null && second.name == "ChildTestSecond");
+        }
+
+        private async UniTask Test_Sibling()
+        {
+            // Find first sibling, then get next sibling
+            var result = await Find<RectTransform>(
+                Search.ByName("SiblingFirst").Sibling(1),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Sibling(1)", result != null && result.name == "SiblingSecond");
+
+            // Get previous sibling
+            var prev = await Find<RectTransform>(
+                Search.ByName("SiblingSecond").Sibling(-1),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("Sibling(-1)", prev != null && prev.name == "SiblingFirst");
+        }
+
+        private async UniTask Test_ScrollTo()
+        {
+            // Scroll to an item that's off-screen in the scroll view
+            var scrollRect = await Find<ScrollRect>(Search.ByName("TestScrollView"), throwIfMissing: false, seconds: 1);
+            if (scrollRect == null)
+            {
+                AssertTest("ScrollTo (setup)", false);
+                return;
+            }
+
+            // Reset scroll position to top
+            scrollRect.verticalNormalizedPosition = 1f;
+            await UniTask.Yield();
+
+            // ScrollItem5 should be at the bottom, not visible initially
+            var item = await ScrollTo(Search.ByName("TestScrollView"), Search.ByName("ScrollItem5"));
+            AssertTest("ScrollTo", item != null && item.name == "ScrollItem5");
+
+            // Verify the scroll position changed (should have scrolled down)
+            AssertTest("ScrollTo (scrolled)", scrollRect.verticalNormalizedPosition < 0.9f);
+        }
+
+        private async UniTask Test_ScrollToAndClick()
+        {
+            // Scroll to an item and click it
+            var scrollRect = await Find<ScrollRect>(Search.ByName("TestScrollView"), throwIfMissing: false, seconds: 1);
+            if (scrollRect == null)
+            {
+                AssertTest("ScrollToAndClick (setup)", false);
+                return;
+            }
+
+            // Reset scroll position to top
+            scrollRect.verticalNormalizedPosition = 1f;
+            await UniTask.Yield();
+
+            // Track if button was clicked
+            var clickedItem = "";
+            var buttons = scrollRect.GetComponentsInChildren<Button>();
+            foreach (var btn in buttons)
+            {
+                var btnName = btn.name;
+                btn.onClick.AddListener(() => clickedItem = btnName);
+            }
+
+            // ScrollItem4 should be near the bottom
+            await ScrollToAndClick(Search.ByName("TestScrollView"), Search.ByName("ScrollItem4"));
+
+            AssertTest("ScrollToAndClick", clickedItem == "ScrollItem4");
+        }
+
+        #endregion
+
         #region Test Helpers
 
         private void AssertTest(string testName, bool condition)
@@ -515,6 +738,139 @@ namespace ODDGames.UITest.Samples
             CreateInputField(panel.transform, "AmbiguousBelowInput", "Below", new Vector2(-180, -540));
             // Extra distractor above
             CreateInputField(panel.transform, "AmbiguousAboveInput", "Above", new Vector2(-180, -460));
+
+            // ==========================================
+            // New method test targets (GetParent, GetChild, InScrollView, ordering)
+            // ==========================================
+
+            // GetParent test - button inside panel that has CanvasGroup
+            var getParentPanel = CreatePanel(panel.transform, "GetParentPanel", new Vector2(250, -250), new Vector2(160, 50));
+            getParentPanel.GetComponent<Image>().color = new Color(0.35f, 0.25f, 0.35f);
+            var canvasGroup = getParentPanel.AddComponent<CanvasGroup>();
+            canvasGroup.alpha = 0.9f;
+            CreateButton(getParentPanel.transform, "GetParentChildBtn", "GetParent Test", Vector2.zero);
+
+            // GetChild test - panel with child that has Image
+            var getChildParent = CreatePanel(panel.transform, "GetChildParent", new Vector2(250, -310), new Vector2(160, 50));
+            getChildParent.GetComponent<Image>().color = new Color(0.25f, 0.35f, 0.35f);
+            var getChildImage = new GameObject("ChildWithImage");
+            getChildImage.transform.SetParent(getChildParent.transform, false);
+            var imgRect = getChildImage.AddComponent<RectTransform>();
+            imgRect.sizeDelta = new Vector2(30, 30);
+            var childImg = getChildImage.AddComponent<Image>();
+            childImg.color = Color.yellow;
+            childImg.raycastTarget = true;
+
+            // InScrollView test - simple scroll view with items
+            var scrollView = CreateScrollView(panel.transform, "TestScrollView", new Vector2(250, -400), new Vector2(160, 80));
+
+            // Ordering test - multiple buttons with same prefix
+            for (int i = 0; i < 3; i++)
+            {
+                CreateButton(panel.transform, $"OrderedBtn{i + 1}", $"Order {i + 1}", new Vector2(-350 + (i * 80), -550));
+            }
+
+            // ==========================================
+            // InRegion test targets
+            // ==========================================
+            // Button in top-left corner
+            var topLeftBtn = CreateButton(panel.transform, "TopLeftButton", "TL", new Vector2(-380, 280));
+            topLeftBtn.GetComponent<RectTransform>().sizeDelta = new Vector2(60, 30);
+
+            // ==========================================
+            // Parent/Child/Sibling test targets
+            // ==========================================
+            // Parent test - child inside a named container
+            var parentContainer = CreatePanel(panel.transform, "ParentTestContainer", new Vector2(350, -130), new Vector2(120, 50));
+            parentContainer.GetComponent<Image>().color = new Color(0.3f, 0.4f, 0.5f);
+            var parentChild = new GameObject("ParentTestChild");
+            parentChild.transform.SetParent(parentContainer.transform, false);
+            var parentChildRect = parentChild.AddComponent<RectTransform>();
+            parentChildRect.sizeDelta = new Vector2(80, 30);
+            parentChild.AddComponent<Image>().color = Color.cyan;
+
+            // Child test - container with multiple named children
+            var childContainer = CreatePanel(panel.transform, "ChildTestContainer", new Vector2(350, -190), new Vector2(120, 60));
+            childContainer.GetComponent<Image>().color = new Color(0.5f, 0.4f, 0.3f);
+            var childFirst = new GameObject("ChildTestFirst");
+            childFirst.transform.SetParent(childContainer.transform, false);
+            var childFirstRect = childFirst.AddComponent<RectTransform>();
+            childFirstRect.sizeDelta = new Vector2(50, 20);
+            childFirstRect.anchoredPosition = new Vector2(0, 15);
+            childFirst.AddComponent<Image>().color = Color.red;
+            var childSecond = new GameObject("ChildTestSecond");
+            childSecond.transform.SetParent(childContainer.transform, false);
+            var childSecondRect = childSecond.AddComponent<RectTransform>();
+            childSecondRect.sizeDelta = new Vector2(50, 20);
+            childSecondRect.anchoredPosition = new Vector2(0, -15);
+            childSecond.AddComponent<Image>().color = Color.green;
+
+            // Sibling test - multiple siblings in a container
+            var siblingContainer = CreatePanel(panel.transform, "SiblingContainer", new Vector2(350, -260), new Vector2(120, 40));
+            siblingContainer.GetComponent<Image>().color = new Color(0.4f, 0.5f, 0.4f);
+            var sibFirst = new GameObject("SiblingFirst");
+            sibFirst.transform.SetParent(siblingContainer.transform, false);
+            var sibFirstRect = sibFirst.AddComponent<RectTransform>();
+            sibFirstRect.sizeDelta = new Vector2(40, 25);
+            sibFirstRect.anchoredPosition = new Vector2(-30, 0);
+            sibFirst.AddComponent<Image>().color = Color.magenta;
+            var sibSecond = new GameObject("SiblingSecond");
+            sibSecond.transform.SetParent(siblingContainer.transform, false);
+            var sibSecondRect = sibSecond.AddComponent<RectTransform>();
+            sibSecondRect.sizeDelta = new Vector2(40, 25);
+            sibSecondRect.anchoredPosition = new Vector2(30, 0);
+            sibSecond.AddComponent<Image>().color = Color.yellow;
+        }
+
+        private static GameObject CreateScrollView(Transform parent, string name, Vector2 position, Vector2 size)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = size;
+            rect.anchoredPosition = position;
+
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.15f, 0.15f, 0.15f);
+
+            var scrollRect = go.AddComponent<ScrollRect>();
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+
+            // Viewport
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(go.transform, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
+            var viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = Color.white;
+            scrollRect.viewport = viewportRect;
+
+            // Content
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0, 1);
+            contentRect.anchorMax = new Vector2(1, 1);
+            contentRect.pivot = new Vector2(0.5f, 1);
+            contentRect.sizeDelta = new Vector2(0, 150); // Taller than viewport to enable scroll
+            scrollRect.content = contentRect;
+
+            // Add some items
+            for (int i = 0; i < 5; i++)
+            {
+                var item = CreateButton(content.transform, $"ScrollItem{i + 1}", $"Item {i + 1}", new Vector2(0, -20 - i * 25));
+                var itemRect = item.GetComponent<RectTransform>();
+                itemRect.sizeDelta = new Vector2(140, 22);
+            }
+
+            return go;
         }
 
         private static GameObject CreatePanel(Transform parent, string name, Vector2 position, Vector2 size)
