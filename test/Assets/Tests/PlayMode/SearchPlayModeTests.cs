@@ -1959,80 +1959,6 @@ namespace ODDGames.UITest.Tests
             });
         }
 
-        /// <summary>
-        /// Manual test for debugging drag input.
-        /// Run this test, then drag the scroll view manually.
-        /// Compare the logged mouse state with synthetic injection.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator ScrollTo_DebugDragInput()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var scrollView = CreateScrollView("DebugScrollView", new Vector2(0, 0), new Vector2(300, 200));
-                var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
-                var content = scrollRect.content;
-
-                // Create many items
-                for (int i = 0; i < 15; i++)
-                {
-                    CreateScrollButton($"Item{i}", $"Item {i}", content.transform);
-                }
-
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                scrollRect.verticalNormalizedPosition = 1f;
-                await UniTask.Yield();
-
-                // Add debugger
-                var debuggerGO = new GameObject("DragDebugger");
-                _createdObjects.Add(debuggerGO);
-                var debugger = debuggerGO.AddComponent<DragInputDebugger>();
-                debugger.StartLogging();
-
-                Debug.Log("[DEBUG TEST] === SCROLL VIEW READY ===");
-                Debug.Log($"[DEBUG TEST] Scroll position: {scrollRect.verticalNormalizedPosition}");
-                Debug.Log("[DEBUG TEST] Perform a manual drag on the scroll view now...");
-                Debug.Log("[DEBUG TEST] Waiting 5 seconds for manual input...");
-
-                // Wait for manual input - you can drag the scroll view during this time
-                float startPos = scrollRect.verticalNormalizedPosition;
-                await UniTask.Delay(5000, true);
-                float endPos = scrollRect.verticalNormalizedPosition;
-
-                debugger.StopLogging();
-
-                Debug.Log($"[DEBUG TEST] === MANUAL DRAG COMPLETE ===");
-                Debug.Log($"[DEBUG TEST] Scroll position: {startPos:F3} -> {endPos:F3}");
-                Debug.Log($"[DEBUG TEST] Did scroll change? {startPos != endPos}");
-
-                // Now do synthetic drag
-                Debug.Log("[DEBUG TEST] === NOW DOING SYNTHETIC DRAG ===");
-                scrollRect.verticalNormalizedPosition = 1f;
-                await UniTask.Yield();
-
-                debugger.StartLogging();
-
-                var testGO = new GameObject("TestBehaviour");
-                _createdObjects.Add(testGO);
-                var test = testGO.AddComponent<TestScrollHelper>();
-
-                // Do the ScrollTo
-                var result = await test.TestScrollTo(
-                    UITestBehaviour.Search.ByName("DebugScrollView"),
-                    UITestBehaviour.Search.ByName("Item14"),
-                    maxScrollAttempts: 3);
-
-                debugger.StopLogging();
-
-                Debug.Log($"[DEBUG TEST] === SYNTHETIC DRAG COMPLETE ===");
-                Debug.Log($"[DEBUG TEST] Scroll position: {scrollRect.verticalNormalizedPosition:F3}");
-
-                // This test is for debugging - don't assert
-                Assert.Pass("Debug test complete - check logs for comparison");
-            });
-        }
-
         #endregion
 
         #region InRegion Tests
@@ -2302,6 +2228,236 @@ namespace ODDGames.UITest.Tests
         }
 
         #endregion
+
+        #region FindItems Tests
+
+        [UnityTest]
+        public IEnumerator FindItems_ScrollRect_ReturnsItemsInOrder()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var scrollViewGO = CreateScrollView("InventoryList", Vector2.zero, new Vector2(300, 200));
+                var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
+                var content = scrollRect.content;
+
+                CreateScrollItem("Item1", "First Item", content);
+                CreateScrollItem("Item2", "Second Item", content);
+                CreateScrollItem("Item3", "Third Item", content);
+                CreateScrollItem("Item4", "Fourth Item", content);
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+
+                var helper = CreateFindItemsHelper();
+                var container = await helper.TestFindItems("InventoryList");
+
+                Assert.NotNull(container);
+                Assert.NotNull(container.ScrollRect);
+                var items = container.Items.ToList();
+                Assert.AreEqual(4, items.Count, "Should find 4 items");
+                Assert.AreEqual("Item1", items[0].gameObject.name, "First item should be Item1");
+                Assert.AreEqual("Item4", items[3].gameObject.name, "Last item should be Item4");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator FindItems_WithFilter_ReturnsFilteredItems()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var scrollViewGO = CreateScrollView("FilterList", Vector2.zero, new Vector2(300, 200));
+                var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
+                var content = scrollRect.content;
+
+                CreateScrollItem("RareItem1", "Rare Sword", content);
+                CreateScrollItem("CommonItem1", "Common Shield", content);
+                CreateScrollItem("RareItem2", "Rare Bow", content);
+                CreateScrollItem("CommonItem2", "Common Helmet", content);
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+
+                var helper = CreateFindItemsHelper();
+                var container = await helper.TestFindItems("FilterList", UITestBehaviour.Search.ByName("Rare*"));
+
+                var items = container.Items.ToList();
+                Assert.AreEqual(2, items.Count, "Should find 2 rare items");
+                Assert.IsTrue(items.All(i => i.gameObject.name.StartsWith("Rare")), "All items should start with Rare");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator FindItems_VerticalLayoutGroup_ReturnsItems()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var layoutGO = new GameObject("TabBar");
+                layoutGO.transform.SetParent(_canvas.transform, false);
+                _createdObjects.Add(layoutGO);
+                var rect = layoutGO.AddComponent<RectTransform>();
+                rect.sizeDelta = new Vector2(200, 300);
+                var vlg = layoutGO.AddComponent<VerticalLayoutGroup>();
+                vlg.childForceExpandWidth = true;
+                vlg.childForceExpandHeight = false;
+
+                CreateButton("Tab1", "Home", layoutGO.transform, Vector2.zero);
+                CreateButton("Tab2", "Settings", layoutGO.transform, Vector2.zero);
+                CreateButton("Tab3", "Profile", layoutGO.transform, Vector2.zero);
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+
+                var helper = CreateFindItemsHelper();
+                var container = await helper.TestFindItems("TabBar");
+
+                var items = container.Items.ToList();
+                Assert.AreEqual(3, items.Count, "Should find 3 tabs");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator FindItems_GridLayoutGroup_ReturnsItems()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var layoutGO = new GameObject("InventoryGrid");
+                layoutGO.transform.SetParent(_canvas.transform, false);
+                _createdObjects.Add(layoutGO);
+                var rect = layoutGO.AddComponent<RectTransform>();
+                rect.sizeDelta = new Vector2(300, 300);
+                var glg = layoutGO.AddComponent<GridLayoutGroup>();
+                glg.cellSize = new Vector2(80, 80);
+                glg.spacing = new Vector2(10, 10);
+                glg.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+                glg.constraintCount = 3;
+
+                for (int i = 1; i <= 6; i++)
+                {
+                    var itemGO = new GameObject($"Slot{i}");
+                    itemGO.transform.SetParent(layoutGO.transform, false);
+                    _createdObjects.Add(itemGO);
+                    itemGO.AddComponent<RectTransform>();
+                    itemGO.AddComponent<Image>();
+                }
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+
+                var helper = CreateFindItemsHelper();
+                var container = await helper.TestFindItems("InventoryGrid");
+
+                var items = container.Items.ToList();
+                Assert.AreEqual(6, items.Count, "Should find 6 slots");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator FindItems_CanIterateWithForeach()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var scrollViewGO = CreateScrollView("TestList", Vector2.zero, new Vector2(300, 200));
+                var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
+                var content = scrollRect.content;
+
+                CreateScrollItem("ListItem1", "Item 1", content);
+                CreateScrollItem("ListItem2", "Item 2", content);
+                CreateScrollItem("ListItem3", "Item 3", content);
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+
+                var helper = CreateFindItemsHelper();
+                var container = await helper.TestFindItems("TestList");
+
+                int count = 0;
+                foreach (var (scrollRectComponent, item) in container)
+                {
+                    Assert.NotNull(scrollRectComponent, "ScrollRect should not be null");
+                    Assert.NotNull(item, "Item should not be null");
+                    count++;
+                }
+                Assert.AreEqual(3, count, "Should iterate 3 times");
+            });
+        }
+
+        private TestFindItemsHelper CreateFindItemsHelper()
+        {
+            var helperGO = new GameObject("FindItemsHelper");
+            helperGO.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(helperGO);
+            return helperGO.AddComponent<TestFindItemsHelper>();
+        }
+
+        #endregion
+
+        #region Component Overload Tests
+
+        [UnityTest]
+        public IEnumerator Click_Component_ClicksAtComponentPosition()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("TestBtn", "Click Me", _canvas.transform, Vector2.zero);
+                int clickCount = 0;
+                button.onClick.AddListener(() => clickCount++);
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                var helper = CreateComponentHelper();
+                await helper.TestClickComponent(button);
+
+                Assert.AreEqual(1, clickCount, "Button should have been clicked once");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Click_Component_WorksWithFindAllIteration()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create multiple buttons
+                CreateButton("Btn1", "Button 1", _canvas.transform, new Vector2(-100, 0));
+                CreateButton("Btn2", "Button 2", _canvas.transform, new Vector2(0, 0));
+                CreateButton("Btn3", "Button 3", _canvas.transform, new Vector2(100, 0));
+
+                int totalClicks = 0;
+                foreach (var btn in Object.FindObjectsByType<Button>(FindObjectsSortMode.None))
+                {
+                    if (btn.name.StartsWith("Btn"))
+                        btn.onClick.AddListener(() => totalClicks++);
+                }
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                var helper = CreateComponentHelper();
+                var buttons = await helper.TestFindAllButtons(UITestBehaviour.Search.ByName("Btn*"));
+
+                foreach (var button in buttons)
+                {
+                    await helper.TestClickComponent(button);
+                }
+
+                Assert.AreEqual(3, totalClicks, "All 3 buttons should have been clicked");
+            });
+        }
+
+        private TestComponentHelper CreateComponentHelper()
+        {
+            var helperGO = new GameObject("ComponentHelper");
+            helperGO.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(helperGO);
+            return helperGO.AddComponent<TestComponentHelper>();
+        }
+
+        #endregion
     }
 
     #region Test Helper Components
@@ -2340,6 +2496,39 @@ namespace ODDGames.UITest.Tests
         public async UniTask<List<T>> TestFindAll<T>(Search search) where T : Component
         {
             var results = await FindAll<T>(search, seconds: 2);
+            return results.ToList();
+        }
+    }
+
+    [UITest(Scenario = 9996, Feature = "Test Helper", Story = "FindItems Helper")]
+    public class TestFindItemsHelper : UITestBehaviour
+    {
+        private void Awake() { enabled = false; }
+        protected override UniTask Test() => UniTask.CompletedTask;
+        public async UniTask<ItemContainer> TestFindItems(string containerName, Search itemSearch = null)
+        {
+            return await FindItems(containerName, itemSearch);
+        }
+        public async UniTask<ItemContainer> TestFindItems(Search containerSearch, Search itemSearch = null)
+        {
+            return await FindItems(containerSearch, itemSearch);
+        }
+    }
+
+    [UITest(Scenario = 9995, Feature = "Test Helper", Story = "Component Helper")]
+    public class TestComponentHelper : UITestBehaviour
+    {
+        private void Awake() { enabled = false; }
+        protected override UniTask Test() => UniTask.CompletedTask;
+
+        public async UniTask TestClickComponent(Component component)
+        {
+            await Click(component);
+        }
+
+        public async UniTask<List<Button>> TestFindAllButtons(Search search)
+        {
+            var results = await FindAll<Button>(search, seconds: 2);
             return results.ToList();
         }
     }

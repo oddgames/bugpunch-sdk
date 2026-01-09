@@ -4,6 +4,7 @@
     "references": [
         "ODDGames.UITest",
         "Unity.TextMeshPro",
+        "Unity.InputSystem",
         "UniTask",
         "Unity.Recorder.Editor"
     ],

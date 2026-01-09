@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.26] - 2026-01-09
+
+### Added
+- **Component overloads** for all interaction methods - enables iterating over `FindAll` results:
+  - `Click(Component)` - Click a component directly
+  - `Hold(Component, seconds)` - Hold/long-press a component
+  - `DoubleClick(Component)` - Double-click a component
+  - `Drag(Component, direction)` - Drag a component in a direction
+  - `DragTo(Component, Component)` - Drag one component to another (drag and drop)
+  - `DragTo(Component, Vector2)` - Drag a component to a screen percentage position
+  - `DragTo(Search, Vector2)` - Drag a found element to a screen percentage position
+  - `DragTo(string, Vector2)` - Drag a named element to a screen percentage position
+  - `Swipe(Component, direction)` - Swipe gesture on a component
+  - `Pinch(Component, scale)` - Pinch gesture on a component
+  - `TwoFingerSwipe(Component, direction)` - Two-finger swipe on a component
+  - `Rotate(Component, degrees)` - Rotation gesture on a component
+- **`FindItems(containerSearch, itemSearch)`** - Find container items for iteration
+  - Returns `ItemContainer` with `(Container, Item)` pairs
+  - Supports: ScrollRect, Dropdown, TMP_Dropdown, VerticalLayoutGroup, HorizontalLayoutGroup, GridLayoutGroup
+  - Enables patterns like `foreach (var (list, item) in await FindItems("InventoryList"))`
+
+### Changed
+- README.md: Removed "Supported Projects" section
+- README.md: Added comprehensive "Best Practices" section with examples for finding elements, interacting with controls, iterating containers, gestures, waiting, and search method selection
+
 ## [1.0.25] - 2026-01-09
 
 ### Added

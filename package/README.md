@@ -13,13 +13,6 @@ ui-automation/
 └── test/              # Test Unity project for development
 ```
 
-## Supported Projects
-
-| Project | Description | Special Setup |
-|---------|-------------|---------------|
-| **MTD** | Monster Truck Destruction | Input System required |
-| **TOR** | Trucks Off Road | None required |
-
 ## Installation
 
 ### Via Git URL (recommended)
@@ -140,6 +133,116 @@ All gesture distances use percentage of screen height (e.g., 0.2 = 20%) for devi
 #### Custom Clickables
 - `RegisterClickable<T>()` - Register custom clickable type
 - `RegisterRaycaster(raycaster)` - Register custom raycaster
+
+## Best Practices
+
+### Finding Elements
+
+| Scenario | Method | Example |
+|----------|--------|---------|
+| Find by exact name | `Click("SubmitButton")` | Button named "SubmitButton" |
+| Find by name pattern | `Click("Item*")` | Matches "Item1", "ItemGold", etc. |
+| Find by visible text | `Click(Search.ByText("Continue"))` | Button showing "Continue" |
+| Find input next to label | `TextInput(Search.ByAdjacent("Username:"), "test")` | Input field to the right of "Username:" label |
+| Find in specific region | `Click(Search.ByName("Button").InRegion(ScreenRegion.TopRight))` | Button in top-right corner |
+| Find first of many | `Click(Search.ByName("ListItem*").First())` | First item by screen position |
+| Find with component | `Click(Search.ByType<Toggle>())` | Any Toggle component |
+| Find with predicate | `Click(Search.ByType<Button>().With<Button>(b => b.interactable))` | Only interactable buttons |
+
+### Interacting with Controls
+
+| Control Type | Method | Notes |
+|--------------|--------|-------|
+| Buttons | `Click("ButtonName")` | Standard click |
+| Toggles | `Click("ToggleName")` | Toggle on/off |
+| Input Fields | `TextInput(Search.ByAdjacent("Label:"), "text")` | Find by adjacent label |
+| Dropdowns | `ClickDropdown("Dropdown", "Option Text")` | Select by visible text |
+| Dropdowns | `ClickDropdown("Dropdown", 2)` | Select by index (0-based) |
+| Sliders | `ClickSlider("Volume", 0.75f)` | Click at 75% position |
+| Sliders | `DragSlider("Volume", 0.2f, 0.8f)` | Drag from 20% to 80% |
+| Scroll Views | `Drag("ScrollView", new Vector2(0, -200))` | Drag to scroll |
+| Scroll Views | `ScrollTo("ListView", Search.ByText("Item 50"))` | Auto-scroll to hidden item |
+
+### Iterating Over Container Items
+
+```csharp
+// Iterate over items in a scroll view, layout group, or dropdown
+var container = await FindItems("InventoryList");
+foreach (var (scrollRect, item) in container)
+{
+    // Use ScrollTo to bring item into view, then interact
+    await ScrollTo(scrollRect, item);
+    await Click(item);
+}
+
+// With filtering
+var rareItems = await FindItems("InventoryList", Search.ByName("Rare*"));
+foreach (var (_, item) in rareItems)
+{
+    Debug.Log($"Found rare item: {item.name}");
+}
+
+// Click all buttons found by search
+var buttons = await FindAll<Button>(Search.ByName("ActionBtn*"));
+foreach (var button in buttons)
+{
+    await Click(button);  // Component overload
+}
+```
+
+### Gestures
+
+| Gesture | Use Case | Example |
+|---------|----------|---------|
+| `Swipe` | Scroll/page navigation | `await Swipe(SwipeDirection.Left, distance: 0.3f)` |
+| `Pinch` | Zoom in/out | `await Pinch(scale: 2.0f)` (zoom in) or `await Pinch(scale: 0.5f)` (zoom out) |
+| `Rotate` | Rotation gestures | `await Rotate(degrees: 45f)` |
+| `TwoFingerSwipe` | Map panning | `await TwoFingerSwipe(SwipeDirection.Up, distance: 0.2f)` |
+
+### Waiting
+
+| Scenario | Method | Example |
+|----------|--------|---------|
+| Wait for element | `Wait("LoadingComplete")` | Wait for named element to appear |
+| Wait for condition | `WaitFor(() => score > 100)` | Wait for custom condition |
+| Wait for framerate | `WaitFramerate(30)` | Wait until FPS stabilizes |
+| Wait for scene | `SceneChange("GameScene")` | Wait for scene load |
+| Fixed delay | `await UniTask.Delay(1000)` | Wait 1 second (avoid when possible) |
+
+### Search Method Selection Guide
+
+```
+Need to find element by...
+├── Name → Search.ByName("ButtonName") or just "ButtonName"
+├── Visible text → Search.ByText("Click Me")
+├── Adjacent label → Search.ByAdjacent("Email:", Adjacent.Right)
+├── Component type → Search.ByType<Slider>()
+├── Screen position → Search.ByName("*").InRegion(ScreenRegion.Center)
+├── Hierarchy path → Search.ByPath("Canvas/Panel/Button")
+└── Multiple conditions → Chain them: Search.ByType<Button>().ByName("Submit*").First()
+```
+
+### Common Patterns
+
+```csharp
+// Login form using adjacent labels
+await TextInput(Search.ByAdjacent("Username:"), "testuser");
+await TextInput(Search.ByAdjacent("Password:"), "password123");
+await Click("Login");
+
+// Navigate tabs by position
+await Click(Search.ByName("Tab*").Skip(2).First());  // Click 3rd tab
+
+// Select from dropdown
+await ClickDropdown("CategoryDropdown", "Electronics");
+
+// Scroll to and click hidden item
+await ScrollTo("ProductList", Search.ByText("Rare Item"));
+await Click(Search.ByText("Rare Item"));
+
+// Pinch to zoom on a map
+await Pinch("MapView", scale: 1.5f, duration: 0.5f);
+```
 
 ## Recording Tests
 

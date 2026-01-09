@@ -149,24 +149,19 @@ Projects can reference specific versions via git tag:
 
 **IMPORTANT**: Do NOT commit or push changes unless explicitly asked via `/deploy`. All code changes should remain local until the user requests deployment.
 
-## Samples vs Tests
+## Samples and Tests
 
 **Samples** (`package/UITest/Samples/`):
 - Runtime UI tests that extend `UITestBehaviour`
 - Run by attaching to a GameObject in a scene
-- Used for demonstrating framework capabilities and real UI testing
-- NOT visible in Unity Test Runner
+- Used for demonstrating framework capabilities
 - Examples: `ComprehensiveSampleTest.cs`, `SearchMethodTests.cs`
 
-**Tests** (`test/Assets/Tests/`):
-- NUnit tests that show up in Unity Test Runner
-- Use `[Test]` attribute and run via Test Runner window
+**PlayMode Tests** (`test/Assets/Tests/PlayMode/`):
+- NUnit PlayMode tests that run in Unity Test Runner
+- Use `[UnityTest]` with `IEnumerator` and `UniTask.ToCoroutine()`
 - Located in the test Unity project, NOT in the package
-- Used for unit testing framework internals (Search matching, scoring algorithms, etc.)
-
-When adding new Search features like `ByAdjacent`:
-1. Add unit tests in `test/Assets/Tests/` (NUnit) to test the scoring/matching logic
-2. Add sample usage in `package/UITest/Samples/` to demonstrate real-world usage
+- Test async UITestBehaviour methods, input injection, Search API
 
 ## Test Project
 

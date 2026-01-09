@@ -2477,6 +2477,21 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Holds on a component directly for the specified duration.
+        /// </summary>
+        protected async UniTask Hold(Component component, float seconds)
+        {
+            if (component == null)
+                throw new ArgumentNullException(nameof(component), "Cannot hold null component");
+
+            var screenPos = GetScreenPosition(component.gameObject);
+            Debug.Log($"[UITEST] Hold (Component) '{component.gameObject.name}' for {seconds}s at ({screenPos.x:F0}, {screenPos.y:F0})");
+
+            await InjectPointerHold(screenPos, seconds);
+            await ActionComplete();
+        }
+
+        /// <summary>
         /// Injects a hold/long-press at the specified screen position.
         /// Uses touch on mobile (iOS/Android), mouse on desktop.
         /// </summary>
@@ -2703,6 +2718,28 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Clicks on a component directly (uses its screen position).
+        /// Useful for iterating over FindAll results.
+        /// </summary>
+        /// <example>
+        /// foreach (var btn in await FindAll&lt;Button&gt;(Search.ByName("Tab*")))
+        /// {
+        ///     await Click(btn);
+        /// }
+        /// </example>
+        protected async UniTask Click(Component component)
+        {
+            if (component == null)
+                throw new ArgumentNullException(nameof(component), "Cannot click null component");
+
+            var screenPos = GetScreenPosition(component.gameObject);
+            Debug.Log($"[UITEST] Click (Component) '{component.gameObject.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
+
+            await InjectPointerTap(screenPos);
+            await ActionComplete();
+        }
+
+        /// <summary>
         /// Clicks at a screen position specified as percentages (0-1).
         /// </summary>
         /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
@@ -2760,6 +2797,21 @@ namespace ODDGames.UITest
             Debug.Log($"[UITEST] DoubleClick (screen center) at ({screenCenter.x:F0}, {screenCenter.y:F0})");
 
             await InjectMouseDoubleClick(screenCenter);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Double-clicks on a component directly.
+        /// </summary>
+        protected async UniTask DoubleClick(Component component)
+        {
+            if (component == null)
+                throw new ArgumentNullException(nameof(component), "Cannot double-click null component");
+
+            var screenPos = GetScreenPosition(component.gameObject);
+            Debug.Log($"[UITEST] DoubleClick (Component) '{component.gameObject.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
+
+            await InjectMouseDoubleClick(screenPos);
             await ActionComplete();
         }
 
@@ -2905,6 +2957,28 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Swipes on a component in the specified direction.
+        /// </summary>
+        protected async UniTask Swipe(Component component, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        {
+            if (component == null)
+                throw new ArgumentNullException(nameof(component), "Cannot swipe null component");
+
+            float distancePixels = distance * Screen.height;
+            Vector2 delta = direction switch
+            {
+                SwipeDirection.Left => new Vector2(-distancePixels, 0),
+                SwipeDirection.Right => new Vector2(distancePixels, 0),
+                SwipeDirection.Up => new Vector2(0, distancePixels),
+                SwipeDirection.Down => new Vector2(0, -distancePixels),
+                _ => Vector2.zero
+            };
+
+            Debug.Log($"[UITEST] Swipe (Component) '{component.gameObject.name}' {direction}");
+            await Drag(component, delta, duration);
+        }
+
+        /// <summary>
         /// Swipes at a screen position specified as percentages (0-1).
         /// </summary>
         /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
@@ -2959,6 +3033,21 @@ namespace ODDGames.UITest
         protected async UniTask Pinch(float scale, float duration = 0.5f, float fingerDistance = 0.05f)
         {
             await PinchAt(0.5f, 0.5f, scale, duration, fingerDistance);
+        }
+
+        /// <summary>
+        /// Performs a pinch gesture on a component.
+        /// </summary>
+        protected async UniTask Pinch(Component component, float scale, float duration = 0.5f, float fingerDistance = 0.05f)
+        {
+            if (component == null)
+                throw new ArgumentNullException(nameof(component), "Cannot pinch null component");
+
+            Vector2 center = GetScreenPosition(component.gameObject);
+            float distancePixels = fingerDistance * Screen.height;
+            Debug.Log($"[UITEST] Pinch (Component) '{component.gameObject.name}' scale={scale}");
+
+            await PinchAt(center, scale, duration, distancePixels);
         }
 
         /// <summary>
@@ -3031,6 +3120,22 @@ namespace ODDGames.UITest
         protected async UniTask TwoFingerSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             await TwoFingerSwipeAt(0.5f, 0.5f, direction, distance, duration, fingerSpacing);
+        }
+
+        /// <summary>
+        /// Performs a two-finger swipe gesture on a component.
+        /// </summary>
+        protected async UniTask TwoFingerSwipe(Component component, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        {
+            if (component == null)
+                throw new ArgumentNullException(nameof(component), "Cannot two-finger swipe null component");
+
+            float distancePixels = distance * Screen.height;
+            float spacingPixels = fingerSpacing * Screen.height;
+            Debug.Log($"[UITEST] TwoFingerSwipe (Component) '{component.gameObject.name}' {direction}");
+
+            Vector2 center = GetScreenPosition(component.gameObject);
+            await TwoFingerSwipeAt(center, direction, distancePixels, duration, spacingPixels);
         }
 
         /// <summary>
@@ -3113,6 +3218,21 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Performs a two-finger rotation gesture on a component.
+        /// </summary>
+        protected async UniTask Rotate(Component component, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
+        {
+            if (component == null)
+                throw new ArgumentNullException(nameof(component), "Cannot rotate null component");
+
+            float radiusPixels = fingerDistance * Screen.height;
+            Debug.Log($"[UITEST] Rotate (Component) '{component.gameObject.name}' {degrees} degrees");
+
+            var center = GetScreenPosition(component.gameObject);
+            await RotateAt(center, degrees, duration, radiusPixels);
+        }
+
+        /// <summary>
         /// Performs a two-finger rotation gesture at a screen position specified as percentages (0-1).
         /// </summary>
         /// <param name="xPercent">X position as percentage of screen width (0 = left, 1 = right)</param>
@@ -3183,6 +3303,7 @@ namespace ODDGames.UITest
 
                 InputSystem.QueueEvent(beginPtr);
             }
+            InputSystem.Update();
 
             await UniTask.Yield();
 
@@ -3213,6 +3334,7 @@ namespace ODDGames.UITest
 
                     InputSystem.QueueEvent(movePtr);
                 }
+                InputSystem.Update();
 
                 prev1 = pos1;
                 prev2 = pos2;
@@ -3239,6 +3361,7 @@ namespace ODDGames.UITest
 
                 InputSystem.QueueEvent(endPtr);
             }
+            InputSystem.Update();
 
             await UniTask.Yield();
         }
@@ -3282,6 +3405,7 @@ namespace ODDGames.UITest
 
                 InputSystem.QueueEvent(beginPtr);
             }
+            InputSystem.Update();
 
             await UniTask.Yield();
 
@@ -3310,6 +3434,7 @@ namespace ODDGames.UITest
 
                     InputSystem.QueueEvent(movePtr);
                 }
+                InputSystem.Update();
 
                 prev1 = pos1;
                 prev2 = pos2;
@@ -3333,6 +3458,7 @@ namespace ODDGames.UITest
 
                 InputSystem.QueueEvent(endPtr);
             }
+            InputSystem.Update();
 
             await UniTask.Yield();
         }
@@ -3372,6 +3498,20 @@ namespace ODDGames.UITest
             await DragFromTo(screenCenter, screenCenter + direction, duration);
         }
 
+        /// <summary>
+        /// Drags from a component in a direction.
+        /// </summary>
+        protected async UniTask Drag(Component component, Vector2 direction, float duration = 0.5f)
+        {
+            if (component == null)
+                throw new ArgumentNullException(nameof(component), "Cannot drag null component");
+
+            var screenPos = GetScreenPosition(component.gameObject);
+            Debug.Log($"[UITEST] Drag (Component) '{component.gameObject.name}' delta=({direction.x:F0},{direction.y:F0})");
+
+            await DragFromTo(screenPos, screenPos + direction, duration);
+        }
+
         protected async UniTask DragFromTo(Vector2 startPos, Vector2 endPos, float duration = 0.5f)
         {
             Debug.Log($"[UITEST] DragFromTo ({duration}s) from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
@@ -3406,6 +3546,75 @@ namespace ODDGames.UITest
 
             await InjectPointerDrag(sourcePos, targetPos, duration);
             await ActionComplete();
+        }
+
+        /// <summary>
+        /// Drags one component to another component (drag and drop).
+        /// </summary>
+        protected async UniTask DragTo(Component source, Component target, float duration = 0.5f)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source), "Cannot drag null source component");
+            if (target == null)
+                throw new ArgumentNullException(nameof(target), "Cannot drag to null target component");
+
+            Vector2 sourcePos = GetScreenPosition(source.gameObject);
+            Vector2 targetPos = GetScreenPosition(target.gameObject);
+
+            Debug.Log($"[UITEST] DragTo (Component) '{source.gameObject.name}' -> '{target.gameObject.name}'");
+
+            await InjectPointerDrag(sourcePos, targetPos, duration);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Drags a component to a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="source">Component to drag</param>
+        /// <param name="targetPercent">Target position as screen percentage (0,0 = bottom-left, 1,1 = top-right)</param>
+        /// <param name="duration">Duration of the drag animation</param>
+        protected async UniTask DragTo(Component source, Vector2 targetPercent, float duration = 0.5f)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source), "Cannot drag null source component");
+
+            Vector2 sourcePos = GetScreenPosition(source.gameObject);
+            Vector2 targetPos = new Vector2(targetPercent.x * Screen.width, targetPercent.y * Screen.height);
+
+            Debug.Log($"[UITEST] DragTo (Component) '{source.gameObject.name}' -> ({targetPercent.x:P0}, {targetPercent.y:P0})");
+
+            await InjectPointerDrag(sourcePos, targetPos, duration);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Drags an element found by search to a screen position specified as percentages (0-1).
+        /// </summary>
+        /// <param name="sourceSearch">Search query for the element to drag</param>
+        /// <param name="targetPercent">Target position as screen percentage (0,0 = bottom-left, 1,1 = top-right)</param>
+        /// <param name="duration">Duration of the drag animation</param>
+        /// <param name="throwIfMissing">Whether to throw if element not found</param>
+        /// <param name="searchTime">Timeout for finding the element</param>
+        protected async UniTask DragTo(Search sourceSearch, Vector2 targetPercent, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        {
+            var source = await Find<RectTransform>(sourceSearch, throwIfMissing, searchTime);
+            if (source == null) return;
+
+            Vector2 sourcePos = GetScreenPosition(source.gameObject);
+            Vector2 targetPos = new Vector2(targetPercent.x * Screen.width, targetPercent.y * Screen.height);
+
+            Debug.Log($"[UITEST] DragTo '{source.name}' -> ({targetPercent.x:P0}, {targetPercent.y:P0})");
+
+            await InjectPointerDrag(sourcePos, targetPos, duration);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Drags an element found by name to a screen position specified as percentages (0-1).
+        /// </summary>
+        protected async UniTask DragTo(string sourceName, Vector2 targetPercent, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        {
+            await DragTo(Search.ByName(sourceName), targetPercent, duration, throwIfMissing, searchTime);
         }
 
         /// <summary>
@@ -4497,6 +4706,171 @@ namespace ODDGames.UITest
 
             TestCancellationToken.ThrowIfCancellationRequested();
             return Enumerable.Empty<T>();
+        }
+
+        /// <summary>
+        /// Represents a container with its child items for iteration.
+        /// Use with foreach to iterate over items while having access to the container for ScrollTo.
+        /// </summary>
+        public class ItemContainer
+        {
+            public Component Container { get; }
+            public ScrollRect ScrollRect => Container as ScrollRect;
+            public IEnumerable<RectTransform> Items { get; }
+
+            public ItemContainer(Component container, IEnumerable<RectTransform> items)
+            {
+                Container = container;
+                Items = items;
+            }
+
+            public IEnumerator<(Component Container, RectTransform Item)> GetEnumerator()
+            {
+                foreach (var item in Items)
+                {
+                    yield return (Container, item);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Finds a container (ScrollRect, Dropdown, LayoutGroup) and its child items.
+        /// Returns pairs of (Container, Item) for use with ScrollTo and Click.
+        /// Supports: ScrollRect, TMP_Dropdown, Dropdown, LayoutGroup (Horizontal/Vertical/Grid).
+        /// </summary>
+        /// <param name="containerSearch">Search for the container</param>
+        /// <param name="itemSearch">Optional additional search criteria for items</param>
+        /// <example>
+        /// // ScrollRect - scroll to each item
+        /// foreach (var (list, item) in await FindItems("InventoryList"))
+        /// {
+        ///     await ScrollTo(list, item);
+        ///     await Click(item);
+        /// }
+        ///
+        /// // Dropdown options
+        /// foreach (var (dropdown, option) in await FindItems("CategoryDropdown"))
+        /// {
+        ///     await Click(option);
+        /// }
+        /// </example>
+        protected async UniTask<ItemContainer> FindItems(Search containerSearch, Search itemSearch = null)
+        {
+            // Try each supported container type in order of most common
+            Component container = await Find<ScrollRect>(containerSearch, throwIfMissing: false, seconds: 2);
+            container ??= await Find<VerticalLayoutGroup>(containerSearch, throwIfMissing: false, seconds: 1);
+            container ??= await Find<HorizontalLayoutGroup>(containerSearch, throwIfMissing: false, seconds: 1);
+            container ??= await Find<GridLayoutGroup>(containerSearch, throwIfMissing: false, seconds: 1);
+            container ??= await Find<TMP_Dropdown>(containerSearch, throwIfMissing: false, seconds: 1);
+            container ??= await Find<Dropdown>(containerSearch, throwIfMissing: false, seconds: 1);
+
+            if (container == null)
+                throw new TestException($"FindItems could not find a supported container (ScrollRect, Dropdown, LayoutGroup) matching: {containerSearch}");
+
+            var items = GetContainerItems(container);
+
+            if (itemSearch != null)
+            {
+                items = items.Where(item => itemSearch.Matches(item.gameObject));
+            }
+
+            return new ItemContainer(container, items);
+        }
+
+        /// <summary>
+        /// Finds a container by name and its child items.
+        /// </summary>
+        protected async UniTask<ItemContainer> FindItems(string containerName, Search itemSearch = null)
+        {
+            return await FindItems(Search.ByName(containerName), itemSearch);
+        }
+
+        private IEnumerable<RectTransform> GetContainerItems(Component container)
+        {
+            switch (container)
+            {
+                case ScrollRect scrollRect:
+                {
+                    var content = scrollRect.content ?? scrollRect.GetComponent<RectTransform>();
+                    var items = new List<RectTransform>();
+                    foreach (Transform child in content)
+                    {
+                        var rect = child.GetComponent<RectTransform>();
+                        if (rect != null && child.gameObject.activeInHierarchy)
+                            items.Add(rect);
+                    }
+                    // Order by position
+                    return items.OrderBy(item => scrollRect.vertical ? -item.anchoredPosition.y : item.anchoredPosition.x);
+                }
+
+                case TMP_Dropdown tmpDropdown:
+                {
+                    // Return option data as conceptual items - caller will use ClickDropdown
+                    // For now, return the template items if dropdown is open
+                    var template = tmpDropdown.template;
+                    if (template != null && template.gameObject.activeInHierarchy)
+                    {
+                        var content = template.GetComponentInChildren<ToggleGroup>()?.transform ?? template;
+                        return content.GetComponentsInChildren<RectTransform>()
+                            .Where(r => r.GetComponent<Toggle>() != null)
+                            .OrderBy(r => -r.anchoredPosition.y);
+                    }
+                    return Enumerable.Empty<RectTransform>();
+                }
+
+                case Dropdown dropdown:
+                {
+                    var template = dropdown.template;
+                    if (template != null && template.gameObject.activeInHierarchy)
+                    {
+                        var content = template.GetComponentInChildren<ToggleGroup>()?.transform ?? template;
+                        return content.GetComponentsInChildren<RectTransform>()
+                            .Where(r => r.GetComponent<Toggle>() != null)
+                            .OrderBy(r => -r.anchoredPosition.y);
+                    }
+                    return Enumerable.Empty<RectTransform>();
+                }
+
+                case HorizontalLayoutGroup hlg:
+                {
+                    var items = new List<RectTransform>();
+                    foreach (Transform child in hlg.transform)
+                    {
+                        var rect = child.GetComponent<RectTransform>();
+                        if (rect != null && child.gameObject.activeInHierarchy)
+                            items.Add(rect);
+                    }
+                    return items.OrderBy(r => r.anchoredPosition.x);
+                }
+
+                case VerticalLayoutGroup vlg:
+                {
+                    var items = new List<RectTransform>();
+                    foreach (Transform child in vlg.transform)
+                    {
+                        var rect = child.GetComponent<RectTransform>();
+                        if (rect != null && child.gameObject.activeInHierarchy)
+                            items.Add(rect);
+                    }
+                    return items.OrderBy(r => -r.anchoredPosition.y);
+                }
+
+                case GridLayoutGroup glg:
+                {
+                    var items = new List<RectTransform>();
+                    foreach (Transform child in glg.transform)
+                    {
+                        var rect = child.GetComponent<RectTransform>();
+                        if (rect != null && child.gameObject.activeInHierarchy)
+                            items.Add(rect);
+                    }
+                    // Order top-to-bottom, left-to-right (reading order)
+                    return items.OrderBy(r => -r.anchoredPosition.y).ThenBy(r => r.anchoredPosition.x);
+                }
+
+                default:
+                    return Enumerable.Empty<RectTransform>();
+            }
         }
     }
 }
