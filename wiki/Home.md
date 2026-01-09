@@ -6,7 +6,7 @@ A UI automation testing framework for Unity projects.
 
 1. **Install** via Unity Package Manager:
    ```json
-   "com.oddgames.uitest": "https://github.com/oddgames/ui-automation.git?path=package#v1.0.23"
+   "com.oddgames.uitest": "https://github.com/oddgames/ui-automation.git?path=package#v1.0.25"
    ```
 
 2. **Create a test** by extending `UITestBehaviour`:
@@ -41,6 +41,19 @@ A UI automation testing framework for Unity projects.
 - [[Search.ByAdjacent]] - Find by adjacent label text
 - [[Search.ByPath]] - Find by hierarchy path
 - [[Search Chaining]] - Combine multiple conditions
+
+### Hierarchy Navigation
+- [[Search.GetParent]] - Find component in parent hierarchy
+- [[Search.GetChild]] - Find component in children
+
+### Ordering & Filtering
+- [[Search.First]] / [[Search.Last]] - Position-based selection
+- [[Search.Skip]] - Skip first N matches
+- [[Search.OrderBy]] - Order by component property
+- [[Search.InRegion]] - Filter by screen region
+
+### Scroll Views
+- [[ScrollTo]] - Auto-scroll to reveal hidden elements
 
 ### Advanced Topics
 - [[Availability Filtering]] - Active/Inactive, Enabled/Disabled

@@ -14,7 +14,6 @@ All notable changes to this project will be documented in this file.
 - **`Search.GetParent<T>()`** - Find component in parent hierarchy (with optional predicate)
 - **`Search.GetChild<T>()`** - Find component in children hierarchy (with optional predicate)
 - **`Search.InRegion(ScreenRegion)`** - Filter elements by screen region (TopLeft, Center, BottomRight, etc.)
-- **`Search.InScrollView(name)`** - Filter to elements inside a specific ScrollRect
 - **`ScrollTo(scrollViewSearch, targetSearch)`** - Auto-scroll a ScrollRect until target element is visible
 - **`ScreenRegion` enum** - TopLeft, TopCenter, TopRight, MiddleLeft, Center, MiddleRight, BottomLeft, BottomCenter, BottomRight
 - PlayMode tests for new Search methods in `test/Assets/Tests/PlayMode/`

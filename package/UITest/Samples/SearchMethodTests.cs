@@ -740,7 +740,7 @@ namespace ODDGames.UITest.Samples
             CreateInputField(panel.transform, "AmbiguousAboveInput", "Above", new Vector2(-180, -460));
 
             // ==========================================
-            // New method test targets (GetParent, GetChild, InScrollView, ordering)
+            // New method test targets (GetParent, GetChild, ScrollTo, ordering)
             // ==========================================
 
             // GetParent test - button inside panel that has CanvasGroup
@@ -761,7 +761,7 @@ namespace ODDGames.UITest.Samples
             childImg.color = Color.yellow;
             childImg.raycastTarget = true;
 
-            // InScrollView test - simple scroll view with items
+            // ScrollTo test - simple scroll view with items
             var scrollView = CreateScrollView(panel.transform, "TestScrollView", new Vector2(250, -400), new Vector2(160, 80));
 
             // Ordering test - multiple buttons with same prefix
