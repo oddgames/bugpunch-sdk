@@ -7,6 +7,7 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 using ODDGames.UITest;
+using Cysharp.Threading.Tasks;
 
 namespace ODDGames.UITest.Editor
 {
@@ -145,7 +146,35 @@ namespace ODDGames.UITest.Editor
             }
             GUI.enabled = true;
 
-            GUILayout.Space(10);
+            GUILayout.Space(5);
+
+            // Auto-Explore dropdown
+            GUI.enabled = !AutoExplorer.IsExploring;
+            if (EditorGUILayout.DropdownButton(new GUIContent("Auto-Explore", "Run automated UI exploration"), FocusType.Keyboard, EditorStyles.toolbarDropDown, GUILayout.Width(90)))
+            {
+                var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("30 seconds"), false, () => StartAutoExplore(30f, 0));
+                menu.AddItem(new GUIContent("60 seconds"), false, () => StartAutoExplore(60f, 0));
+                menu.AddItem(new GUIContent("5 minutes"), false, () => StartAutoExplore(300f, 0));
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent("20 actions"), false, () => StartAutoExplore(0f, 20));
+                menu.AddItem(new GUIContent("100 actions"), false, () => StartAutoExplore(0f, 100));
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent("Until dead end"), false, () => StartAutoExploreDeadEnd());
+                menu.ShowAsContext();
+            }
+            GUI.enabled = true;
+
+            // Stop button (only visible when exploring)
+            if (AutoExplorer.IsExploring)
+            {
+                if (GUILayout.Button(new GUIContent("Stop", EditorGUIUtility.IconContent("PauseButton").image, "Stop auto-exploration"), EditorStyles.toolbarButton, GUILayout.Width(50)))
+                {
+                    AutoExplorer.StopExploration();
+                }
+            }
+
+            GUILayout.Space(5);
 
             // Refresh button
             if (GUILayout.Button(new GUIContent(EditorGUIUtility.IconContent("Refresh").image, "Refresh test list"), EditorStyles.toolbarButton, GUILayout.Width(28)))
@@ -178,6 +207,71 @@ namespace ODDGames.UITest.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        private void StartAutoExplore(float seconds, int actions)
+        {
+            if (!EditorApplication.isPlaying)
+            {
+                EditorPrefs.SetFloat("AutoExplorer_Duration", seconds);
+                EditorPrefs.SetInt("AutoExplorer_Actions", actions);
+                EditorPrefs.SetBool("AutoExplorer_DeadEnd", false);
+                EditorPrefs.SetBool("AutoExplorer_Pending", true);
+
+                EditorApplication.playModeStateChanged += OnAutoExplorePlayModeChanged;
+                EditorApplication.EnterPlaymode();
+            }
+            else
+            {
+                RunAutoExploreAsync(seconds, actions, false).Forget();
+            }
+        }
+
+        private void StartAutoExploreDeadEnd()
+        {
+            if (!EditorApplication.isPlaying)
+            {
+                EditorPrefs.SetFloat("AutoExplorer_Duration", 0);
+                EditorPrefs.SetInt("AutoExplorer_Actions", 0);
+                EditorPrefs.SetBool("AutoExplorer_DeadEnd", true);
+                EditorPrefs.SetBool("AutoExplorer_Pending", true);
+
+                EditorApplication.playModeStateChanged += OnAutoExplorePlayModeChanged;
+                EditorApplication.EnterPlaymode();
+            }
+            else
+            {
+                RunAutoExploreAsync(0, 0, true).Forget();
+            }
+        }
+
+        private void OnAutoExplorePlayModeChanged(PlayModeStateChange state)
+        {
+            // Just unsubscribe - the actual exploration is started by AutoExplorer.CheckPendingExploration()
+            // which uses [RuntimeInitializeOnLoadMethod] for reliable startup
+            if (state == PlayModeStateChange.EnteredPlayMode)
+            {
+                EditorApplication.playModeStateChanged -= OnAutoExplorePlayModeChanged;
+            }
+        }
+
+        private async UniTaskVoid RunAutoExploreAsync(float seconds, int actions, bool deadEnd)
+        {
+            await UniTask.DelayFrame(30);
+
+            var settings = new ExploreSettings
+            {
+                DurationSeconds = seconds,
+                MaxActions = actions,
+                StopOnDeadEnd = deadEnd,
+                Seed = null,
+                DelayBetweenActions = 0.5f,
+                TryBackOnStuck = true
+            };
+
+            Debug.Log($"[AutoExplorer] Starting - Duration: {seconds}s, Actions: {actions}, DeadEnd: {deadEnd}");
+            var result = await AutoExplorer.StartExploration(settings);
+            Debug.Log($"[AutoExplorer] Completed - {result.ActionsPerformed} actions in {result.DurationSeconds:F1}s. Reason: {result.StopReason}");
         }
 
         private void DrawTreeView(Rect rect)

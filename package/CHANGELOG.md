@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.27] - 2026-01-10
+
+### Added
+- **Random Click methods** for monkey testing within UITestBehaviour:
+  - `SetRandomSeed(seed)` - Set seed for deterministic random clicks
+  - `RandomClick(filter)` - Click a random clickable element
+  - `RandomClickExcept(exclude)` - Click random element excluding patterns
+  - `AutoExplore(condition, value, seed)` - Auto-explore UI with stop conditions
+  - `AutoExploreForSeconds(seconds, seed)` - Explore for specified duration
+  - `AutoExploreForActions(count, seed)` - Explore for N actions
+  - `AutoExploreUntilDeadEnd(seed)` - Explore until no new elements
+  - `TryClickBackButton()` - Attempt to click back/exit/close buttons
+- **AutoExplorer static class** for CI/batch mode and runtime exploration:
+  - `AutoExplorer.StartExploration(settings)` - Start exploration from any script
+  - `AutoExplorer.StopExploration()` - Stop current exploration
+  - `AutoExplorer.IsExploring` - Check if exploration is running
+  - `AutoExplorer.OnExploreComplete` / `OnActionPerformed` - Events for monitoring
+  - `AutoExplorer.RunBatch()` - Entry point for Jenkins/CI batch mode
+  - Command line args: `-exploreSeconds`, `-exploreActions`, `-exploreSeed`, `-exploreDelay`, `-exploreUntilDeadEnd`
+- **AutoExplorer runtime component** - Add to GameObject for game loop integration
+  - Inspector settings for duration, actions, seed, auto-start
+  - Context menu to start/stop exploration
+- **Auto-Explore in Test Explorer window** - Dropdown in toolbar with time/action/dead-end options
+- **Smarter AutoExplorer** with configurable behavior:
+  - **Exclusion patterns** - Skip dangerous buttons (Logout, Delete, Purchase, Quit, etc.)
+    - `ExcludePatterns` - Name patterns like `"*Logout*"`, `"*Delete*"`
+    - `ExcludeTexts` - Text content like `"Buy Now"`, `"Confirm Delete"`
+  - **Action variety** - Interact appropriately with different UI elements:
+    - Sliders: Drag to random position
+    - Input fields: Type test strings (configurable via `TestInputStrings`)
+    - Dropdowns: Open and select random option
+    - ScrollRects: Scroll up/down
+  - **Priority scoring** - Prefer certain elements:
+    - New (unseen) elements get highest priority
+    - Modal/popup elements get bonus
+    - Buttons > Toggles > Dropdowns > Sliders
+    - Center of screen bonus
+  - All features enabled by default, configurable via `ExploreSettings`
+
+### Changed
+- Consolidated UI Automation menu - removed separate menu items, all functionality now in Test Explorer window
+- Test Explorer toolbar now includes Auto-Explore dropdown and Stop button
+
 ## [1.0.26] - 2026-01-09
 
 ### Added

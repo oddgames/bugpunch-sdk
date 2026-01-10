@@ -4872,5 +4872,364 @@ namespace ODDGames.UITest
                     return Enumerable.Empty<RectTransform>();
             }
         }
+
+        #region Random Click and Auto-Explore
+
+        /// <summary>
+        /// Random number generator for deterministic random clicks.
+        /// Set a seed before using RandomClick for reproducible test runs.
+        /// </summary>
+        protected System.Random RandomGenerator { get; private set; } = new System.Random();
+
+        /// <summary>
+        /// Sets the random seed for deterministic random clicks.
+        /// Use the same seed to reproduce the exact same click sequence.
+        /// </summary>
+        /// <param name="seed">The seed value for the random number generator</param>
+        protected void SetRandomSeed(int seed)
+        {
+            RandomGenerator = new System.Random(seed);
+            Debug.Log($"[UITEST] RandomSeed set to {seed}");
+        }
+
+        /// <summary>
+        /// Clicks a random clickable UI element from those currently visible.
+        /// Uses the current RandomGenerator for selection.
+        /// </summary>
+        /// <param name="filter">Optional search filter to narrow down clickable elements</param>
+        /// <returns>The component that was clicked, or null if none found</returns>
+        protected async UniTask<Component> RandomClick(Search filter = null)
+        {
+            var clickables = await GetClickableElements(filter);
+            if (clickables.Count == 0)
+            {
+                Debug.Log("[UITEST] RandomClick - No clickable elements found");
+                return null;
+            }
+
+            int index = RandomGenerator.Next(clickables.Count);
+            var target = clickables[index];
+            Debug.Log($"[UITEST] RandomClick - Selected '{target.gameObject.name}' (index {index} of {clickables.Count})");
+
+            await Click(target);
+            return target;
+        }
+
+        /// <summary>
+        /// Clicks a random clickable element, excluding elements matching the specified searches.
+        /// Useful for avoiding known problematic buttons or exit buttons during exploration.
+        /// </summary>
+        /// <param name="exclude">Search patterns to exclude from random selection</param>
+        /// <returns>The component that was clicked, or null if none found</returns>
+        protected async UniTask<Component> RandomClickExcept(params Search[] exclude)
+        {
+            var clickables = await GetClickableElements(null);
+
+            // Filter out excluded elements
+            foreach (var excludeSearch in exclude)
+            {
+                clickables = clickables.Where(c => !excludeSearch.Matches(c.gameObject)).ToList();
+            }
+
+            if (clickables.Count == 0)
+            {
+                Debug.Log("[UITEST] RandomClickExcept - No clickable elements found after exclusions");
+                return null;
+            }
+
+            int index = RandomGenerator.Next(clickables.Count);
+            var target = clickables[index];
+            Debug.Log($"[UITEST] RandomClickExcept - Selected '{target.gameObject.name}' (index {index} of {clickables.Count})");
+
+            await Click(target);
+            return target;
+        }
+
+        /// <summary>
+        /// Gets all currently clickable UI elements.
+        /// </summary>
+        private async UniTask<List<Component>> GetClickableElements(Search filter)
+        {
+            await UniTask.Yield(); // Let UI update
+
+            var allSelectables = GameObject.FindObjectsByType<Selectable>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            var clickables = new List<Component>();
+
+            foreach (var selectable in allSelectables)
+            {
+                if (selectable == null) continue;
+                if (!selectable.interactable) continue;
+                if (!selectable.gameObject.activeInHierarchy) continue;
+
+                // Check if it's visible (has a canvas renderer and is not fully transparent)
+                var canvasGroup = selectable.GetComponentInParent<CanvasGroup>();
+                if (canvasGroup != null && (canvasGroup.alpha <= 0 || !canvasGroup.interactable)) continue;
+
+                // Apply filter if provided
+                if (filter != null && !filter.Matches(selectable.gameObject)) continue;
+
+                clickables.Add(selectable);
+            }
+
+            return clickables;
+        }
+
+        /// <summary>
+        /// Condition for stopping auto-exploration.
+        /// </summary>
+        public enum ExploreStopCondition
+        {
+            /// <summary>Stop after a specified duration</summary>
+            Time,
+            /// <summary>Stop after a specified number of actions</summary>
+            ActionCount,
+            /// <summary>Stop when no new clickable elements are found (dead end)</summary>
+            DeadEnd,
+            /// <summary>Stop when a specific element appears</summary>
+            ElementAppears,
+            /// <summary>Stop when a specific element disappears</summary>
+            ElementDisappears
+        }
+
+        /// <summary>
+        /// Result of an auto-explore session.
+        /// </summary>
+        public class ExploreResult
+        {
+            public int ActionsPerformed { get; set; }
+            public float DurationSeconds { get; set; }
+            public bool ReachedDeadEnd { get; set; }
+            public List<string> ClickedElements { get; } = new List<string>();
+            public List<string> VisitedScenes { get; } = new List<string>();
+            public ExploreStopCondition StopReason { get; set; }
+        }
+
+        /// <summary>
+        /// Common back/exit button patterns to try when stuck.
+        /// </summary>
+        private static readonly string[] BackButtonPatterns = new[]
+        {
+            "*Back*", "*Close*", "*Exit*", "*Cancel*", "*Done*", "*Return*",
+            "*Dismiss*", "*OK*", "*No*", "*X*", "BackButton", "CloseButton"
+        };
+
+        /// <summary>
+        /// Auto-explores the UI by randomly clicking elements.
+        /// Stops based on the specified condition.
+        /// </summary>
+        /// <param name="stopCondition">When to stop exploring</param>
+        /// <param name="value">Value for the stop condition (seconds for Time, count for ActionCount)</param>
+        /// <param name="seed">Optional random seed for reproducibility (null = random)</param>
+        /// <param name="delayBetweenActions">Delay between actions in seconds</param>
+        /// <param name="tryBackOnStuck">Whether to try back/exit buttons when no new elements found</param>
+        /// <returns>Result of the exploration session</returns>
+        protected async UniTask<ExploreResult> AutoExplore(
+            ExploreStopCondition stopCondition,
+            float value = 60f,
+            int? seed = null,
+            float delayBetweenActions = 0.5f,
+            bool tryBackOnStuck = true)
+        {
+            if (seed.HasValue)
+                SetRandomSeed(seed.Value);
+            else
+                SetRandomSeed(Environment.TickCount);
+
+            var result = new ExploreResult();
+            var startTime = Time.realtimeSinceStartup;
+            var seenElements = new HashSet<string>();
+            var currentScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            result.VisitedScenes.Add(currentScene);
+
+            int consecutiveFailures = 0;
+            const int maxConsecutiveFailures = 5;
+
+            Debug.Log($"[UITEST] AutoExplore started - StopCondition: {stopCondition}, Value: {value}, Seed: {seed ?? -1}");
+
+            while (Application.isPlaying && !TestCancellationToken.IsCancellationRequested)
+            {
+                result.DurationSeconds = Time.realtimeSinceStartup - startTime;
+
+                // Check stop conditions
+                switch (stopCondition)
+                {
+                    case ExploreStopCondition.Time:
+                        if (result.DurationSeconds >= value)
+                        {
+                            result.StopReason = ExploreStopCondition.Time;
+                            Debug.Log($"[UITEST] AutoExplore stopped - Time limit reached ({value}s)");
+                            return result;
+                        }
+                        break;
+
+                    case ExploreStopCondition.ActionCount:
+                        if (result.ActionsPerformed >= (int)value)
+                        {
+                            result.StopReason = ExploreStopCondition.ActionCount;
+                            Debug.Log($"[UITEST] AutoExplore stopped - Action count reached ({(int)value})");
+                            return result;
+                        }
+                        break;
+
+                    case ExploreStopCondition.DeadEnd:
+                        if (consecutiveFailures >= maxConsecutiveFailures)
+                        {
+                            result.ReachedDeadEnd = true;
+                            result.StopReason = ExploreStopCondition.DeadEnd;
+                            Debug.Log($"[UITEST] AutoExplore stopped - Dead end reached (no new elements after {maxConsecutiveFailures} attempts)");
+                            return result;
+                        }
+                        break;
+                }
+
+                // Check for scene changes
+                var newScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+                if (newScene != currentScene)
+                {
+                    currentScene = newScene;
+                    if (!result.VisitedScenes.Contains(newScene))
+                        result.VisitedScenes.Add(newScene);
+                    Debug.Log($"[UITEST] AutoExplore - Scene changed to: {newScene}");
+                    consecutiveFailures = 0; // Reset on scene change
+                }
+
+                // Get clickable elements
+                var clickables = await GetClickableElements(null);
+                if (clickables.Count == 0)
+                {
+                    consecutiveFailures++;
+                    Debug.Log($"[UITEST] AutoExplore - No clickable elements found (failure {consecutiveFailures}/{maxConsecutiveFailures})");
+
+                    if (tryBackOnStuck && consecutiveFailures >= 2)
+                    {
+                        // Try to find and click a back button
+                        await TryClickBackButton();
+                    }
+
+                    await UniTask.Delay((int)(delayBetweenActions * 1000));
+                    continue;
+                }
+
+                // Prefer elements we haven't clicked yet
+                var newElements = clickables.Where(c => !seenElements.Contains(GetElementKey(c))).ToList();
+                Component target;
+
+                if (newElements.Count > 0)
+                {
+                    int index = RandomGenerator.Next(newElements.Count);
+                    target = newElements[index];
+                    consecutiveFailures = 0;
+                }
+                else if (tryBackOnStuck)
+                {
+                    // All elements seen, try back button or random from all
+                    consecutiveFailures++;
+                    if (consecutiveFailures >= 2)
+                    {
+                        var clickedBack = await TryClickBackButton();
+                        if (clickedBack)
+                        {
+                            result.ActionsPerformed++;
+                            result.ClickedElements.Add("[Back/Exit]");
+                            await UniTask.Delay((int)(delayBetweenActions * 1000));
+                            continue;
+                        }
+                    }
+
+                    // Fall back to random click
+                    int index = RandomGenerator.Next(clickables.Count);
+                    target = clickables[index];
+                }
+                else
+                {
+                    consecutiveFailures++;
+                    int index = RandomGenerator.Next(clickables.Count);
+                    target = clickables[index];
+                }
+
+                // Click the target
+                var elementKey = GetElementKey(target);
+                seenElements.Add(elementKey);
+                result.ClickedElements.Add(target.gameObject.name);
+
+                Debug.Log($"[UITEST] AutoExplore - Clicking '{target.gameObject.name}' (action {result.ActionsPerformed + 1})");
+                await Click(target);
+                result.ActionsPerformed++;
+
+                await UniTask.Delay((int)(delayBetweenActions * 1000));
+            }
+
+            Debug.Log($"[UITEST] AutoExplore stopped - Application quit or cancelled");
+            return result;
+        }
+
+        /// <summary>
+        /// Auto-explores for a specified duration.
+        /// </summary>
+        protected async UniTask<ExploreResult> AutoExploreForSeconds(float seconds, int? seed = null, float delayBetweenActions = 0.5f)
+        {
+            return await AutoExplore(ExploreStopCondition.Time, seconds, seed, delayBetweenActions);
+        }
+
+        /// <summary>
+        /// Auto-explores for a specified number of actions.
+        /// </summary>
+        protected async UniTask<ExploreResult> AutoExploreForActions(int actionCount, int? seed = null, float delayBetweenActions = 0.5f)
+        {
+            return await AutoExplore(ExploreStopCondition.ActionCount, actionCount, seed, delayBetweenActions);
+        }
+
+        /// <summary>
+        /// Auto-explores until reaching a dead end (no new clickable elements).
+        /// </summary>
+        protected async UniTask<ExploreResult> AutoExploreUntilDeadEnd(int? seed = null, float delayBetweenActions = 0.5f, bool tryBackOnStuck = false)
+        {
+            return await AutoExplore(ExploreStopCondition.DeadEnd, 0, seed, delayBetweenActions, tryBackOnStuck);
+        }
+
+        /// <summary>
+        /// Tries to click a back/exit/close button to navigate backwards.
+        /// </summary>
+        /// <returns>True if a back button was found and clicked</returns>
+        protected async UniTask<bool> TryClickBackButton()
+        {
+            foreach (var pattern in BackButtonPatterns)
+            {
+                var backButton = await Find<Selectable>(Search.ByName(pattern), throwIfMissing: false, seconds: 0.1f);
+                if (backButton != null && backButton.interactable)
+                {
+                    Debug.Log($"[UITEST] TryClickBackButton - Found and clicking '{backButton.gameObject.name}'");
+                    await Click(backButton);
+                    return true;
+                }
+            }
+
+            // Also try by text
+            var textPatterns = new[] { "Back", "Close", "Exit", "Cancel", "Done", "OK", "X" };
+            foreach (var text in textPatterns)
+            {
+                var button = await Find<Button>(Search.ByText(text), throwIfMissing: false, seconds: 0.1f);
+                if (button != null && button.interactable)
+                {
+                    Debug.Log($"[UITEST] TryClickBackButton - Found button with text '{text}'");
+                    await Click(button);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Gets a unique key for an element based on its name and hierarchy position.
+        /// </summary>
+        private string GetElementKey(Component component)
+        {
+            if (component == null) return "";
+            var go = component.gameObject;
+            return $"{go.name}_{go.transform.GetSiblingIndex()}_{go.transform.parent?.name ?? "root"}";
+        }
+
+        #endregion
     }
 }

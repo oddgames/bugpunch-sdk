@@ -29,15 +29,7 @@ public class UITestRunner
     private static bool isWaitingForPlayMode;
     private static System.Threading.CancellationTokenSource timeoutCancellation;
 
-    [MenuItem("Window/Analysis/UI Automation/Run All Tests in Batch Mode")]
-    public static void RunAllTestsInBatchMode()
-    {
-        string outputDir = EditorUtility.SaveFolderPanel("Select Output Directory", "", "UITestOutput");
-        if (string.IsNullOrEmpty(outputDir))
-            return;
-
-        RunUITestsFromCommandLine();
-    }
+    // Menu item removed - use Test Explorer window instead
 
     public static void RunUITestsFromCommandLine()
     {

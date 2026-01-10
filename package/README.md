@@ -134,6 +134,16 @@ All gesture distances use percentage of screen height (e.g., 0.2 = 20%) for devi
 - `RegisterClickable<T>()` - Register custom clickable type
 - `RegisterRaycaster(raycaster)` - Register custom raycaster
 
+#### Random Click & Auto-Explore
+- `SetRandomSeed(seed)` - Set seed for deterministic random clicks
+- `RandomClick(filter)` - Click a random clickable element
+- `RandomClickExcept(exclude)` - Click random element excluding patterns
+- `AutoExplore(condition, value, seed)` - Auto-explore UI with stop conditions
+- `AutoExploreForSeconds(seconds, seed)` - Explore for specified duration
+- `AutoExploreForActions(count, seed)` - Explore for N actions
+- `AutoExploreUntilDeadEnd(seed)` - Explore until no new elements
+- `TryClickBackButton()` - Attempt to click back/exit/close buttons
+
 ## Best Practices
 
 ### Finding Elements
@@ -244,6 +254,31 @@ await Click(Search.ByText("Rare Item"));
 await Pinch("MapView", scale: 1.5f, duration: 0.5f);
 ```
 
+### Random Click & Auto-Explore
+
+```csharp
+// Deterministic random clicking (same seed = same sequence)
+SetRandomSeed(12345);
+await RandomClick();  // Click random visible button
+await RandomClick(Search.ByName("Menu*"));  // Random from filtered set
+await RandomClickExcept(Search.ByText("Quit"));  // Avoid certain buttons
+
+// Auto-explore for 30 seconds
+var result = await AutoExploreForSeconds(30, seed: 12345);
+Debug.Log($"Clicked {result.ActionsPerformed} elements, visited {result.VisitedScenes.Count} scenes");
+
+// Auto-explore for exactly 20 actions
+var result = await AutoExploreForActions(20, seed: 12345);
+
+// Explore until stuck (no new clickable elements)
+var result = await AutoExploreUntilDeadEnd(seed: 12345);
+if (result.ReachedDeadEnd)
+    Debug.Log("Exploration complete - no new elements found");
+
+// Try to navigate backwards
+await TryClickBackButton();  // Clicks Back, Close, Exit, Cancel, Done, OK, or X
+```
+
 ## Recording Tests
 
 Use the toolbar **"Record Test"** button to record user interactions:
@@ -253,6 +288,81 @@ Use the toolbar **"Record Test"** button to record user interactions:
 3. Interact with the UI as you would in your test
 4. Stop recording
 5. Use the Generator window to create test code from the recording
+
+## Auto-Explorer (Monkey Testing)
+
+The AutoExplorer provides automated UI exploration for monkey testing, smoke testing, and finding crashes.
+
+### Test Explorer Window
+
+Open **Window > Analysis > UI Automation > Test Explorer** and use the **Auto-Explore** dropdown:
+- **30/60 seconds, 5 minutes** - Time-limited exploration
+- **20/100 actions** - Action-limited exploration
+- **Until dead end** - Explore until stuck
+
+The **Stop** button appears during exploration to cancel.
+
+### Runtime Component
+
+Add the `AutoExplorer` component to any GameObject for runtime-configurable exploration:
+- Set duration, max actions, or dead-end detection
+- Configure random seed for reproducibility
+- Enable auto-start for game loop integration
+- Use Inspector to configure all settings
+
+### Static API
+
+```csharp
+// Start exploration from any script
+var result = await AutoExplorer.StartExploration(new ExploreSettings
+{
+    DurationSeconds = 60f,
+    MaxActions = 100,
+    StopOnDeadEnd = false,
+    Seed = 12345,  // For reproducibility
+    DelayBetweenActions = 0.5f,
+    TryBackOnStuck = true,
+
+    // Smart exploration features (all enabled by default)
+    EnableActionVariety = true,     // Drag sliders, type in inputs, scroll views
+    UsePriorityScoring = true,      // Prefer modals, new elements, center of screen
+
+    // Exclusion patterns - skip dangerous buttons
+    ExcludePatterns = new[] { "*Logout*", "*Delete*", "*Purchase*" },
+    ExcludeTexts = new[] { "Buy Now", "Confirm Delete" },
+
+    // Test strings for input fields
+    TestInputStrings = new[] { "Test", "test@example.com", "12345" }
+});
+
+// Check if exploring
+if (AutoExplorer.IsExploring) { }
+
+// Stop exploration
+AutoExplorer.StopExploration();
+
+// Subscribe to events
+AutoExplorer.OnExploreComplete += result => Debug.Log($"Done: {result.ActionsPerformed} actions");
+AutoExplorer.OnActionPerformed += (name, count) => Debug.Log($"Clicked: {name}");
+```
+
+### Jenkins/CI Batch Mode
+
+Run from command line for automated testing:
+
+```bash
+Unity.exe -batchmode -executeMethod ODDGames.UITest.AutoExplorer.RunBatch \
+  -exploreSeconds 300 \
+  -exploreSeed 12345 \
+  -exploreDelay 0.3
+```
+
+Command line arguments:
+- `-exploreSeconds <float>` - Duration in seconds
+- `-exploreActions <int>` - Maximum actions
+- `-exploreSeed <int>` - Random seed for reproducibility
+- `-exploreDelay <float>` - Delay between actions
+- `-exploreUntilDeadEnd` - Stop when no new elements
 
 ## Requirements
 
