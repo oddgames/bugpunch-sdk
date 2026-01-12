@@ -41,9 +41,6 @@ namespace ODDGames.UITest.VisualBuilder
             if (!string.IsNullOrEmpty(test.originalPrompt))
                 sb.AppendLine($"  originalPrompt: \"{EscapeString(test.originalPrompt)}\"");
 
-            if (!string.IsNullOrEmpty(test.passCondition))
-                sb.AppendLine($"  passCondition: \"{EscapeString(test.passCondition)}\"");
-
             sb.AppendLine();
 
             // Blocks
@@ -278,9 +275,6 @@ namespace ODDGames.UITest.VisualBuilder
                     break;
                 case "originalPrompt":
                     test.originalPrompt = UnescapeString(value);
-                    break;
-                case "passCondition":
-                    test.passCondition = UnescapeString(value);
                     break;
             }
         }

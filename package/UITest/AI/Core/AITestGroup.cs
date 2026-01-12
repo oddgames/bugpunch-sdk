@@ -24,8 +24,8 @@ namespace ODDGames.UITest.AI
         public string knowledge;
 
         [Header("Default Configuration")]
-        [Tooltip("Default model tier for tests in this group")]
-        public ModelTier defaultTier = ModelTier.LocalFast;
+        [Tooltip("Default Gemini model for tests in this group. Leave empty to use project default.")]
+        public string defaultModel;
 
         [Tooltip("Default timeout in seconds for tests in this group")]
         public float defaultTimeout = 180f;

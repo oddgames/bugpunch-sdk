@@ -73,7 +73,6 @@ namespace ODDGames.UITest.AI.Editor
 
             var test = ScriptableObject.CreateInstance<AITest>();
             test.prompt = "Describe what this test should do...";
-            test.passCondition = "Describe when the test should pass...";
 
             if (group != null)
             {

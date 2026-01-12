@@ -4,6 +4,7 @@
     "references": [
         "ODDGames.UITest",
         "ODDGames.UITest.AI",
+        "ODDGames.UITest.AI.Editor",
         "ODDGames.UITest.VisualBuilder",
         "UniTask",
         "Unity.TextMeshPro",

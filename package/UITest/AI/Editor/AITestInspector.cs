@@ -28,10 +28,6 @@ namespace ODDGames.UITest.AI.Editor
             EditorGUILayout.LabelField("Test Definition", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("prompt"),
                 new GUIContent("Prompt", "What should the test do?"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("passCondition"),
-                new GUIContent("Pass Condition", "When is the test successful?"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("failCondition"),
-                new GUIContent("Fail Condition", "When should the test fail?"));
 
             EditorGUILayout.Space(10);
 
@@ -44,8 +40,8 @@ namespace ODDGames.UITest.AI.Editor
 
             // Configuration Section
             EditorGUILayout.LabelField("Configuration", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("startingTier"),
-                new GUIContent("Starting Tier", "Model tier to start with"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("model"),
+                new GUIContent("Model", "Gemini model to use (leave empty for project default)"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("maxActions"),
                 new GUIContent("Max Actions", "Maximum actions before timeout"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("timeoutSeconds"),

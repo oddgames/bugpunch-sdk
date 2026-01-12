@@ -16,10 +16,10 @@ MonoBehaviour:
   description: 
   startScene: Sample
   blocks:
-  - id: 38cc219c-da9b-411e-9fca-dbfd9b84b863
+  - id: 49073f60-8239-4d86-bff1-efdeea8203de
     type: 0
     isCollapsed: 0
-    comment: 
+    comment: Click 'Settings'
     target:
       type: 1
       pattern: Settings
@@ -34,13 +34,32 @@ MonoBehaviour:
       elementId: 
       displayName: 
     dragDirection: 
-    dragDistance: 0
+    dragDistance: 0.2
     dragDuration: 0.3
     scrollDirection: down
-    scrollAmount: 0
-    waitSeconds: 0
+    scrollAmount: 0.3
+    waitSeconds: 1
+    holdSeconds: 1
+    sliderValue: 50
+    scrollbarValue: 50
+    keyName: Escape
+    keyHoldKeys: W
+    keyHoldDuration: 1
+    waitTimeout: 10
+    scrollContainer:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    scrollMaxAttempts: 20
+    screenshotName: 
+    logMessage: 
     assertCondition: 0
     assertExpected: 
+    assertFloatValue: 0
+    assertVariance: 0.01
+    assertIntValue: 0
+    assertExpression: 
     recordedInput:
       events: []
       duration: 0
@@ -57,10 +76,15 @@ MonoBehaviour:
     additiveLoad: 0
     customActionName: 
     customActionParams: 
-  - id: 231c3b56-3b0c-4b17-98e3-f00336743e7b
+    codeBody: 
+    codeIsAsync: 0
+    visualScriptTarget: 
+    visualScriptEvent: 
+    visualScriptArg: 
+  - id: 75571c71-ac75-49f4-a8d6-da056f941f6c
     type: 0
     isCollapsed: 0
-    comment: 
+    comment: Click 'Back'
     target:
       type: 1
       pattern: Back
@@ -75,13 +99,32 @@ MonoBehaviour:
       elementId: 
       displayName: 
     dragDirection: 
-    dragDistance: 0
+    dragDistance: 0.2
     dragDuration: 0.3
     scrollDirection: down
-    scrollAmount: 0
-    waitSeconds: 0
+    scrollAmount: 0.3
+    waitSeconds: 1
+    holdSeconds: 1
+    sliderValue: 50
+    scrollbarValue: 50
+    keyName: Escape
+    keyHoldKeys: W
+    keyHoldDuration: 1
+    waitTimeout: 10
+    scrollContainer:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    scrollMaxAttempts: 20
+    screenshotName: 
+    logMessage: 
     assertCondition: 0
     assertExpected: 
+    assertFloatValue: 0
+    assertVariance: 0.01
+    assertIntValue: 0
+    assertExpression: 
     recordedInput:
       events: []
       duration: 0
@@ -98,15 +141,20 @@ MonoBehaviour:
     additiveLoad: 0
     customActionName: 
     customActionParams: 
-  - id: b4c7bad0-28b0-442c-916d-1680b04649b7
+    codeBody: 
+    codeIsAsync: 0
+    visualScriptTarget: 
+    visualScriptEvent: 
+    visualScriptArg: 
+  - id: 572260f7-d21b-47fe-a278-0d4a7b46f147
     type: 0
     isCollapsed: 0
-    comment: 
+    comment: Click 'Drag & Drop'
     target:
       type: 1
-      pattern: Forms
+      pattern: Drag & Drop
       elementId: 
-      displayName: Forms
+      displayName: Drag & Drop
     text: 
     clearFirst: 1
     pressEnter: 0
@@ -116,13 +164,32 @@ MonoBehaviour:
       elementId: 
       displayName: 
     dragDirection: 
-    dragDistance: 0
+    dragDistance: 0.2
     dragDuration: 0.3
     scrollDirection: down
-    scrollAmount: 0
-    waitSeconds: 0
+    scrollAmount: 0.3
+    waitSeconds: 1
+    holdSeconds: 1
+    sliderValue: 50
+    scrollbarValue: 50
+    keyName: Escape
+    keyHoldKeys: W
+    keyHoldDuration: 1
+    waitTimeout: 10
+    scrollContainer:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    scrollMaxAttempts: 20
+    screenshotName: 
+    logMessage: 
     assertCondition: 0
     assertExpected: 
+    assertFloatValue: 0
+    assertVariance: 0.01
+    assertIntValue: 0
+    assertExpression: 
     recordedInput:
       events: []
       duration: 0
@@ -139,6 +206,141 @@ MonoBehaviour:
     additiveLoad: 0
     customActionName: 
     customActionParams: 
+    codeBody: 
+    codeIsAsync: 0
+    visualScriptTarget: 
+    visualScriptEvent: 
+    visualScriptArg: 
+  - id: 808a3d8a-774e-4d8f-87a9-e5a7f5064693
+    type: 0
+    isCollapsed: 0
+    comment: Click 'Back'
+    target:
+      type: 1
+      pattern: Back
+      elementId: 
+      displayName: Back
+    text: 
+    clearFirst: 1
+    pressEnter: 0
+    dragTarget:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    dragDirection: 
+    dragDistance: 0.2
+    dragDuration: 0.3
+    scrollDirection: down
+    scrollAmount: 0.3
+    waitSeconds: 1
+    holdSeconds: 1
+    sliderValue: 50
+    scrollbarValue: 50
+    keyName: Escape
+    keyHoldKeys: W
+    keyHoldDuration: 1
+    waitTimeout: 10
+    scrollContainer:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    scrollMaxAttempts: 20
+    screenshotName: 
+    logMessage: 
+    assertCondition: 0
+    assertExpected: 
+    assertFloatValue: 0
+    assertVariance: 0.01
+    assertIntValue: 0
+    assertExpression: 
+    recordedInput:
+      events: []
+      duration: 0
+      description: 
+      targetElement:
+        type: 0
+        pattern: 
+        elementId: 
+        displayName: 
+    persistentDataMode: 0
+    filePattern: 
+    dataSourceName: 
+    sceneName: 
+    additiveLoad: 0
+    customActionName: 
+    customActionParams: 
+    codeBody: 
+    codeIsAsync: 0
+    visualScriptTarget: 
+    visualScriptEvent: 
+    visualScriptArg: 
+  - id: cb90a0e2-01b0-4a07-85d5-51ff569bdae6
+    type: 0
+    isCollapsed: 0
+    comment: Click 'Drag & Drop'
+    target:
+      type: 1
+      pattern: Drag & Drop
+      elementId: 
+      displayName: Drag & Drop
+    text: 
+    clearFirst: 1
+    pressEnter: 0
+    dragTarget:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    dragDirection: 
+    dragDistance: 0.2
+    dragDuration: 0.3
+    scrollDirection: down
+    scrollAmount: 0.3
+    waitSeconds: 1
+    holdSeconds: 1
+    sliderValue: 50
+    scrollbarValue: 50
+    keyName: Escape
+    keyHoldKeys: W
+    keyHoldDuration: 1
+    waitTimeout: 10
+    scrollContainer:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    scrollMaxAttempts: 20
+    screenshotName: 
+    logMessage: 
+    assertCondition: 0
+    assertExpected: 
+    assertFloatValue: 0
+    assertVariance: 0.01
+    assertIntValue: 0
+    assertExpression: 
+    recordedInput:
+      events: []
+      duration: 0
+      description: 
+      targetElement:
+        type: 0
+        pattern: 
+        elementId: 
+        displayName: 
+    persistentDataMode: 0
+    filePattern: 
+    dataSourceName: 
+    sceneName: 
+    additiveLoad: 0
+    customActionName: 
+    customActionParams: 
+    codeBody: 
+    codeIsAsync: 0
+    visualScriptTarget: 
+    visualScriptEvent: 
+    visualScriptArg: 
   testDataFiles: []
   originalPrompt: 
   passCondition: 

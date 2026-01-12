@@ -43,14 +43,8 @@ namespace ODDGames.UITest.AI
         /// <summary>Number of actions executed</summary>
         public int actionsExecuted;
 
-        /// <summary>Number of model escalations</summary>
-        public int modelEscalations;
-
-        /// <summary>Final model tier used</summary>
-        public ModelTier finalModelTier;
-
-        /// <summary>Starting model tier</summary>
-        public ModelTier startingModelTier;
+        /// <summary>Model used for this test</summary>
+        public string finalModel;
 
         /// <summary>All actions executed</summary>
         public List<StoredActionRecord> actions = new List<StoredActionRecord>();
@@ -87,8 +81,7 @@ namespace ODDGames.UITest.AI
                 status = result.Status,
                 failureReason = result.Status != TestStatus.Passed ? result.Message : null,
                 actionsExecuted = result.ActionCount,
-                modelEscalations = result.EscalationCount,
-                finalModelTier = result.FinalTier,
+                finalModel = result.FinalModel,
                 logs = result.Logs != null ? new List<string>(result.Logs) : new List<string>()
             };
 

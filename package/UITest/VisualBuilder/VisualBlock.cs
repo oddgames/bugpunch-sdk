@@ -19,12 +19,18 @@ namespace ODDGames.UITest.VisualBuilder
         Hold,
         /// <summary>Double click on an element</summary>
         DoubleClick,
+        /// <summary>Set a slider to a specific percentage value</summary>
+        SetSlider,
+        /// <summary>Set a scrollbar to a specific position</summary>
+        SetScrollbar,
         /// <summary>Press a keyboard key</summary>
         KeyPress,
         /// <summary>Hold a keyboard key for a duration (for movement controls)</summary>
         KeyHold,
         /// <summary>Wait for an element to appear</summary>
         WaitForElement,
+        /// <summary>Scroll until target element becomes visible</summary>
+        ScrollUntil,
         /// <summary>Take a screenshot for comparison</summary>
         Screenshot,
         /// <summary>Log a message to console</summary>
@@ -44,7 +50,19 @@ namespace ODDGames.UITest.VisualBuilder
         /// <summary>Runs custom C# code (compiled at runtime)</summary>
         RunCode,
         /// <summary>Triggers a Unity Visual Scripting graph event</summary>
-        VisualScript
+        VisualScript,
+        /// <summary>Swipe gesture in a direction</summary>
+        Swipe,
+        /// <summary>Pinch gesture (zoom in/out)</summary>
+        Pinch,
+        /// <summary>Two-finger swipe gesture</summary>
+        TwoFingerSwipe,
+        /// <summary>Rotate gesture (two-finger rotation)</summary>
+        Rotate,
+        /// <summary>ForEach loop start - iterates over matching elements</summary>
+        ForEach,
+        /// <summary>End of ForEach loop</summary>
+        EndForEach
     }
 
     /// <summary>
@@ -183,8 +201,8 @@ namespace ODDGames.UITest.VisualBuilder
         /// <summary>Direction for directional drag (up, down, left, right)</summary>
         public string dragDirection;
 
-        /// <summary>Distance in pixels for directional drag</summary>
-        public float dragDistance = 200f;
+        /// <summary>Distance as fraction of screen height (0-1) for directional drag</summary>
+        public float dragDistance = 0.2f;
 
         /// <summary>Duration of drag in seconds</summary>
         public float dragDuration = 0.3f;
@@ -204,6 +222,14 @@ namespace ODDGames.UITest.VisualBuilder
         /// <summary>Hold duration in seconds</summary>
         public float holdSeconds = 1f;
 
+        // === SetSlider Block ===
+        /// <summary>Target value as percentage (0-100)</summary>
+        public float sliderValue = 50f;
+
+        // === SetScrollbar Block ===
+        /// <summary>Target scroll position as percentage (0-100)</summary>
+        public float scrollbarValue = 50f;
+
         // === KeyPress Block ===
         /// <summary>Key to press (e.g., "Escape", "Enter", "Space")</summary>
         public string keyName = "Escape";
@@ -218,6 +244,13 @@ namespace ODDGames.UITest.VisualBuilder
         // === WaitForElement Block ===
         /// <summary>Timeout for waiting for element (seconds)</summary>
         public float waitTimeout = 10f;
+
+        // === ScrollUntil Block ===
+        /// <summary>Scrollable container to scroll in</summary>
+        public ElementSelector scrollContainer;
+
+        /// <summary>Maximum number of scroll attempts before failing</summary>
+        public int scrollMaxAttempts = 20;
 
         // === Screenshot Block ===
         /// <summary>Screenshot filename (without extension)</summary>
@@ -291,6 +324,50 @@ namespace ODDGames.UITest.VisualBuilder
         /// <summary>Optional string argument to pass with the event</summary>
         public string visualScriptArg;
 
+        // === Swipe Block ===
+        /// <summary>Swipe direction (up, down, left, right)</summary>
+        public string swipeDirection = "up";
+
+        /// <summary>Swipe distance as fraction of screen (0-1)</summary>
+        public float swipeDistance = 0.3f;
+
+        /// <summary>Swipe duration in seconds</summary>
+        public float swipeDuration = 0.3f;
+
+        /// <summary>Starting position for swipe (optional, null = center of target or screen center)</summary>
+        public Vector2? swipeStartPosition;
+
+        // === Pinch Block ===
+        /// <summary>Pinch scale (less than 1 = pinch in/zoom out, greater than 1 = pinch out/zoom in)</summary>
+        public float pinchScale = 0.5f;
+
+        /// <summary>Pinch duration in seconds</summary>
+        public float pinchDuration = 0.5f;
+
+        /// <summary>Center position for pinch (null = center of target or screen center)</summary>
+        public Vector2? pinchCenterPosition;
+
+        // === TwoFingerSwipe Block ===
+        /// <summary>Spacing between the two fingers (normalized 0-1)</summary>
+        public float twoFingerSpacing = 0.03f;
+
+        // === Rotate Block ===
+        /// <summary>Rotation angle in degrees (positive = clockwise, negative = counter-clockwise)</summary>
+        public float rotateDegrees = 90f;
+
+        /// <summary>Duration of rotation in seconds</summary>
+        public float rotateDuration = 0.5f;
+
+        /// <summary>Distance of fingers from center (normalized 0-1)</summary>
+        public float rotateFingerDistance = 0.05f;
+
+        // === ForEach Block ===
+        /// <summary>Variable name to store current element (used in nested blocks)</summary>
+        public string forEachVariable = "item";
+
+        /// <summary>Maximum iterations (0 = unlimited)</summary>
+        public int forEachMaxIterations = 100;
+
         /// <summary>
         /// Creates a deep copy of this block.
         /// </summary>
@@ -318,6 +395,8 @@ namespace ODDGames.UITest.VisualBuilder
                 keyHoldKeys = keyHoldKeys,
                 keyHoldDuration = keyHoldDuration,
                 waitTimeout = waitTimeout,
+                scrollContainer = scrollContainer?.Clone(),
+                scrollMaxAttempts = scrollMaxAttempts,
                 screenshotName = screenshotName,
                 logMessage = logMessage,
                 assertCondition = assertCondition,
@@ -338,8 +417,29 @@ namespace ODDGames.UITest.VisualBuilder
                 codeIsAsync = codeIsAsync,
                 visualScriptTarget = visualScriptTarget,
                 visualScriptEvent = visualScriptEvent,
-                visualScriptArg = visualScriptArg
+                visualScriptArg = visualScriptArg,
+                swipeDirection = swipeDirection,
+                swipeDistance = swipeDistance,
+                swipeDuration = swipeDuration,
+                swipeStartPosition = swipeStartPosition,
+                pinchScale = pinchScale,
+                pinchDuration = pinchDuration,
+                pinchCenterPosition = pinchCenterPosition,
+                twoFingerSpacing = twoFingerSpacing,
+                rotateDegrees = rotateDegrees,
+                rotateDuration = rotateDuration,
+                rotateFingerDistance = rotateFingerDistance,
+                forEachVariable = forEachVariable,
+                forEachMaxIterations = forEachMaxIterations
             };
+        }
+
+        /// <summary>
+        /// Gets display text for a selector, returning fallback if null or invalid.
+        /// </summary>
+        private static string GetSelectorDisplay(ElementSelector selector, string fallback = "(no target)")
+        {
+            return selector != null && selector.IsValid() ? selector.GetDisplayText() : fallback;
         }
 
         /// <summary>
@@ -349,16 +449,19 @@ namespace ODDGames.UITest.VisualBuilder
         {
             return type switch
             {
-                BlockType.Click => $"Click {target?.GetDisplayText() ?? "(no target)"}",
-                BlockType.DoubleClick => $"Double-click {target?.GetDisplayText() ?? "(no target)"}",
-                BlockType.Hold => $"Hold {target?.GetDisplayText() ?? "(no target)"} {holdSeconds}s",
-                BlockType.Type => $"Type \"{TruncateText(text, 20)}\" into {target?.GetDisplayText() ?? "(no target)"}",
-                BlockType.Drag => dragTarget != null
-                    ? $"Drag {target?.GetDisplayText() ?? "?"} to {dragTarget.GetDisplayText()}"
-                    : $"Drag {target?.GetDisplayText() ?? "?"} {dragDirection} {dragDistance}px",
-                BlockType.Scroll => $"Scroll {scrollDirection} on {target?.GetDisplayText() ?? "(no target)"}",
+                BlockType.Click => $"Click {GetSelectorDisplay(target)}",
+                BlockType.DoubleClick => $"Double-click {GetSelectorDisplay(target)}",
+                BlockType.Hold => $"Hold {GetSelectorDisplay(target)} {holdSeconds}s",
+                BlockType.Type => $"Type \"{TruncateText(text, 20)}\" into {GetSelectorDisplay(target)}",
+                BlockType.SetSlider => $"Set {GetSelectorDisplay(target)} to {sliderValue:F0}%",
+                BlockType.SetScrollbar => $"Scroll {GetSelectorDisplay(target)} to {scrollbarValue:F0}%",
+                BlockType.Drag => dragTarget != null && dragTarget.IsValid()
+                    ? $"Drag {GetSelectorDisplay(target, "?")} to {dragTarget.GetDisplayText()}"
+                    : $"Drag {GetSelectorDisplay(target, "?")} {dragDirection} {dragDistance:P0}",
+                BlockType.Scroll => $"Scroll {scrollDirection} on {GetSelectorDisplay(target)}",
                 BlockType.Wait => $"Wait {waitSeconds}s",
-                BlockType.WaitForElement => $"Wait for {target?.GetDisplayText() ?? "(no target)"} ({waitTimeout}s)",
+                BlockType.WaitForElement => $"Wait for {GetSelectorDisplay(target)} ({waitTimeout}s)",
+                BlockType.ScrollUntil => $"Scroll until {GetSelectorDisplay(target)} in {GetSelectorDisplay(scrollContainer, "(auto)")}",
                 BlockType.KeyPress => $"Press {keyName}",
                 BlockType.KeyHold => $"Hold [{keyHoldKeys}] {keyHoldDuration}s",
                 BlockType.Screenshot => $"Screenshot: {screenshotName ?? "auto"}",
@@ -372,6 +475,12 @@ namespace ODDGames.UITest.VisualBuilder
                 BlockType.CustomAction => $"Custom: {customActionName ?? "(none)"}",
                 BlockType.RunCode => $"Code: {TruncateText(codeBody, 30)}",
                 BlockType.VisualScript => $"VS: {visualScriptEvent ?? "(no event)"} on {visualScriptTarget ?? "(any)"}",
+                BlockType.Swipe => $"Swipe {swipeDirection} {swipeDistance:P0} on {GetSelectorDisplay(target, "(screen)")}",
+                BlockType.Pinch => $"Pinch {(pinchScale < 1 ? "in" : "out")} {pinchScale:F1}x on {GetSelectorDisplay(target, "(screen)")}",
+                BlockType.TwoFingerSwipe => $"2-Finger Swipe {swipeDirection} on {GetSelectorDisplay(target, "(screen)")}",
+                BlockType.Rotate => $"Rotate {(rotateDegrees >= 0 ? "CW" : "CCW")} {Mathf.Abs(rotateDegrees)}° on {GetSelectorDisplay(target, "(screen)")}",
+                BlockType.ForEach => $"ForEach {forEachVariable} in {GetSelectorDisplay(target)}",
+                BlockType.EndForEach => "End ForEach",
                 _ => type.ToString()
             };
         }
@@ -390,7 +499,7 @@ namespace ODDGames.UITest.VisualBuilder
 
         private string GetAssertDisplayText()
         {
-            var targetText = target?.GetDisplayText() ?? "(no target)";
+            var targetText = GetSelectorDisplay(target);
             return assertCondition switch
             {
                 AssertCondition.ElementExists => $"Assert {targetText} exists",
@@ -436,10 +545,13 @@ namespace ODDGames.UITest.VisualBuilder
                 BlockType.DoubleClick => new Color32(0x3C, 0x87, 0xEF, 0xFF),  // Darker Blue
                 BlockType.Hold => new Color32(0x6C, 0xA7, 0xFF, 0xFF),   // Lighter Blue
                 BlockType.Type => new Color32(0x99, 0x66, 0xFF, 0xFF),   // Purple
+                BlockType.SetSlider => new Color32(0xFF, 0x99, 0x33, 0xFF),   // Orange (slider)
+                BlockType.SetScrollbar => new Color32(0x33, 0xCC, 0x99, 0xFF), // Teal (scrollbar)
                 BlockType.Drag => new Color32(0xFF, 0x8C, 0x1A, 0xFF),   // Orange
                 BlockType.Scroll => new Color32(0x59, 0xC0, 0x59, 0xFF), // Green
                 BlockType.Wait => new Color32(0xFF, 0xBF, 0x00, 0xFF),   // Yellow
                 BlockType.WaitForElement => new Color32(0xE0, 0xA0, 0x00, 0xFF), // Dark Yellow
+                BlockType.ScrollUntil => new Color32(0x50, 0xB0, 0x50, 0xFF),    // Green (scroll variant)
                 BlockType.KeyPress => new Color32(0xA0, 0x80, 0xFF, 0xFF), // Light Purple
                 BlockType.KeyHold => new Color32(0x90, 0x70, 0xEF, 0xFF),  // Purple (similar to KeyPress)
                 BlockType.Screenshot => new Color32(0x40, 0xC0, 0xC0, 0xFF), // Teal
@@ -453,6 +565,12 @@ namespace ODDGames.UITest.VisualBuilder
                 BlockType.CustomAction => new Color32(0x80, 0x80, 0x80, 0xFF),        // Gray
                 BlockType.RunCode => new Color32(0x20, 0x80, 0x20, 0xFF),             // Dark Green
                 BlockType.VisualScript => new Color32(0x00, 0xA0, 0x60, 0xFF),        // Teal Green (Unity VS color)
+                BlockType.Swipe => new Color32(0xFF, 0x70, 0x40, 0xFF),               // Orange-Red (gesture)
+                BlockType.Pinch => new Color32(0xFF, 0x50, 0x80, 0xFF),               // Pink-Red (gesture)
+                BlockType.TwoFingerSwipe => new Color32(0xFF, 0x60, 0x30, 0xFF),      // Darker Orange-Red (gesture)
+                BlockType.Rotate => new Color32(0xFF, 0x40, 0x90, 0xFF),              // Magenta (gesture)
+                BlockType.ForEach => new Color32(0xE0, 0xA0, 0x00, 0xFF),             // Gold (loop)
+                BlockType.EndForEach => new Color32(0xC0, 0x80, 0x00, 0xFF),          // Darker Gold (loop end)
                 _ => Color.gray
             };
         }

@@ -65,7 +65,6 @@ namespace ODDGames.UITest.AI.Editor
             runner.OnScreenCaptured += OnScreenCaptured;
             runner.OnReasoning += OnReasoning;
             runner.OnActionExecuted += OnActionExecuted;
-            runner.OnEscalated += OnEscalated;
             runner.OnTestCompleted += OnTestCompleted;
         }
 
@@ -95,11 +94,6 @@ namespace ODDGames.UITest.AI.Editor
                 Error = result.Error,
                 Reasoning = currentReasoning
             });
-        }
-
-        private void OnEscalated(ModelTier from, ModelTier to, string reason)
-        {
-            logs.Add($"[Escalated] {from} → {to}: {reason}");
         }
 
         private void OnTestCompleted(AITestResult result)
@@ -147,24 +141,15 @@ namespace ODDGames.UITest.AI.Editor
         {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
-            // Current model tier
-            var tier = runner?.CurrentTier.ToString() ?? "Unknown";
-            EditorGUILayout.LabelField($"Model: {tier}", GUILayout.Width(150));
+            // Current model
+            var model = runner?.CurrentModel ?? "Unknown";
+            EditorGUILayout.LabelField($"Model: {model}", GUILayout.Width(200));
 
-            // Token usage
+            // Message count
             var stats = runner?.ConversationStats;
             if (stats != null)
             {
-                var tokenColor = stats.UtilizationPercent > 80 ? Color.yellow : Color.white;
-                var oldColor = GUI.color;
-                GUI.color = tokenColor;
-                EditorGUILayout.LabelField($"Tokens: {stats.EstimatedTokens}/{stats.MaxTokens}", GUILayout.Width(120));
-                GUI.color = oldColor;
-
-                if (stats.WasCompacted)
-                {
-                    EditorGUILayout.LabelField("[Compacted]", EditorStyles.miniLabel, GUILayout.Width(70));
-                }
+                EditorGUILayout.LabelField($"Messages: {stats.MessageCount}", GUILayout.Width(100));
             }
 
             GUILayout.FlexibleSpace();

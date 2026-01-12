@@ -12,11 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 09783df770baee741ad7277d6ba46eae, type: 3}
   m_Name: AITestSettings
   m_EditorClassIdentifier: 
-  lmStudioEnabled: 1
-  lmStudioEndpoint: http://localhost:1234
-  lmStudioModel: 
-  geminiApiKey: 
-  defaultModelTier: 0
+  geminiApiKey: REDACTED_GEMINI_KEY_3
+  defaultModel: gemini-3-flash-preview
   defaultTimeout: 180
   defaultMaxActions: 50
   defaultActionDelay: 0.3

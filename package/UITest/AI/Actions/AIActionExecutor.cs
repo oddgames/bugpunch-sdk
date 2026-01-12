@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -25,9 +26,19 @@ namespace ODDGames.UITest.AI
             return call.Name switch
             {
                 "click" => ParseClickAction(call, screen),
+                "double_click" => ParseDoubleClickAction(call, screen),
+                "hold" => ParseHoldAction(call, screen),
                 "type" => ParseTypeAction(call, screen),
                 "drag" => ParseDragAction(call, screen),
                 "scroll" => ParseScrollAction(call, screen),
+                "swipe" => ParseSwipeAction(call, screen),
+                "two_finger_swipe" => ParseTwoFingerSwipeAction(call, screen),
+                "pinch" => ParsePinchAction(call, screen),
+                "rotate" => ParseRotateAction(call, screen),
+                "set_slider" => ParseSetSliderAction(call, screen),
+                "set_scrollbar" => ParseSetScrollbarAction(call, screen),
+                "key_press" => ParseKeyPressAction(call),
+                "key_hold" => ParseKeyHoldAction(call),
                 "wait" => ParseWaitAction(call),
                 "pass" => new PassAction { Reason = call.GetString("reason") },
                 "fail" => new FailAction { Reason = call.GetString("reason", "Test failed") },
@@ -156,6 +167,185 @@ namespace ODDGames.UITest.AI
             };
         }
 
+        private static DoubleClickAction ParseDoubleClickAction(ToolCall call, ScreenState screen)
+        {
+            var action = new DoubleClickAction
+            {
+                ElementId = call.GetString("element_id")
+            };
+
+            var x = call.GetFloat("x", -1f);
+            var y = call.GetFloat("y", -1f);
+
+            if (!string.IsNullOrEmpty(action.ElementId))
+            {
+                action.TargetElement = screen?.FindElement(action.ElementId);
+            }
+            else if (x >= 0 && y >= 0)
+            {
+                action.ScreenPosition = new Vector2(x, y);
+            }
+
+            return action;
+        }
+
+        private static HoldAction ParseHoldAction(ToolCall call, ScreenState screen)
+        {
+            var action = new HoldAction
+            {
+                ElementId = call.GetString("element_id"),
+                Duration = call.GetFloat("duration", 1f)
+            };
+
+            if (!string.IsNullOrEmpty(action.ElementId))
+            {
+                action.TargetElement = screen?.FindElement(action.ElementId);
+            }
+
+            return action;
+        }
+
+        private static SwipeAction ParseSwipeAction(ToolCall call, ScreenState screen)
+        {
+            var action = new SwipeAction
+            {
+                ElementId = call.GetString("element_id"),
+                Direction = call.GetString("direction", "up"),
+                Distance = call.GetFloat("distance", 0.2f),
+                Duration = call.GetFloat("duration", 0.3f)
+            };
+
+            if (!string.IsNullOrEmpty(action.ElementId))
+            {
+                action.TargetElement = screen?.FindElement(action.ElementId);
+            }
+
+            return action;
+        }
+
+        private static PinchAction ParsePinchAction(ToolCall call, ScreenState screen)
+        {
+            var action = new PinchAction
+            {
+                ElementId = call.GetString("element_id"),
+                Scale = call.GetFloat("scale", 1.5f),
+                Duration = call.GetFloat("duration", 0.5f)
+            };
+
+            if (!string.IsNullOrEmpty(action.ElementId))
+            {
+                action.TargetElement = screen?.FindElement(action.ElementId);
+            }
+
+            return action;
+        }
+
+        private static TwoFingerSwipeAction ParseTwoFingerSwipeAction(ToolCall call, ScreenState screen)
+        {
+            var action = new TwoFingerSwipeAction
+            {
+                ElementId = call.GetString("element_id"),
+                Direction = call.GetString("direction", "up"),
+                Distance = call.GetFloat("distance", 0.2f),
+                Duration = call.GetFloat("duration", 0.3f),
+                FingerSpacing = call.GetFloat("finger_spacing", 0.03f)
+            };
+
+            if (!string.IsNullOrEmpty(action.ElementId))
+            {
+                action.TargetElement = screen?.FindElement(action.ElementId);
+            }
+
+            return action;
+        }
+
+        private static RotateAction ParseRotateAction(ToolCall call, ScreenState screen)
+        {
+            var action = new RotateAction
+            {
+                ElementId = call.GetString("element_id"),
+                Degrees = call.GetFloat("degrees", 90f),
+                Duration = call.GetFloat("duration", 0.5f),
+                FingerDistance = call.GetFloat("finger_distance", 0.05f)
+            };
+
+            if (!string.IsNullOrEmpty(action.ElementId))
+            {
+                action.TargetElement = screen?.FindElement(action.ElementId);
+            }
+
+            return action;
+        }
+
+        private static SetSliderAction ParseSetSliderAction(ToolCall call, ScreenState screen)
+        {
+            var action = new SetSliderAction
+            {
+                ElementId = call.GetString("element_id"),
+                Value = Mathf.Clamp01(call.GetFloat("value", 0.5f))
+            };
+
+            if (!string.IsNullOrEmpty(action.ElementId))
+            {
+                action.TargetElement = screen?.FindElement(action.ElementId);
+            }
+
+            return action;
+        }
+
+        private static SetScrollbarAction ParseSetScrollbarAction(ToolCall call, ScreenState screen)
+        {
+            var action = new SetScrollbarAction
+            {
+                ElementId = call.GetString("element_id"),
+                Value = Mathf.Clamp01(call.GetFloat("value", 0.5f))
+            };
+
+            if (!string.IsNullOrEmpty(action.ElementId))
+            {
+                action.TargetElement = screen?.FindElement(action.ElementId);
+            }
+
+            return action;
+        }
+
+        private static KeyPressAction ParseKeyPressAction(ToolCall call)
+        {
+            return new KeyPressAction
+            {
+                Key = call.GetString("key", "Enter")
+            };
+        }
+
+        private static KeyHoldAction ParseKeyHoldAction(ToolCall call)
+        {
+            var keysArg = call.Arguments.TryGetValue("keys", out var keysObj) ? keysObj : null;
+            string[] keys;
+
+            if (keysArg is System.Collections.IList list)
+            {
+                keys = new string[list.Count];
+                for (int i = 0; i < list.Count; i++)
+                {
+                    keys[i] = list[i]?.ToString() ?? "";
+                }
+            }
+            else if (keysArg is string s)
+            {
+                keys = s.Split(',');
+            }
+            else
+            {
+                keys = new[] { "W" };
+            }
+
+            return new KeyHoldAction
+            {
+                Keys = keys,
+                Duration = call.GetFloat("duration", 0.5f)
+            };
+        }
+
         /// <summary>
         /// Executes an AI action using Unity's Input System.
         /// </summary>
@@ -185,6 +375,46 @@ namespace ODDGames.UITest.AI
 
                     case WaitAction wait:
                         await DelaySafe((int)(wait.Seconds * 1000), ct);
+                        break;
+
+                    case DoubleClickAction doubleClick:
+                        await ExecuteDoubleClickAsync(doubleClick, ct);
+                        break;
+
+                    case HoldAction hold:
+                        await ExecuteHoldAsync(hold, ct);
+                        break;
+
+                    case SwipeAction swipe:
+                        await ExecuteSwipeAsync(swipe, ct);
+                        break;
+
+                    case PinchAction pinch:
+                        await ExecutePinchAsync(pinch, ct);
+                        break;
+
+                    case TwoFingerSwipeAction twoFingerSwipe:
+                        await ExecuteTwoFingerSwipeAsync(twoFingerSwipe, ct);
+                        break;
+
+                    case RotateAction rotate:
+                        await ExecuteRotateAsync(rotate, ct);
+                        break;
+
+                    case SetSliderAction setSlider:
+                        await ExecuteSetSliderAsync(setSlider, ct);
+                        break;
+
+                    case SetScrollbarAction setScrollbar:
+                        await ExecuteSetScrollbarAsync(setScrollbar, ct);
+                        break;
+
+                    case KeyPressAction keyPress:
+                        await ExecuteKeyPressAsync(keyPress, ct);
+                        break;
+
+                    case KeyHoldAction keyHold:
+                        await ExecuteKeyHoldAsync(keyHold, ct);
                         break;
 
                     case PassAction:
@@ -325,6 +555,238 @@ namespace ODDGames.UITest.AI
 
             Debug.Log($"[AITest] Injecting scroll at {center} with delta {scrollDelta}");
             await InputInjector.InjectScroll(center, scrollDelta);
+        }
+
+        private static async UniTask ExecuteDoubleClickAsync(DoubleClickAction action, CancellationToken ct)
+        {
+            Vector2 screenPos;
+
+            if (action.ScreenPosition.HasValue)
+            {
+                screenPos = new Vector2(
+                    action.ScreenPosition.Value.x * Screen.width,
+                    action.ScreenPosition.Value.y * Screen.height
+                );
+            }
+            else if (action.TargetElement?.gameObject != null)
+            {
+                screenPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
+            }
+            else
+            {
+                throw new InvalidOperationException("Double-click action has no target");
+            }
+
+            // Double click = two rapid clicks
+            await InputInjector.InjectPointerTap(screenPos);
+            await DelaySafe(50, ct);
+            await InputInjector.InjectPointerTap(screenPos);
+        }
+
+        private static async UniTask ExecuteHoldAsync(HoldAction action, CancellationToken ct)
+        {
+            if (action.TargetElement?.gameObject == null)
+            {
+                throw new InvalidOperationException("Hold action has no target element");
+            }
+
+            var screenPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
+            await InputInjector.InjectPointerHold(screenPos, action.Duration);
+        }
+
+        private static async UniTask ExecuteSwipeAsync(SwipeAction action, CancellationToken ct)
+        {
+            Vector2 startPos;
+            if (action.TargetElement?.gameObject != null)
+            {
+                startPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
+            }
+            else
+            {
+                throw new InvalidOperationException("Swipe action has no target element");
+            }
+
+            // Calculate end position based on direction and distance
+            var distance = action.Distance * Mathf.Min(Screen.width, Screen.height);
+            var offset = action.Direction switch
+            {
+                "up" => new Vector2(0, distance),
+                "down" => new Vector2(0, -distance),
+                "left" => new Vector2(-distance, 0),
+                "right" => new Vector2(distance, 0),
+                _ => Vector2.zero
+            };
+
+            var endPos = startPos + offset;
+            await InputInjector.InjectPointerDrag(startPos, endPos, action.Duration);
+        }
+
+        private static async UniTask ExecutePinchAsync(PinchAction action, CancellationToken ct)
+        {
+            if (action.TargetElement?.gameObject == null)
+            {
+                throw new InvalidOperationException("Pinch action has no target element");
+            }
+
+            var center = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
+            await InputInjector.InjectPinch(center, action.Scale, action.Duration);
+        }
+
+        private static async UniTask ExecuteTwoFingerSwipeAsync(TwoFingerSwipeAction action, CancellationToken ct)
+        {
+            Vector2 centerPos;
+            if (action.TargetElement?.gameObject != null)
+            {
+                centerPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
+            }
+            else
+            {
+                // Default to screen center
+                centerPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            }
+
+            // Calculate end position based on direction and distance
+            var distance = action.Distance * Mathf.Min(Screen.width, Screen.height);
+            var offset = action.Direction switch
+            {
+                "up" => new Vector2(0, distance),
+                "down" => new Vector2(0, -distance),
+                "left" => new Vector2(-distance, 0),
+                "right" => new Vector2(distance, 0),
+                _ => Vector2.zero
+            };
+
+            // Calculate finger spacing
+            var spacing = action.FingerSpacing * Mathf.Min(Screen.width, Screen.height) / 2f;
+            var finger1Start = centerPos + new Vector2(-spacing, 0);
+            var finger2Start = centerPos + new Vector2(spacing, 0);
+            var finger1End = finger1Start + offset;
+            var finger2End = finger2Start + offset;
+
+            await InputInjector.InjectTwoFingerDrag(finger1Start, finger1End, finger2Start, finger2End, action.Duration);
+        }
+
+        private static async UniTask ExecuteRotateAsync(RotateAction action, CancellationToken ct)
+        {
+            Vector2 centerPos;
+            if (action.TargetElement?.gameObject != null)
+            {
+                centerPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
+            }
+            else
+            {
+                // Default to screen center
+                centerPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            }
+
+            await InputInjector.InjectRotate(centerPos, action.Degrees, action.Duration, action.FingerDistance);
+        }
+
+        private static async UniTask ExecuteSetSliderAsync(SetSliderAction action, CancellationToken ct)
+        {
+            if (action.TargetElement?.gameObject == null)
+            {
+                throw new InvalidOperationException("SetSlider action has no target element");
+            }
+
+            var slider = action.TargetElement.gameObject.GetComponent<UnityEngine.UI.Slider>();
+            if (slider == null)
+            {
+                throw new InvalidOperationException($"Element {action.ElementId} is not a Slider");
+            }
+
+            // Calculate click position on the slider based on value
+            var bounds = InputInjector.GetScreenBounds(action.TargetElement.gameObject);
+            Vector2 clickPos;
+
+            if (slider.direction == UnityEngine.UI.Slider.Direction.LeftToRight)
+            {
+                clickPos = new Vector2(bounds.x + bounds.width * action.Value, bounds.center.y);
+            }
+            else if (slider.direction == UnityEngine.UI.Slider.Direction.RightToLeft)
+            {
+                clickPos = new Vector2(bounds.x + bounds.width * (1 - action.Value), bounds.center.y);
+            }
+            else if (slider.direction == UnityEngine.UI.Slider.Direction.BottomToTop)
+            {
+                clickPos = new Vector2(bounds.center.x, bounds.y + bounds.height * action.Value);
+            }
+            else
+            {
+                clickPos = new Vector2(bounds.center.x, bounds.y + bounds.height * (1 - action.Value));
+            }
+
+            await InputInjector.InjectPointerTap(clickPos);
+        }
+
+        private static async UniTask ExecuteSetScrollbarAsync(SetScrollbarAction action, CancellationToken ct)
+        {
+            if (action.TargetElement?.gameObject == null)
+            {
+                throw new InvalidOperationException("SetScrollbar action has no target element");
+            }
+
+            var scrollbar = action.TargetElement.gameObject.GetComponent<UnityEngine.UI.Scrollbar>();
+            if (scrollbar == null)
+            {
+                throw new InvalidOperationException($"Element {action.ElementId} is not a Scrollbar");
+            }
+
+            // Calculate click position on the scrollbar based on value
+            var bounds = InputInjector.GetScreenBounds(action.TargetElement.gameObject);
+            Vector2 clickPos;
+
+            if (scrollbar.direction == UnityEngine.UI.Scrollbar.Direction.LeftToRight)
+            {
+                clickPos = new Vector2(bounds.x + bounds.width * action.Value, bounds.center.y);
+            }
+            else if (scrollbar.direction == UnityEngine.UI.Scrollbar.Direction.RightToLeft)
+            {
+                clickPos = new Vector2(bounds.x + bounds.width * (1 - action.Value), bounds.center.y);
+            }
+            else if (scrollbar.direction == UnityEngine.UI.Scrollbar.Direction.BottomToTop)
+            {
+                clickPos = new Vector2(bounds.center.x, bounds.y + bounds.height * action.Value);
+            }
+            else
+            {
+                clickPos = new Vector2(bounds.center.x, bounds.y + bounds.height * (1 - action.Value));
+            }
+
+            await InputInjector.InjectPointerTap(clickPos);
+        }
+
+        private static async UniTask ExecuteKeyPressAsync(KeyPressAction action, CancellationToken ct)
+        {
+            if (Enum.TryParse<Key>(action.Key, true, out var key))
+            {
+                await InputInjector.PressKey(key);
+            }
+            else
+            {
+                Debug.LogWarning($"[AITest] Unknown key: {action.Key}");
+            }
+        }
+
+        private static async UniTask ExecuteKeyHoldAsync(KeyHoldAction action, CancellationToken ct)
+        {
+            var keys = new List<Key>();
+            foreach (var keyName in action.Keys)
+            {
+                if (Enum.TryParse<Key>(keyName.Trim(), true, out var key))
+                {
+                    keys.Add(key);
+                }
+                else
+                {
+                    Debug.LogWarning($"[AITest] Unknown key: {keyName}");
+                }
+            }
+
+            if (keys.Count > 0)
+            {
+                await InputInjector.HoldKeys(keys.ToArray(), action.Duration);
+            }
         }
 
         /// <summary>

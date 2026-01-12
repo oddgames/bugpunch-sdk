@@ -11,6 +11,18 @@ namespace ODDGames.UITest.AI
     public static class AIScreenCapture
     {
         /// <summary>
+        /// Maximum screenshot dimension for AI (keeps aspect ratio).
+        /// 1024px is a good balance between clarity and file size.
+        /// </summary>
+        public static int MaxScreenshotDimension = 1024;
+
+        /// <summary>
+        /// JPEG quality for screenshots sent to AI (0-100).
+        /// 75 gives good quality at ~1/10th the size of PNG.
+        /// </summary>
+        public static int JpegQuality = 75;
+
+        /// <summary>
         /// Captures the current screen state including screenshot and element discovery.
         /// </summary>
         public static async UniTask<ScreenState> CaptureAsync(bool annotateScreenshot = true)
@@ -58,18 +70,33 @@ namespace ODDGames.UITest.AI
                 annotated = AnnotateScreenshot(screenshot, elements);
             }
 
+            // Compute hash from original before any resizing
+            var screenHash = ScreenHash.ComputeHash(screenshot);
+
+            // Get the texture to encode (annotated or original)
+            var textureToEncode = annotated ?? screenshot;
+
+            // Resize for AI efficiency (smaller = faster + cheaper)
+            var resized = ResizeForAI(textureToEncode);
+            var finalTexture = resized ?? textureToEncode;
+
+            // Encode as JPEG for smaller file size (PNG is ~10x larger)
+            var imageBytes = finalTexture.EncodeToJPG(JpegQuality);
+
             var result = new ScreenState
             {
-                ScreenshotPng = (annotated ?? screenshot).EncodeToPNG(),
+                ScreenshotPng = imageBytes, // Still called Png but now JPEG
                 Elements = elements,
                 Timestamp = Time.realtimeSinceStartup,
-                ScreenHash = ScreenHash.ComputeHash(screenshot)
+                ScreenHash = screenHash
             };
 
             // Clean up textures
             Object.Destroy(screenshot);
             if (annotated != null)
                 Object.Destroy(annotated);
+            if (resized != null)
+                Object.Destroy(resized);
 
             return result;
         }
@@ -84,14 +111,70 @@ namespace ODDGames.UITest.AI
                 var screenshot = await CaptureScreenshotAsync();
                 if (screenshot == null) return null;
 
-                var png = screenshot.EncodeToPNG();
+                // Resize and compress for efficiency
+                var resized = ResizeForAI(screenshot);
+                var finalTexture = resized ?? screenshot;
+                var jpg = finalTexture.EncodeToJPG(JpegQuality);
+
                 Object.Destroy(screenshot);
-                return png;
+                if (resized != null)
+                    Object.Destroy(resized);
+
+                return jpg;
             }
             catch
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Resizes texture if it exceeds MaxScreenshotDimension while maintaining aspect ratio.
+        /// Returns null if no resize needed.
+        /// </summary>
+        private static Texture2D ResizeForAI(Texture2D source)
+        {
+            if (source == null) return null;
+
+            var width = source.width;
+            var height = source.height;
+            var maxDim = MaxScreenshotDimension;
+
+            // Check if resize is needed
+            if (width <= maxDim && height <= maxDim)
+                return null;
+
+            // Calculate new size maintaining aspect ratio
+            float scale;
+            if (width > height)
+            {
+                scale = (float)maxDim / width;
+            }
+            else
+            {
+                scale = (float)maxDim / height;
+            }
+
+            var newWidth = Mathf.RoundToInt(width * scale);
+            var newHeight = Mathf.RoundToInt(height * scale);
+
+            // Use RenderTexture for GPU-accelerated resize
+            var rt = RenderTexture.GetTemporary(newWidth, newHeight, 0, RenderTextureFormat.ARGB32);
+            rt.filterMode = FilterMode.Bilinear;
+
+            var previous = RenderTexture.active;
+            RenderTexture.active = rt;
+
+            Graphics.Blit(source, rt);
+
+            var resized = new Texture2D(newWidth, newHeight, TextureFormat.RGB24, false);
+            resized.ReadPixels(new Rect(0, 0, newWidth, newHeight), 0, 0);
+            resized.Apply();
+
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(rt);
+
+            return resized;
         }
 
         /// <summary>

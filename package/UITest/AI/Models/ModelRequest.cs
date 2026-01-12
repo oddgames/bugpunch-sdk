@@ -93,8 +93,8 @@ namespace ODDGames.UITest.AI
         /// <summary>Number of tokens used in the request</summary>
         public int TokensUsed { get; set; }
 
-        /// <summary>The model tier that generated this response</summary>
-        public ModelTier ModelTier { get; set; }
+        /// <summary>The model that generated this response</summary>
+        public string Model { get; set; }
 
         public static ModelResponse Failed(string error) => new ModelResponse
         {
@@ -139,6 +139,17 @@ namespace ODDGames.UITest.AI
         public string Type { get; set; }
         public string Description { get; set; }
         public List<string> Enum { get; set; }
+        /// <summary>For array types, specifies the type of items in the array</summary>
+        public ToolPropertyItems Items { get; set; }
+    }
+
+    /// <summary>
+    /// Specifies the type of items in an array property.
+    /// </summary>
+    [Serializable]
+    public class ToolPropertyItems
+    {
+        public string Type { get; set; }
     }
 
     /// <summary>

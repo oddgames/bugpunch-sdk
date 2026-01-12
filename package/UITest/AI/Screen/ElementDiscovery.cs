@@ -62,11 +62,151 @@ namespace ODDGames.UITest.AI
                 elements.Add(element);
             }
 
+            // Find adjacent labels for elements that typically have them (inputs, sliders, etc.)
+            var allTexts = FindAllTextLabels();
+            foreach (var element in elements)
+            {
+                // Only find adjacent labels for certain element types
+                if (element.type == "input" || element.type == "slider" || element.type == "dropdown" ||
+                    element.type == "toggle (on)" || element.type == "toggle (off)")
+                {
+                    FindAdjacentLabel(element, allTexts);
+                }
+            }
+
             // Sort by screen position (top-to-bottom, left-to-right reading order)
             return elements
                 .OrderByDescending(e => e.bounds.y) // Top first
                 .ThenBy(e => e.bounds.x) // Left first
                 .ToList();
+        }
+
+        /// <summary>
+        /// Finds all text labels in the scene (non-interactable text elements).
+        /// </summary>
+        private static List<(string text, Rect bounds)> FindAllTextLabels()
+        {
+            var labels = new List<(string text, Rect bounds)>();
+
+            // Find TMP_Text components
+            var tmpTexts = Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (var tmp in tmpTexts)
+            {
+                if (tmp == null || !tmp.gameObject.activeInHierarchy) continue;
+                if (string.IsNullOrWhiteSpace(tmp.text)) continue;
+
+                // Skip if it's part of an interactable (button text, input text, etc.)
+                var selectable = tmp.GetComponentInParent<Selectable>();
+                if (selectable != null) continue;
+
+                var bounds = InputInjector.GetScreenBounds(tmp.gameObject);
+                if (bounds.width > 0 && bounds.height > 0)
+                {
+                    labels.Add((tmp.text.Trim(), bounds));
+                }
+            }
+
+            // Find legacy Text components
+            var legacyTexts = Object.FindObjectsByType<Text>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (var txt in legacyTexts)
+            {
+                if (txt == null || !txt.gameObject.activeInHierarchy) continue;
+                if (string.IsNullOrWhiteSpace(txt.text)) continue;
+
+                // Skip if it's part of an interactable
+                var selectable = txt.GetComponentInParent<Selectable>();
+                if (selectable != null) continue;
+
+                var bounds = InputInjector.GetScreenBounds(txt.gameObject);
+                if (bounds.width > 0 && bounds.height > 0)
+                {
+                    labels.Add((txt.text.Trim(), bounds));
+                }
+            }
+
+            return labels;
+        }
+
+        /// <summary>
+        /// Finds the closest adjacent label for an element.
+        /// </summary>
+        private static void FindAdjacentLabel(ElementInfo element, List<(string text, Rect bounds)> labels)
+        {
+            const float maxDistance = 150f; // Max pixels to search for adjacent labels
+            float bestScore = float.MaxValue;
+            string bestLabel = null;
+            string bestDirection = null;
+
+            var elementCenter = new Vector2(
+                element.bounds.x + element.bounds.width / 2,
+                element.bounds.y + element.bounds.height / 2
+            );
+
+            foreach (var (text, labelBounds) in labels)
+            {
+                var labelCenter = new Vector2(
+                    labelBounds.x + labelBounds.width / 2,
+                    labelBounds.y + labelBounds.height / 2
+                );
+
+                // Calculate horizontal and vertical distances
+                float hDist = 0, vDist = 0;
+                string direction = null;
+
+                // Check if label is to the left
+                if (labelBounds.x + labelBounds.width < element.bounds.x)
+                {
+                    hDist = element.bounds.x - (labelBounds.x + labelBounds.width);
+                    vDist = Mathf.Abs(labelCenter.y - elementCenter.y);
+                    if (hDist < maxDistance && vDist < element.bounds.height)
+                        direction = "left";
+                }
+                // Check if label is to the right
+                else if (labelBounds.x > element.bounds.x + element.bounds.width)
+                {
+                    hDist = labelBounds.x - (element.bounds.x + element.bounds.width);
+                    vDist = Mathf.Abs(labelCenter.y - elementCenter.y);
+                    if (hDist < maxDistance && vDist < element.bounds.height)
+                        direction = "right";
+                }
+                // Check if label is above
+                else if (labelBounds.y > element.bounds.y + element.bounds.height)
+                {
+                    vDist = labelBounds.y - (element.bounds.y + element.bounds.height);
+                    hDist = Mathf.Abs(labelCenter.x - elementCenter.x);
+                    if (vDist < maxDistance && hDist < element.bounds.width)
+                        direction = "above";
+                }
+                // Check if label is below
+                else if (labelBounds.y + labelBounds.height < element.bounds.y)
+                {
+                    vDist = element.bounds.y - (labelBounds.y + labelBounds.height);
+                    hDist = Mathf.Abs(labelCenter.x - elementCenter.x);
+                    if (vDist < maxDistance && hDist < element.bounds.width)
+                        direction = "below";
+                }
+
+                if (direction != null)
+                {
+                    // Score based on distance (prefer closer labels, prefer left/above for form layouts)
+                    float score = hDist + vDist;
+                    if (direction == "left" || direction == "above")
+                        score *= 0.8f; // Prefer left/above labels (typical form layout)
+
+                    if (score < bestScore)
+                    {
+                        bestScore = score;
+                        bestLabel = text;
+                        bestDirection = direction;
+                    }
+                }
+            }
+
+            if (bestLabel != null)
+            {
+                element.adjacentLabel = bestLabel;
+                element.adjacentDirection = bestDirection;
+            }
         }
 
         /// <summary>
