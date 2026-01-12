@@ -366,31 +366,14 @@ namespace ODDGames.UITest.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Type target not found: {GetSelectorDisplay(block.target)}");
 
-            // Click to focus the input field
-            var screenPos = InputInjector.GetScreenPosition(element.gameObject);
-            Debug.Log($"[VisualTestRunner] Clicking to focus input at {screenPos}");
-            await InputInjector.InjectPointerTap(screenPos);
-            await UniTask.Delay(100, cancellationToken: ct);
+            Debug.Log($"[VisualTestRunner] Typing into '{element.name}': \"{block.text}\"");
 
-            // Clear existing text if requested
-            if (block.clearFirst)
-            {
-                await ClearInputFieldAsync(element.gameObject, ct);
-            }
-
-            // Type the text
-            if (!string.IsNullOrEmpty(block.text))
-            {
-                Debug.Log($"[VisualTestRunner] Typing: \"{block.text}\"");
-                await InputInjector.TypeText(block.text);
-            }
-
-            // Press Enter if requested
-            if (block.pressEnter)
-            {
-                await UniTask.Delay(50, cancellationToken: ct);
-                await InputInjector.PressKey(UnityEngine.InputSystem.Key.Enter);
-            }
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.TypeIntoField(
+                element.gameObject,
+                block.text,
+                clearFirst: block.clearFirst,
+                pressEnter: block.pressEnter);
         }
 
         private static async UniTask ExecuteDragAsync(VisualBlock block, CancellationToken ct)
@@ -414,8 +397,8 @@ namespace ODDGames.UITest.VisualBuilder
             }
             else if (!string.IsNullOrEmpty(block.dragDirection))
             {
-                // Directional drag
-                var offset = GetDirectionOffset(block.dragDirection, block.dragDistance);
+                // Directional drag - use shared helper for consistent distance scaling
+                var offset = InputInjector.GetDirectionOffset(block.dragDirection, block.dragDistance);
                 endPos = startPos + offset;
             }
             else
@@ -433,11 +416,10 @@ namespace ODDGames.UITest.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Scroll target not found: {GetSelectorDisplay(block.target)}");
 
-            var center = InputInjector.GetScreenPosition(element.gameObject);
-            var scrollDelta = GetScrollDelta(block.scrollDirection, block.scrollAmount);
+            Debug.Log($"[VisualTestRunner] Scrolling '{element.name}' {block.scrollDirection}");
 
-            Debug.Log($"[VisualTestRunner] Scrolling at {center} with delta {scrollDelta}");
-            await InputInjector.InjectScroll(center, scrollDelta);
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.ScrollElement(element.gameObject, block.scrollDirection, block.scrollAmount);
         }
 
         private static async UniTask ExecuteWaitAsync(VisualBlock block, CancellationToken ct)
@@ -719,42 +701,10 @@ namespace ODDGames.UITest.VisualBuilder
             if (slider == null)
                 throw new InvalidOperationException($"Element '{element.name}' is not a Slider");
 
-            // Calculate click position based on slider direction and target value
-            var targetNormalized = block.sliderValue / 100f; // Convert percentage to 0-1
-            var bounds = InputInjector.GetScreenBounds(slider.gameObject);
-
-            Vector2 clickPos;
-            switch (slider.direction)
-            {
-                case Slider.Direction.LeftToRight:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * targetNormalized,
-                        bounds.y + bounds.height * 0.5f);
-                    break;
-                case Slider.Direction.RightToLeft:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * (1f - targetNormalized),
-                        bounds.y + bounds.height * 0.5f);
-                    break;
-                case Slider.Direction.BottomToTop:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * 0.5f,
-                        bounds.y + bounds.height * targetNormalized);
-                    break;
-                case Slider.Direction.TopToBottom:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * 0.5f,
-                        bounds.y + bounds.height * (1f - targetNormalized));
-                    break;
-                default:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * targetNormalized,
-                        bounds.y + bounds.height * 0.5f);
-                    break;
-            }
-
-            Debug.Log($"[VisualTestRunner] SetSlider '{element.name}' to {block.sliderValue}% at {clickPos}");
-            await InputInjector.InjectPointerTap(clickPos);
+            // Convert percentage (0-100) to normalized (0-1) and use shared helper
+            var normalizedValue = block.sliderValue / 100f;
+            Debug.Log($"[VisualTestRunner] SetSlider '{element.name}' to {block.sliderValue}%");
+            await InputInjector.SetSlider(slider, normalizedValue);
         }
 
         private static async UniTask ExecuteSetScrollbarAsync(VisualBlock block, CancellationToken ct)
@@ -767,42 +717,10 @@ namespace ODDGames.UITest.VisualBuilder
             if (scrollbar == null)
                 throw new InvalidOperationException($"Element '{element.name}' is not a Scrollbar");
 
-            // Calculate click position based on scrollbar direction and target value
-            var targetNormalized = block.scrollbarValue / 100f; // Convert percentage to 0-1
-            var bounds = InputInjector.GetScreenBounds(scrollbar.gameObject);
-
-            Vector2 clickPos;
-            switch (scrollbar.direction)
-            {
-                case Scrollbar.Direction.LeftToRight:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * targetNormalized,
-                        bounds.y + bounds.height * 0.5f);
-                    break;
-                case Scrollbar.Direction.RightToLeft:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * (1f - targetNormalized),
-                        bounds.y + bounds.height * 0.5f);
-                    break;
-                case Scrollbar.Direction.BottomToTop:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * 0.5f,
-                        bounds.y + bounds.height * targetNormalized);
-                    break;
-                case Scrollbar.Direction.TopToBottom:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * 0.5f,
-                        bounds.y + bounds.height * (1f - targetNormalized));
-                    break;
-                default:
-                    clickPos = new Vector2(
-                        bounds.x + bounds.width * targetNormalized,
-                        bounds.y + bounds.height * 0.5f);
-                    break;
-            }
-
-            Debug.Log($"[VisualTestRunner] SetScrollbar '{element.name}' to {block.scrollbarValue}% at {clickPos}");
-            await InputInjector.InjectPointerTap(clickPos);
+            // Convert percentage (0-100) to normalized (0-1) and use shared helper
+            var normalizedValue = block.scrollbarValue / 100f;
+            Debug.Log($"[VisualTestRunner] SetScrollbar '{element.name}' to {block.scrollbarValue}%");
+            await InputInjector.SetScrollbar(scrollbar, normalizedValue);
         }
 
         private static async UniTask ExecuteAssertAsync(VisualBlock block, CancellationToken ct)
@@ -1236,34 +1154,6 @@ namespace ODDGames.UITest.VisualBuilder
         }
 
         /// <summary>
-        /// Clears the text content of an input field.
-        /// </summary>
-        private static async UniTask ClearInputFieldAsync(GameObject go, CancellationToken ct)
-        {
-            // Try TMP_InputField first
-            var tmpInput = go.GetComponent<TMP_InputField>();
-            if (tmpInput != null)
-            {
-                // Select all and delete
-                tmpInput.selectionAnchorPosition = 0;
-                tmpInput.selectionFocusPosition = tmpInput.text.Length;
-                tmpInput.text = "";
-                await UniTask.Yield();
-                return;
-            }
-
-            // Try legacy InputField
-            var legacyInput = go.GetComponent<InputField>();
-            if (legacyInput != null)
-            {
-                legacyInput.selectionAnchorPosition = 0;
-                legacyInput.selectionFocusPosition = legacyInput.text.Length;
-                legacyInput.text = "";
-                await UniTask.Yield();
-            }
-        }
-
-        /// <summary>
         /// Gets the text content of a UI element.
         /// </summary>
         private static string GetElementText(GameObject go)
@@ -1289,41 +1179,6 @@ namespace ODDGames.UITest.VisualBuilder
                 return legacyInput.text ?? "";
 
             return "";
-        }
-
-        /// <summary>
-        /// Converts a direction string to an offset vector.
-        /// Distance is in relative units (0-1 as fraction of screen height).
-        /// </summary>
-        private static Vector2 GetDirectionOffset(string direction, float distance)
-        {
-            // Convert relative distance to pixels (based on screen height)
-            float pixelDistance = distance * Screen.height;
-
-            return direction?.ToLowerInvariant() switch
-            {
-                "up" => new Vector2(0, pixelDistance),
-                "down" => new Vector2(0, -pixelDistance),
-                "left" => new Vector2(-pixelDistance, 0),
-                "right" => new Vector2(pixelDistance, 0),
-                _ => Vector2.zero
-            };
-        }
-
-        /// <summary>
-        /// Converts scroll direction and amount to a scroll delta vector.
-        /// </summary>
-        private static Vector2 GetScrollDelta(string direction, float amount)
-        {
-            float scrollPixels = amount * 500f; // Convert 0-1 amount to pixel delta
-            return direction?.ToLowerInvariant() switch
-            {
-                "up" => new Vector2(0, scrollPixels),
-                "down" => new Vector2(0, -scrollPixels),
-                "left" => new Vector2(-scrollPixels, 0),
-                "right" => new Vector2(scrollPixels, 0),
-                _ => Vector2.zero
-            };
         }
 
         #endregion
