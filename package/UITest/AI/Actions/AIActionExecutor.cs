@@ -4,7 +4,7 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.LowLevel;
+using UnityEngine.UI;
 
 namespace ODDGames.UITest.AI
 {
@@ -479,22 +479,26 @@ namespace ODDGames.UITest.AI
 
         private static async UniTask ExecuteTypeAsync(TypeAction action, CancellationToken ct)
         {
-            if (action.TargetElement?.gameObject != null)
+            if (action.TargetElement?.gameObject == null)
             {
-                // Click to focus the input field
-                var screenPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
-                await InputInjector.InjectPointerTap(screenPos);
-                await DelaySafe(100, ct);
+                // No target element, just type text directly
+                await InputInjector.TypeText(action.Text);
+                if (action.PressEnter)
+                {
+                    await DelaySafe(50, ct);
+                    await InputInjector.PressKey(Key.Enter);
+                }
+                return;
             }
 
-            // Type the text using InputInjector
-            await InputInjector.TypeText(action.Text);
+            Debug.Log($"[AITest] Typing into '{action.TargetElement.name}': \"{action.Text}\"");
 
-            if (action.PressEnter)
-            {
-                await DelaySafe(50, ct);
-                await InputInjector.PressKey(Key.Enter);
-            }
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.TypeIntoField(
+                action.TargetElement.gameObject,
+                action.Text,
+                clearFirst: action.ClearFirst,
+                pressEnter: action.PressEnter);
         }
 
         private static async UniTask ExecuteDragAsync(DragAction action, CancellationToken ct)
@@ -517,14 +521,8 @@ namespace ODDGames.UITest.AI
             }
             else if (!string.IsNullOrEmpty(action.Direction))
             {
-                var offset = action.Direction switch
-                {
-                    "up" => new Vector2(0, action.Distance),
-                    "down" => new Vector2(0, -action.Distance),
-                    "left" => new Vector2(-action.Distance, 0),
-                    "right" => new Vector2(action.Distance, 0),
-                    _ => Vector2.zero
-                };
+                // Use shared helper for consistent distance scaling
+                var offset = InputInjector.GetDirectionOffset(action.Direction, action.Distance / Screen.height);
                 endPos = startPos + offset;
             }
             else
@@ -543,18 +541,10 @@ namespace ODDGames.UITest.AI
                 throw new InvalidOperationException("Scroll action has no target element");
             }
 
-            var center = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
-            var scrollDelta = action.Direction switch
-            {
-                "up" => new Vector2(0, action.Amount * 500f),
-                "down" => new Vector2(0, -action.Amount * 500f),
-                "left" => new Vector2(-action.Amount * 500f, 0),
-                "right" => new Vector2(action.Amount * 500f, 0),
-                _ => Vector2.zero
-            };
+            Debug.Log($"[AITest] Scrolling '{action.TargetElement.name}' {action.Direction}");
 
-            Debug.Log($"[AITest] Injecting scroll at {center} with delta {scrollDelta}");
-            await InputInjector.InjectScroll(center, scrollDelta);
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.ScrollElement(action.TargetElement.gameObject, action.Direction, action.Amount);
         }
 
         private static async UniTask ExecuteDoubleClickAsync(DoubleClickAction action, CancellationToken ct)
@@ -596,29 +586,15 @@ namespace ODDGames.UITest.AI
 
         private static async UniTask ExecuteSwipeAsync(SwipeAction action, CancellationToken ct)
         {
-            Vector2 startPos;
-            if (action.TargetElement?.gameObject != null)
-            {
-                startPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
-            }
-            else
+            if (action.TargetElement?.gameObject == null)
             {
                 throw new InvalidOperationException("Swipe action has no target element");
             }
 
-            // Calculate end position based on direction and distance
-            var distance = action.Distance * Mathf.Min(Screen.width, Screen.height);
-            var offset = action.Direction switch
-            {
-                "up" => new Vector2(0, distance),
-                "down" => new Vector2(0, -distance),
-                "left" => new Vector2(-distance, 0),
-                "right" => new Vector2(distance, 0),
-                _ => Vector2.zero
-            };
+            Debug.Log($"[AITest] Swiping {action.Direction} on '{action.TargetElement.name}'");
 
-            var endPos = startPos + offset;
-            await InputInjector.InjectPointerDrag(startPos, endPos, action.Duration);
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.Swipe(action.TargetElement.gameObject, action.Direction, action.Distance, action.Duration);
         }
 
         private static async UniTask ExecutePinchAsync(PinchAction action, CancellationToken ct)
@@ -645,19 +621,11 @@ namespace ODDGames.UITest.AI
                 centerPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
             }
 
-            // Calculate end position based on direction and distance
-            var distance = action.Distance * Mathf.Min(Screen.width, Screen.height);
-            var offset = action.Direction switch
-            {
-                "up" => new Vector2(0, distance),
-                "down" => new Vector2(0, -distance),
-                "left" => new Vector2(-distance, 0),
-                "right" => new Vector2(distance, 0),
-                _ => Vector2.zero
-            };
+            // Use shared helper for consistent direction offset calculation
+            var offset = InputInjector.GetDirectionOffset(action.Direction, action.Distance);
 
             // Calculate finger spacing
-            var spacing = action.FingerSpacing * Mathf.Min(Screen.width, Screen.height) / 2f;
+            var spacing = action.FingerSpacing * Screen.height / 2f;
             var finger1Start = centerPos + new Vector2(-spacing, 0);
             var finger2Start = centerPos + new Vector2(spacing, 0);
             var finger1End = finger1Start + offset;
@@ -689,34 +657,17 @@ namespace ODDGames.UITest.AI
                 throw new InvalidOperationException("SetSlider action has no target element");
             }
 
-            var slider = action.TargetElement.gameObject.GetComponent<UnityEngine.UI.Slider>();
+            var slider = action.TargetElement.gameObject.GetComponent<Slider>();
             if (slider == null)
             {
                 throw new InvalidOperationException($"Element {action.ElementId} is not a Slider");
             }
 
-            // Calculate click position on the slider based on value
-            var bounds = InputInjector.GetScreenBounds(action.TargetElement.gameObject);
-            Vector2 clickPos;
+            Debug.Log($"[AITest] SetSlider '{action.TargetElement.name}' to {action.Value:P0}");
 
-            if (slider.direction == UnityEngine.UI.Slider.Direction.LeftToRight)
-            {
-                clickPos = new Vector2(bounds.x + bounds.width * action.Value, bounds.center.y);
-            }
-            else if (slider.direction == UnityEngine.UI.Slider.Direction.RightToLeft)
-            {
-                clickPos = new Vector2(bounds.x + bounds.width * (1 - action.Value), bounds.center.y);
-            }
-            else if (slider.direction == UnityEngine.UI.Slider.Direction.BottomToTop)
-            {
-                clickPos = new Vector2(bounds.center.x, bounds.y + bounds.height * action.Value);
-            }
-            else
-            {
-                clickPos = new Vector2(bounds.center.x, bounds.y + bounds.height * (1 - action.Value));
-            }
-
-            await InputInjector.InjectPointerTap(clickPos);
+            // Use shared InputInjector helper for consistent behavior
+            // AI sends value as 0-1 normalized
+            await InputInjector.SetSlider(slider, action.Value);
         }
 
         private static async UniTask ExecuteSetScrollbarAsync(SetScrollbarAction action, CancellationToken ct)
@@ -726,34 +677,17 @@ namespace ODDGames.UITest.AI
                 throw new InvalidOperationException("SetScrollbar action has no target element");
             }
 
-            var scrollbar = action.TargetElement.gameObject.GetComponent<UnityEngine.UI.Scrollbar>();
+            var scrollbar = action.TargetElement.gameObject.GetComponent<Scrollbar>();
             if (scrollbar == null)
             {
                 throw new InvalidOperationException($"Element {action.ElementId} is not a Scrollbar");
             }
 
-            // Calculate click position on the scrollbar based on value
-            var bounds = InputInjector.GetScreenBounds(action.TargetElement.gameObject);
-            Vector2 clickPos;
+            Debug.Log($"[AITest] SetScrollbar '{action.TargetElement.name}' to {action.Value:P0}");
 
-            if (scrollbar.direction == UnityEngine.UI.Scrollbar.Direction.LeftToRight)
-            {
-                clickPos = new Vector2(bounds.x + bounds.width * action.Value, bounds.center.y);
-            }
-            else if (scrollbar.direction == UnityEngine.UI.Scrollbar.Direction.RightToLeft)
-            {
-                clickPos = new Vector2(bounds.x + bounds.width * (1 - action.Value), bounds.center.y);
-            }
-            else if (scrollbar.direction == UnityEngine.UI.Scrollbar.Direction.BottomToTop)
-            {
-                clickPos = new Vector2(bounds.center.x, bounds.y + bounds.height * action.Value);
-            }
-            else
-            {
-                clickPos = new Vector2(bounds.center.x, bounds.y + bounds.height * (1 - action.Value));
-            }
-
-            await InputInjector.InjectPointerTap(clickPos);
+            // Use shared InputInjector helper for consistent behavior
+            // AI sends value as 0-1 normalized
+            await InputInjector.SetScrollbar(scrollbar, action.Value);
         }
 
         private static async UniTask ExecuteKeyPressAsync(KeyPressAction action, CancellationToken ct)

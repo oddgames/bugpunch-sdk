@@ -229,6 +229,201 @@ namespace ODDGames.UITest
             return Rect.zero;
         }
 
+        #region High-Level Action Helpers
+        // These are the SHARED action implementations that all execution paths should use.
+        // This ensures consistent behavior whether executed via AI, Visual Builder, or Code.
+
+        /// <summary>
+        /// Calculates the screen position to click on a slider to set it to the target value.
+        /// </summary>
+        /// <param name="slider">The slider component</param>
+        /// <param name="normalizedValue">Target value from 0 to 1</param>
+        /// <returns>Screen position to click</returns>
+        public static Vector2 GetSliderClickPosition(Slider slider, float normalizedValue)
+        {
+            var bounds = GetScreenBounds(slider.gameObject);
+
+            return slider.direction switch
+            {
+                Slider.Direction.LeftToRight => new Vector2(
+                    bounds.x + bounds.width * normalizedValue,
+                    bounds.y + bounds.height * 0.5f),
+                Slider.Direction.RightToLeft => new Vector2(
+                    bounds.x + bounds.width * (1f - normalizedValue),
+                    bounds.y + bounds.height * 0.5f),
+                Slider.Direction.BottomToTop => new Vector2(
+                    bounds.x + bounds.width * 0.5f,
+                    bounds.y + bounds.height * normalizedValue),
+                Slider.Direction.TopToBottom => new Vector2(
+                    bounds.x + bounds.width * 0.5f,
+                    bounds.y + bounds.height * (1f - normalizedValue)),
+                _ => bounds.center
+            };
+        }
+
+        /// <summary>
+        /// Calculates the screen position to click on a scrollbar to set it to the target value.
+        /// </summary>
+        /// <param name="scrollbar">The scrollbar component</param>
+        /// <param name="normalizedValue">Target value from 0 to 1</param>
+        /// <returns>Screen position to click</returns>
+        public static Vector2 GetScrollbarClickPosition(Scrollbar scrollbar, float normalizedValue)
+        {
+            var bounds = GetScreenBounds(scrollbar.gameObject);
+
+            return scrollbar.direction switch
+            {
+                Scrollbar.Direction.LeftToRight => new Vector2(
+                    bounds.x + bounds.width * normalizedValue,
+                    bounds.y + bounds.height * 0.5f),
+                Scrollbar.Direction.RightToLeft => new Vector2(
+                    bounds.x + bounds.width * (1f - normalizedValue),
+                    bounds.y + bounds.height * 0.5f),
+                Scrollbar.Direction.BottomToTop => new Vector2(
+                    bounds.x + bounds.width * 0.5f,
+                    bounds.y + bounds.height * normalizedValue),
+                Scrollbar.Direction.TopToBottom => new Vector2(
+                    bounds.x + bounds.width * 0.5f,
+                    bounds.y + bounds.height * (1f - normalizedValue)),
+                _ => bounds.center
+            };
+        }
+
+        /// <summary>
+        /// Calculates a directional offset vector based on direction string and distance.
+        /// Uses screen height for consistent distance scaling.
+        /// </summary>
+        /// <param name="direction">Direction: "up", "down", "left", "right"</param>
+        /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
+        /// <returns>Pixel offset vector</returns>
+        public static Vector2 GetDirectionOffset(string direction, float normalizedDistance)
+        {
+            float pixelDistance = normalizedDistance * Screen.height;
+
+            return direction?.ToLowerInvariant() switch
+            {
+                "up" => new Vector2(0, pixelDistance),
+                "down" => new Vector2(0, -pixelDistance),
+                "left" => new Vector2(-pixelDistance, 0),
+                "right" => new Vector2(pixelDistance, 0),
+                _ => Vector2.zero
+            };
+        }
+
+        /// <summary>
+        /// Sets a slider to a specific normalized value (0-1) via click.
+        /// </summary>
+        public static async UniTask SetSlider(Slider slider, float normalizedValue)
+        {
+            var clickPos = GetSliderClickPosition(slider, normalizedValue);
+            await InjectPointerTap(clickPos);
+        }
+
+        /// <summary>
+        /// Sets a scrollbar to a specific normalized value (0-1) via click.
+        /// </summary>
+        public static async UniTask SetScrollbar(Scrollbar scrollbar, float normalizedValue)
+        {
+            var clickPos = GetScrollbarClickPosition(scrollbar, normalizedValue);
+            await InjectPointerTap(clickPos);
+        }
+
+        /// <summary>
+        /// Clears an input field using keyboard input (Ctrl+A, Backspace).
+        /// </summary>
+        public static async UniTask ClearInputField(GameObject inputFieldGO)
+        {
+            // Check if there's text to clear
+            string currentText = null;
+
+            if (inputFieldGO.TryGetComponent<TMPro.TMP_InputField>(out var tmpInput))
+            {
+                currentText = tmpInput.text;
+            }
+            else if (inputFieldGO.TryGetComponent<InputField>(out var legacyInput))
+            {
+                currentText = legacyInput.text;
+            }
+
+            if (string.IsNullOrEmpty(currentText))
+                return;
+
+            // Use Ctrl+A to select all text
+            await HoldKeys(new[] { Key.LeftCtrl, Key.A }, 0.05f);
+            await UniTask.Delay(50);
+
+            // Use Backspace to delete selected text
+            await PressKey(Key.Backspace);
+            await UniTask.Delay(50);
+        }
+
+        /// <summary>
+        /// Types text into the currently focused input field, optionally clearing first.
+        /// </summary>
+        public static async UniTask TypeIntoField(GameObject inputFieldGO, string text, bool clearFirst = true, bool pressEnter = false)
+        {
+            // Click to focus
+            var screenPos = GetScreenPosition(inputFieldGO);
+            await InjectPointerTap(screenPos);
+            await UniTask.Delay(100);
+
+            // Clear if requested
+            if (clearFirst)
+            {
+                await ClearInputField(inputFieldGO);
+            }
+
+            // Type the text
+            if (!string.IsNullOrEmpty(text))
+            {
+                await TypeText(text);
+            }
+
+            // Press Enter if requested
+            if (pressEnter)
+            {
+                await UniTask.Delay(50);
+                await PressKey(Key.Enter);
+            }
+        }
+
+        /// <summary>
+        /// Performs a swipe gesture on an element.
+        /// </summary>
+        public static async UniTask Swipe(GameObject element, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
+        {
+            var startPos = GetScreenPosition(element);
+            var offset = GetDirectionOffset(direction, normalizedDistance);
+            var endPos = startPos + offset;
+
+            await InjectMouseDrag(startPos, endPos, duration);
+        }
+
+        /// <summary>
+        /// Performs a scroll action on a scrollable element.
+        /// </summary>
+        public static async UniTask ScrollElement(GameObject scrollableElement, string direction, float amount = 0.3f)
+        {
+            var center = GetScreenPosition(scrollableElement);
+
+            // Convert direction and amount to scroll delta
+            // Positive Y = scroll up (content moves down), Negative Y = scroll down
+            float scrollDelta = amount * 500f; // Consistent scroll multiplier
+
+            Vector2 delta = direction?.ToLowerInvariant() switch
+            {
+                "up" => new Vector2(0, scrollDelta),
+                "down" => new Vector2(0, -scrollDelta),
+                "left" => new Vector2(-scrollDelta, 0),
+                "right" => new Vector2(scrollDelta, 0),
+                _ => Vector2.zero
+            };
+
+            await InjectScroll(center, delta);
+        }
+
+        #endregion
+
         /// <summary>
         /// Ensures the Game view has focus in the Editor so input events are received.
         /// Does nothing at runtime or in builds.
