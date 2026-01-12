@@ -39,9 +39,6 @@ namespace ODDGames.UITest.VisualBuilder
         [Tooltip("Original natural language prompt used to generate this test")]
         public string originalPrompt;
 
-        [Tooltip("Pass condition used during AI recording")]
-        public string passCondition;
-
         /// <summary>
         /// Adds a new block to the test.
         /// </summary>

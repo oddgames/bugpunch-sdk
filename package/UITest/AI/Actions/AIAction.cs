@@ -146,6 +146,160 @@ namespace ODDGames.UITest.AI
     }
 
     /// <summary>
+    /// Double-click action - double-clicks an element.
+    /// </summary>
+    public class DoubleClickAction : AIAction
+    {
+        public override string ActionType => "double_click";
+
+        public string ElementId { get; set; }
+        public Vector2? ScreenPosition { get; set; }
+
+        public override string Description =>
+            TargetElement != null
+                ? $"Double-click '{TargetElement.text ?? TargetElement.name}'"
+                : ScreenPosition.HasValue
+                    ? $"Double-click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
+                    : $"Double-click element {ElementId}";
+    }
+
+    /// <summary>
+    /// Hold action - long press on an element.
+    /// </summary>
+    public class HoldAction : AIAction
+    {
+        public override string ActionType => "hold";
+
+        public string ElementId { get; set; }
+        public float Duration { get; set; } = 1f;
+
+        public override string Description =>
+            $"Hold '{TargetElement?.text ?? TargetElement?.name ?? ElementId}' for {Duration:F1}s";
+    }
+
+    /// <summary>
+    /// Key press action - presses a keyboard key.
+    /// </summary>
+    public class KeyPressAction : AIAction
+    {
+        public override string ActionType => "key_press";
+
+        public string Key { get; set; }
+
+        public override string Description => $"Press key '{Key}'";
+    }
+
+    /// <summary>
+    /// Key hold action - holds one or more keys for a duration.
+    /// </summary>
+    public class KeyHoldAction : AIAction
+    {
+        public override string ActionType => "key_hold";
+
+        public string[] Keys { get; set; }
+        public float Duration { get; set; } = 0.5f;
+
+        public override string Description =>
+            $"Hold keys [{string.Join("+", Keys ?? Array.Empty<string>())}] for {Duration:F1}s";
+    }
+
+    /// <summary>
+    /// Swipe action - swipes in a direction on an element.
+    /// </summary>
+    public class SwipeAction : AIAction
+    {
+        public override string ActionType => "swipe";
+
+        public string ElementId { get; set; }
+        public string Direction { get; set; } // "up", "down", "left", "right"
+        public float Distance { get; set; } = 0.2f; // Normalized distance (0-1)
+        public float Duration { get; set; } = 0.3f;
+
+        public override string Description =>
+            $"Swipe {Direction} on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'";
+    }
+
+    /// <summary>
+    /// Pinch action - pinch to zoom in or out.
+    /// </summary>
+    public class PinchAction : AIAction
+    {
+        public override string ActionType => "pinch";
+
+        public string ElementId { get; set; }
+        public float Scale { get; set; } = 1.5f; // >1 = zoom in, <1 = zoom out
+        public float Duration { get; set; } = 0.5f;
+
+        public override string Description =>
+            Scale > 1f
+                ? $"Pinch out (zoom in) on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'"
+                : $"Pinch in (zoom out) on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'";
+    }
+
+    /// <summary>
+    /// Set slider action - sets a slider to a specific value.
+    /// </summary>
+    public class SetSliderAction : AIAction
+    {
+        public override string ActionType => "set_slider";
+
+        public string ElementId { get; set; }
+        public float Value { get; set; } // 0-1 normalized value
+
+        public override string Description =>
+            $"Set slider '{TargetElement?.text ?? TargetElement?.name ?? ElementId}' to {Value:P0}";
+    }
+
+    /// <summary>
+    /// Set scrollbar action - sets a scrollbar to a specific position.
+    /// </summary>
+    public class SetScrollbarAction : AIAction
+    {
+        public override string ActionType => "set_scrollbar";
+
+        public string ElementId { get; set; }
+        public float Value { get; set; } // 0-1 normalized value
+
+        public override string Description =>
+            $"Set scrollbar '{TargetElement?.text ?? TargetElement?.name ?? ElementId}' to {Value:P0}";
+    }
+
+    /// <summary>
+    /// Two-finger swipe action - swipes with two fingers in a direction.
+    /// </summary>
+    public class TwoFingerSwipeAction : AIAction
+    {
+        public override string ActionType => "two_finger_swipe";
+
+        public string ElementId { get; set; }
+        public string Direction { get; set; } // "up", "down", "left", "right"
+        public float Distance { get; set; } = 0.2f; // Normalized distance (0-1)
+        public float Duration { get; set; } = 0.3f;
+        public float FingerSpacing { get; set; } = 0.03f; // Distance between fingers
+
+        public override string Description =>
+            $"Two-finger swipe {Direction} on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'";
+    }
+
+    /// <summary>
+    /// Rotate action - rotates with two fingers around a center point.
+    /// </summary>
+    public class RotateAction : AIAction
+    {
+        public override string ActionType => "rotate";
+
+        public string ElementId { get; set; }
+        public float Degrees { get; set; } = 90f; // Positive = clockwise, negative = counter-clockwise
+        public float Duration { get; set; } = 0.5f;
+        public float FingerDistance { get; set; } = 0.05f; // Distance from center for each finger
+
+        public override string Description =>
+            Degrees > 0
+                ? $"Rotate clockwise {Degrees}° on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'"
+                : $"Rotate counter-clockwise {-Degrees}° on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'";
+    }
+
+    /// <summary>
     /// Result of executing an action.
     /// </summary>
     public class ActionResult

@@ -5,10 +5,10 @@ using UnityEngine;
 namespace ODDGames.UITest.AI
 {
     /// <summary>
-    /// A prompt-based UI test defined as a ScriptableObject.
-    /// Tests are executed by AI models that interpret the prompt and interact with the UI.
+    /// Internal configuration for AI-driven test execution.
+    /// Used by AIRecordingSession to drive visual test generation.
+    /// Not intended to be created as standalone assets.
     /// </summary>
-    [CreateAssetMenu(fileName = "NewAITest", menuName = "UITest/AI Test", order = 100)]
     public class AITest : ScriptableObject
     {
         [Header("Test Definition")]
@@ -16,22 +16,14 @@ namespace ODDGames.UITest.AI
         [TextArea(3, 10)]
         public string prompt;
 
-        [Tooltip("Condition that determines test success.\nExample: 'Dark mode toggle is ON and the UI theme has changed to dark'")]
-        [TextArea(2, 5)]
-        public string passCondition;
-
-        [Tooltip("Optional condition that determines test failure.\nExample: 'Error dialog appears or app crashes'")]
-        [TextArea(2, 5)]
-        public string failCondition;
-
         [Header("Test-Specific Knowledge")]
         [Tooltip("Additional context specific to this test.\nExample: 'The settings button has a gear icon in the top-right corner'")]
         [TextArea(3, 8)]
         public string knowledge;
 
         [Header("Configuration")]
-        [Tooltip("Which model tier to start with. Will escalate to higher tiers if stuck.")]
-        public ModelTier startingTier = ModelTier.LocalFast;
+        [Tooltip("Gemini model to use for this test. Leave empty to use project default.")]
+        public string model;
 
         [Tooltip("Maximum number of actions before failing the test")]
         [Range(10, 200)]

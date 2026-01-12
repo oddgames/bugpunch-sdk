@@ -467,14 +467,14 @@ namespace ODDGames.UITest.AI.Editor
             EditorGUILayout.LabelField("Left Run:", EditorStyles.miniBoldLabel);
             EditorGUILayout.LabelField($"Status: {leftRun.status}");
             EditorGUILayout.LabelField($"Actions: {leftRun.actionsExecuted}");
-            EditorGUILayout.LabelField($"Model: {leftRun.startingModelTier} → {leftRun.finalModelTier}");
+            EditorGUILayout.LabelField($"Model: {leftRun.finalModel ?? "Unknown"}");
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.BeginVertical();
             EditorGUILayout.LabelField("Right Run:", EditorStyles.miniBoldLabel);
             EditorGUILayout.LabelField($"Status: {rightRun.status}");
             EditorGUILayout.LabelField($"Actions: {rightRun.actionsExecuted}");
-            EditorGUILayout.LabelField($"Model: {rightRun.startingModelTier} → {rightRun.finalModelTier}");
+            EditorGUILayout.LabelField($"Model: {rightRun.finalModel ?? "Unknown"}");
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.EndHorizontal();
@@ -532,10 +532,10 @@ namespace ODDGames.UITest.AI.Editor
                 }
             }
 
-            // Model escalation difference
-            if (leftRun.modelEscalations != rightRun.modelEscalations)
+            // Model difference
+            if (leftRun.finalModel != rightRun.finalModel)
             {
-                differences.Add($"Model escalations: {leftRun.modelEscalations} vs {rightRun.modelEscalations}");
+                differences.Add($"Different models: {leftRun.finalModel} vs {rightRun.finalModel}");
             }
 
             return differences;

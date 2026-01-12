@@ -331,15 +331,6 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             EditorGUILayout.TextArea(visualTest.originalPrompt, promptStyle, GUILayout.MinHeight(60));
             EditorGUI.EndDisabledGroup();
 
-            if (!string.IsNullOrEmpty(visualTest.passCondition))
-            {
-                EditorGUILayout.Space(4);
-                EditorGUILayout.LabelField("Pass Condition:", EditorStyles.boldLabel);
-                EditorGUI.BeginDisabledGroup(true);
-                EditorGUILayout.TextField(visualTest.passCondition);
-                EditorGUI.EndDisabledGroup();
-            }
-
             EditorGUILayout.EndVertical();
         }
 

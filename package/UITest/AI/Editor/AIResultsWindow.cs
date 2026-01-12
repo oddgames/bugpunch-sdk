@@ -118,6 +118,20 @@ namespace ODDGames.UITest.AI.Editor
             // Toggle statistics
             showStatistics = GUILayout.Toggle(showStatistics, "Stats", EditorStyles.toolbarButton);
 
+            // Clear All button
+            if (GUILayout.Button("Clear All", EditorStyles.toolbarButton))
+            {
+                if (EditorUtility.DisplayDialog("Clear All Results",
+                    "Are you sure you want to delete ALL test results?\n\nThis action cannot be undone.",
+                    "Delete All", "Cancel"))
+                {
+                    store.ClearAll();
+                    selectedRunId = null;
+                    selectedRun = null;
+                    RefreshResults();
+                }
+            }
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -251,12 +265,7 @@ namespace ODDGames.UITest.AI.Editor
             EditorGUILayout.LabelField($"Status: {selectedRun.status}");
             EditorGUILayout.LabelField($"Duration: {selectedRun.durationSeconds:F1}s");
             EditorGUILayout.LabelField($"Actions: {selectedRun.actionsExecuted}");
-            EditorGUILayout.LabelField($"Model: {selectedRun.startingModelTier} → {selectedRun.finalModelTier}");
-
-            if (selectedRun.modelEscalations > 0)
-            {
-                EditorGUILayout.LabelField($"Escalations: {selectedRun.modelEscalations}");
-            }
+            EditorGUILayout.LabelField($"Model: {selectedRun.finalModel ?? "Unknown"}");
 
             if (!string.IsNullOrEmpty(selectedRun.failureReason))
             {

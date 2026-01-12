@@ -4,15 +4,15 @@ using Cysharp.Threading.Tasks;
 namespace ODDGames.UITest.AI
 {
     /// <summary>
-    /// Interface for AI model providers (LM Studio, Gemini, etc.)
+    /// Interface for AI model providers.
     /// </summary>
     public interface IModelProvider
     {
         /// <summary>Human-readable name of this provider</summary>
         string Name { get; }
 
-        /// <summary>The model tier this provider represents</summary>
-        ModelTier Tier { get; }
+        /// <summary>The model ID being used (e.g., "gemini-2.5-flash")</summary>
+        string ModelId { get; }
 
         /// <summary>Whether this provider supports vision (image input)</summary>
         bool SupportsVision { get; }

@@ -28,7 +28,9 @@ namespace ODDGames.UITest.VisualBuilder.Editor
         private Label statusLabel;
         private Button startEditBtn;
         private Button stopBtn;
+        private Button playTestBtn;
         private VisualElement blockControls;
+        private VisualElement blockControlsRow2;
 
         // Block editing state
         private int editingBlockIndex = -1;  // Which block is currently being edited (-1 = none)
@@ -43,6 +45,14 @@ namespace ODDGames.UITest.VisualBuilder.Editor
         // State
         private AIAssistant aiAssistant;
         private List<ElementInfo> currentElements = new();
+
+        // AI status panel
+        private VisualElement aiStatusPanel;
+        private Label aiStateLabel;
+        private Label aiReasoningLabel;
+        private ProgressBar aiProgressBar;
+        private Button aiStopButton;
+        private int aiActionCount;
 
 
         [MenuItem("Window/Analysis/UI Automation/Test Builder")]
@@ -150,13 +160,21 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
             toolbar.Add(new ToolbarSpacer { flex = true });
 
+            // Play test button (runs entire test from start)
+            playTestBtn = new Button(OnPlayTest) { text = "▶ Play" };
+            playTestBtn.style.backgroundColor = new Color(0.2f, 0.5f, 0.2f);
+            playTestBtn.tooltip = "Run entire test from start";
+            toolbar.Add(playTestBtn);
+
             // Start/Stop buttons
-            startEditBtn = new Button(OnStartEdit) { text = "▶ Edit" };
+            startEditBtn = new Button(OnStartEdit) { text = "Edit" };
             startEditBtn.style.backgroundColor = new Color(0.3f, 0.5f, 0.3f);
+            startEditBtn.tooltip = "Enter play mode to edit blocks";
             toolbar.Add(startEditBtn);
 
             stopBtn = new Button(OnStopEdit) { text = "■" };
             stopBtn.style.backgroundColor = new Color(0.5f, 0.3f, 0.3f);
+            stopBtn.tooltip = "Stop and exit play mode";
             toolbar.Add(stopBtn);
 
             root.Add(toolbar);
@@ -209,43 +227,143 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             RefreshUI();
         }
 
+        private async void OnPlayTest()
+        {
+            if (currentTest == null || currentTest.blocks.Count == 0)
+            {
+                statusLabel.text = "No blocks to run";
+                return;
+            }
+
+            if (!EditorApplication.isPlaying)
+            {
+                // Need to enter play mode first
+                if (string.IsNullOrEmpty(currentTest.startScene))
+                {
+                    statusLabel.text = "Select a scene first";
+                    return;
+                }
+
+                var scenePath = GetScenePath(currentTest.startScene);
+                if (string.IsNullOrEmpty(scenePath))
+                {
+                    statusLabel.text = $"Scene not found: {currentTest.startScene}";
+                    return;
+                }
+
+                OnSaveTest();
+                UnityEditor.SceneManagement.EditorSceneManager.OpenScene(scenePath);
+                EditorApplication.isPlaying = true;
+
+                // Wait for play mode
+                while (!EditorApplication.isPlaying)
+                    await UniTask.Yield();
+                await UniTask.DelayFrame(5);
+            }
+            else
+            {
+                // Already in play mode - restart scene
+                await RestartScene();
+            }
+
+            // Run all blocks
+            statusLabel.text = $"Running test ({currentTest.blocks.Count} blocks)...";
+
+            for (int i = 0; i < currentTest.blocks.Count; i++)
+            {
+                if (!EditorApplication.isPlaying) break;
+
+                selectedBlockIndex = i;
+                RefreshBlockList();
+                statusLabel.text = $"Running block {i + 1}/{currentTest.blocks.Count}...";
+
+                await ExecuteBlock(currentTest.blocks[i]);
+                await UniTask.Delay(200);
+            }
+
+            if (EditorApplication.isPlaying)
+                statusLabel.text = $"Test completed ({currentTest.blocks.Count} blocks)";
+        }
+
         private void BuildMainContent()
         {
             blockPanel = new VisualElement();
             blockPanel.style.flexGrow = 1;
             blockPanel.style.flexDirection = FlexDirection.Column;
 
-            // Block type buttons row
+            // Row 1: Mouse/Touch Actions (Blue/Orange theme)
             blockControls = new VisualElement();
             blockControls.style.flexDirection = FlexDirection.Row;
+            blockControls.style.flexWrap = Wrap.Wrap;
             blockControls.style.paddingLeft = 4;
             blockControls.style.paddingTop = 2;
-            blockControls.style.paddingBottom = 2;
+            blockControls.style.paddingBottom = 1;
             blockControls.style.backgroundColor = new Color(0.15f, 0.15f, 0.15f);
 
-            // Row 1: Input actions
-            AddBlockTypeButton(blockControls, "+Click", BlockType.Click, new Color(0.3f, 0.6f, 1f));
-            AddBlockTypeButton(blockControls, "+2xClk", BlockType.DoubleClick, new Color(0.24f, 0.53f, 0.94f));
-            AddBlockTypeButton(blockControls, "+Hold", BlockType.Hold, new Color(0.42f, 0.65f, 1f));
-            AddBlockTypeButton(blockControls, "+Type", BlockType.Type, new Color(0.6f, 0.4f, 1f));
-            AddBlockTypeButton(blockControls, "+Key", BlockType.KeyPress, new Color(0.63f, 0.5f, 1f));
-            AddBlockTypeButton(blockControls, "+KeyH", BlockType.KeyHold, new Color(0.56f, 0.44f, 0.94f));
-            AddBlockTypeButton(blockControls, "+Drag", BlockType.Drag, new Color(1f, 0.55f, 0.1f));
-            AddBlockTypeButton(blockControls, "+Scroll", BlockType.Scroll, new Color(0.35f, 0.75f, 0.35f));
+            AddBlockTypeButton(blockControls, "Click", BlockType.Click, new Color(0.3f, 0.6f, 1f), "Click on element");
+            AddBlockTypeButton(blockControls, "2xClick", BlockType.DoubleClick, new Color(0.24f, 0.53f, 0.94f), "Double-click");
+            AddBlockTypeButton(blockControls, "Hold", BlockType.Hold, new Color(0.42f, 0.65f, 1f), "Long press");
+            AddBlockTypeButton(blockControls, "Drag", BlockType.Drag, new Color(1f, 0.55f, 0.1f), "Drag element");
+            AddBlockTypeButton(blockControls, "Swipe", BlockType.Swipe, new Color(1f, 0.44f, 0.25f), "Swipe gesture");
+            AddBlockTypeButton(blockControls, "2-Swipe", BlockType.TwoFingerSwipe, new Color(1f, 0.38f, 0.19f), "Two-finger swipe");
+            AddBlockTypeButton(blockControls, "Pinch", BlockType.Pinch, new Color(1f, 0.31f, 0.5f), "Pinch zoom gesture");
+            AddBlockTypeButton(blockControls, "Rotate", BlockType.Rotate, new Color(1f, 0.25f, 0.56f), "Two-finger rotate gesture");
+            AddBlockTypeButton(blockControls, "Scroll", BlockType.Scroll, new Color(0.35f, 0.75f, 0.35f), "Scroll in direction");
+            AddBlockTypeButton(blockControls, "Slider", BlockType.SetSlider, new Color(1f, 0.6f, 0.2f), "Set slider value");
+            AddBlockTypeButton(blockControls, "Scrollbar", BlockType.SetScrollbar, new Color(0.2f, 0.8f, 0.6f), "Set scrollbar position");
+            blockPanel.Add(blockControls);
 
-            // Row 2 container
-            var row2 = new VisualElement();
-            row2.style.flexDirection = FlexDirection.Row;
-            row2.style.paddingLeft = 4;
-            row2.style.paddingBottom = 2;
-            row2.style.backgroundColor = new Color(0.15f, 0.15f, 0.15f);
+            // Row 2: Keyboard Actions (Purple theme)
+            blockControlsRow2 = new VisualElement();
+            blockControlsRow2.style.flexDirection = FlexDirection.Row;
+            blockControlsRow2.style.flexWrap = Wrap.Wrap;
+            blockControlsRow2.style.paddingLeft = 4;
+            blockControlsRow2.style.paddingBottom = 1;
+            blockControlsRow2.style.backgroundColor = new Color(0.15f, 0.15f, 0.15f);
 
-            AddBlockTypeButton(row2, "+Wait", BlockType.Wait, new Color(1f, 0.75f, 0f));
-            AddBlockTypeButton(row2, "+WaitEl", BlockType.WaitForElement, new Color(0.88f, 0.63f, 0f));
-            AddBlockTypeButton(row2, "+Assert", BlockType.Assert, new Color(1f, 0.4f, 0.5f));
-            AddBlockTypeButton(row2, "+Log", BlockType.Log, new Color(0.5f, 0.5f, 0.5f));
-            AddBlockTypeButton(row2, "+Shot", BlockType.Screenshot, new Color(0.25f, 0.75f, 0.75f));
-            AddBlockTypeButton(row2, "+Scene", BlockType.LoadScene, new Color(0.63f, 0.5f, 0.75f));
+            AddBlockTypeButton(blockControlsRow2, "Type", BlockType.Type, new Color(0.6f, 0.4f, 1f), "Type text into field");
+            AddBlockTypeButton(blockControlsRow2, "Key", BlockType.KeyPress, new Color(0.63f, 0.5f, 1f), "Press keyboard key");
+            AddBlockTypeButton(blockControlsRow2, "Key Hold", BlockType.KeyHold, new Color(0.56f, 0.44f, 0.94f), "Hold keys for duration");
+            AddSeparator(blockControlsRow2);
+            // Wait Actions (Yellow/Orange theme)
+            AddBlockTypeButton(blockControlsRow2, "Wait", BlockType.Wait, new Color(1f, 0.75f, 0f), "Wait seconds");
+            AddBlockTypeButton(blockControlsRow2, "Wait For", BlockType.WaitForElement, new Color(0.88f, 0.63f, 0f), "Wait for element to appear");
+            AddBlockTypeButton(blockControlsRow2, "Scroll To", BlockType.ScrollUntil, new Color(0.31f, 0.69f, 0.31f), "Scroll until element found");
+            blockPanel.Add(blockControlsRow2);
+
+            // Row 3: Assertions, Scene, Data
+            var blockControlsRow3 = new VisualElement();
+            blockControlsRow3.style.flexDirection = FlexDirection.Row;
+            blockControlsRow3.style.flexWrap = Wrap.Wrap;
+            blockControlsRow3.style.paddingLeft = 4;
+            blockControlsRow3.style.paddingBottom = 1;
+            blockControlsRow3.style.backgroundColor = new Color(0.15f, 0.15f, 0.15f);
+
+            AddBlockTypeButton(blockControlsRow3, "Assert", BlockType.Assert, new Color(1f, 0.4f, 0.5f), "Assert condition");
+            AddBlockTypeButton(blockControlsRow3, "Log", BlockType.Log, new Color(0.5f, 0.5f, 0.5f), "Log message");
+            AddBlockTypeButton(blockControlsRow3, "Screenshot", BlockType.Screenshot, new Color(0.25f, 0.75f, 0.75f), "Capture screenshot");
+            AddSeparator(blockControlsRow3);
+            AddBlockTypeButton(blockControlsRow3, "Scene", BlockType.LoadScene, new Color(0.7f, 0.5f, 0.3f), "Load scene");
+            AddBlockTypeButton(blockControlsRow3, "Clear Data", BlockType.ClearPersistentData, new Color(0.6f, 0.3f, 0.3f), "Clear persistent data");
+            AddBlockTypeButton(blockControlsRow3, "Load Data", BlockType.LoadPersistentData, new Color(0.4f, 0.6f, 0.4f), "Load data to persistent path");
+            blockPanel.Add(blockControlsRow3);
+
+            // Row 4: Recording, Custom, AI, Clear
+            var blockControlsRow4 = new VisualElement();
+            blockControlsRow4.style.flexDirection = FlexDirection.Row;
+            blockControlsRow4.style.flexWrap = Wrap.Wrap;
+            blockControlsRow4.style.paddingLeft = 4;
+            blockControlsRow4.style.paddingBottom = 2;
+            blockControlsRow4.style.backgroundColor = new Color(0.15f, 0.15f, 0.15f);
+
+            AddBlockTypeButton(blockControlsRow4, "Record", BlockType.RecordAction, new Color(0.8f, 0.2f, 0.2f), "Record user action");
+            AddBlockTypeButton(blockControlsRow4, "Custom", BlockType.CustomAction, new Color(0.5f, 0.5f, 0.6f), "Call custom action");
+            AddBlockTypeButton(blockControlsRow4, "Code", BlockType.RunCode, new Color(0.4f, 0.5f, 0.6f), "Run C# code");
+            AddSeparator(blockControlsRow4);
+            AddBlockTypeButton(blockControlsRow4, "ForEach", BlockType.ForEach, new Color(0.88f, 0.63f, 0f), "Loop over matching elements");
+            AddBlockTypeButton(blockControlsRow4, "End", BlockType.EndForEach, new Color(0.75f, 0.5f, 0f), "End ForEach loop");
+
+            AddSeparator(blockControlsRow4);
 
             // AI button
             var aiBtn = new Button(ShowAIPromptPopup) { text = "AI" };
@@ -253,18 +371,48 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             aiBtn.style.color = Color.white;
             aiBtn.style.height = 18;
             aiBtn.style.fontSize = 10;
-            aiBtn.style.marginLeft = 8;
             aiBtn.style.paddingLeft = 6;
             aiBtn.style.paddingRight = 6;
             aiBtn.style.borderTopLeftRadius = 3;
             aiBtn.style.borderTopRightRadius = 3;
             aiBtn.style.borderBottomLeftRadius = 3;
             aiBtn.style.borderBottomRightRadius = 3;
-            row2.Add(aiBtn);
+            aiBtn.tooltip = "AI-assisted test creation";
+            blockControlsRow4.Add(aiBtn);
 
-            blockPanel.Add(row2);
+            // Settings button (gear icon)
+            var settingsBtn = new Button(OpenAISettings) { text = "⚙" };
+            settingsBtn.style.backgroundColor = new Color(0.35f, 0.35f, 0.35f);
+            settingsBtn.style.color = Color.white;
+            settingsBtn.style.height = 18;
+            settingsBtn.style.fontSize = 12;
+            settingsBtn.style.marginLeft = 2;
+            settingsBtn.style.paddingLeft = 4;
+            settingsBtn.style.paddingRight = 4;
+            settingsBtn.style.borderTopLeftRadius = 3;
+            settingsBtn.style.borderTopRightRadius = 3;
+            settingsBtn.style.borderBottomLeftRadius = 3;
+            settingsBtn.style.borderBottomRightRadius = 3;
+            settingsBtn.tooltip = "AI Settings";
+            blockControlsRow4.Add(settingsBtn);
 
-            blockPanel.Add(blockControls);
+            // Clear All button
+            var clearAllBtn = new Button(OnClearAllBlocks) { text = "Clear All" };
+            clearAllBtn.style.backgroundColor = new Color(0.5f, 0.25f, 0.25f);
+            clearAllBtn.style.color = Color.white;
+            clearAllBtn.style.height = 18;
+            clearAllBtn.style.fontSize = 10;
+            clearAllBtn.style.marginLeft = 8;
+            clearAllBtn.style.paddingLeft = 6;
+            clearAllBtn.style.paddingRight = 6;
+            clearAllBtn.style.borderTopLeftRadius = 3;
+            clearAllBtn.style.borderTopRightRadius = 3;
+            clearAllBtn.style.borderBottomLeftRadius = 3;
+            clearAllBtn.style.borderBottomRightRadius = 3;
+            clearAllBtn.tooltip = "Delete all blocks";
+            blockControlsRow4.Add(clearAllBtn);
+
+            blockPanel.Add(blockControlsRow4);
 
             // Block list
             var scroll = new ScrollView(ScrollViewMode.Vertical);
@@ -276,7 +424,46 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             root.Add(blockPanel);
         }
 
-        private void AddBlockTypeButton(VisualElement parent, string label, BlockType type, Color color)
+        private void OnClearAllBlocks()
+        {
+            if (currentTest == null || currentTest.blocks == null || currentTest.blocks.Count == 0)
+            {
+                statusLabel.text = "No blocks to clear";
+                return;
+            }
+
+            if (!EditorUtility.DisplayDialog("Clear All Blocks",
+                $"Delete all {currentTest.blocks.Count} blocks?\n\nThis cannot be undone.",
+                "Delete All", "Cancel"))
+            {
+                return;
+            }
+
+            Undo.RecordObject(currentTest, "Clear all blocks");
+            currentTest.blocks.Clear();
+            EditorUtility.SetDirty(currentTest);
+
+            editingBlockIndex = -1;
+            blockHasUnsavedChanges = false;
+            selectedBlockIndex = -1;
+
+            RefreshBlockList();
+            statusLabel.text = "All blocks cleared";
+        }
+
+        private void AddSeparator(VisualElement parent)
+        {
+            var sep = new VisualElement();
+            sep.style.width = 1;
+            sep.style.height = 14;
+            sep.style.marginLeft = 4;
+            sep.style.marginRight = 4;
+            sep.style.marginTop = 2;
+            sep.style.backgroundColor = new Color(0.4f, 0.4f, 0.4f);
+            parent.Add(sep);
+        }
+
+        private void AddBlockTypeButton(VisualElement parent, string label, BlockType type, Color color, string tooltip = null)
         {
             var btn = new Button(() => AddBlock(type)) { text = label };
             btn.style.backgroundColor = color;
@@ -290,11 +477,76 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             btn.style.borderTopRightRadius = 3;
             btn.style.borderBottomLeftRadius = 3;
             btn.style.borderBottomRightRadius = 3;
+            if (!string.IsNullOrEmpty(tooltip))
+                btn.tooltip = tooltip;
             parent.Add(btn);
         }
 
         private void BuildStatusBar()
         {
+            // AI Status Panel (hidden by default)
+            aiStatusPanel = new VisualElement();
+            aiStatusPanel.style.flexDirection = FlexDirection.Column;
+            aiStatusPanel.style.backgroundColor = new Color(0.2f, 0.15f, 0.3f);
+            aiStatusPanel.style.paddingLeft = 6;
+            aiStatusPanel.style.paddingRight = 6;
+            aiStatusPanel.style.paddingTop = 4;
+            aiStatusPanel.style.paddingBottom = 4;
+            aiStatusPanel.style.borderTopWidth = 1;
+            aiStatusPanel.style.borderTopColor = new Color(0.5f, 0.3f, 0.7f);
+            aiStatusPanel.style.display = DisplayStyle.None;
+
+            // Header row with state and stop button
+            var headerRow = new VisualElement();
+            headerRow.style.flexDirection = FlexDirection.Row;
+            headerRow.style.alignItems = Align.Center;
+
+            var aiIcon = new Label("🤖");
+            aiIcon.style.fontSize = 12;
+            aiIcon.style.marginRight = 4;
+            headerRow.Add(aiIcon);
+
+            aiStateLabel = new Label("AI: Idle");
+            aiStateLabel.style.color = new Color(0.8f, 0.7f, 1f);
+            aiStateLabel.style.fontSize = 11;
+            aiStateLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            aiStateLabel.style.flexGrow = 1;
+            headerRow.Add(aiStateLabel);
+
+            aiStopButton = new Button(StopAI) { text = "■ Stop" };
+            aiStopButton.style.backgroundColor = new Color(0.6f, 0.2f, 0.2f);
+            aiStopButton.style.color = Color.white;
+            aiStopButton.style.height = 18;
+            aiStopButton.style.fontSize = 10;
+            aiStopButton.style.paddingLeft = 6;
+            aiStopButton.style.paddingRight = 6;
+            aiStopButton.style.borderTopLeftRadius = 3;
+            aiStopButton.style.borderTopRightRadius = 3;
+            aiStopButton.style.borderBottomLeftRadius = 3;
+            aiStopButton.style.borderBottomRightRadius = 3;
+            headerRow.Add(aiStopButton);
+
+            aiStatusPanel.Add(headerRow);
+
+            // Progress bar
+            aiProgressBar = new ProgressBar();
+            aiProgressBar.style.height = 4;
+            aiProgressBar.style.marginTop = 4;
+            aiProgressBar.style.marginBottom = 2;
+            aiStatusPanel.Add(aiProgressBar);
+
+            // Reasoning label
+            aiReasoningLabel = new Label("");
+            aiReasoningLabel.style.color = new Color(0.7f, 0.7f, 0.8f);
+            aiReasoningLabel.style.fontSize = 9;
+            aiReasoningLabel.style.whiteSpace = WhiteSpace.Normal;
+            aiReasoningLabel.style.maxHeight = 32;
+            aiReasoningLabel.style.overflow = Overflow.Hidden;
+            aiStatusPanel.Add(aiReasoningLabel);
+
+            root.Add(aiStatusPanel);
+
+            // Regular status bar
             var bar = new VisualElement();
             bar.style.flexDirection = FlexDirection.Row;
             bar.style.paddingLeft = 4;
@@ -310,6 +562,45 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             root.Add(bar);
         }
 
+        private void UpdateAIStatusPanel(bool show, string state = null, string reasoning = null, float progress = -1)
+        {
+            if (aiStatusPanel == null) return;
+
+            aiStatusPanel.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (show)
+            {
+                if (state != null)
+                {
+                    aiStateLabel.text = $"AI: {state}";
+
+                    // Color based on state
+                    aiStateLabel.style.color = state switch
+                    {
+                        "Running" or "Analyzing..." => new Color(0.5f, 1f, 0.5f),
+                        "Executing action..." => new Color(1f, 0.9f, 0.4f),
+                        "Completed" => new Color(0.4f, 1f, 0.4f),
+                        "Failed" or "Error" => new Color(1f, 0.4f, 0.4f),
+                        "Stopping..." => new Color(1f, 0.6f, 0.3f),
+                        _ => new Color(0.8f, 0.7f, 1f)
+                    };
+                }
+
+                if (reasoning != null)
+                {
+                    // Truncate long reasoning
+                    var truncated = reasoning.Length > 120 ? reasoning.Substring(0, 117) + "..." : reasoning;
+                    aiReasoningLabel.text = truncated;
+                }
+
+                if (progress >= 0)
+                {
+                    aiProgressBar.value = progress;
+                    aiProgressBar.title = $"{(int)(progress * 100)}%";
+                }
+            }
+        }
+
         // === UI State Management ===
 
         private void RefreshUI()
@@ -318,7 +609,11 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             if (root == null || statusLabel == null) return;
 
             var hasScene = currentTest != null && !string.IsNullOrEmpty(currentTest.startScene);
+            var hasBlocks = currentTest != null && currentTest.blocks != null && currentTest.blocks.Count > 0;
             var inPlayMode = EditorApplication.isPlaying;
+
+            // Play button: enabled when we have a scene and blocks
+            playTestBtn?.SetEnabled(hasScene && hasBlocks);
 
             // Start button: enabled when we have a scene and NOT in play mode
             startEditBtn?.SetEnabled(hasScene && !inPlayMode);
@@ -332,12 +627,17 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 blockControls.SetEnabled(inPlayMode);
                 blockControls.style.opacity = inPlayMode ? 1f : 0.5f;
             }
+            if (blockControlsRow2 != null)
+            {
+                blockControlsRow2.SetEnabled(inPlayMode);
+                blockControlsRow2.style.opacity = inPlayMode ? 1f : 0.5f;
+            }
 
             // Update status
             if (!hasScene)
                 statusLabel.text = "Select a scene to begin";
             else if (!inPlayMode)
-                statusLabel.text = "Click 'Start Editing' to enter play mode";
+                statusLabel.text = "Click 'Edit' to enter play mode";
             else
                 statusLabel.text = "Add blocks and configure them";
 
@@ -361,14 +661,42 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 return;
             }
 
+            // Calculate indent levels for ForEach/EndForEach nesting
+            int indentLevel = 0;
             for (int i = 0; i < currentTest.blocks.Count; i++)
-                blockListContainer.Add(CreateBlockRow(currentTest.blocks[i], i));
+            {
+                var block = currentTest.blocks[i];
+                // EndForEach decreases indent before rendering
+                if (block.type == BlockType.EndForEach && indentLevel > 0)
+                    indentLevel--;
+
+                blockListContainer.Add(CreateBlockRow(block, i, indentLevel));
+
+                // ForEach increases indent after rendering
+                if (block.type == BlockType.ForEach)
+                    indentLevel++;
+            }
         }
 
-        private VisualElement CreateBlockRow(VisualBlock block, int index)
+        private VisualElement CreateBlockRow(VisualBlock block, int index, int indentLevel = 0)
         {
             var isEditing = (index == editingBlockIndex);
             var c = block.GetBlockColor();
+
+            // Container for the entire row including indent
+            var container = new VisualElement();
+            container.style.flexDirection = FlexDirection.Row;
+
+            // Indentation visual (loop bracket)
+            if (indentLevel > 0)
+            {
+                var indent = new VisualElement();
+                indent.style.width = 12 * indentLevel;
+                indent.style.borderLeftWidth = 2;
+                indent.style.borderLeftColor = new Color(0.88f, 0.63f, 0f, 0.6f); // Gold color for loop
+                indent.style.marginLeft = 4;
+                container.Add(indent);
+            }
 
             var row = new VisualElement();
             row.style.flexDirection = FlexDirection.Row;
@@ -377,6 +705,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             row.style.marginBottom = 1;
             row.style.paddingLeft = 2;
             row.style.paddingRight = 2;
+            row.style.flexGrow = 1;
             row.style.backgroundColor = isEditing ? new Color(c.r * 0.4f, c.g * 0.4f, c.b * 0.4f, 1f) : new Color(0.22f, 0.22f, 0.22f);
             row.style.borderLeftWidth = 3;
             row.style.borderLeftColor = c;
@@ -386,12 +715,16 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
             // Type label (short)
             var typeNames = new Dictionary<BlockType, string> {
-                { BlockType.Click, "CLK" }, { BlockType.DoubleClick, "2xC" }, { BlockType.Hold, "HLD" },
+                { BlockType.Click, "CLK" }, { BlockType.DoubleClick, "DBL" }, { BlockType.Hold, "HLD" },
                 { BlockType.Type, "TYP" }, { BlockType.KeyPress, "KEY" }, { BlockType.KeyHold, "KyH" },
-                { BlockType.Drag, "DRG" }, { BlockType.Scroll, "SCR" },
-                { BlockType.Wait, "W" }, { BlockType.WaitForElement, "W?" },
+                { BlockType.SetSlider, "SLD" }, { BlockType.SetScrollbar, "SBR" },
+                { BlockType.Drag, "DRG" }, { BlockType.Scroll, "SCR" }, { BlockType.ScrollUntil, "S4" },
+                { BlockType.Wait, "W" }, { BlockType.WaitForElement, "W4" },
                 { BlockType.Assert, "AST" }, { BlockType.Log, "LOG" },
-                { BlockType.Screenshot, "SS" }, { BlockType.LoadScene, "SCN" }
+                { BlockType.Screenshot, "SS" }, { BlockType.LoadScene, "SCN" },
+                { BlockType.Swipe, "SWP" }, { BlockType.Pinch, "PCH" },
+                { BlockType.TwoFingerSwipe, "2SW" }, { BlockType.Rotate, "ROT" },
+                { BlockType.ForEach, "FOR" }, { BlockType.EndForEach, "END" }
             };
             var typeLbl = new Label(typeNames.GetValueOrDefault(block.type, "?"));
             typeLbl.style.width = 26;
@@ -437,7 +770,8 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             delBtn.style.color = new Color(1f, 0.4f, 0.4f);
             row.Add(delBtn);
 
-            return row;
+            container.Add(row);
+            return container;
         }
 
         private void BuildRowContent(VisualElement row, VisualBlock block, int index, bool isEditing)
@@ -528,7 +862,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                         }
                         else
                         {
-                            row.Add(new Label($"{block.dragDirection} {block.dragDistance}px") { style = { fontSize = 10 } });
+                            row.Add(new Label($"{block.dragDirection} {block.dragDistance:P0}") { style = { fontSize = 10 } });
                         }
                     }
                     if (isEditing)
@@ -559,6 +893,38 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
                 case BlockType.DoubleClick:
                     AddTargetButton(row, block, index, canEdit, 150);
+                    break;
+
+                case BlockType.SetSlider:
+                    AddTargetButton(row, block, index, canEdit, 100);
+                    if (isEditing)
+                    {
+                        var sliderVal = new FloatField { value = block.sliderValue };
+                        sliderVal.style.width = 40; sliderVal.style.height = 16;
+                        sliderVal.RegisterValueChangedCallback(e => { block.sliderValue = Mathf.Clamp(e.newValue, 0f, 100f); OnBlockChanged(index); });
+                        row.Add(sliderVal);
+                    }
+                    else
+                    {
+                        row.Add(new Label($"{block.sliderValue:F0}") { style = { fontSize = 10 } });
+                    }
+                    row.Add(new Label("%") { style = { fontSize = 10 } });
+                    break;
+
+                case BlockType.SetScrollbar:
+                    AddTargetButton(row, block, index, canEdit, 100);
+                    if (isEditing)
+                    {
+                        var scrollbarVal = new FloatField { value = block.scrollbarValue };
+                        scrollbarVal.style.width = 40; scrollbarVal.style.height = 16;
+                        scrollbarVal.RegisterValueChangedCallback(e => { block.scrollbarValue = Mathf.Clamp(e.newValue, 0f, 100f); OnBlockChanged(index); });
+                        row.Add(scrollbarVal);
+                    }
+                    else
+                    {
+                        row.Add(new Label($"{block.scrollbarValue:F0}") { style = { fontSize = 10 } });
+                    }
+                    row.Add(new Label("%") { style = { fontSize = 10 } });
                     break;
 
                 case BlockType.Hold:
@@ -622,6 +988,22 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     row.Add(new Label("s") { style = { fontSize = 10 } });
                     break;
 
+                case BlockType.ScrollUntil:
+                    // Target element to find
+                    row.Add(new Label("Find:") { style = { fontSize = 10 } });
+                    AddTargetButton(row, block, index, canEdit, 80);
+                    // Scroll container (optional)
+                    row.Add(new Label("In:") { style = { fontSize = 10, marginLeft = 4 } });
+                    AddScrollContainerButton(row, block, index, canEdit, 70);
+                    // Max attempts
+                    var maxf = new IntegerField { value = block.scrollMaxAttempts };
+                    maxf.style.width = 30; maxf.style.height = 16;
+                    maxf.SetEnabled(isEditing);
+                    maxf.RegisterValueChangedCallback(e => { block.scrollMaxAttempts = e.newValue; OnBlockChanged(index); });
+                    row.Add(maxf);
+                    row.Add(new Label("tries") { style = { fontSize = 10 } });
+                    break;
+
                 case BlockType.Screenshot:
                     var ssf = new TextField { value = block.screenshotName ?? "" };
                     ssf.style.width = 100; ssf.style.height = 16; ssf.style.fontSize = 10;
@@ -651,20 +1033,175 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                         row.Add(addv);
                     }
                     break;
+
+                case BlockType.Swipe:
+                    AddTargetButton(row, block, index, canEdit, 60);
+                    if (isEditing)
+                    {
+                        var dirs = new List<string> { "up", "down", "left", "right" };
+                        var sd = new DropdownField(dirs, Math.Max(0, dirs.IndexOf(block.swipeDirection ?? "up")));
+                        sd.style.width = 50; sd.style.height = 16; sd.style.fontSize = 10;
+                        sd.RegisterValueChangedCallback(e => { block.swipeDirection = e.newValue; OnBlockChanged(index); });
+                        row.Add(sd);
+                        var dist = new FloatField { value = block.swipeDistance };
+                        dist.style.width = 35; dist.style.height = 16;
+                        dist.RegisterValueChangedCallback(e => { block.swipeDistance = Mathf.Clamp01(e.newValue); OnBlockChanged(index); });
+                        row.Add(dist);
+                        row.Add(new Label("dist") { style = { fontSize = 9 } });
+                    }
+                    else
+                    {
+                        row.Add(new Label($"{block.swipeDirection} {block.swipeDistance:P0}") { style = { fontSize = 10 } });
+                    }
+                    break;
+
+                case BlockType.Pinch:
+                    AddTargetButton(row, block, index, canEdit, 60);
+                    if (isEditing)
+                    {
+                        var scale = new FloatField { value = block.pinchScale };
+                        scale.style.width = 40; scale.style.height = 16;
+                        scale.RegisterValueChangedCallback(e => { block.pinchScale = Mathf.Max(0.1f, e.newValue); OnBlockChanged(index); });
+                        row.Add(scale);
+                        row.Add(new Label("scale") { style = { fontSize = 9 } });
+                        var dur = new FloatField { value = block.pinchDuration };
+                        dur.style.width = 35; dur.style.height = 16;
+                        dur.RegisterValueChangedCallback(e => { block.pinchDuration = Mathf.Max(0.1f, e.newValue); OnBlockChanged(index); });
+                        row.Add(dur);
+                        row.Add(new Label("s") { style = { fontSize = 9 } });
+                    }
+                    else
+                    {
+                        row.Add(new Label($"{(block.pinchScale < 1 ? "in" : "out")} {block.pinchScale:F1}x") { style = { fontSize = 10 } });
+                    }
+                    break;
+
+                case BlockType.TwoFingerSwipe:
+                    AddTargetButton(row, block, index, canEdit, 60);
+                    if (isEditing)
+                    {
+                        var dirs = new List<string> { "up", "down", "left", "right" };
+                        var sd = new DropdownField(dirs, Math.Max(0, dirs.IndexOf(block.swipeDirection ?? "up")));
+                        sd.style.width = 50; sd.style.height = 16; sd.style.fontSize = 10;
+                        sd.RegisterValueChangedCallback(e => { block.swipeDirection = e.newValue; OnBlockChanged(index); });
+                        row.Add(sd);
+                        var dist = new FloatField { value = block.swipeDistance };
+                        dist.style.width = 35; dist.style.height = 16;
+                        dist.RegisterValueChangedCallback(e => { block.swipeDistance = Mathf.Clamp01(e.newValue); OnBlockChanged(index); });
+                        row.Add(dist);
+                        row.Add(new Label("dist") { style = { fontSize = 9 } });
+                    }
+                    else
+                    {
+                        row.Add(new Label($"{block.swipeDirection} {block.swipeDistance:P0}") { style = { fontSize = 10 } });
+                    }
+                    break;
+
+                case BlockType.Rotate:
+                    AddTargetButton(row, block, index, canEdit, 60);
+                    if (isEditing)
+                    {
+                        var deg = new FloatField { value = block.rotateDegrees };
+                        deg.style.width = 45; deg.style.height = 16;
+                        deg.RegisterValueChangedCallback(e => { block.rotateDegrees = e.newValue; OnBlockChanged(index); });
+                        row.Add(deg);
+                        row.Add(new Label("°") { style = { fontSize = 9 } });
+                        var dur = new FloatField { value = block.rotateDuration };
+                        dur.style.width = 35; dur.style.height = 16;
+                        dur.RegisterValueChangedCallback(e => { block.rotateDuration = Mathf.Max(0.1f, e.newValue); OnBlockChanged(index); });
+                        row.Add(dur);
+                        row.Add(new Label("s") { style = { fontSize = 9 } });
+                    }
+                    else
+                    {
+                        row.Add(new Label($"{(block.rotateDegrees >= 0 ? "CW" : "CCW")} {Mathf.Abs(block.rotateDegrees)}°") { style = { fontSize = 10 } });
+                    }
+                    break;
+
+                case BlockType.ForEach:
+                    AddTargetButton(row, block, index, canEdit, 80);
+                    if (isEditing)
+                    {
+                        row.Add(new Label("as") { style = { fontSize = 9, marginLeft = 2 } });
+                        var varField = new TextField { value = block.forEachVariable ?? "item" };
+                        varField.style.width = 50; varField.style.height = 16; varField.style.fontSize = 10;
+                        varField.RegisterValueChangedCallback(e => { block.forEachVariable = e.newValue; OnBlockChanged(index); });
+                        row.Add(varField);
+                        row.Add(new Label("max") { style = { fontSize = 9, marginLeft = 4 } });
+                        var maxField = new IntegerField { value = block.forEachMaxIterations };
+                        maxField.style.width = 35; maxField.style.height = 16;
+                        maxField.RegisterValueChangedCallback(e => { block.forEachMaxIterations = Math.Max(0, e.newValue); OnBlockChanged(index); });
+                        row.Add(maxField);
+                    }
+                    else
+                    {
+                        row.Add(new Label($"as {block.forEachVariable ?? "item"}") { style = { fontSize = 10, marginLeft = 2 } });
+                    }
+                    break;
+
+                case BlockType.EndForEach:
+                    row.Add(new Label("End ForEach") { style = { fontSize = 10, color = new Color(0.75f, 0.5f, 0f) } });
+                    break;
             }
         }
 
         private void AddTargetButton(VisualElement row, VisualBlock block, int index, bool canEdit, int maxWidth)
         {
+            var hasValidTarget = block.target != null && block.target.IsValid();
             var btn = new Button(() => ShowTargetPicker(block, index))
             {
-                text = block.target?.GetDisplayText() ?? "[target]"
+                text = hasValidTarget ? block.target.GetDisplayText() : "[target]"
             };
             btn.style.maxWidth = maxWidth;
             btn.style.height = 16;
             btn.style.fontSize = 10;
             btn.SetEnabled(canEdit);
             row.Add(btn);
+        }
+
+        private void AddScrollContainerButton(VisualElement row, VisualBlock block, int index, bool canEdit, int maxWidth)
+        {
+            var btn = new Button(() => ShowScrollContainerPicker(block, index))
+            {
+                text = block.scrollContainer?.GetDisplayText() ?? "[auto]"
+            };
+            btn.style.maxWidth = maxWidth;
+            btn.style.height = 16;
+            btn.style.fontSize = 10;
+            btn.SetEnabled(canEdit);
+            row.Add(btn);
+        }
+
+        private void ShowScrollContainerPicker(VisualBlock block, int blockIndex)
+        {
+            // Simple popup to pick a scroll container - reuse target picker logic
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Auto-detect"), block.scrollContainer == null, () =>
+            {
+                block.scrollContainer = null;
+                OnBlockChanged(blockIndex);
+                RefreshBlockList();
+            });
+            menu.AddSeparator("");
+
+            // Find all ScrollRects in scene
+            var scrollRects = UnityEngine.Object.FindObjectsByType<UnityEngine.UI.ScrollRect>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (var sr in scrollRects)
+            {
+                var name = sr.gameObject.name;
+                menu.AddItem(new GUIContent(name), false, () =>
+                {
+                    block.scrollContainer = new ElementSelector
+                    {
+                        type = SelectorType.ByName,
+                        pattern = name
+                    };
+                    OnBlockChanged(blockIndex);
+                    RefreshBlockList();
+                });
+            }
+
+            menu.ShowAsContext();
         }
 
         // === Scene GUI for Visual Picking ===
@@ -844,8 +1381,8 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 id = Guid.NewGuid().ToString(),
                 type = type,
                 waitSeconds = type == BlockType.Wait ? 1f : 0f,
-                dragDistance = type == BlockType.Drag ? 100f : 0f,
-                scrollAmount = type == BlockType.Scroll ? 100f : 0f
+                dragDistance = type == BlockType.Drag ? 0.2f : 0f,  // 20% of screen height
+                scrollAmount = type == BlockType.Scroll ? 0.3f : 0f  // 30% of scrollable area
             };
 
             currentTest.blocks.Add(block);
@@ -1162,6 +1699,34 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 return;
             }
 
+            // Check API key before showing popup - load settings asset directly
+            var settingsPath = "Assets/Editor/AITestSettings.asset";
+            var settings = AssetDatabase.LoadAssetAtPath<ScriptableObject>(settingsPath);
+
+            var hasGemini = false;
+
+            if (settings != null)
+            {
+                var geminiKeyField = settings.GetType().GetField("geminiApiKey");
+
+                if (geminiKeyField != null)
+                    hasGemini = !string.IsNullOrEmpty(geminiKeyField.GetValue(settings) as string);
+            }
+
+            if (!hasGemini)
+            {
+                statusLabel.text = "No AI provider configured!";
+                UpdateAIStatusPanel(true, "Error", "No API key configured. Go to Project Settings > UI Test > AI Testing to add your Gemini API key.", -1);
+
+                if (EditorUtility.DisplayDialog("AI Not Configured",
+                    "No AI provider is configured.\n\nPlease add your Gemini API key in:\nProject Settings > UI Test > AI Testing",
+                    "Open Settings", "Cancel"))
+                {
+                    SettingsService.OpenProjectSettings("Project/UI Test/AI Testing");
+                }
+                return;
+            }
+
             var popup = CreateInstance<AIPromptPopup>();
             popup.Init(async (prompt) =>
             {
@@ -1172,34 +1737,92 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
                 // Clean up previous assistant
                 aiAssistant?.Dispose();
+                aiActionCount = 0;
 
                 // Create new assistant
                 aiAssistant = new AIAssistant(currentTest);
+
+                // Show the AI status panel
+                UpdateAIStatusPanel(true, "Initializing...", "Preparing to analyze screen...", 0);
+
                 aiAssistant.OnBlockAdded += (block) =>
                 {
+                    aiActionCount++;
                     RefreshBlockList();
-                    statusLabel.text = $"AI: {block.GetDisplayText()}";
+                    statusLabel.text = $"AI added: {block.GetDisplayText()}";
+                    UpdateAIStatusPanel(true, $"Executing action {aiActionCount}...", block.GetDisplayText(), -1);
                 };
+
+                aiAssistant.OnReasoningReceived += (reasoning) =>
+                {
+                    UpdateAIStatusPanel(true, null, reasoning, -1);
+                };
+
                 aiAssistant.OnStatusChanged += (status) =>
                 {
                     statusLabel.text = status;
+
+                    // Map status to display state
+                    var displayState = status switch
+                    {
+                        var s when s.Contains("Initializing") => "Initializing...",
+                        var s when s.Contains("analyzing") || s.Contains("Analyzing") => "Analyzing...",
+                        var s when s.Contains("Executing") => "Executing action...",
+                        var s when s.Contains("Stopping") => "Stopping...",
+                        var s when s.Contains("Completed") => "Completed",
+                        var s when s.Contains("Failed") || s.Contains("Error") => "Failed",
+                        _ => "Running"
+                    };
+                    UpdateAIStatusPanel(true, displayState, null, -1);
                 };
+
+                aiAssistant.OnStateChanged += (state) =>
+                {
+                    var displayState = state switch
+                    {
+                        AIAssistant.State.Idle => "Idle",
+                        AIAssistant.State.Initializing => "Initializing...",
+                        AIAssistant.State.Running => "Running",
+                        AIAssistant.State.Paused => "Paused",
+                        AIAssistant.State.Stopping => "Stopping...",
+                        AIAssistant.State.Completed => "Completed",
+                        AIAssistant.State.Failed => "Failed",
+                        _ => "Unknown"
+                    };
+                    UpdateAIStatusPanel(true, displayState, null, -1);
+                };
+
                 aiAssistant.OnCompleted += (success, message) =>
                 {
                     RefreshBlockList();
                     statusLabel.text = success ? $"AI done: {message}" : $"AI stopped: {message}";
+                    UpdateAIStatusPanel(true, success ? "Completed" : "Stopped", message, 1f);
+
+                    // Hide the panel after a delay
+                    EditorApplication.delayCall += () =>
+                    {
+                        EditorApplication.delayCall += () =>
+                        {
+                            EditorApplication.delayCall += () =>
+                            {
+                                UpdateAIStatusPanel(false);
+                            };
+                        };
+                    };
                 };
 
                 statusLabel.text = "AI starting...";
+                UpdateAIStatusPanel(true, "Starting...", $"Prompt: {prompt}", 0);
 
                 try
                 {
-                    await aiAssistant.StartAsync(prompt, "");
+                    await aiAssistant.StartAsync(prompt);
                 }
                 catch (Exception ex)
                 {
                     Debug.LogError($"[TestBuilder] AI error: {ex}");
                     statusLabel.text = $"AI error: {ex.Message}";
+                    UpdateAIStatusPanel(true, "Error", ex.Message, -1);
                 }
             });
 
@@ -1210,7 +1833,13 @@ namespace ODDGames.UITest.VisualBuilder.Editor
         private void StopAI()
         {
             aiAssistant?.Stop();
-            statusLabel.text = "AI stopped";
+            statusLabel.text = "AI stopping...";
+            UpdateAIStatusPanel(true, "Stopping...", "Cancelling AI operation...", -1);
+        }
+
+        private void OpenAISettings()
+        {
+            SettingsService.OpenProjectSettings("Project/UI Test/AI Testing");
         }
     }
 

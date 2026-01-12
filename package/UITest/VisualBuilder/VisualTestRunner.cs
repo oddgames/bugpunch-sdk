@@ -121,6 +121,18 @@ namespace ODDGames.UITest.VisualBuilder
         private const int PostActionDelayMs = 50;
 
         /// <summary>
+        /// Gets display text for a selector, returning fallback if null or invalid.
+        /// Used for error messages to always show meaningful text.
+        /// </summary>
+        private static string GetSelectorDisplay(ElementSelector selector, string fallback = "(no target)")
+        {
+            if (selector == null) return fallback;
+            if (!selector.IsValid()) return fallback;
+            var text = selector.GetDisplayText();
+            return string.IsNullOrEmpty(text) ? fallback : text;
+        }
+
+        /// <summary>
         /// Runs a visual test asynchronously.
         /// </summary>
         /// <param name="test">The visual test to run</param>
@@ -219,6 +231,14 @@ namespace ODDGames.UITest.VisualBuilder
                         await ExecuteClickAsync(block, ct);
                         break;
 
+                    case BlockType.DoubleClick:
+                        await ExecuteDoubleClickAsync(block, ct);
+                        break;
+
+                    case BlockType.Hold:
+                        await ExecuteHoldAsync(block, ct);
+                        break;
+
                     case BlockType.Type:
                         await ExecuteTypeAsync(block, ct);
                         break;
@@ -239,8 +259,28 @@ namespace ODDGames.UITest.VisualBuilder
                         await ExecuteAssertAsync(block, ct);
                         break;
 
+                    case BlockType.KeyPress:
+                        await ExecuteKeyPressAsync(block, ct);
+                        break;
+
                     case BlockType.KeyHold:
                         await ExecuteKeyHoldAsync(block, ct);
+                        break;
+
+                    case BlockType.WaitForElement:
+                        await ExecuteWaitForElementAsync(block, ct);
+                        break;
+
+                    case BlockType.ScrollUntil:
+                        await ExecuteScrollUntilAsync(block, ct);
+                        break;
+
+                    case BlockType.Screenshot:
+                        await ExecuteScreenshotAsync(block, ct);
+                        break;
+
+                    case BlockType.Log:
+                        ExecuteLog(block);
                         break;
 
                     case BlockType.RunCode:
@@ -249,6 +289,14 @@ namespace ODDGames.UITest.VisualBuilder
 
                     case BlockType.VisualScript:
                         await ExecuteVisualScriptAsync(block, ct);
+                        break;
+
+                    case BlockType.SetSlider:
+                        await ExecuteSetSliderAsync(block, ct);
+                        break;
+
+                    case BlockType.SetScrollbar:
+                        await ExecuteSetScrollbarAsync(block, ct);
                         break;
 
                     default:
@@ -279,18 +327,44 @@ namespace ODDGames.UITest.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Click target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Click target not found: {GetSelectorDisplay(block.target)}");
 
             var screenPos = InputInjector.GetScreenPosition(element.gameObject);
             Debug.Log($"[VisualTestRunner] Click at {screenPos} on '{element.name}'");
             await InputInjector.InjectPointerTap(screenPos);
         }
 
+        private static async UniTask ExecuteDoubleClickAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+            if (element?.gameObject == null)
+                throw new InvalidOperationException($"DoubleClick target not found: {GetSelectorDisplay(block.target)}");
+
+            var screenPos = InputInjector.GetScreenPosition(element.gameObject);
+            Debug.Log($"[VisualTestRunner] DoubleClick at {screenPos} on '{element.name}'");
+
+            // Perform two quick clicks
+            await InputInjector.InjectPointerTap(screenPos);
+            await UniTask.Delay(50, cancellationToken: ct);
+            await InputInjector.InjectPointerTap(screenPos);
+        }
+
+        private static async UniTask ExecuteHoldAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+            if (element?.gameObject == null)
+                throw new InvalidOperationException($"Hold target not found: {GetSelectorDisplay(block.target)}");
+
+            var screenPos = InputInjector.GetScreenPosition(element.gameObject);
+            Debug.Log($"[VisualTestRunner] Hold at {screenPos} on '{element.name}' for {block.holdSeconds}s");
+            await InputInjector.InjectPointerHold(screenPos, block.holdSeconds);
+        }
+
         private static async UniTask ExecuteTypeAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Type target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Type target not found: {GetSelectorDisplay(block.target)}");
 
             // Click to focus the input field
             var screenPos = InputInjector.GetScreenPosition(element.gameObject);
@@ -323,7 +397,7 @@ namespace ODDGames.UITest.VisualBuilder
         {
             var fromElement = await ResolveElementAsync(block.target, ct);
             if (fromElement?.gameObject == null)
-                throw new InvalidOperationException($"Drag source not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Drag source not found: {GetSelectorDisplay(block.target)}");
 
             var startPos = InputInjector.GetScreenPosition(fromElement.gameObject);
             Vector2 endPos;
@@ -334,7 +408,7 @@ namespace ODDGames.UITest.VisualBuilder
                 // Drag to another element
                 var toElement = await ResolveElementAsync(block.dragTarget, ct);
                 if (toElement?.gameObject == null)
-                    throw new InvalidOperationException($"Drag target not found: {block.dragTarget.GetDisplayText()}");
+                    throw new InvalidOperationException($"Drag target not found: {GetSelectorDisplay(block.dragTarget)}");
 
                 endPos = InputInjector.GetScreenPosition(toElement.gameObject);
             }
@@ -357,7 +431,7 @@ namespace ODDGames.UITest.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Scroll target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Scroll target not found: {GetSelectorDisplay(block.target)}");
 
             var center = InputInjector.GetScreenPosition(element.gameObject);
             var scrollDelta = GetScrollDelta(block.scrollDirection, block.scrollAmount);
@@ -515,6 +589,222 @@ namespace ODDGames.UITest.VisualBuilder
             }
         }
 
+        private static async UniTask ExecuteKeyPressAsync(VisualBlock block, CancellationToken ct)
+        {
+            var keyName = block.keyName ?? "Escape";
+            if (!Enum.TryParse<UnityEngine.InputSystem.Key>(keyName, true, out var key))
+            {
+                throw new InvalidOperationException($"Unknown key: {keyName}");
+            }
+
+            Debug.Log($"[VisualTestRunner] Pressing key: {key}");
+            await InputInjector.PressKey(key);
+        }
+
+        private static async UniTask ExecuteWaitForElementAsync(VisualBlock block, CancellationToken ct)
+        {
+            Debug.Log($"[VisualTestRunner] Waiting for element: {GetSelectorDisplay(block.target)}");
+
+            var timeoutMs = Mathf.Max(1000, (int)(block.waitTimeout * 1000f));
+            var element = await TryResolveElementAsync(block.target, ct, timeoutMs);
+
+            if (element == null)
+            {
+                throw new InvalidOperationException($"Element did not appear within {block.waitTimeout}s: {GetSelectorDisplay(block.target)}");
+            }
+
+            Debug.Log($"[VisualTestRunner] Element appeared: {element.name}");
+        }
+
+        private static async UniTask ExecuteScrollUntilAsync(VisualBlock block, CancellationToken ct)
+        {
+            Debug.Log($"[VisualTestRunner] ScrollUntil: Looking for {GetSelectorDisplay(block.target)}");
+
+            // Find the scroll container (if specified, otherwise try to find one near the target)
+            GameObject scrollContainerGo = null;
+            ScrollRect scrollRect = null;
+
+            if (block.scrollContainer != null && block.scrollContainer.IsValid())
+            {
+                var containerElement = await TryResolveElementAsync(block.scrollContainer, ct, 2000);
+                if (containerElement?.gameObject != null)
+                {
+                    scrollRect = containerElement.gameObject.GetComponent<ScrollRect>();
+                    if (scrollRect == null)
+                        scrollRect = containerElement.gameObject.GetComponentInChildren<ScrollRect>();
+                    scrollContainerGo = scrollRect?.gameObject;
+                }
+            }
+
+            // If no container specified, try to find any ScrollRect in the scene
+            if (scrollRect == null)
+            {
+                scrollRect = UnityEngine.Object.FindAnyObjectByType<ScrollRect>();
+                scrollContainerGo = scrollRect?.gameObject;
+            }
+
+            if (scrollRect == null)
+            {
+                throw new InvalidOperationException("No ScrollRect found for ScrollUntil action");
+            }
+
+            var maxAttempts = Mathf.Max(1, block.scrollMaxAttempts);
+            var scrollAmount = 0.2f; // Scroll 20% each attempt
+
+            for (int attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                // Check if target element is now visible
+                var targetElement = await TryResolveElementAsync(block.target, ct, 200);
+                if (targetElement?.gameObject != null)
+                {
+                    Debug.Log($"[VisualTestRunner] Found target after {attempt} scrolls: {targetElement.name}");
+                    return;
+                }
+
+                // Scroll down (or in the direction the ScrollRect allows)
+                var center = InputInjector.GetScreenPosition(scrollContainerGo);
+                Vector2 scrollDelta;
+
+                if (scrollRect.vertical)
+                {
+                    scrollDelta = new Vector2(0, -scrollAmount * 500f); // Negative = scroll down
+                }
+                else if (scrollRect.horizontal)
+                {
+                    scrollDelta = new Vector2(-scrollAmount * 500f, 0); // Negative = scroll right
+                }
+                else
+                {
+                    scrollDelta = new Vector2(0, -scrollAmount * 500f);
+                }
+
+                Debug.Log($"[VisualTestRunner] Scroll attempt {attempt + 1}/{maxAttempts}");
+                await InputInjector.InjectScroll(center, scrollDelta);
+                await UniTask.Delay(150, cancellationToken: ct); // Wait for scroll animation
+            }
+
+            throw new InvalidOperationException($"Element not found after {maxAttempts} scroll attempts: {GetSelectorDisplay(block.target)}");
+        }
+
+        private static async UniTask ExecuteScreenshotAsync(VisualBlock block, CancellationToken ct)
+        {
+            await UniTask.Yield(); // Wait for rendering
+
+            var filename = block.screenshotName;
+            if (string.IsNullOrEmpty(filename))
+            {
+                filename = $"screenshot_{System.DateTime.Now:yyyyMMdd_HHmmss}";
+            }
+
+            var path = System.IO.Path.Combine(Application.persistentDataPath, $"{filename}.png");
+            ScreenCapture.CaptureScreenshot(path);
+            Debug.Log($"[VisualTestRunner] Screenshot saved: {path}");
+        }
+
+        private static void ExecuteLog(VisualBlock block)
+        {
+            var message = block.logMessage ?? "(no message)";
+            Debug.Log($"[VisualTest] {message}");
+        }
+
+        private static async UniTask ExecuteSetSliderAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+            if (element?.gameObject == null)
+                throw new InvalidOperationException($"SetSlider target not found: {GetSelectorDisplay(block.target)}");
+
+            var slider = element.gameObject.GetComponent<Slider>();
+            if (slider == null)
+                throw new InvalidOperationException($"Element '{element.name}' is not a Slider");
+
+            // Calculate click position based on slider direction and target value
+            var targetNormalized = block.sliderValue / 100f; // Convert percentage to 0-1
+            var bounds = InputInjector.GetScreenBounds(slider.gameObject);
+
+            Vector2 clickPos;
+            switch (slider.direction)
+            {
+                case Slider.Direction.LeftToRight:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * targetNormalized,
+                        bounds.y + bounds.height * 0.5f);
+                    break;
+                case Slider.Direction.RightToLeft:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * (1f - targetNormalized),
+                        bounds.y + bounds.height * 0.5f);
+                    break;
+                case Slider.Direction.BottomToTop:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * 0.5f,
+                        bounds.y + bounds.height * targetNormalized);
+                    break;
+                case Slider.Direction.TopToBottom:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * 0.5f,
+                        bounds.y + bounds.height * (1f - targetNormalized));
+                    break;
+                default:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * targetNormalized,
+                        bounds.y + bounds.height * 0.5f);
+                    break;
+            }
+
+            Debug.Log($"[VisualTestRunner] SetSlider '{element.name}' to {block.sliderValue}% at {clickPos}");
+            await InputInjector.InjectPointerTap(clickPos);
+        }
+
+        private static async UniTask ExecuteSetScrollbarAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+            if (element?.gameObject == null)
+                throw new InvalidOperationException($"SetScrollbar target not found: {GetSelectorDisplay(block.target)}");
+
+            var scrollbar = element.gameObject.GetComponent<Scrollbar>();
+            if (scrollbar == null)
+                throw new InvalidOperationException($"Element '{element.name}' is not a Scrollbar");
+
+            // Calculate click position based on scrollbar direction and target value
+            var targetNormalized = block.scrollbarValue / 100f; // Convert percentage to 0-1
+            var bounds = InputInjector.GetScreenBounds(scrollbar.gameObject);
+
+            Vector2 clickPos;
+            switch (scrollbar.direction)
+            {
+                case Scrollbar.Direction.LeftToRight:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * targetNormalized,
+                        bounds.y + bounds.height * 0.5f);
+                    break;
+                case Scrollbar.Direction.RightToLeft:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * (1f - targetNormalized),
+                        bounds.y + bounds.height * 0.5f);
+                    break;
+                case Scrollbar.Direction.BottomToTop:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * 0.5f,
+                        bounds.y + bounds.height * targetNormalized);
+                    break;
+                case Scrollbar.Direction.TopToBottom:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * 0.5f,
+                        bounds.y + bounds.height * (1f - targetNormalized));
+                    break;
+                default:
+                    clickPos = new Vector2(
+                        bounds.x + bounds.width * targetNormalized,
+                        bounds.y + bounds.height * 0.5f);
+                    break;
+            }
+
+            Debug.Log($"[VisualTestRunner] SetScrollbar '{element.name}' to {block.scrollbarValue}% at {clickPos}");
+            await InputInjector.InjectPointerTap(clickPos);
+        }
+
         private static async UniTask ExecuteAssertAsync(VisualBlock block, CancellationToken ct)
         {
             await UniTask.Yield(); // Allow a frame for UI to update
@@ -581,21 +871,21 @@ namespace ODDGames.UITest.VisualBuilder
 
             if (shouldExist && !exists)
             {
-                throw new InvalidOperationException($"Assert failed: Element not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Assert failed: Element not found: {GetSelectorDisplay(block.target)}");
             }
             else if (!shouldExist && exists)
             {
-                throw new InvalidOperationException($"Assert failed: Element should not exist but found: {block.target?.GetDisplayText()}");
+                throw new InvalidOperationException($"Assert failed: Element should not exist but found: {GetSelectorDisplay(block.target)}");
             }
 
-            Debug.Log($"[VisualTestRunner] Assert {(shouldExist ? "exists" : "not exists")} passed for '{block.target?.GetDisplayText()}'");
+            Debug.Log($"[VisualTestRunner] Assert {(shouldExist ? "exists" : "not exists")} passed for '{GetSelectorDisplay(block.target)}'");
         }
 
         private static async UniTask AssertTextAsync(VisualBlock block, bool containsMode, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Assert target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             string actualText = GetElementText(element.gameObject);
             string expectedText = block.assertExpected ?? "";
@@ -623,7 +913,7 @@ namespace ODDGames.UITest.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Assert target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             var toggle = element.gameObject.GetComponent<Toggle>();
             if (toggle == null)
@@ -643,7 +933,7 @@ namespace ODDGames.UITest.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Assert target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             var slider = element.gameObject.GetComponent<Slider>();
             if (slider == null)
@@ -666,7 +956,7 @@ namespace ODDGames.UITest.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Assert target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             int actual = -1;
 
@@ -699,7 +989,7 @@ namespace ODDGames.UITest.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Assert target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             string actual = null;
 
@@ -732,7 +1022,7 @@ namespace ODDGames.UITest.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
-                throw new InvalidOperationException($"Assert target not found: {block.target?.GetDisplayText() ?? "(no target)"}");
+                throw new InvalidOperationException($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             string actual = null;
 
@@ -795,7 +1085,7 @@ namespace ODDGames.UITest.VisualBuilder
             var element = await TryResolveElementAsync(selector, ct, timeoutMs);
             if (element == null)
             {
-                throw new InvalidOperationException($"Element not found: {selector?.GetDisplayText() ?? "(null selector)"}");
+                throw new InvalidOperationException($"Element not found: {GetSelectorDisplay(selector, "(null selector)")}");
             }
             return element;
         }
@@ -1003,15 +1293,19 @@ namespace ODDGames.UITest.VisualBuilder
 
         /// <summary>
         /// Converts a direction string to an offset vector.
+        /// Distance is in relative units (0-1 as fraction of screen height).
         /// </summary>
         private static Vector2 GetDirectionOffset(string direction, float distance)
         {
+            // Convert relative distance to pixels (based on screen height)
+            float pixelDistance = distance * Screen.height;
+
             return direction?.ToLowerInvariant() switch
             {
-                "up" => new Vector2(0, distance),
-                "down" => new Vector2(0, -distance),
-                "left" => new Vector2(-distance, 0),
-                "right" => new Vector2(distance, 0),
+                "up" => new Vector2(0, pixelDistance),
+                "down" => new Vector2(0, -pixelDistance),
+                "left" => new Vector2(-pixelDistance, 0),
+                "right" => new Vector2(pixelDistance, 0),
                 _ => Vector2.zero
             };
         }

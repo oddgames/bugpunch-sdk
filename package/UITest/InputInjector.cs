@@ -128,6 +128,8 @@ namespace ODDGames.UITest
         /// </summary>
         public static Vector2 GetScreenPosition(GameObject go)
         {
+            if (go == null) return Vector2.zero;
+
             if (go.TryGetComponent<RectTransform>(out var rt))
             {
                 // UI element - get center of rect in screen space
@@ -148,11 +150,21 @@ namespace ODDGames.UITest
                     return cam != null ? RectTransformUtility.WorldToScreenPoint(cam, center) : (Vector2)center;
                 }
             }
-            else
+
+            // Try Renderer bounds (3D objects)
+            if (go.TryGetComponent<Renderer>(out var renderer))
             {
-                // World-space object
                 Camera cam = Camera.main;
-                return cam != null ? cam.WorldToScreenPoint(go.transform.position) : Vector2.zero;
+                if (cam != null)
+                {
+                    return cam.WorldToScreenPoint(renderer.bounds.center);
+                }
+            }
+
+            // Fallback to transform position
+            {
+                Camera cam = Camera.main;
+                return cam != null ? (Vector2)cam.WorldToScreenPoint(go.transform.position) : Vector2.zero;
             }
         }
 
@@ -161,58 +173,57 @@ namespace ODDGames.UITest
         /// </summary>
         public static Rect GetScreenBounds(GameObject go)
         {
+            if (go == null) return Rect.zero;
+
             if (go.TryGetComponent<RectTransform>(out var rt))
             {
                 Vector3[] corners = new Vector3[4];
                 rt.GetWorldCorners(corners);
 
                 var canvas = go.GetComponentInParent<Canvas>();
-                if (canvas != null && canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+                Camera cam = null;
+                if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
                 {
-                    // Corners are already in screen space
-                    float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
-                    float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
-                    float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
-                    float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
-
-                    return new Rect(minX, minY, maxX - minX, maxY - minY);
+                    cam = canvas.worldCamera ?? Camera.main;
                 }
-                else
+
+                float minX = float.MaxValue, maxX = float.MinValue;
+                float minY = float.MaxValue, maxY = float.MinValue;
+
+                for (int i = 0; i < 4; i++)
                 {
-                    // World space or camera space canvas - use RectTransformUtility for consistency
-                    Camera cam = canvas?.worldCamera ?? Camera.main;
+                    Vector2 screenPos;
                     if (cam != null)
-                    {
-                        Vector2[] screenCorners = new Vector2[4];
-                        for (int i = 0; i < 4; i++)
-                        {
-                            screenCorners[i] = RectTransformUtility.WorldToScreenPoint(cam, corners[i]);
-                        }
+                        screenPos = RectTransformUtility.WorldToScreenPoint(cam, corners[i]);
+                    else
+                        screenPos = corners[i];
 
-                        float minX = Mathf.Min(screenCorners[0].x, screenCorners[1].x, screenCorners[2].x, screenCorners[3].x);
-                        float maxX = Mathf.Max(screenCorners[0].x, screenCorners[1].x, screenCorners[2].x, screenCorners[3].x);
-                        float minY = Mathf.Min(screenCorners[0].y, screenCorners[1].y, screenCorners[2].y, screenCorners[3].y);
-                        float maxY = Mathf.Max(screenCorners[0].y, screenCorners[1].y, screenCorners[2].y, screenCorners[3].y);
-
-                        return new Rect(minX, minY, maxX - minX, maxY - minY);
-                    }
+                    minX = Mathf.Min(minX, screenPos.x);
+                    maxX = Mathf.Max(maxX, screenPos.x);
+                    minY = Mathf.Min(minY, screenPos.y);
+                    maxY = Mathf.Max(maxY, screenPos.y);
                 }
+
+                return new Rect(minX, minY, maxX - minX, maxY - minY);
             }
 
-            // Fallback for non-UI elements
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer != null && Camera.main != null)
+            // Try Renderer bounds (3D objects)
+            if (go.TryGetComponent<Renderer>(out var renderer))
             {
-                var bounds = renderer.bounds;
-                var screenMin = Camera.main.WorldToScreenPoint(bounds.min);
-                var screenMax = Camera.main.WorldToScreenPoint(bounds.max);
+                Camera cam = Camera.main;
+                if (cam != null)
+                {
+                    var bounds = renderer.bounds;
+                    Vector2 screenMin = cam.WorldToScreenPoint(bounds.min);
+                    Vector2 screenMax = cam.WorldToScreenPoint(bounds.max);
 
-                return new Rect(
-                    screenMin.x,
-                    screenMin.y,
-                    screenMax.x - screenMin.x,
-                    screenMax.y - screenMin.y
-                );
+                    return new Rect(
+                        Mathf.Min(screenMin.x, screenMax.x),
+                        Mathf.Min(screenMin.y, screenMax.y),
+                        Mathf.Abs(screenMax.x - screenMin.x),
+                        Mathf.Abs(screenMax.y - screenMin.y)
+                    );
+                }
             }
 
             return Rect.zero;
@@ -296,6 +307,74 @@ namespace ODDGames.UITest
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
             await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a double click/tap at the specified screen position.
+        /// Uses touch on mobile (iOS/Android), mouse on desktop.
+        /// </summary>
+        public static async UniTask InjectPointerDoubleTap(Vector2 screenPosition)
+        {
+            await EnsureGameViewFocusAsync();
+
+            if (ShouldUseTouchInput())
+            {
+                await InjectTouchDoubleTap(screenPosition);
+                return;
+            }
+
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[InputInjector] DoubleClick - No mouse device found");
+                return;
+            }
+
+            var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+
+            // First click
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Brief delay between clicks
+            await UniTask.Delay(50);
+
+            // Second click
+            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a double-tap touch gesture.
+        /// </summary>
+        public static async UniTask InjectTouchDoubleTap(Vector2 screenPosition)
+        {
+            // First tap
+            await InjectTouchTap(screenPosition);
+
+            // Brief delay between taps
+            await UniTask.Delay(50);
+
+            // Second tap
+            await InjectTouchTap(screenPosition);
         }
 
         /// <summary>
@@ -818,6 +897,295 @@ namespace ODDGames.UITest
                 touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
                 touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
                 touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a pinch gesture for zooming.
+        /// </summary>
+        /// <param name="centerPosition">Center point of the pinch</param>
+        /// <param name="scale">Scale factor: less than 1 = pinch in (zoom out), greater than 1 = pinch out (zoom in)</param>
+        /// <param name="duration">Duration of the pinch gesture</param>
+        public static async UniTask InjectPinch(Vector2 centerPosition, float scale, float duration)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[InputInjector] Pinch - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            // Calculate start and end offsets based on scale
+            float startOffset = 100f; // Initial distance from center
+            float endOffset = startOffset * scale;
+
+            // Two touch points that move symmetrically
+            Vector2 startTouch1 = centerPosition + new Vector2(-startOffset, 0);
+            Vector2 startTouch2 = centerPosition + new Vector2(startOffset, 0);
+            Vector2 endTouch1 = centerPosition + new Vector2(-endOffset, 0);
+            Vector2 endTouch2 = centerPosition + new Vector2(endOffset, 0);
+
+            const int touchId1 = 1;
+            const int touchId2 = 2;
+            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60));
+
+            // Both touches begin
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(startTouch1, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, beginPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(startTouch2, beginPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, beginPtr);
+
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Interpolate pinch movement
+            for (int i = 1; i < totalFrames; i++)
+            {
+                float t = (float)i / totalFrames;
+                Vector2 currentTouch1 = Vector2.Lerp(startTouch1, endTouch1, t);
+                Vector2 currentTouch2 = Vector2.Lerp(startTouch2, endTouch2, t);
+
+                using (StateEvent.From(touchscreen, out var movePtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, movePtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(currentTouch1, movePtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
+
+                    touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, movePtr);
+                    touchscreen.touches[1].position.WriteValueIntoEvent(currentTouch2, movePtr);
+                    touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, movePtr);
+
+                    InputSystem.QueueEvent(movePtr);
+                }
+                InputSystem.Update();
+                await UniTask.Yield();
+            }
+
+            // Both touches end
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(endTouch1, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, endPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(endTouch2, endPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(0f, endPtr);
+
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Simulates a two-finger drag gesture (both fingers moving in parallel).
+        /// </summary>
+        public static async UniTask InjectTwoFingerDrag(Vector2 start1, Vector2 end1, Vector2 start2, Vector2 end2, float duration)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[InputInjector] TwoFingerDrag - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            const int touchId1 = 1;
+            const int touchId2 = 2;
+            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60));
+
+            // Both touches begin
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(start1, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, beginPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(start2, beginPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, beginPtr);
+
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Interpolate movement
+            for (int i = 1; i < totalFrames; i++)
+            {
+                float t = (float)i / totalFrames;
+                Vector2 current1 = Vector2.Lerp(start1, end1, t);
+                Vector2 current2 = Vector2.Lerp(start2, end2, t);
+
+                using (StateEvent.From(touchscreen, out var movePtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, movePtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(current1, movePtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
+
+                    touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, movePtr);
+                    touchscreen.touches[1].position.WriteValueIntoEvent(current2, movePtr);
+                    touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, movePtr);
+
+                    InputSystem.QueueEvent(movePtr);
+                }
+                InputSystem.Update();
+                await UniTask.Yield();
+            }
+
+            // Both touches end
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(end1, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, endPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(end2, endPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(0f, endPtr);
+
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Simulates a two-finger rotation gesture.
+        /// </summary>
+        /// <param name="centerPosition">Center point of the rotation.</param>
+        /// <param name="degrees">Rotation angle (positive = clockwise, negative = counter-clockwise).</param>
+        /// <param name="duration">Duration of the gesture in seconds.</param>
+        /// <param name="fingerDistance">Normalized distance from center (0-1) for finger positions.</param>
+        public static async UniTask InjectRotate(Vector2 centerPosition, float degrees, float duration, float fingerDistance = 0.05f)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[InputInjector] Rotate - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            // Calculate the radius based on screen size and finger distance
+            float radius = fingerDistance * Mathf.Min(Screen.width, Screen.height);
+            float radians = degrees * Mathf.Deg2Rad;
+
+            // Start positions (fingers on opposite sides horizontally)
+            Vector2 startTouch1 = centerPosition + new Vector2(-radius, 0);
+            Vector2 startTouch2 = centerPosition + new Vector2(radius, 0);
+
+            const int touchId1 = 1;
+            const int touchId2 = 2;
+            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60));
+
+            // Both touches begin
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(startTouch1, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, beginPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(startTouch2, beginPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, beginPtr);
+
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Rotate touches around the center
+            for (int i = 1; i <= totalFrames; i++)
+            {
+                float t = (float)i / totalFrames;
+                float currentAngle = radians * t;
+
+                // Calculate rotated positions
+                Vector2 offset1 = new Vector2(
+                    -radius * Mathf.Cos(currentAngle) - 0 * Mathf.Sin(currentAngle),
+                    -radius * Mathf.Sin(currentAngle) + 0 * Mathf.Cos(currentAngle)
+                );
+                Vector2 offset2 = new Vector2(
+                    radius * Mathf.Cos(currentAngle) - 0 * Mathf.Sin(currentAngle),
+                    radius * Mathf.Sin(currentAngle) + 0 * Mathf.Cos(currentAngle)
+                );
+
+                Vector2 currentTouch1 = centerPosition + offset1;
+                Vector2 currentTouch2 = centerPosition + offset2;
+
+                using (StateEvent.From(touchscreen, out var movePtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, movePtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(currentTouch1, movePtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
+
+                    touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, movePtr);
+                    touchscreen.touches[1].position.WriteValueIntoEvent(currentTouch2, movePtr);
+                    touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, movePtr);
+
+                    InputSystem.QueueEvent(movePtr);
+                }
+                InputSystem.Update();
+                await UniTask.Yield();
+            }
+
+            // Calculate final positions
+            Vector2 endOffset1 = new Vector2(-radius * Mathf.Cos(radians), -radius * Mathf.Sin(radians));
+            Vector2 endOffset2 = new Vector2(radius * Mathf.Cos(radians), radius * Mathf.Sin(radians));
+            Vector2 endTouch1 = centerPosition + endOffset1;
+            Vector2 endTouch2 = centerPosition + endOffset2;
+
+            // Both touches end
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(endTouch1, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, endPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(endTouch2, endPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(0f, endPtr);
+
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();

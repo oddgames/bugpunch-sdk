@@ -2,6 +2,9 @@
 using UnityEngine;
 using UnityEditor;
 using System.IO;
+using System.Collections.Generic;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 
 namespace ODDGames.UITest.AI.Editor
 {
@@ -12,24 +15,14 @@ namespace ODDGames.UITest.AI.Editor
     {
         private const string SettingsPath = "Assets/Editor/AITestSettings.asset";
 
-        [Header("Local Models")]
-        [Tooltip("Enable LM Studio for local model inference")]
-        public bool lmStudioEnabled = true;
-
-        [Tooltip("LM Studio endpoint (typically localhost:1234)")]
-        public string lmStudioEndpoint = "http://localhost:1234";
-
-        [Tooltip("Model name to use in LM Studio")]
-        public string lmStudioModel = "";
-
-        [Header("Gemini (Cloud)")]
+        [Header("Gemini")]
         [Tooltip("Gemini API key from Google AI Studio")]
         public string geminiApiKey = "";
 
-        [Header("Defaults")]
-        [Tooltip("Default starting model tier for new tests")]
-        public ModelTier defaultModelTier = ModelTier.LocalFast;
+        [Tooltip("Default model to use for AI tests")]
+        public string defaultModel = "";
 
+        [Header("Defaults")]
         [Tooltip("Default timeout in seconds")]
         public float defaultTimeout = 180f;
 
@@ -89,7 +82,7 @@ namespace ODDGames.UITest.AI.Editor
             var knowledge = new GlobalKnowledge
             {
                 context = globalKnowledge,
-                defaultModelTier = defaultModelTier,
+                defaultModel = GetEffectiveModel(),
                 defaultTimeoutSeconds = defaultTimeout,
                 defaultMaxActions = defaultMaxActions
             };
@@ -103,12 +96,30 @@ namespace ODDGames.UITest.AI.Editor
         }
 
         /// <summary>
-        /// Creates model providers based on settings.
+        /// Gets the effective model to use (settings default or first available).
         /// </summary>
-        public AITestRunnerConfig CreateRunnerConfig()
+        public string GetEffectiveModel()
         {
+            if (!string.IsNullOrEmpty(defaultModel))
+                return defaultModel;
+
+            // Fall back to cached models
+            var cached = GeminiModels.CachedModels;
+            if (cached != null && cached.Count > 0)
+                return cached[0].ModelId;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Creates a runner config for a specific model.
+        /// </summary>
+        public AITestRunnerConfig CreateRunnerConfig(string modelId = null)
+        {
+            var effectiveModel = modelId ?? GetEffectiveModel();
             var shouldSendScreenshots = sendScreenshotsToAI && !preferTextOnlyMode;
-            Debug.Log($"[AITest] Creating runner config: sendScreenshotsToAI={sendScreenshotsToAI}, preferTextOnlyMode={preferTextOnlyMode}, SendScreenshots={shouldSendScreenshots}");
+
+            Debug.Log($"[AITest] Creating runner config: model={effectiveModel}, SendScreenshots={shouldSendScreenshots}");
 
             var config = new AITestRunnerConfig
             {
@@ -116,18 +127,14 @@ namespace ODDGames.UITest.AI.Editor
                 SendScreenshots = shouldSendScreenshots
             };
 
-            // LM Studio provider
-            if (lmStudioEnabled && !string.IsNullOrEmpty(lmStudioEndpoint))
+            // Create provider if we have an API key and model
+            if (!string.IsNullOrEmpty(geminiApiKey) && !string.IsNullOrEmpty(effectiveModel))
             {
-                config.LMStudioProvider = new LMStudioProvider(lmStudioEndpoint, lmStudioModel);
-            }
+                // Get context window size from cached model info if available
+                var modelInfo = GeminiModels.GetCachedModel(effectiveModel);
+                var contextSize = modelInfo?.inputTokenLimit ?? 1048576;
 
-            // Gemini providers
-            if (!string.IsNullOrEmpty(geminiApiKey))
-            {
-                config.GeminiFlashLiteProvider = new GeminiProvider(geminiApiKey, ModelTier.GeminiFlashLite);
-                config.GeminiFlashProvider = new GeminiProvider(geminiApiKey, ModelTier.GeminiFlash);
-                config.GeminiProProvider = new GeminiProvider(geminiApiKey, ModelTier.GeminiPro);
+                config.ModelProvider = new GeminiProvider(geminiApiKey, effectiveModel, contextWindowSize: contextSize);
             }
 
             return config;
@@ -169,6 +176,10 @@ namespace ODDGames.UITest.AI.Editor
     {
         private SerializedObject serializedSettings;
         private AITestSettings settings;
+        private List<GeminiModelInfo> availableModels;
+        private bool isLoadingModels;
+        private string[] modelOptions;
+        private int selectedModelIndex;
 
         public AITestSettingsProvider(string path, SettingsScope scope)
             : base(path, scope) { }
@@ -177,6 +188,49 @@ namespace ODDGames.UITest.AI.Editor
         {
             settings = AITestSettings.Instance;
             serializedSettings = new SerializedObject(settings);
+            RefreshModelsAsync().Forget();
+        }
+
+        private async UniTaskVoid RefreshModelsAsync()
+        {
+            if (string.IsNullOrEmpty(settings.geminiApiKey))
+            {
+                availableModels = null;
+                modelOptions = new[] { "(Enter API key first)" };
+                return;
+            }
+
+            isLoadingModels = true;
+            availableModels = await GeminiModels.ListModelsAsync(settings.geminiApiKey, CancellationToken.None);
+            isLoadingModels = false;
+
+            UpdateModelOptions();
+        }
+
+        private void UpdateModelOptions()
+        {
+            if (availableModels == null || availableModels.Count == 0)
+            {
+                modelOptions = new[] { "(No models available)" };
+                selectedModelIndex = 0;
+                return;
+            }
+
+            var options = new List<string>();
+            selectedModelIndex = 0;
+
+            for (int i = 0; i < availableModels.Count; i++)
+            {
+                var model = availableModels[i];
+                options.Add($"{model.displayName} ({model.ModelId})");
+
+                if (model.ModelId == settings.defaultModel)
+                {
+                    selectedModelIndex = i;
+                }
+            }
+
+            modelOptions = options.ToArray();
         }
 
         public override void OnGUI(string searchContext)
@@ -193,48 +247,68 @@ namespace ODDGames.UITest.AI.Editor
             EditorGUILayout.LabelField("AI Testing Settings", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
 
-            // Local Models Section
-            EditorGUILayout.LabelField("Local Models", EditorStyles.miniBoldLabel);
-            EditorGUI.indentLevel++;
-
-            EditorGUILayout.PropertyField(serializedSettings.FindProperty("lmStudioEnabled"),
-                new GUIContent("Enable LM Studio"));
-
-            if (settings.lmStudioEnabled)
-            {
-                EditorGUILayout.PropertyField(serializedSettings.FindProperty("lmStudioEndpoint"),
-                    new GUIContent("Endpoint"));
-                EditorGUILayout.PropertyField(serializedSettings.FindProperty("lmStudioModel"),
-                    new GUIContent("Model Name"));
-
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.Space(20);
-                if (GUILayout.Button("Test Connection", GUILayout.Width(120)))
-                {
-                    TestLMStudioConnection();
-                }
-                EditorGUILayout.EndHorizontal();
-            }
-
-            EditorGUI.indentLevel--;
-            EditorGUILayout.Space(10);
-
             // Gemini Section
-            EditorGUILayout.LabelField("Gemini (Cloud)", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("Gemini", EditorStyles.miniBoldLabel);
             EditorGUI.indentLevel++;
 
+            EditorGUI.BeginChangeCheck();
             EditorGUILayout.PropertyField(serializedSettings.FindProperty("geminiApiKey"),
                 new GUIContent("API Key"));
+            if (EditorGUI.EndChangeCheck())
+            {
+                serializedSettings.ApplyModifiedProperties();
+                GeminiModels.ClearCache();
+                RefreshModelsAsync().Forget();
+            }
 
             if (!string.IsNullOrEmpty(settings.geminiApiKey))
             {
                 EditorGUILayout.BeginHorizontal();
                 GUILayout.Space(20);
-                if (GUILayout.Button("Test Connection", GUILayout.Width(120)))
+
+                if (isLoadingModels)
                 {
-                    TestGeminiConnection();
+                    EditorGUILayout.LabelField("Loading models...");
                 }
+                else
+                {
+                    if (GUILayout.Button("Refresh Models", GUILayout.Width(120)))
+                    {
+                        GeminiModels.ClearCache();
+                        RefreshModelsAsync().Forget();
+                    }
+                }
+
                 EditorGUILayout.EndHorizontal();
+
+                // Model Selection
+                EditorGUILayout.Space(5);
+                if (modelOptions != null && modelOptions.Length > 0)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    selectedModelIndex = EditorGUILayout.Popup("Default Model", selectedModelIndex, modelOptions);
+                    if (EditorGUI.EndChangeCheck() && availableModels != null && selectedModelIndex < availableModels.Count)
+                    {
+                        settings.defaultModel = availableModels[selectedModelIndex].ModelId;
+                        GeminiModels.DefaultModel = settings.defaultModel;
+                        EditorUtility.SetDirty(settings);
+                    }
+                }
+
+                // Show model info
+                if (availableModels != null && selectedModelIndex < availableModels.Count)
+                {
+                    var model = availableModels[selectedModelIndex];
+                    var capabilities = new List<string>();
+                    if (model.SupportsVision) capabilities.Add("Vision");
+                    if (model.SupportsTools) capabilities.Add("Tools");
+                    if (model.SupportsStructuredOutput) capabilities.Add("JSON");
+                    if (model.thinking) capabilities.Add("Thinking");
+
+                    EditorGUILayout.HelpBox(
+                        $"Context: {model.inputTokenLimit:N0} tokens | Capabilities: {string.Join(", ", capabilities)}",
+                        MessageType.None);
+                }
             }
 
             EditorGUI.indentLevel--;
@@ -244,8 +318,6 @@ namespace ODDGames.UITest.AI.Editor
             EditorGUILayout.LabelField("Defaults", EditorStyles.miniBoldLabel);
             EditorGUI.indentLevel++;
 
-            EditorGUILayout.PropertyField(serializedSettings.FindProperty("defaultModelTier"),
-                new GUIContent("Starting Tier"));
             EditorGUILayout.PropertyField(serializedSettings.FindProperty("defaultTimeout"),
                 new GUIContent("Timeout (seconds)"));
             EditorGUILayout.PropertyField(serializedSettings.FindProperty("defaultMaxActions"),
@@ -304,42 +376,12 @@ namespace ODDGames.UITest.AI.Editor
             }
         }
 
-        private async void TestLMStudioConnection()
-        {
-            var provider = new LMStudioProvider(settings.lmStudioEndpoint, settings.lmStudioModel);
-            var result = await provider.TestConnectionAsync();
-
-            if (result)
-            {
-                EditorUtility.DisplayDialog("LM Studio", "Connection successful!", "OK");
-            }
-            else
-            {
-                EditorUtility.DisplayDialog("LM Studio", "Connection failed. Check endpoint and ensure LM Studio is running.", "OK");
-            }
-        }
-
-        private async void TestGeminiConnection()
-        {
-            var provider = new GeminiProvider(settings.geminiApiKey, ModelTier.GeminiFlashLite);
-            var result = await provider.TestConnectionAsync();
-
-            if (result)
-            {
-                EditorUtility.DisplayDialog("Gemini", "Connection successful!", "OK");
-            }
-            else
-            {
-                EditorUtility.DisplayDialog("Gemini", "Connection failed. Check your API key.", "OK");
-            }
-        }
-
         [SettingsProvider]
         public static SettingsProvider CreateProvider()
         {
             var provider = new AITestSettingsProvider("Project/UI Test/AI Testing", SettingsScope.Project)
             {
-                keywords = new[] { "AI", "Test", "LM Studio", "Gemini", "Automation" }
+                keywords = new[] { "AI", "Test", "Gemini", "Automation", "Model" }
             };
             return provider;
         }

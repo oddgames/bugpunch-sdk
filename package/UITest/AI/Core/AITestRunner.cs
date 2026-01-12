@@ -83,7 +83,7 @@ namespace ODDGames.UITest.AI
         private readonly AITestRunnerConfig config;
 
         private ConversationManager conversation;
-        private ModelEscalator escalator;
+        private IModelProvider modelProvider;
         private StuckDetector stuckDetector;
         private HistoryReplayer historyReplayer;
 
@@ -107,9 +107,9 @@ namespace ODDGames.UITest.AI
         public int MaxActions => test.maxActions;
 
         /// <summary>
-        /// Current model tier.
+        /// Current model being used.
         /// </summary>
-        public ModelTier CurrentTier => escalator?.CurrentTier ?? test.startingTier;
+        public string CurrentModel => modelProvider?.ModelId;
 
         /// <summary>
         /// Conversation statistics.
@@ -140,11 +140,6 @@ namespace ODDGames.UITest.AI
         /// Event fired when an action is executed.
         /// </summary>
         public event Action<AIAction, ActionResult> OnActionExecuted;
-
-        /// <summary>
-        /// Event fired when model tier escalates.
-        /// </summary>
-        public event Action<ModelTier, ModelTier, string> OnEscalated;
 
         /// <summary>
         /// Event fired when test completes.
@@ -220,22 +215,19 @@ namespace ODDGames.UITest.AI
                     // Update stuck detector
                     stuckDetector.RecordScreen(screen.ScreenHash);
 
-                    // Check for stuck and escalate if needed
+                    // Check if stuck and send recovery message
                     if (stuckDetector.ShouldEscalate())
                     {
-                        if (escalator.TryEscalate(stuckDetector.StuckReason))
-                        {
-                            Log($"Escalated to {escalator.CurrentTier}: {stuckDetector.StuckReason}");
+                        Log($"Detected stuck state: {stuckDetector.StuckReason}");
 
-                            // Send recovery message
-                            var recoveryMsg = KnowledgeBuilder.BuildRecoveryMessage(
-                                screen,
-                                conversation.GetActionSummary(),
-                                stuckDetector.StuckReason);
-                            // Only send screenshot if configured (text-only mode is faster)
-                            var screenshotForAI = config.SendScreenshots ? screen.ScreenshotPng : null;
-                            conversation.AddUserMessage(recoveryMsg, screenshotForAI);
-                        }
+                        // Send recovery message
+                        var recoveryMsg = KnowledgeBuilder.BuildRecoveryMessage(
+                            screen,
+                            conversation.GetActionSummary(),
+                            stuckDetector.StuckReason);
+                        // Only send screenshot if configured (text-only mode is faster)
+                        var screenshotForAI = config.SendScreenshots ? screen.ScreenshotPng : null;
+                        conversation.AddUserMessage(recoveryMsg, screenshotForAI);
                     }
                     else
                     {
@@ -253,37 +245,30 @@ namespace ODDGames.UITest.AI
                     // Send to AI model - only include screenshot if configured
                     var screenshotForRequest = config.SendScreenshots ? screen.ScreenshotPng : null;
                     var request = conversation.BuildRequest(screenshotForRequest, screen.GetElementListPrompt());
-                    var provider = escalator.CurrentProvider;
 
-                    if (provider == null)
+                    if (modelProvider == null)
                     {
-                        return CreateResult(TestStatus.Error, $"No provider available for tier {escalator.CurrentTier}");
+                        return CreateResult(TestStatus.Error, "No model provider configured");
                     }
 
-                    Log($"Sending request to {escalator.CurrentTier} ({provider.GetType().Name})...");
+                    Log($"Sending request to {modelProvider.Name}...");
                     Log($"Request has {request.Messages.Count} messages, screenshot: {screenshotForRequest != null}");
 
                     ModelResponse response;
                     try
                     {
-                        response = await provider.CompleteAsync(request, ct);
+                        response = await modelProvider.CompleteAsync(request, ct);
                         Log($"Received response: Success={response.Success}, ToolCalls={response.ToolCalls?.Count ?? 0}");
                     }
                     catch (Exception ex)
                     {
                         Log($"Model error: {ex.Message}");
 
-                        // Check for cancellation - don't try to escalate if cancelled
+                        // Check for cancellation
                         if (ct.IsCancellationRequested || !Application.isPlaying ||
                             ex.Message.Contains("cancelled") || ex.Message.Contains("aborted"))
                         {
                             return CreateResult(TestStatus.Cancelled, "Test was cancelled");
-                        }
-
-                        // Try escalating on error
-                        if (escalator.TryEscalate($"Model error: {ex.Message}"))
-                        {
-                            continue;
                         }
 
                         return CreateResult(TestStatus.Error, $"Model error: {ex.Message}");
@@ -293,16 +278,11 @@ namespace ODDGames.UITest.AI
                     {
                         Log($"Model request failed: {response.Error}");
 
-                        // Check for cancellation - don't try to escalate if cancelled
+                        // Check for cancellation
                         if (ct.IsCancellationRequested || !Application.isPlaying ||
                             response.Error.Contains("cancelled") || response.Error.Contains("aborted"))
                         {
                             return CreateResult(TestStatus.Cancelled, "Test was cancelled");
-                        }
-
-                        if (escalator.TryEscalate($"Request failed: {response.Error}"))
-                        {
-                            continue;
                         }
 
                         return CreateResult(TestStatus.Error, response.Error);
@@ -477,43 +457,14 @@ namespace ODDGames.UITest.AI
         private void InitializeComponents()
         {
             // Initialize conversation manager
-            conversation = new ConversationManager(
-                config.MaxContextTokens,
-                config.CompactionThreshold);
+            conversation = new ConversationManager();
 
-            conversation.OnCompacted += summary =>
+            // Set up model provider
+            modelProvider = config.ModelProvider;
+            if (modelProvider != null)
             {
-                Log($"Conversation compacted: {summary}");
-            };
-
-            // Initialize model escalator
-            escalator = new ModelEscalator(test.startingTier);
-
-            // Register providers based on config
-            if (config.LMStudioProvider != null)
-            {
-                escalator.RegisterProvider(ModelTier.LocalFast, config.LMStudioProvider);
+                Log($"Using model: {modelProvider.Name}");
             }
-
-            if (config.GeminiFlashLiteProvider != null)
-            {
-                escalator.RegisterProvider(ModelTier.GeminiFlashLite, config.GeminiFlashLiteProvider);
-            }
-
-            if (config.GeminiFlashProvider != null)
-            {
-                escalator.RegisterProvider(ModelTier.GeminiFlash, config.GeminiFlashProvider);
-            }
-
-            if (config.GeminiProProvider != null)
-            {
-                escalator.RegisterProvider(ModelTier.GeminiPro, config.GeminiProProvider);
-            }
-
-            escalator.OnEscalated += (from, to, reason) =>
-            {
-                OnEscalated?.Invoke(from, to, reason);
-            };
 
             // Initialize stuck detector
             stuckDetector = new StuckDetector(config.StuckDetectorConfig);
@@ -584,8 +535,7 @@ namespace ODDGames.UITest.AI
                 Status = status,
                 Message = message,
                 ActionCount = actionCount,
-                EscalationCount = escalator?.EscalationCount ?? 0,
-                FinalTier = escalator?.CurrentTier ?? test.startingTier,
+                FinalModel = modelProvider?.ModelId ?? test.model,
                 DurationSeconds = duration,
                 Actions = new List<AITestActionRecord>(actionHistory),
                 Screenshots = new List<ScreenshotRecord>(screenshotHistory),
@@ -653,12 +603,6 @@ namespace ODDGames.UITest.AI
     [Serializable]
     public class AITestRunnerConfig
     {
-        /// <summary>Maximum context tokens before compaction</summary>
-        public int MaxContextTokens = 8000;
-
-        /// <summary>Threshold (0-1) for triggering compaction</summary>
-        public float CompactionThreshold = 0.8f;
-
         /// <summary>Whether to try replaying history before AI execution</summary>
         public bool EnableHistoryReplay = true;
 
@@ -671,11 +615,8 @@ namespace ODDGames.UITest.AI
         /// <summary>Whether to send screenshots to AI (false = text-only mode for faster execution)</summary>
         public bool SendScreenshots = false;
 
-        // Model providers (set these before running)
-        public IModelProvider LMStudioProvider;
-        public IModelProvider GeminiFlashLiteProvider;
-        public IModelProvider GeminiFlashProvider;
-        public IModelProvider GeminiProProvider;
+        /// <summary>The model provider to use for AI test execution</summary>
+        public IModelProvider ModelProvider;
     }
 
     /// <summary>
@@ -701,8 +642,7 @@ namespace ODDGames.UITest.AI
         public TestStatus Status { get; set; }
         public string Message { get; set; }
         public int ActionCount { get; set; }
-        public int EscalationCount { get; set; }
-        public ModelTier FinalTier { get; set; }
+        public string FinalModel { get; set; }
         public float DurationSeconds { get; set; }
         public List<AITestActionRecord> Actions { get; set; }
         public List<ScreenshotRecord> Screenshots { get; set; }

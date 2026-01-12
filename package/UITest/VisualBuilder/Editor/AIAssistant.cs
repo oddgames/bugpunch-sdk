@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using ODDGames.UITest.AI;
+using ODDGames.UITest.AI.Editor;
 
 namespace ODDGames.UITest.VisualBuilder.Editor
 {
@@ -54,7 +55,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             targetTest = test ?? throw new ArgumentNullException(nameof(test));
         }
 
-        public async UniTask StartAsync(string prompt, string passCondition)
+        public async UniTask StartAsync(string prompt)
         {
             if (currentState != State.Idle)
                 throw new InvalidOperationException($"Cannot start in state: {currentState}");
@@ -71,23 +72,28 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
             try
             {
+                // Get settings and create config with provider
+                var settings = AITestSettings.Instance;
+                var config = settings.CreateRunnerConfig();
+
+                // Override some settings for visual builder use
+                config.EnableHistoryReplay = false;
+
+                // Validate that we have a provider
+                if (config.ModelProvider == null)
+                {
+                    throw new InvalidOperationException(
+                        "No AI provider configured. Please add your Gemini API key and select a model in Project Settings > UI Test > AI Testing");
+                }
+
                 var aiTest = ScriptableObject.CreateInstance<AITest>();
                 aiTest.prompt = prompt;
-                aiTest.passCondition = passCondition;
-                aiTest.startingTier = ModelTier.GeminiFlash;
-                aiTest.maxActions = 100;
-                aiTest.timeoutSeconds = 600f;
-                aiTest.actionDelaySeconds = 0.3f;
+                aiTest.model = settings.GetEffectiveModel();
+                aiTest.maxActions = settings.defaultMaxActions > 0 ? settings.defaultMaxActions : 100;
+                aiTest.timeoutSeconds = settings.defaultTimeout > 0 ? settings.defaultTimeout : 600f;
+                aiTest.actionDelaySeconds = settings.defaultActionDelay > 0 ? settings.defaultActionDelay : 0.3f;
 
-                var config = new AITestRunnerConfig
-                {
-                    MaxContextTokens = 8000,
-                    CompactionThreshold = 0.8f,
-                    EnableHistoryReplay = false,
-                    SendScreenshots = true
-                };
-
-                runner = new AITestRunner(aiTest, GlobalKnowledge.CreateDefault(), config);
+                runner = new AITestRunner(aiTest, settings.GetGlobalKnowledge(), config);
                 runner.OnActionExecuted += HandleActionExecuted;
                 runner.OnReasoning += HandleReasoning;
 
@@ -163,7 +169,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             }
         }
 
-        public async UniTask RestartAsync(string prompt, string passCondition)
+        public async UniTask RestartAsync(string prompt)
         {
             Stop();
             await UniTask.Delay(100);
@@ -182,7 +188,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             currentState = State.Idle;
             BlocksAdded = 0;
 
-            await StartAsync(prompt, passCondition);
+            await StartAsync(prompt);
         }
 
         private void HandleReasoning(string reasoning)
@@ -203,7 +209,15 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
             if (cts.IsCancellationRequested) return;
 
-            SetStatus($"Executing: {action.Description}");
+            // Skip adding block if action failed (element not found, etc.)
+            if (result == null || !result.Success)
+            {
+                Debug.Log($"[AIAssistant] Action failed, not adding block: {result?.Error ?? "Unknown error"}");
+                SetStatus($"Action failed: {result?.Error ?? "Unknown error"}");
+                return;
+            }
+
+            SetStatus($"Executed: {action.Description}");
 
             var block = ConvertActionToBlock(action);
             if (block != null)
@@ -272,6 +286,72 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 case WaitAction wait:
                     block.type = BlockType.Wait;
                     block.waitSeconds = wait.Seconds;
+                    break;
+
+                case DoubleClickAction doubleClick:
+                    block.type = BlockType.DoubleClick;
+                    block.target = CreateSelector(doubleClick.ElementId, doubleClick.TargetElement);
+                    break;
+
+                case HoldAction hold:
+                    block.type = BlockType.Hold;
+                    block.target = CreateSelector(hold.ElementId, hold.TargetElement);
+                    block.holdSeconds = hold.Duration;
+                    break;
+
+                case KeyPressAction keyPress:
+                    block.type = BlockType.KeyPress;
+                    block.keyName = keyPress.Key;
+                    break;
+
+                case KeyHoldAction keyHold:
+                    block.type = BlockType.KeyHold;
+                    block.keyHoldKeys = string.Join(",", keyHold.Keys ?? Array.Empty<string>());
+                    block.keyHoldDuration = keyHold.Duration;
+                    break;
+
+                case SetSliderAction setSlider:
+                    block.type = BlockType.SetSlider;
+                    block.target = CreateSelector(setSlider.ElementId, setSlider.TargetElement);
+                    block.sliderValue = setSlider.Value * 100f; // Convert 0-1 to 0-100
+                    break;
+
+                case SetScrollbarAction setScrollbar:
+                    block.type = BlockType.SetScrollbar;
+                    block.target = CreateSelector(setScrollbar.ElementId, setScrollbar.TargetElement);
+                    block.scrollbarValue = setScrollbar.Value * 100f; // Convert 0-1 to 0-100
+                    break;
+
+                case SwipeAction swipe:
+                    block.type = BlockType.Swipe;
+                    block.target = CreateSelector(swipe.ElementId, swipe.TargetElement);
+                    block.swipeDirection = swipe.Direction;
+                    block.swipeDistance = swipe.Distance;
+                    block.swipeDuration = swipe.Duration;
+                    break;
+
+                case PinchAction pinch:
+                    block.type = BlockType.Pinch;
+                    block.target = CreateSelector(pinch.ElementId, pinch.TargetElement);
+                    block.pinchScale = pinch.Scale;
+                    block.pinchDuration = pinch.Duration;
+                    break;
+
+                case TwoFingerSwipeAction twoFingerSwipe:
+                    block.type = BlockType.TwoFingerSwipe;
+                    block.target = CreateSelector(twoFingerSwipe.ElementId, twoFingerSwipe.TargetElement);
+                    block.swipeDirection = twoFingerSwipe.Direction;
+                    block.swipeDistance = twoFingerSwipe.Distance;
+                    block.swipeDuration = twoFingerSwipe.Duration;
+                    block.twoFingerSpacing = twoFingerSwipe.FingerSpacing;
+                    break;
+
+                case RotateAction rotate:
+                    block.type = BlockType.Rotate;
+                    block.target = CreateSelector(rotate.ElementId, rotate.TargetElement);
+                    block.rotateDegrees = rotate.Degrees;
+                    block.rotateDuration = rotate.Duration;
+                    block.rotateFingerDistance = rotate.FingerDistance;
                     break;
 
                 default:

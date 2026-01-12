@@ -10,10 +10,6 @@ using ODDGames.UITest;
 using ODDGames.UITest.VisualBuilder;
 using ODDGames.UITest.VisualBuilder.Editor;
 using Cysharp.Threading.Tasks;
-#if UITEST_AI
-using ODDGames.UITest.AI;
-using ODDGames.UITest.AI.Editor;
-#endif
 
 namespace ODDGames.UITest.Editor
 {
@@ -335,9 +331,6 @@ namespace ODDGames.UITest.Editor
             if (selectedTest == null)
             {
                 EditorGUILayout.HelpBox("Select a test to view details", MessageType.Info);
-#if UITEST_AI
-                DrawCreateAITestButtons();
-#endif
                 DrawCreateVisualTestButton();
             }
             else if (selectedTest.IsGroup)
@@ -346,12 +339,6 @@ namespace ODDGames.UITest.Editor
                 {
                     DrawVisualTestGroupDetails(selectedTest);
                 }
-#if UITEST_AI
-                else if (selectedTest.IsAITestGroup)
-                {
-                    DrawAITestGroupDetails(selectedTest);
-                }
-#endif
                 else
                 {
                     DrawGroupDetails(selectedTest);
@@ -363,12 +350,6 @@ namespace ODDGames.UITest.Editor
                 {
                     DrawVisualTestDetails(selectedTest);
                 }
-#if UITEST_AI
-                else if (selectedTest.IsAITest)
-                {
-                    DrawAITestDetails(selectedTest);
-                }
-#endif
                 else
                 {
                     DrawTestDetails(selectedTest);
@@ -855,412 +836,6 @@ public class {className} : UITestBehaviour
             EditorGUILayout.EndHorizontal();
         }
 
-#if UITEST_AI
-        // Editing state for AI tests
-        private bool isEditingAITest;
-        private string editPrompt;
-        private string editPassCondition;
-        private string editFailCondition;
-        private string editKnowledge;
-        private Vector2 aiTestScrollPos;
-
-        private void DrawCreateAITestButtons()
-        {
-            EditorGUILayout.Space(20);
-            EditorGUILayout.LabelField("Create New AI Test", EditorStyles.boldLabel);
-
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("New AI Test", GUILayout.Height(30)))
-            {
-                AI.Editor.AITestExplorerIntegration.CreateAITest();
-                RefreshTests();
-            }
-            if (GUILayout.Button("New AI Test Group", GUILayout.Height(30)))
-            {
-                AI.Editor.AITestExplorerIntegration.CreateAITestGroup();
-                RefreshTests();
-            }
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawAITestGroupDetails(UITestItem group)
-        {
-            EditorGUILayout.LabelField(group.DisplayName, headerStyle);
-
-            // Show group knowledge if available
-            if (group.AITestGroup != null)
-            {
-                EditorGUILayout.Space();
-
-                if (!string.IsNullOrEmpty(group.AITestGroup.description))
-                {
-                    EditorGUILayout.LabelField(group.AITestGroup.description, EditorStyles.wordWrappedLabel);
-                }
-
-                EditorGUILayout.Space();
-
-                if (!string.IsNullOrEmpty(group.AITestGroup.knowledge))
-                {
-                    EditorGUILayout.LabelField("Group Knowledge:", detailsLabelStyle);
-                    EditorGUILayout.LabelField(group.AITestGroup.knowledge, EditorStyles.wordWrappedLabel);
-                }
-
-                EditorGUILayout.Space();
-
-                // Edit group button
-                if (GUILayout.Button("Edit Group", GUILayout.Height(24)))
-                {
-                    Selection.activeObject = group.AITestGroup;
-                    EditorGUIUtility.PingObject(group.AITestGroup);
-                }
-            }
-
-            EditorGUILayout.Space();
-
-            var children = GetAllTestsInGroup(group);
-            EditorGUILayout.LabelField($"Tests: {children.Count}", detailsLabelStyle);
-
-            EditorGUILayout.Space();
-
-            // Run all AI tests in group
-            EditorGUILayout.BeginHorizontal();
-            GUI.enabled = Application.isPlaying && !AI.AITestRunner.IsRunning;
-            if (GUILayout.Button("Run All in Group", GUILayout.Height(30)))
-            {
-                RunAITestGroup(group).Forget();
-            }
-            GUI.enabled = true;
-            EditorGUILayout.EndHorizontal();
-
-            if (!Application.isPlaying)
-            {
-                EditorGUILayout.HelpBox("Enter Play mode to run AI tests.", MessageType.Info);
-            }
-
-            EditorGUILayout.Space();
-
-            // Create new test in this group
-            if (group.AITestGroup != null)
-            {
-                if (GUILayout.Button("Create Test in Group", GUILayout.Height(24)))
-                {
-                    var folder = Path.GetDirectoryName(AssetDatabase.GetAssetPath(group.AITestGroup));
-                    AI.Editor.AITestExplorerIntegration.CreateAITest(folder, group.AITestGroup);
-                    RefreshTests();
-                }
-            }
-        }
-
-        private void DrawAITestDetails(UITestItem test)
-        {
-            var aiTest = test.AITest;
-            if (aiTest == null)
-            {
-                EditorGUILayout.HelpBox("AI Test asset not found.", MessageType.Error);
-                return;
-            }
-
-            // Header
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(test.DisplayName, headerStyle);
-
-            // Open in Inspector button
-            if (GUILayout.Button("Inspector", GUILayout.Width(70)))
-            {
-                Selection.activeObject = aiTest;
-                EditorGUIUtility.PingObject(aiTest);
-            }
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.Space();
-
-            // Inline editing toggle
-            isEditingAITest = EditorGUILayout.Toggle("Edit Mode", isEditingAITest);
-
-            EditorGUILayout.Space();
-
-            if (isEditingAITest)
-            {
-                DrawAITestEditor(aiTest);
-            }
-            else
-            {
-                DrawAITestViewer(aiTest);
-            }
-
-            EditorGUILayout.Space(10);
-
-            // Run controls
-            DrawAITestRunControls(test);
-
-            EditorGUILayout.Space(10);
-
-            // Last run results
-            DrawAITestLastRun(test);
-        }
-
-        private void DrawAITestViewer(AI.AITest aiTest)
-        {
-            // Prompt
-            EditorGUILayout.LabelField("Prompt:", detailsLabelStyle);
-            EditorGUILayout.LabelField(aiTest.prompt, EditorStyles.wordWrappedLabel);
-
-            EditorGUILayout.Space();
-
-            // Pass Condition
-            EditorGUILayout.LabelField("Pass Condition:", detailsLabelStyle);
-            EditorGUILayout.LabelField(aiTest.passCondition, EditorStyles.wordWrappedLabel);
-
-            if (!string.IsNullOrEmpty(aiTest.failCondition))
-            {
-                EditorGUILayout.Space();
-                EditorGUILayout.LabelField("Fail Condition:", detailsLabelStyle);
-                EditorGUILayout.LabelField(aiTest.failCondition, EditorStyles.wordWrappedLabel);
-            }
-
-            if (!string.IsNullOrEmpty(aiTest.knowledge))
-            {
-                EditorGUILayout.Space();
-                EditorGUILayout.LabelField("Knowledge:", detailsLabelStyle);
-                EditorGUILayout.LabelField(aiTest.knowledge, EditorStyles.wordWrappedLabel);
-            }
-
-            EditorGUILayout.Space();
-
-            // Configuration
-            EditorGUILayout.LabelField("Configuration:", detailsLabelStyle);
-            DrawDetailRow("Starting Tier:", aiTest.startingTier.ToString());
-            DrawDetailRow("Max Actions:", aiTest.maxActions.ToString());
-            DrawDetailRow("Timeout:", $"{aiTest.timeoutSeconds}s");
-
-            if (aiTest.Group != null)
-            {
-                DrawDetailRow("Group:", aiTest.Group.displayName ?? aiTest.Group.name);
-            }
-        }
-
-        private void DrawAITestEditor(AI.AITest aiTest)
-        {
-            // Initialize edit values if needed
-            if (editPrompt == null || Selection.activeObject != aiTest)
-            {
-                editPrompt = aiTest.prompt;
-                editPassCondition = aiTest.passCondition;
-                editFailCondition = aiTest.failCondition;
-                editKnowledge = aiTest.knowledge;
-            }
-
-            EditorGUI.BeginChangeCheck();
-
-            // Prompt
-            EditorGUILayout.LabelField("Prompt:", detailsLabelStyle);
-            editPrompt = EditorGUILayout.TextArea(editPrompt, GUILayout.Height(60));
-
-            EditorGUILayout.Space();
-
-            // Pass Condition
-            EditorGUILayout.LabelField("Pass Condition:", detailsLabelStyle);
-            editPassCondition = EditorGUILayout.TextArea(editPassCondition, GUILayout.Height(40));
-
-            EditorGUILayout.Space();
-
-            // Fail Condition
-            EditorGUILayout.LabelField("Fail Condition (Optional):", detailsLabelStyle);
-            editFailCondition = EditorGUILayout.TextArea(editFailCondition, GUILayout.Height(40));
-
-            EditorGUILayout.Space();
-
-            // Knowledge
-            EditorGUILayout.LabelField("Test Knowledge:", detailsLabelStyle);
-            editKnowledge = EditorGUILayout.TextArea(editKnowledge, GUILayout.Height(60));
-
-            if (EditorGUI.EndChangeCheck())
-            {
-                // Mark dirty for save
-            }
-
-            EditorGUILayout.Space();
-
-            // Save/Revert buttons
-            EditorGUILayout.BeginHorizontal();
-
-            if (GUILayout.Button("Save Changes", GUILayout.Height(24)))
-            {
-                Undo.RecordObject(aiTest, "Edit AI Test");
-                aiTest.prompt = editPrompt;
-                aiTest.passCondition = editPassCondition;
-                aiTest.failCondition = editFailCondition;
-                aiTest.knowledge = editKnowledge;
-                EditorUtility.SetDirty(aiTest);
-                AssetDatabase.SaveAssets();
-                isEditingAITest = false;
-            }
-
-            if (GUILayout.Button("Revert", GUILayout.Height(24)))
-            {
-                editPrompt = aiTest.prompt;
-                editPassCondition = aiTest.passCondition;
-                editFailCondition = aiTest.failCondition;
-                editKnowledge = aiTest.knowledge;
-            }
-
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawAITestRunControls(UITestItem test)
-        {
-            EditorGUILayout.LabelField("Run Test", EditorStyles.boldLabel);
-
-            EditorGUILayout.BeginHorizontal();
-
-            GUI.enabled = Application.isPlaying && !AI.AITestRunner.IsRunning;
-
-            if (GUILayout.Button("Run", GUILayout.Height(30)))
-            {
-                RunAITest(test).Forget();
-            }
-
-            if (GUILayout.Button("Run with Debug Panel", GUILayout.Height(30)))
-            {
-                AI.Editor.AIDebugPanel.ShowWindow();
-                RunAITest(test).Forget();
-            }
-
-            GUI.enabled = true;
-
-            EditorGUILayout.EndHorizontal();
-
-            // Cancel button if running
-            if (AI.AITestRunner.IsRunning)
-            {
-                if (GUILayout.Button("Cancel", GUILayout.Height(24)))
-                {
-                    AI.AITestRunner.Current?.Cancel();
-                }
-            }
-
-            if (!Application.isPlaying)
-            {
-                EditorGUILayout.HelpBox("Enter Play mode to run AI tests.", MessageType.Info);
-            }
-        }
-
-        private void DrawAITestLastRun(UITestItem test)
-        {
-            var lastRun = AI.Editor.AITestExplorerIntegration.GetLastRunStatus(test.AITest);
-
-            if (lastRun.Status == AI.Editor.AITestStatus.NotRun)
-            {
-                EditorGUILayout.HelpBox("This test has not been run yet.", MessageType.Info);
-                return;
-            }
-
-            EditorGUILayout.LabelField("Last Run", EditorStyles.boldLabel);
-
-            var statusColor = lastRun.Status switch
-            {
-                AI.Editor.AITestStatus.Passed => new Color(0.2f, 0.8f, 0.2f),
-                AI.Editor.AITestStatus.Failed => new Color(0.8f, 0.2f, 0.2f),
-                AI.Editor.AITestStatus.Error => new Color(0.8f, 0.4f, 0.2f),
-                _ => Color.gray
-            };
-
-            GUI.color = statusColor;
-            EditorGUILayout.LabelField($"Status: {lastRun.Status}", EditorStyles.boldLabel);
-            GUI.color = Color.white;
-
-            DrawDetailRow("Duration:", $"{lastRun.Duration:F1}s");
-            DrawDetailRow("Time:", lastRun.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"));
-
-            EditorGUILayout.Space();
-
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("View Details", GUILayout.Height(24)))
-            {
-                AI.Editor.AIResultsWindow.ShowWindow();
-            }
-            if (GUILayout.Button("View Screenshots", GUILayout.Height(24)))
-            {
-                ShowScreenshotTimeline(lastRun.RunId);
-            }
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private async UniTask RunAITest(UITestItem test)
-        {
-            SetTestStatus(test, TestStatus.Running);
-
-            try
-            {
-                var result = await AI.Editor.AITestExplorerIntegration.RunAITestAsync(test.AITest);
-
-                // Check if we're still valid after await
-                if (!Application.isPlaying)
-                    return;
-
-                if (result != null)
-                {
-                    var status = result.IsSuccess ? TestStatus.Passed : TestStatus.Failed;
-                    UpdateTestResult(test.DisplayName, status, result.Message, result.DurationSeconds);
-                }
-                else
-                {
-                    SetTestStatus(test, TestStatus.NotRun); // Cancelled/failed to run
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                SetTestStatus(test, TestStatus.NotRun);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[AITest] RunAITest exception: {ex}");
-                SetTestStatus(test, TestStatus.Failed);
-            }
-
-            if (this != null)
-            {
-                Repaint();
-            }
-        }
-
-        private async UniTaskVoid RunAITestGroup(UITestItem group)
-        {
-            try
-            {
-                var tests = GetAllTestsInGroup(group).Where(t => t.IsAITest).ToList();
-
-                foreach (var test in tests)
-                {
-                    if (!Application.isPlaying)
-                        break;
-
-                    await RunAITest(test);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Group run was cancelled
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[AITest] RunAITestGroup exception: {ex}");
-            }
-        }
-
-        private void ShowScreenshotTimeline(string runId)
-        {
-            if (string.IsNullOrEmpty(runId))
-                return;
-
-            var run = AI.AITestResultStore.Instance.LoadRun(runId);
-            if (run != null)
-            {
-                AI.Editor.ScreenshotTimelineView.ShowWindow(run);
-            }
-        }
-#endif
-
         private void RefreshTests()
         {
             allTests.Clear();
@@ -1327,12 +902,7 @@ public class {className} : UITestBehaviour
                 allTests.Add(namespaceItem);
             }
 
-#if UITEST_AI
-            // 2. Find AI Tests and add them
-            AddAITests();
-#endif
-
-            // 3. Find Visual Tests and add them
+            // 2. Find Visual Tests and add them
             AddVisualTests();
 
             // Rebuild tree view
@@ -1420,64 +990,6 @@ public class {className} : UITestBehaviour
                 allTests.Add(visualTestsRoot);
             }
         }
-
-#if UITEST_AI
-        private void AddAITests()
-        {
-            var aiTests = AI.Editor.AITestExplorerIntegration.FindAllAITests();
-            if (aiTests.Count == 0)
-                return;
-
-            // Group AI tests by their group
-            var grouped = aiTests.GroupBy(t => t.GroupName ?? "(Ungrouped AI Tests)");
-
-            // Create AI Tests root
-            var aiTestsRoot = new UITestItem
-            {
-                DisplayName = "AI Tests",
-                FullName = "AI Tests",
-                IsGroup = true,
-                IsAITestGroup = true,
-                Children = new List<UITestItem>()
-            };
-
-            foreach (var group in grouped.OrderBy(g => g.Key))
-            {
-                var groupItem = new UITestItem
-                {
-                    DisplayName = group.Key,
-                    FullName = $"AI Tests/{group.Key}",
-                    IsGroup = true,
-                    IsAITestGroup = true,
-                    Children = new List<UITestItem>()
-                };
-
-                // Try to find the actual AITestGroup asset
-                var firstTest = group.FirstOrDefault()?.AITest;
-                if (firstTest?.Group != null)
-                {
-                    groupItem.AITestGroup = firstTest.Group;
-                }
-
-                foreach (var test in group.OrderBy(t => t.DisplayName))
-                {
-                    groupItem.Children.Add(new UITestItem
-                    {
-                        DisplayName = test.DisplayName,
-                        FullName = test.FullName,
-                        IsGroup = false,
-                        IsAITest = true,
-                        AITest = test.AITest,
-                        AITestAssetPath = test.AssetPath
-                    });
-                }
-
-                aiTestsRoot.Children.Add(groupItem);
-            }
-
-            allTests.Add(aiTestsRoot);
-        }
-#endif
 
         private void ApplyFilters()
         {
@@ -1818,15 +1330,6 @@ public class {className} : UITestBehaviour
         public UITestAttribute Attribute { get; set; }
         public bool IsGroup { get; set; }
         public List<UITestItem> Children { get; set; }
-
-        // AI Test support
-        public bool IsAITest { get; set; }
-        public bool IsAITestGroup { get; set; }
-#if UITEST_AI
-        public ODDGames.UITest.AI.AITest AITest { get; set; }
-        public ODDGames.UITest.AI.AITestGroup AITestGroup { get; set; }
-        public string AITestAssetPath { get; set; }
-#endif
 
         // Visual Test support
         public bool IsVisualTest { get; set; }

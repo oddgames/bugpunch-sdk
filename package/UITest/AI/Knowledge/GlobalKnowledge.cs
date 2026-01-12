@@ -26,9 +26,9 @@ namespace ODDGames.UITest.AI
         public List<string> commonPatterns = new List<string>();
 
         /// <summary>
-        /// Default model tier for new tests.
+        /// Default model for new tests. If empty, uses the first available model.
         /// </summary>
-        public ModelTier defaultModelTier = ModelTier.LocalFast;
+        public string defaultModel;
 
         /// <summary>
         /// Default timeout in seconds.
@@ -49,7 +49,7 @@ namespace ODDGames.UITest.AI
             {
                 context = "",
                 commonPatterns = new List<string>(),
-                defaultModelTier = ModelTier.LocalFast,
+                defaultModel = null,
                 defaultTimeoutSeconds = 180f,
                 defaultMaxActions = 50
             };

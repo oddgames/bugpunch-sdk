@@ -53,6 +53,12 @@ namespace ODDGames.UITest.AI
         /// <summary>Additional info for specific element types (e.g., slider value, toggle state)</summary>
         public string extraInfo;
 
+        /// <summary>Adjacent label text (e.g., "Username:" label next to an input field)</summary>
+        public string adjacentLabel;
+
+        /// <summary>Direction of the adjacent label relative to this element (left, right, above, below)</summary>
+        public string adjacentDirection;
+
         /// <summary>
         /// Creates a short annotation string for the element list.
         /// </summary>
@@ -69,6 +75,13 @@ namespace ODDGames.UITest.AI
             else if (!string.IsNullOrEmpty(name))
             {
                 sb.Append($": {name}");
+            }
+
+            // Show adjacent label if present (especially useful for input fields)
+            if (!string.IsNullOrEmpty(adjacentLabel))
+            {
+                var truncatedLabel = adjacentLabel.Length > 20 ? adjacentLabel.Substring(0, 17) + "..." : adjacentLabel;
+                sb.Append($" (label {adjacentDirection}: \"{truncatedLabel}\")");
             }
 
             sb.Append($" at ({normalizedBounds.x:F2},{normalizedBounds.y:F2})");

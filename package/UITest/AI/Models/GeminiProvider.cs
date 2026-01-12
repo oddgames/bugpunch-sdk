@@ -10,7 +10,6 @@ namespace ODDGames.UITest.AI
 {
     /// <summary>
     /// Model provider for Google Gemini API.
-    /// Supports multiple model tiers: Flash Lite, Flash, and Pro.
     /// </summary>
     public class GeminiProvider : IModelProvider
     {
@@ -19,45 +18,34 @@ namespace ODDGames.UITest.AI
 
         private readonly string apiKey;
         private readonly string modelName;
-        private readonly ModelTier tier;
         private readonly int timeoutSeconds;
+        private readonly int contextWindowSize;
 
-        public string Name => $"Gemini ({GetTierName()})";
-        public ModelTier Tier => tier;
+        /// <summary>Human-readable name of this provider</summary>
+        public string Name { get; }
+
+        /// <summary>The model ID being used</summary>
+        public string ModelId => modelName;
+
         public bool SupportsVision => true;
         public bool SupportsToolCalling => true;
+        public int ContextWindowSize => contextWindowSize;
 
-        public int ContextWindowSize => tier switch
-        {
-            ModelTier.GeminiFlashLite => 32768,
-            ModelTier.GeminiFlash => 1048576,
-            ModelTier.GeminiPro => 2097152,
-            _ => 32768
-        };
-
-        public GeminiProvider(string apiKey, ModelTier tier, int timeoutSeconds = DefaultTimeoutSeconds)
+        /// <summary>
+        /// Creates a Gemini provider with a specific model name.
+        /// </summary>
+        /// <param name="apiKey">Gemini API key</param>
+        /// <param name="modelName">Model ID (e.g., "gemini-2.5-flash")</param>
+        /// <param name="timeoutSeconds">Request timeout</param>
+        /// <param name="contextWindowSize">Context window size (default: 1M tokens)</param>
+        public GeminiProvider(string apiKey, string modelName, int timeoutSeconds = DefaultTimeoutSeconds, int contextWindowSize = 1048576)
         {
             this.apiKey = apiKey;
-            this.tier = tier;
+            this.modelName = modelName ?? GeminiModels.DefaultModel;
             this.timeoutSeconds = timeoutSeconds;
-            this.modelName = GetModelName(tier);
+            this.contextWindowSize = contextWindowSize;
+            this.Name = $"Gemini ({this.modelName})";
         }
-
-        private static string GetModelName(ModelTier tier) => tier switch
-        {
-            ModelTier.GeminiFlashLite => "gemini-2.0-flash-lite",
-            ModelTier.GeminiFlash => "gemini-2.0-flash",
-            ModelTier.GeminiPro => "gemini-1.5-pro",
-            _ => "gemini-2.0-flash"
-        };
-
-        private string GetTierName() => tier switch
-        {
-            ModelTier.GeminiFlashLite => "Flash Lite",
-            ModelTier.GeminiFlash => "Flash",
-            ModelTier.GeminiPro => "Pro",
-            _ => "Flash"
-        };
 
         public async UniTask<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken ct = default)
         {
@@ -287,6 +275,14 @@ namespace ODDGames.UITest.AI
                             propDef["enum"] = prop.Value.Enum;
                         }
 
+                        if (prop.Value.Items != null)
+                        {
+                            propDef["items"] = new Dictionary<string, object>
+                            {
+                                ["type"] = MapType(prop.Value.Items.Type)
+                            };
+                        }
+
                         properties[prop.Key] = propDef;
                     }
                 }
@@ -326,7 +322,7 @@ namespace ODDGames.UITest.AI
                 {
                     Success = true,
                     LatencyMs = (Time.realtimeSinceStartup - startTime) * 1000f,
-                    ModelTier = tier
+                    Model = modelName
                 };
 
                 var parsed = SimpleJsonParser.Parse(json);
@@ -583,6 +579,256 @@ namespace ODDGames.UITest.AI
                 .Replace("\n", "\\n")
                 .Replace("\r", "\\r")
                 .Replace("\t", "\\t");
+        }
+    }
+
+    /// <summary>
+    /// Simple JSON parser for API responses. Parses JSON into Dictionary/List structures.
+    /// </summary>
+    internal static class SimpleJsonParser
+    {
+        public static Dictionary<string, object> Parse(string json)
+        {
+            if (string.IsNullOrEmpty(json))
+                return new Dictionary<string, object>();
+
+            var index = 0;
+            return ParseObject(json, ref index);
+        }
+
+        private static Dictionary<string, object> ParseObject(string json, ref int index)
+        {
+            var result = new Dictionary<string, object>();
+            SkipWhitespace(json, ref index);
+
+            if (index >= json.Length || json[index] != '{')
+                return result;
+
+            index++; // Skip '{'
+
+            while (index < json.Length)
+            {
+                SkipWhitespace(json, ref index);
+
+                if (index >= json.Length || json[index] == '}')
+                {
+                    index++;
+                    break;
+                }
+
+                // Parse key
+                var key = ParseString(json, ref index);
+                SkipWhitespace(json, ref index);
+
+                // Skip ':'
+                if (index < json.Length && json[index] == ':')
+                    index++;
+
+                SkipWhitespace(json, ref index);
+
+                // Parse value
+                result[key] = ParseValue(json, ref index);
+
+                SkipWhitespace(json, ref index);
+
+                // Skip ','
+                if (index < json.Length && json[index] == ',')
+                    index++;
+            }
+
+            return result;
+        }
+
+        private static List<object> ParseArray(string json, ref int index)
+        {
+            var result = new List<object>();
+            SkipWhitespace(json, ref index);
+
+            if (index >= json.Length || json[index] != '[')
+                return result;
+
+            index++; // Skip '['
+
+            while (index < json.Length)
+            {
+                SkipWhitespace(json, ref index);
+
+                if (index >= json.Length || json[index] == ']')
+                {
+                    index++;
+                    break;
+                }
+
+                result.Add(ParseValue(json, ref index));
+
+                SkipWhitespace(json, ref index);
+
+                // Skip ','
+                if (index < json.Length && json[index] == ',')
+                    index++;
+            }
+
+            return result;
+        }
+
+        private static object ParseValue(string json, ref int index)
+        {
+            SkipWhitespace(json, ref index);
+
+            if (index >= json.Length)
+                return null;
+
+            var c = json[index];
+
+            if (c == '"')
+                return ParseString(json, ref index);
+            if (c == '{')
+                return ParseObject(json, ref index);
+            if (c == '[')
+                return ParseArray(json, ref index);
+            if (c == 't' || c == 'f')
+                return ParseBool(json, ref index);
+            if (c == 'n')
+                return ParseNull(json, ref index);
+            if (c == '-' || char.IsDigit(c))
+                return ParseNumber(json, ref index);
+
+            return null;
+        }
+
+        private static string ParseString(string json, ref int index)
+        {
+            if (index >= json.Length || json[index] != '"')
+                return "";
+
+            index++; // Skip opening quote
+            var sb = new StringBuilder();
+
+            while (index < json.Length)
+            {
+                var c = json[index];
+
+                if (c == '"')
+                {
+                    index++;
+                    break;
+                }
+
+                if (c == '\\' && index + 1 < json.Length)
+                {
+                    index++;
+                    var escaped = json[index];
+                    switch (escaped)
+                    {
+                        case 'n': sb.Append('\n'); break;
+                        case 'r': sb.Append('\r'); break;
+                        case 't': sb.Append('\t'); break;
+                        case '"': sb.Append('"'); break;
+                        case '\\': sb.Append('\\'); break;
+                        case '/': sb.Append('/'); break;
+                        case 'u':
+                            if (index + 4 < json.Length)
+                            {
+                                var hex = json.Substring(index + 1, 4);
+                                if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var unicode))
+                                {
+                                    sb.Append((char)unicode);
+                                    index += 4;
+                                }
+                            }
+                            break;
+                        default: sb.Append(escaped); break;
+                    }
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+
+                index++;
+            }
+
+            return sb.ToString();
+        }
+
+        private static object ParseNumber(string json, ref int index)
+        {
+            var start = index;
+            var hasDecimal = false;
+
+            if (index < json.Length && json[index] == '-')
+                index++;
+
+            while (index < json.Length)
+            {
+                var c = json[index];
+                if (char.IsDigit(c))
+                {
+                    index++;
+                }
+                else if (c == '.' && !hasDecimal)
+                {
+                    hasDecimal = true;
+                    index++;
+                }
+                else if (c == 'e' || c == 'E')
+                {
+                    index++;
+                    if (index < json.Length && (json[index] == '+' || json[index] == '-'))
+                        index++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            var numStr = json.Substring(start, index - start);
+
+            if (hasDecimal || numStr.Contains("e") || numStr.Contains("E"))
+            {
+                if (double.TryParse(numStr, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var d))
+                    return d;
+            }
+            else
+            {
+                if (long.TryParse(numStr, out var l))
+                    return l;
+            }
+
+            return 0;
+        }
+
+        private static bool ParseBool(string json, ref int index)
+        {
+            if (index + 4 <= json.Length && json.Substring(index, 4) == "true")
+            {
+                index += 4;
+                return true;
+            }
+            if (index + 5 <= json.Length && json.Substring(index, 5) == "false")
+            {
+                index += 5;
+                return false;
+            }
+            return false;
+        }
+
+        private static object ParseNull(string json, ref int index)
+        {
+            if (index + 4 <= json.Length && json.Substring(index, 4) == "null")
+            {
+                index += 4;
+                return null;
+            }
+            return null;
+        }
+
+        private static void SkipWhitespace(string json, ref int index)
+        {
+            while (index < json.Length && char.IsWhiteSpace(json[index]))
+                index++;
         }
     }
 }
