@@ -75,11 +75,11 @@ namespace ODDGames.UITest.Samples
             await Test_Index();
 
             // Adjacent tests
-            await Test_ByAdjacent_Right();
-            await Test_ByAdjacent_Left();
-            await Test_ByAdjacent_Below();
-            await Test_ByAdjacent_Above();
-            await Test_ByAdjacent_MultipleNearby();
+            await Test_Adjacent_Right();
+            await Test_Adjacent_Left();
+            await Test_Adjacent_Below();
+            await Test_Adjacent_Above();
+            await Test_Adjacent_MultipleNearby();
 
             // New methods: GetParent, GetChild, ordering
             await Test_GetParent();
@@ -97,9 +97,9 @@ namespace ODDGames.UITest.Samples
             await Test_InRegion();
 
             // Target transformation tests
-            await Test_Parent();
-            await Test_Child();
-            await Test_Sibling();
+            await Test_GetParentTransform();
+            await Test_GetChildTransform();
+            await Test_GetSiblingTransform();
 
             // ScrollTo tests
             await Test_ScrollTo();
@@ -333,42 +333,42 @@ namespace ODDGames.UITest.Samples
 
         #region Adjacent Tests
 
-        private async UniTask Test_ByAdjacent_Right()
+        private async UniTask Test_Adjacent_Right()
         {
             // Find input field to the right of "Username:" label
-            var result = await Find<TMP_InputField>(Search.ByAdjacent("Username:"), throwIfMissing: false, seconds: 1);
-            AssertTest("ByAdjacent (Right)", result != null && result.name == "UsernameInput");
+            var result = await Find<TMP_InputField>(Search.Adjacent("Username:"), throwIfMissing: false, seconds: 1);
+            AssertTest("Adjacent (Right)", result != null && result.name == "UsernameInput");
         }
 
-        private async UniTask Test_ByAdjacent_Left()
+        private async UniTask Test_Adjacent_Left()
         {
             // Find slider to the left of "Volume Level" label
-            var result = await Find<Slider>(Search.ByAdjacent("Volume Level", Adjacent.Left), throwIfMissing: false, seconds: 1);
-            AssertTest("ByAdjacent (Left)", result != null && result.name == "LeftSlider");
+            var result = await Find<Slider>(Search.Adjacent("Volume Level", Direction.Left), throwIfMissing: false, seconds: 1);
+            AssertTest("Adjacent (Left)", result != null && result.name == "LeftSlider");
         }
 
-        private async UniTask Test_ByAdjacent_Below()
+        private async UniTask Test_Adjacent_Below()
         {
             // Find input field below "Description" label
-            var result = await Find<TMP_InputField>(Search.ByAdjacent("Description", Adjacent.Below), throwIfMissing: false, seconds: 1);
-            AssertTest("ByAdjacent (Below)", result != null && result.name == "DescriptionInput");
+            var result = await Find<TMP_InputField>(Search.Adjacent("Description", Direction.Below), throwIfMissing: false, seconds: 1);
+            AssertTest("Adjacent (Below)", result != null && result.name == "DescriptionInput");
         }
 
-        private async UniTask Test_ByAdjacent_Above()
+        private async UniTask Test_Adjacent_Above()
         {
             // Find toggle above "Clear Selection" label
-            var result = await Find<Toggle>(Search.ByAdjacent("Clear Selection", Adjacent.Above), throwIfMissing: false, seconds: 1);
-            AssertTest("ByAdjacent (Above)", result != null && result.name == "AboveToggle");
+            var result = await Find<Toggle>(Search.Adjacent("Clear Selection", Direction.Above), throwIfMissing: false, seconds: 1);
+            AssertTest("Adjacent (Above)", result != null && result.name == "AboveToggle");
         }
 
-        private async UniTask Test_ByAdjacent_MultipleNearby()
+        private async UniTask Test_Adjacent_MultipleNearby()
         {
             // "Ambiguous:" label has inputs to the right, below, and left - test each direction
-            var rightResult = await Find<TMP_InputField>(Search.ByAdjacent("Ambiguous:", Adjacent.Right), throwIfMissing: false, seconds: 1);
-            var belowResult = await Find<TMP_InputField>(Search.ByAdjacent("Ambiguous:", Adjacent.Below), throwIfMissing: false, seconds: 1);
+            var rightResult = await Find<TMP_InputField>(Search.Adjacent("Ambiguous:", Direction.Right), throwIfMissing: false, seconds: 1);
+            var belowResult = await Find<TMP_InputField>(Search.Adjacent("Ambiguous:", Direction.Below), throwIfMissing: false, seconds: 1);
 
-            AssertTest("ByAdjacent (Multiple nearby - Right)", rightResult != null && rightResult.name == "AmbiguousRightInput");
-            AssertTest("ByAdjacent (Multiple nearby - Below)", belowResult != null && belowResult.name == "AmbiguousBelowInput");
+            AssertTest("Adjacent (Multiple nearby - Right)", rightResult != null && rightResult.name == "AmbiguousRightInput");
+            AssertTest("Adjacent (Multiple nearby - Below)", belowResult != null && belowResult.name == "AmbiguousBelowInput");
         }
 
         #endregion
@@ -480,43 +480,43 @@ namespace ODDGames.UITest.Samples
             AssertTest("InRegion (negative)", wrongRegion == null);
         }
 
-        private async UniTask Test_Parent()
+        private async UniTask Test_GetParentTransform()
         {
             // Find a button by its text, then get its parent
             var result = await Find<RectTransform>(
-                Search.ByName("ParentTestChild").Parent(),
+                Search.ByName("ParentTestChild").GetParent(),
                 throwIfMissing: false, seconds: 1);
-            AssertTest("Parent()", result != null && result.name == "ParentTestContainer");
+            AssertTest("GetParent() transform", result != null && result.name == "ParentTestContainer");
         }
 
-        private async UniTask Test_Child()
+        private async UniTask Test_GetChildTransform()
         {
             // Find a container, then get its first child
             var result = await Find<RectTransform>(
-                Search.ByName("ChildTestContainer").Child(0),
+                Search.ByName("ChildTestContainer").GetChild(0),
                 throwIfMissing: false, seconds: 1);
-            AssertTest("Child(0)", result != null && result.name == "ChildTestFirst");
+            AssertTest("GetChild(0) transform", result != null && result.name == "ChildTestFirst");
 
             // Get second child
             var second = await Find<RectTransform>(
-                Search.ByName("ChildTestContainer").Child(1),
+                Search.ByName("ChildTestContainer").GetChild(1),
                 throwIfMissing: false, seconds: 1);
-            AssertTest("Child(1)", second != null && second.name == "ChildTestSecond");
+            AssertTest("GetChild(1) transform", second != null && second.name == "ChildTestSecond");
         }
 
-        private async UniTask Test_Sibling()
+        private async UniTask Test_GetSiblingTransform()
         {
             // Find first sibling, then get next sibling
             var result = await Find<RectTransform>(
-                Search.ByName("SiblingFirst").Sibling(1),
+                Search.ByName("SiblingFirst").GetSibling(1),
                 throwIfMissing: false, seconds: 1);
-            AssertTest("Sibling(1)", result != null && result.name == "SiblingSecond");
+            AssertTest("GetSibling(1)", result != null && result.name == "SiblingSecond");
 
             // Get previous sibling
             var prev = await Find<RectTransform>(
-                Search.ByName("SiblingSecond").Sibling(-1),
+                Search.ByName("SiblingSecond").GetSibling(-1),
                 throwIfMissing: false, seconds: 1);
-            AssertTest("Sibling(-1)", prev != null && prev.name == "SiblingFirst");
+            AssertTest("GetSibling(-1)", prev != null && prev.name == "SiblingFirst");
         }
 
         private async UniTask Test_ScrollTo()

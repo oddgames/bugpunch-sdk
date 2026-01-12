@@ -22,19 +22,33 @@ namespace ODDGames.UITest.AI
             var selectables = Object.FindObjectsByType<Selectable>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             int idCounter = 1;
 
+            Debug.Log($"[ElementDiscovery] Found {selectables.Length} Selectable components in scene");
+
+            int skippedInactive = 0, skippedCanvasGroup = 0, skippedBounds = 0;
             foreach (var selectable in selectables)
             {
                 if (selectable == null) continue;
-                if (!selectable.gameObject.activeInHierarchy) continue;
+                if (!selectable.gameObject.activeInHierarchy)
+                {
+                    skippedInactive++;
+                    continue;
+                }
 
                 // Check canvas group visibility
                 var canvasGroup = selectable.GetComponentInParent<CanvasGroup>();
                 if (canvasGroup != null && (canvasGroup.alpha <= 0 || !canvasGroup.interactable))
+                {
+                    skippedCanvasGroup++;
                     continue;
+                }
 
                 var bounds = InputInjector.GetScreenBounds(selectable.gameObject);
                 if (bounds.width <= 0 || bounds.height <= 0)
+                {
+                    skippedBounds++;
+                    Debug.Log($"[ElementDiscovery] Skipped '{selectable.gameObject.name}' - invalid bounds: {bounds}");
                     continue;
+                }
 
                 var element = new ElementInfo
                 {
@@ -60,6 +74,17 @@ namespace ODDGames.UITest.AI
                 };
 
                 elements.Add(element);
+            }
+
+            if (elements.Count == 0 && selectables.Length > 0)
+            {
+                Debug.LogWarning($"[ElementDiscovery] All {selectables.Length} selectables filtered out! " +
+                    $"Inactive: {skippedInactive}, CanvasGroup: {skippedCanvasGroup}, InvalidBounds: {skippedBounds}");
+            }
+            else
+            {
+                Debug.Log($"[ElementDiscovery] Returning {elements.Count} elements " +
+                    $"(filtered: inactive={skippedInactive}, canvasGroup={skippedCanvasGroup}, bounds={skippedBounds})");
             }
 
             // Find adjacent labels for elements that typically have them (inputs, sliders, etc.)

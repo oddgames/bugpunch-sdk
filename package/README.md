@@ -153,7 +153,7 @@ All gesture distances use percentage of screen height (e.g., 0.2 = 20%) for devi
 | Find by exact name | `Click("SubmitButton")` | Button named "SubmitButton" |
 | Find by name pattern | `Click("Item*")` | Matches "Item1", "ItemGold", etc. |
 | Find by visible text | `Click(Search.ByText("Continue"))` | Button showing "Continue" |
-| Find input next to label | `TextInput(Search.ByAdjacent("Username:"), "test")` | Input field to the right of "Username:" label |
+| Find input next to label | `TextInput(Search.Adjacent("Username:"), "test")` | Input field to the right of "Username:" label |
 | Find in specific region | `Click(Search.ByName("Button").InRegion(ScreenRegion.TopRight))` | Button in top-right corner |
 | Find first of many | `Click(Search.ByName("ListItem*").First())` | First item by screen position |
 | Find with component | `Click(Search.ByType<Toggle>())` | Any Toggle component |
@@ -165,7 +165,7 @@ All gesture distances use percentage of screen height (e.g., 0.2 = 20%) for devi
 |--------------|--------|-------|
 | Buttons | `Click("ButtonName")` | Standard click |
 | Toggles | `Click("ToggleName")` | Toggle on/off |
-| Input Fields | `TextInput(Search.ByAdjacent("Label:"), "text")` | Find by adjacent label |
+| Input Fields | `TextInput(Search.Adjacent("Label:"), "text")` | Find by adjacent label |
 | Dropdowns | `ClickDropdown("Dropdown", "Option Text")` | Select by visible text |
 | Dropdowns | `ClickDropdown("Dropdown", 2)` | Select by index (0-based) |
 | Sliders | `ClickSlider("Volume", 0.75f)` | Click at 75% position |
@@ -225,7 +225,7 @@ foreach (var button in buttons)
 Need to find element by...
 ├── Name → Search.ByName("ButtonName") or just "ButtonName"
 ├── Visible text → Search.ByText("Click Me")
-├── Adjacent label → Search.ByAdjacent("Email:", Adjacent.Right)
+├── Adjacent label → Search.Adjacent("Email:", Direction.Right)
 ├── Component type → Search.ByType<Slider>()
 ├── Screen position → Search.ByName("*").InRegion(ScreenRegion.Center)
 ├── Hierarchy path → Search.ByPath("Canvas/Panel/Button")
@@ -236,8 +236,8 @@ Need to find element by...
 
 ```csharp
 // Login form using adjacent labels
-await TextInput(Search.ByAdjacent("Username:"), "testuser");
-await TextInput(Search.ByAdjacent("Password:"), "password123");
+await TextInput(Search.Adjacent("Username:"), "testuser");
+await TextInput(Search.Adjacent("Password:"), "password123");
 await Click("Login");
 
 // Navigate tabs by position

@@ -42,7 +42,7 @@ namespace ODDGames.UITest.AI.Editor
 
         [Header("Performance")]
         [Tooltip("Send screenshots to AI for visual reasoning. Disable for faster text-only mode.")]
-        public bool sendScreenshotsToAI = false;
+        public bool sendScreenshotsToAI = true;
 
         [Tooltip("Use text-only mode by default (faster, no vision). The AI relies solely on the element list.")]
         public bool preferTextOnlyMode = false;
@@ -117,7 +117,8 @@ namespace ODDGames.UITest.AI.Editor
         public AITestRunnerConfig CreateRunnerConfig(string modelId = null)
         {
             var effectiveModel = modelId ?? GetEffectiveModel();
-            var shouldSendScreenshots = sendScreenshotsToAI && !preferTextOnlyMode;
+            // Screenshots are on-demand now - AI requests them via screenshot action when needed
+            var shouldSendScreenshots = false;
 
             Debug.Log($"[AITest] Creating runner config: model={effectiveModel}, SendScreenshots={shouldSendScreenshots}");
 

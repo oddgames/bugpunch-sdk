@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.29] - 2026-01-12
+
+### Added
+- **`Search.Near()`** - Distance-based proximity search for finding elements near text labels
+  - `Search.Near("Center Flag")` - finds closest interactable to text using Euclidean distance
+  - `Search.Near("Center Flag", Direction.Below)` - optionally filter by direction
+  - More lenient than `Adjacent` - works with diagonal/offset layouts
+- **`Search.HasSibling()`** - Filter elements that have a sibling matching criteria
+  - `Search.ByType<Button>().HasSibling(Search.ByText("Label"))` - find buttons with a sibling containing "Label"
+  - `Search.ByType<Button>().HasSibling("HeaderText")` - shorthand for name pattern
+
+### Changed
+- **Renamed `ByAdjacent` to `Adjacent`** - Removed "By" prefix for consistency
+  - `Search.ByAdjacent("Label:")` → `Search.Adjacent("Label:")`
+- **Renamed `Adjacent` enum to `Direction`** - Clearer naming, avoids conflict with method
+  - `Adjacent.Right` → `Direction.Right`, `Adjacent.Below` → `Direction.Below`, etc.
+- **Renamed target transform methods** - Added "Get" prefix for clarity
+  - `Parent()` → `GetParent()` - transforms result to parent
+  - `Child(index)` → `GetChild(index)` - transforms result to child at index
+  - `Sibling(offset)` → `GetSibling(offset)` - transforms result to sibling at offset
+  - These are distinct from filter methods like `HasParent()`, `HasChild()`, `HasSibling()`
+
 ## [1.0.28] - 2026-01-12
 
 ### Added

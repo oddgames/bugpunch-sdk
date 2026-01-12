@@ -35,27 +35,32 @@ namespace ODDGames.UITest.AI
             }
             catch (System.OperationCanceledException)
             {
+                Debug.LogWarning("[AIScreenCapture] Screenshot capture cancelled");
+                // Still discover elements even if screenshot failed
                 return new ScreenState
                 {
-                    Elements = new List<ElementInfo>(),
+                    Elements = ElementDiscovery.DiscoverElements(),
                     Timestamp = Time.realtimeSinceStartup
                 };
             }
-            catch
+            catch (System.Exception ex)
             {
-                // Unity shutting down, return empty state
+                Debug.LogWarning($"[AIScreenCapture] Screenshot capture failed: {ex.Message}");
+                // Still discover elements even if screenshot failed
                 return new ScreenState
                 {
-                    Elements = new List<ElementInfo>(),
+                    Elements = ElementDiscovery.DiscoverElements(),
                     Timestamp = Time.realtimeSinceStartup
                 };
             }
 
             if (screenshot == null)
             {
+                Debug.LogWarning("[AIScreenCapture] Screenshot returned null");
+                // Still discover elements even if screenshot is null
                 return new ScreenState
                 {
-                    Elements = new List<ElementInfo>(),
+                    Elements = ElementDiscovery.DiscoverElements(),
                     Timestamp = Time.realtimeSinceStartup
                 };
             }

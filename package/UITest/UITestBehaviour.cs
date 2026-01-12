@@ -98,9 +98,9 @@ namespace ODDGames.UITest
         ///   await Click(Search.ByName("Root").HasDescendant(Search.ByType&lt;Toggle&gt;()));
         /// </summary>
         /// <summary>
-        /// Direction for adjacent element searches.
+        /// Direction for adjacent/near element searches.
         /// </summary>
-        public enum Adjacent
+        public enum Direction
         {
             /// <summary>Find the nearest interactable to the right of the text (same row preferred).</summary>
             Right,
@@ -201,9 +201,18 @@ namespace ODDGames.UITest
             /// <summary>
             /// Search for an interactable element (InputField, Dropdown, Slider, Toggle) that is
             /// spatially adjacent to a Text/TMP_Text matching the pattern in the specified direction.
-            /// Example: Search.ByAdjacent("Username:", Adjacent.Right) finds the input field to the right of "Username:" text.
+            /// Example: Search.Adjacent("Username:", UITestBehaviour.Direction.Right) finds the input field to the right of "Username:" text.
             /// </summary>
-            public static Search ByAdjacent(string textPattern, Adjacent direction = Adjacent.Right) => new Search().AdjacentTo(textPattern, direction);
+            public static Search Adjacent(string textPattern, UITestBehaviour.Direction direction = UITestBehaviour.Direction.Right) => new Search().AdjacentTo(textPattern, direction);
+
+            /// <summary>
+            /// Search for an interactable element that is spatially nearest to a Text/TMP_Text matching the pattern.
+            /// Unlike Adjacent, this uses pure distance-based proximity without directional constraints.
+            /// Optionally filter by direction (e.g., only consider elements above or below the text).
+            /// Example: Search.Near("Center Flag") finds the closest interactable to "Center Flag" text.
+            /// Example: Search.Near("Center Flag", UITestBehaviour.Direction.Below) finds the closest interactable below "Center Flag".
+            /// </summary>
+            public static Search Near(string textPattern, UITestBehaviour.Direction? direction = null) => new Search().NearTo(textPattern, direction);
 
             /// <summary>Search by custom predicate on the GameObject.</summary>
             public static Search Where(Func<GameObject, bool> predicate) => new Search().With(predicate);
@@ -349,6 +358,44 @@ namespace ODDGames.UITest
             public Search HasDescendant(string descendantNamePattern)
             {
                 return HasDescendant(ByName(descendantNamePattern));
+            }
+
+            /// <summary>
+            /// Match elements that have a sibling matching the search criteria.
+            /// Example: Search.ByType&lt;Button&gt;().HasSibling(Search.ByText("Label"))
+            /// </summary>
+            public Search HasSibling(Search siblingSearch)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    var parent = go.transform.parent;
+                    if (parent == null) return negate;
+
+                    bool found = false;
+                    for (int i = 0; i < parent.childCount; i++)
+                    {
+                        var sibling = parent.GetChild(i).gameObject;
+                        if (sibling == go) continue; // Skip self
+                        if (siblingSearch.Matches(sibling))
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                    return negate != found;
+                });
+                return this;
+            }
+
+            /// <summary>
+            /// Match if any sibling's name matches the pattern (supports * wildcards).
+            /// Shorthand for HasSibling(Search.ByName(pattern)).
+            /// </summary>
+            public Search HasSibling(string siblingNamePattern)
+            {
+                return HasSibling(ByName(siblingNamePattern));
             }
 
             /// <summary>
@@ -666,9 +713,9 @@ namespace ODDGames.UITest
 
             /// <summary>
             /// After finding the matching element, return its parent instead.
-            /// Example: Search.ByText("Title").Parent() - finds element with text, returns its parent
+            /// Example: Search.ByText("Title").GetParent() - finds element with text, returns its parent
             /// </summary>
-            public Search Parent()
+            public Search GetParent()
             {
                 var previous = _targetTransform;
                 _targetTransform = go =>
@@ -681,9 +728,9 @@ namespace ODDGames.UITest
 
             /// <summary>
             /// After finding the matching element, return a child by index.
-            /// Example: Search.ByName("Container").Child(0) - finds Container, returns its first child
+            /// Example: Search.ByName("Container").GetChild(0) - finds Container, returns its first child
             /// </summary>
-            public Search Child(int index)
+            public Search GetChild(int index)
             {
                 var previous = _targetTransform;
                 _targetTransform = go =>
@@ -699,10 +746,10 @@ namespace ODDGames.UITest
 
             /// <summary>
             /// After finding the matching element, return a sibling by offset.
-            /// Example: Search.ByText("Label").Sibling(1) - finds Label, returns the next sibling
-            /// Example: Search.ByText("Label").Sibling(-1) - finds Label, returns the previous sibling
+            /// Example: Search.ByText("Label").GetSibling(1) - finds Label, returns the next sibling
+            /// Example: Search.ByText("Label").GetSibling(-1) - finds Label, returns the previous sibling
             /// </summary>
-            public Search Sibling(int offset)
+            public Search GetSibling(int offset)
             {
                 var previous = _targetTransform;
                 _targetTransform = go =>
@@ -899,9 +946,9 @@ namespace ODDGames.UITest
             /// Match if this element is an interactable (InputField, Dropdown, Slider, Toggle) that is
             /// spatially adjacent to a Text/TMP_Text matching the pattern in the specified direction.
             /// Uses world position to find the nearest interactable.
-            /// Example: Search.ByAdjacent("Username:", Adjacent.Right) finds the input field next to "Username:" text.
+            /// Example: Search.ByAdjacent("Username:", UITestBehaviour.Direction.Right) finds the input field next to "Username:" text.
             /// </summary>
-            public Search AdjacentTo(string textPattern, Adjacent direction = Adjacent.Right)
+            public Search AdjacentTo(string textPattern, UITestBehaviour.Direction direction = UITestBehaviour.Direction.Right)
             {
                 bool negate = _nextNegate;
                 _nextNegate = false;
@@ -914,10 +961,29 @@ namespace ODDGames.UITest
             }
 
             /// <summary>
+            /// Match elements spatially nearest to a text label using distance-based proximity.
+            /// Unlike AdjacentTo, this uses pure distance without strict directional constraints.
+            /// Optionally filter by direction to only consider elements in a general direction from the text.
+            /// Example: Search.Near("Center Flag") finds the closest interactable to "Center Flag" text.
+            /// Example: Search.Near("Center Flag", UITestBehaviour.Direction.Below) finds closest interactable below "Center Flag".
+            /// </summary>
+            public Search NearTo(string textPattern, UITestBehaviour.Direction? direction = null)
+            {
+                bool negate = _nextNegate;
+                _nextNegate = false;
+                _conditions.Add(go =>
+                {
+                    bool match = IsNearestInteractableToTextByDistance(go, textPattern, direction);
+                    return negate != match;
+                });
+                return this;
+            }
+
+            /// <summary>
             /// Checks if this interactable is the nearest one to any text matching the pattern in the scene.
             /// Uses world/screen position for spatial proximity, not hierarchy.
             /// </summary>
-            static bool IsNearestInteractableToText(GameObject interactable, string textPattern, Adjacent direction)
+            static bool IsNearestInteractableToText(GameObject interactable, string textPattern, UITestBehaviour.Direction direction)
             {
                 // Must have an interactable component
                 if (!HasInteractableComponent(interactable))
@@ -941,6 +1007,92 @@ namespace ODDGames.UITest
                 }
 
                 return false;
+            }
+
+            /// <summary>
+            /// Checks if this interactable is the nearest one to any text matching the pattern using pure distance.
+            /// Optionally filters by direction (only considers elements in that general direction from the text).
+            /// </summary>
+            static bool IsNearestInteractableToTextByDistance(GameObject interactable, string textPattern, UITestBehaviour.Direction? direction)
+            {
+                // Must have an interactable component
+                if (!HasInteractableComponent(interactable))
+                    return false;
+
+                var interactableRect = interactable.GetComponent<RectTransform>();
+                if (interactableRect == null)
+                    return false;
+
+                // Find all text elements in the scene matching the pattern
+                var matchingTexts = FindTextsMatchingPattern(textPattern);
+                if (matchingTexts.Count == 0)
+                    return false;
+
+                // For each matching text, check if this interactable is the nearest one by distance
+                foreach (var text in matchingTexts)
+                {
+                    var nearest = FindNearestInteractableByDistance(text, direction);
+                    if (nearest == interactable)
+                        return true;
+                }
+
+                return false;
+            }
+
+            /// <summary>Find the nearest interactable by pure distance, optionally filtering by direction.</summary>
+            static GameObject FindNearestInteractableByDistance(GameObject textObj, UITestBehaviour.Direction? direction)
+            {
+                var textRect = textObj.GetComponent<RectTransform>();
+                if (textRect == null)
+                    return null;
+
+                Vector3 textPos = textRect.position;
+                GameObject nearest = null;
+                float nearestDistance = float.MaxValue;
+
+                var selectables = GameObject.FindObjectsByType<Selectable>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+                foreach (var selectable in selectables)
+                {
+                    if (selectable.gameObject == textObj)
+                        continue;
+
+                    var interactableRect = selectable.GetComponent<RectTransform>();
+                    if (interactableRect == null)
+                        continue;
+
+                    if (!selectable.gameObject.activeInHierarchy)
+                        continue;
+
+                    Vector3 interactablePos = interactableRect.position;
+                    float dx = interactablePos.x - textPos.x;
+                    float dy = textPos.y - interactablePos.y; // Positive when interactable is below text
+
+                    // If direction is specified, filter out elements not in that direction
+                    if (direction.HasValue)
+                    {
+                        bool inDirection = direction.Value switch
+                        {
+                            UITestBehaviour.Direction.Right => dx > 0,
+                            UITestBehaviour.Direction.Left => dx < 0,
+                            UITestBehaviour.Direction.Below => dy > 0,
+                            UITestBehaviour.Direction.Above => dy < 0,
+                            _ => true
+                        };
+                        if (!inDirection)
+                            continue;
+                    }
+
+                    // Pure Euclidean distance
+                    float distance = Mathf.Sqrt(dx * dx + dy * dy);
+                    if (distance < nearestDistance)
+                    {
+                        nearestDistance = distance;
+                        nearest = selectable.gameObject;
+                    }
+                }
+
+                return nearest;
             }
 
             /// <summary>Find all Text/TMP_Text GameObjects in the scene matching the pattern.</summary>
@@ -972,7 +1124,7 @@ namespace ODDGames.UITest
             }
 
             /// <summary>Find the nearest interactable in the entire scene to the text in the specified direction.</summary>
-            static GameObject FindNearestInteractableInScene(GameObject textObj, Adjacent direction)
+            static GameObject FindNearestInteractableInScene(GameObject textObj, UITestBehaviour.Direction direction)
             {
                 var textRect = textObj.GetComponent<RectTransform>();
                 if (textRect == null)
@@ -1016,29 +1168,29 @@ namespace ODDGames.UITest
             }
 
             /// <summary>Calculate a score for how well an interactable matches the desired direction from the text.</summary>
-            static float CalculateAdjacentScore(float dx, float dy, Adjacent direction)
+            static float CalculateAdjacentScore(float dx, float dy, UITestBehaviour.Direction direction)
             {
                 const float rowTolerance = 30f; // Elements within 30 units vertically are on "same row"
                 const float colTolerance = 100f; // Elements within 100 units horizontally are "same column"
 
                 switch (direction)
                 {
-                    case Adjacent.Right:
+                    case UITestBehaviour.Direction.Right:
                         // Must be to the right, prefer same row
                         if (dx <= 0) return float.MaxValue;
                         return Mathf.Abs(dy) < rowTolerance ? dx : dx + Mathf.Abs(dy) * 10;
 
-                    case Adjacent.Left:
+                    case UITestBehaviour.Direction.Left:
                         // Must be to the left, prefer same row
                         if (dx >= 0) return float.MaxValue;
                         return Mathf.Abs(dy) < rowTolerance ? -dx : -dx + Mathf.Abs(dy) * 10;
 
-                    case Adjacent.Below:
+                    case UITestBehaviour.Direction.Below:
                         // Must be below, prefer same column
                         if (dy <= 0) return float.MaxValue;
                         return Mathf.Abs(dx) < colTolerance ? dy : dy + Mathf.Abs(dx) * 10;
 
-                    case Adjacent.Above:
+                    case UITestBehaviour.Direction.Above:
                         // Must be above, prefer same column
                         if (dy >= 0) return float.MaxValue;
                         return Mathf.Abs(dx) < colTolerance ? -dy : -dy + Mathf.Abs(dx) * 10;

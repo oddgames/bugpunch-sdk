@@ -122,12 +122,16 @@ namespace ODDGames.UITest.AI
             sb.AppendLine();
 
             sb.AppendLine("=== GUIDELINES ===");
-            sb.AppendLine("1. Use the ELEMENT LIST as your primary source - it contains all interactable UI elements");
+            sb.AppendLine("IMPORTANT: Work from the ELEMENT LIST only. Screenshots are slow and should be avoided.");
+            sb.AppendLine();
+            sb.AppendLine("1. The ELEMENT LIST is your PRIMARY and ONLY source of UI information");
             sb.AppendLine("2. Click elements by their ID (e.g., 'e1', 'e2') - this is the most reliable method");
             sb.AppendLine("3. Input fields, sliders, toggles, and dropdowns show their ADJACENT LABEL in parentheses");
             sb.AppendLine("   Example: '[e3] input: (placeholder: Enter name) (label left: \"Username:\")' means the input next to 'Username:' label");
-            sb.AppendLine("   Use the label to identify which input is which (e.g., type into the input with 'Username:' label)");
-            sb.AppendLine("4. If you need visual context, use the 'screenshot' action to request an image");
+            sb.AppendLine("4. DO NOT request screenshots unless absolutely necessary:");
+            sb.AppendLine("   - The element list provides all interactable elements with their types, text, and positions");
+            sb.AppendLine("   - Only request a screenshot if you cannot determine the correct action from the element list");
+            sb.AppendLine("   - Examples of when to request screenshot: confirming visual state changes, verifying images/graphics");
             sb.AppendLine("5. Only use screen coordinates (x, y) when you see something NOT in the element list");
             sb.AppendLine("6. Think step by step, but be efficient - choose the most direct path");
             sb.AppendLine("7. If stuck, try a different approach or different elements");
