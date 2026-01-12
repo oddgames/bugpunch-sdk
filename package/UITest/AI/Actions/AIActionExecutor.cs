@@ -599,55 +599,35 @@ namespace ODDGames.UITest.AI
 
         private static async UniTask ExecutePinchAsync(PinchAction action, CancellationToken ct)
         {
-            if (action.TargetElement?.gameObject == null)
-            {
-                throw new InvalidOperationException("Pinch action has no target element");
-            }
+            Debug.Log($"[AITest] Pinch {(action.Scale < 1 ? "in" : "out")} {action.Scale:F1}x on '{action.TargetElement?.name ?? "screen"}'");
 
-            var center = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
-            await InputInjector.InjectPinch(center, action.Scale, action.Duration);
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.Pinch(action.TargetElement?.gameObject, action.Scale, action.Duration);
         }
 
         private static async UniTask ExecuteTwoFingerSwipeAsync(TwoFingerSwipeAction action, CancellationToken ct)
         {
-            Vector2 centerPos;
-            if (action.TargetElement?.gameObject != null)
-            {
-                centerPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
-            }
-            else
-            {
-                // Default to screen center
-                centerPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            }
+            Debug.Log($"[AITest] Two-finger swipe {action.Direction} on '{action.TargetElement?.name ?? "screen"}'");
 
-            // Use shared helper for consistent direction offset calculation
-            var offset = InputInjector.GetDirectionOffset(action.Direction, action.Distance);
-
-            // Calculate finger spacing
-            var spacing = action.FingerSpacing * Screen.height / 2f;
-            var finger1Start = centerPos + new Vector2(-spacing, 0);
-            var finger2Start = centerPos + new Vector2(spacing, 0);
-            var finger1End = finger1Start + offset;
-            var finger2End = finger2Start + offset;
-
-            await InputInjector.InjectTwoFingerDrag(finger1Start, finger1End, finger2Start, finger2End, action.Duration);
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.TwoFingerSwipe(
+                action.TargetElement?.gameObject,
+                action.Direction,
+                action.Distance,
+                action.Duration,
+                action.FingerSpacing);
         }
 
         private static async UniTask ExecuteRotateAsync(RotateAction action, CancellationToken ct)
         {
-            Vector2 centerPos;
-            if (action.TargetElement?.gameObject != null)
-            {
-                centerPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
-            }
-            else
-            {
-                // Default to screen center
-                centerPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            }
+            Debug.Log($"[AITest] Rotate {(action.Degrees >= 0 ? "CW" : "CCW")} {Mathf.Abs(action.Degrees)}° on '{action.TargetElement?.name ?? "screen"}'");
 
-            await InputInjector.InjectRotate(centerPos, action.Degrees, action.Duration, action.FingerDistance);
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.Rotate(
+                action.TargetElement?.gameObject,
+                action.Degrees,
+                action.Duration,
+                action.FingerDistance);
         }
 
         private static async UniTask ExecuteSetSliderAsync(SetSliderAction action, CancellationToken ct)

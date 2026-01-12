@@ -299,6 +299,27 @@ namespace ODDGames.UITest.VisualBuilder
                         await ExecuteSetScrollbarAsync(block, ct);
                         break;
 
+                    case BlockType.Swipe:
+                        await ExecuteSwipeAsync(block, ct);
+                        break;
+
+                    case BlockType.Pinch:
+                        await ExecutePinchAsync(block, ct);
+                        break;
+
+                    case BlockType.TwoFingerSwipe:
+                        await ExecuteTwoFingerSwipeAsync(block, ct);
+                        break;
+
+                    case BlockType.Rotate:
+                        await ExecuteRotateAsync(block, ct);
+                        break;
+
+                    case BlockType.ForEach:
+                    case BlockType.EndForEach:
+                        // ForEach/EndForEach are handled by the test runner's loop logic, not here
+                        break;
+
                     default:
                         return VisualBlockResult.Failed(block, stepIndex, $"Unknown block type: {block.type}");
                 }
@@ -721,6 +742,63 @@ namespace ODDGames.UITest.VisualBuilder
             var normalizedValue = block.scrollbarValue / 100f;
             Debug.Log($"[VisualTestRunner] SetScrollbar '{element.name}' to {block.scrollbarValue}%");
             await InputInjector.SetScrollbar(scrollbar, normalizedValue);
+        }
+
+        private static async UniTask ExecuteSwipeAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+            if (element?.gameObject == null)
+                throw new InvalidOperationException($"Swipe target not found: {GetSelectorDisplay(block.target)}");
+
+            Debug.Log($"[VisualTestRunner] Swipe {block.swipeDirection} on '{element.name}'");
+
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.Swipe(element.gameObject, block.swipeDirection, block.swipeDistance, block.swipeDuration);
+        }
+
+        private static async UniTask ExecutePinchAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+
+            // Block supports explicit center position override
+            if (block.pinchCenterPosition.HasValue)
+            {
+                Debug.Log($"[VisualTestRunner] Pinch {(block.pinchScale < 1 ? "in" : "out")} {block.pinchScale:F1}x at explicit position");
+                await InputInjector.InjectPinch(block.pinchCenterPosition.Value, block.pinchScale, block.pinchDuration);
+                return;
+            }
+
+            Debug.Log($"[VisualTestRunner] Pinch {(block.pinchScale < 1 ? "in" : "out")} {block.pinchScale:F1}x on '{element?.name ?? "screen"}'");
+
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.Pinch(element?.gameObject, block.pinchScale, block.pinchDuration);
+        }
+
+        private static async UniTask ExecuteTwoFingerSwipeAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+            Debug.Log($"[VisualTestRunner] Two-finger swipe {block.swipeDirection} on '{element?.name ?? "screen"}'");
+
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.TwoFingerSwipe(
+                element?.gameObject,
+                block.swipeDirection,
+                block.swipeDistance,
+                block.swipeDuration,
+                block.twoFingerSpacing);
+        }
+
+        private static async UniTask ExecuteRotateAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+            Debug.Log($"[VisualTestRunner] Rotate {(block.rotateDegrees >= 0 ? "CW" : "CCW")} {Mathf.Abs(block.rotateDegrees)}° on '{element?.name ?? "screen"}'");
+
+            // Use shared InputInjector helper for consistent behavior
+            await InputInjector.Rotate(
+                element?.gameObject,
+                block.rotateDegrees,
+                block.rotateDuration,
+                block.rotateFingerDistance);
         }
 
         private static async UniTask ExecuteAssertAsync(VisualBlock block, CancellationToken ct)

@@ -422,6 +422,52 @@ namespace ODDGames.UITest
             await InjectScroll(center, delta);
         }
 
+        /// <summary>
+        /// Performs a pinch gesture on an element or screen center.
+        /// Scale > 1 zooms in, scale less than 1 zooms out.
+        /// </summary>
+        public static async UniTask Pinch(GameObject element, float scale, float duration = 0.5f)
+        {
+            Vector2 center = element != null
+                ? GetScreenPosition(element)
+                : new Vector2(Screen.width / 2f, Screen.height / 2f);
+
+            await InjectPinch(center, scale, duration);
+        }
+
+        /// <summary>
+        /// Performs a two-finger swipe gesture on an element or screen center.
+        /// </summary>
+        public static async UniTask TwoFingerSwipe(GameObject element, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        {
+            Vector2 centerPos = element != null
+                ? GetScreenPosition(element)
+                : new Vector2(Screen.width / 2f, Screen.height / 2f);
+
+            var offset = GetDirectionOffset(direction, normalizedDistance);
+
+            // Calculate finger positions
+            var spacing = fingerSpacing * Screen.height / 2f;
+            var finger1Start = centerPos + new Vector2(-spacing, 0);
+            var finger2Start = centerPos + new Vector2(spacing, 0);
+            var finger1End = finger1Start + offset;
+            var finger2End = finger2Start + offset;
+
+            await InjectTwoFingerDrag(finger1Start, finger1End, finger2Start, finger2End, duration);
+        }
+
+        /// <summary>
+        /// Performs a two-finger rotation gesture on an element or screen center.
+        /// </summary>
+        public static async UniTask Rotate(GameObject element, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
+        {
+            Vector2 centerPos = element != null
+                ? GetScreenPosition(element)
+                : new Vector2(Screen.width / 2f, Screen.height / 2f);
+
+            await InjectRotate(centerPos, degrees, duration, fingerDistance);
+        }
+
         #endregion
 
         /// <summary>
