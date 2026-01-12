@@ -29,6 +29,7 @@ namespace ODDGames.UITest.AI
                 CreateKeyPressTool(),
                 CreateKeyHoldTool(),
                 CreateWaitTool(),
+                CreateScreenshotTool(),
                 CreatePassTool(),
                 CreateFailTool()
             };
@@ -508,6 +509,27 @@ namespace ODDGames.UITest.AI
                         }
                     },
                     Required = new List<string> { "seconds" }
+                }
+            };
+        }
+
+        private static ToolDefinition CreateScreenshotTool()
+        {
+            return new ToolDefinition
+            {
+                Name = "screenshot",
+                Description = "Request a screenshot for visual confirmation. ONLY use this when you cannot determine the correct action from the element list alone. Screenshots are slow - prefer using the element list.",
+                Parameters = new ToolParameters
+                {
+                    Type = "object",
+                    Properties = new Dictionary<string, ToolProperty>
+                    {
+                        ["reason"] = new ToolProperty
+                        {
+                            Type = "string",
+                            Description = "Why you need visual confirmation (e.g., 'need to verify image content', 'confirming visual state change')"
+                        }
+                    }
                 }
             };
         }

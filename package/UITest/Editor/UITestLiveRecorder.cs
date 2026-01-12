@@ -283,15 +283,15 @@ namespace ODDGames.UITest.Editor
                 });
             }
 
-            // 5. ByAdjacent (look for nearby labels)
+            // 5. Adjacent (look for nearby labels)
             var nearbyLabel = FindNearbyLabel(go);
             if (nearbyLabel != null)
             {
                 _hoverOptions.Add(new SearchOption
                 {
-                    Label = $"5. ByAdjacent",
-                    SearchPart = $"Search.ByAdjacent(\"{Escape(nearbyLabel.Text)}\", Adjacent.{nearbyLabel.Direction})",
-                    Code = $"await Click(Search.ByAdjacent(\"{Escape(nearbyLabel.Text)}\", Adjacent.{nearbyLabel.Direction}));"
+                    Label = $"5. Adjacent",
+                    SearchPart = $"Search.Adjacent(\"{Escape(nearbyLabel.Text)}\", Direction.{nearbyLabel.Direction})",
+                    Code = $"await Click(Search.Adjacent(\"{Escape(nearbyLabel.Text)}\", Direction.{nearbyLabel.Direction}));"
                 });
             }
 

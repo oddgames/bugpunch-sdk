@@ -1605,7 +1605,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result = await test.TestFind<RectTransform>(
-                    UITestBehaviour.Search.ByName("ChildButton").Parent());
+                    UITestBehaviour.Search.ByName("ChildButton").GetParent());
                 Assert.IsNotNull(result, "Should find parent");
                 Assert.AreEqual("ParentContainer", result.name, "Parent() should return the parent container");
             });
@@ -1625,11 +1625,11 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result0 = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("Container").Child(0));
+                    UITestBehaviour.Search.ByName("Container").GetChild(0));
                 Assert.IsNotNull(result0, "Should find child at index 0");
                 Assert.AreEqual("Child0", result0.name);
                 var result1 = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("Container").Child(1));
+                    UITestBehaviour.Search.ByName("Container").GetChild(1));
                 Assert.IsNotNull(result1, "Should find child at index 1");
                 Assert.AreEqual("Child1", result1.name);
             });
@@ -1651,11 +1651,11 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var nextSibling = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("Second").Sibling(1));
+                    UITestBehaviour.Search.ByName("Second").GetSibling(1));
                 Assert.IsNotNull(nextSibling, "Should find next sibling");
                 Assert.AreEqual("Third", nextSibling.name);
                 var prevSibling = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("Third").Sibling(-1));
+                    UITestBehaviour.Search.ByName("Third").GetSibling(-1));
                 Assert.IsNotNull(prevSibling, "Should find previous sibling");
                 Assert.AreEqual("Second", prevSibling.name);
             });
@@ -1690,9 +1690,9 @@ namespace ODDGames.UITest.Tests
                 Assert.IsNotNull(level2Result, "Should find Level2");
                 Assert.AreEqual("Level2", level2Result.name);
 
-                Debug.Log("[DIAGNOSTIC] === Testing Level2.Child(0) ===");
+                Debug.Log("[DIAGNOSTIC] === Testing Level2.GetChild(0) ===");
                 var result = await test.TestFind<RectTransform>(
-                    UITestBehaviour.Search.ByName("Level2").Child(0));
+                    UITestBehaviour.Search.ByName("Level2").GetChild(0));
                 Assert.IsNotNull(result, "Should find child");
                 Assert.AreEqual("DeepButton", result.name);
             });
@@ -1712,7 +1712,7 @@ namespace ODDGames.UITest.Tests
                 Debug.Log($"[DIAGNOSTIC] Child0 = {container.transform.GetChild(0).name}");
 
                 // Manually verify the transformation works
-                var search = UITestBehaviour.Search.ByName("DiagContainer").Child(0);
+                var search = UITestBehaviour.Search.ByName("DiagContainer").GetChild(0);
                 Debug.Log($"[DIAGNOSTIC] search.HasPostProcessing = {search.HasPostProcessing}");
 
                 // Apply post-processing manually to see what happens
@@ -1729,7 +1729,7 @@ namespace ODDGames.UITest.Tests
                 var test = testGO.AddComponent<TestFindHelper>();
 
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("DiagContainer").Child(0));
+                    UITestBehaviour.Search.ByName("DiagContainer").GetChild(0));
                 Assert.IsNotNull(result, "Should find child button via Child(0)");
                 Assert.AreEqual("DiagChild", result.name);
             });
@@ -1737,95 +1737,236 @@ namespace ODDGames.UITest.Tests
 
         #endregion
 
-        #region ByAdjacent Tests
+        #region Adjacent Tests
 
         [UnityTest]
-        public IEnumerator ByAdjacent_Right_FindsInputToRightOfLabel()
+        public IEnumerator Adjacent_Right_FindsInputToRightOfLabel()
         {
             var label = CreateLabel("Username:", new Vector2(-100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.ByAdjacent("Username:");
+            var search = UITestBehaviour.Search.Adjacent("Username:");
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input to the right of label");
         }
 
         [UnityTest]
-        public IEnumerator ByAdjacent_Right_IgnoresInputToLeft()
+        public IEnumerator Adjacent_Right_IgnoresInputToLeft()
         {
             var label = CreateLabel("Username:", new Vector2(100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(-100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.ByAdjacent("Username:", UITestBehaviour.Adjacent.Right);
+            var search = UITestBehaviour.Search.Adjacent("Username:", UITestBehaviour.Direction.Right);
             bool matches = search.Matches(input);
             Assert.IsFalse(matches, "Should not match input to the left when searching Right");
         }
 
         [UnityTest]
-        public IEnumerator ByAdjacent_Right_PrefersCloserInput()
+        public IEnumerator Adjacent_Right_PrefersCloserInput()
         {
             var label = CreateLabel("Field:", new Vector2(-150, 0));
             var closeInput = CreateInputField("CloseInput", new Vector2(0, 0));
             var farInput = CreateInputField("FarInput", new Vector2(200, 0));
             yield return null;
-            var search = UITestBehaviour.Search.ByAdjacent("Field:");
+            var search = UITestBehaviour.Search.Adjacent("Field:");
             Assert.IsTrue(search.Matches(closeInput), "Closer input should match");
             Assert.IsFalse(search.Matches(farInput), "Farther input should not match");
         }
 
         [UnityTest]
-        public IEnumerator ByAdjacent_Left_FindsInputToLeftOfLabel()
+        public IEnumerator Adjacent_Left_FindsInputToLeftOfLabel()
         {
             var input = CreateInputField("VolumeSlider", new Vector2(-100, 0));
             var label = CreateLabel("Volume Level", new Vector2(100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.ByAdjacent("Volume Level", UITestBehaviour.Adjacent.Left);
+            var search = UITestBehaviour.Search.Adjacent("Volume Level", UITestBehaviour.Direction.Left);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input to the left of label");
         }
 
         [UnityTest]
-        public IEnumerator ByAdjacent_Below_FindsInputBelowLabel()
+        public IEnumerator Adjacent_Below_FindsInputBelowLabel()
         {
             var label = CreateLabel("Description", new Vector2(0, 50));
             var input = CreateInputField("DescriptionInput", new Vector2(0, -50));
             yield return null;
-            var search = UITestBehaviour.Search.ByAdjacent("Description", UITestBehaviour.Adjacent.Below);
+            var search = UITestBehaviour.Search.Adjacent("Description", UITestBehaviour.Direction.Below);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input below label");
         }
 
         [UnityTest]
-        public IEnumerator ByAdjacent_Above_FindsInputAboveLabel()
+        public IEnumerator Adjacent_Above_FindsInputAboveLabel()
         {
             var input = CreateInputField("OptionToggle", new Vector2(0, 50));
             var label = CreateLabel("Clear Selection", new Vector2(0, -50));
             yield return null;
-            var search = UITestBehaviour.Search.ByAdjacent("Clear Selection", UITestBehaviour.Adjacent.Above);
+            var search = UITestBehaviour.Search.Adjacent("Clear Selection", UITestBehaviour.Direction.Above);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input above label");
         }
 
         [UnityTest]
-        public IEnumerator ByAdjacent_NoMatchingLabel_ReturnsFalse()
+        public IEnumerator Adjacent_NoMatchingLabel_ReturnsFalse()
         {
             var label = CreateLabel("Other Label:", new Vector2(-100, 0));
             var input = CreateInputField("TestInput", new Vector2(100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.ByAdjacent("NonExistent:");
+            var search = UITestBehaviour.Search.Adjacent("NonExistent:");
             bool matches = search.Matches(input);
             Assert.IsFalse(matches, "Should not match when label text doesn't exist");
         }
 
         [UnityTest]
-        public IEnumerator ByAdjacent_WildcardPattern_Matches()
+        public IEnumerator Adjacent_WildcardPattern_Matches()
         {
             var label = CreateLabel("Username:", new Vector2(-100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.ByAdjacent("User*");
+            var search = UITestBehaviour.Search.Adjacent("User*");
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should match with wildcard pattern");
+        }
+
+        #endregion
+
+        #region Near Tests
+
+        [UnityTest]
+        public IEnumerator Near_FindsClosestInteractable_AnyDirection()
+        {
+            // Label in center, button closest to it
+            var label = CreateLabel("Center Flag", new Vector2(0, 0));
+            var closeButton = CreateButton("TextureButton", new Vector2(50, -30)); // Closest, below-right
+            var farButton = CreateButton("OtherButton", new Vector2(200, 0)); // Further away
+            yield return null;
+
+            var search = UITestBehaviour.Search.Near("Center Flag");
+            Assert.IsTrue(search.Matches(closeButton), "Closest button should match");
+            Assert.IsFalse(search.Matches(farButton), "Farther button should not match");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_WithDirectionFilter_OnlyMatchesInDirection()
+        {
+            var label = CreateLabel("Center Flag", new Vector2(0, 0));
+            var belowButton = CreateButton("BelowButton", new Vector2(0, -80)); // Below
+            var aboveButton = CreateButton("AboveButton", new Vector2(0, 80)); // Above
+            yield return null;
+
+            var searchBelow = UITestBehaviour.Search.Near("Center Flag", UITestBehaviour.Direction.Below);
+            Assert.IsTrue(searchBelow.Matches(belowButton), "Button below should match when filtering Below");
+            Assert.IsFalse(searchBelow.Matches(aboveButton), "Button above should not match when filtering Below");
+
+            var searchAbove = UITestBehaviour.Search.Near("Center Flag", UITestBehaviour.Direction.Above);
+            Assert.IsTrue(searchAbove.Matches(aboveButton), "Button above should match when filtering Above");
+            Assert.IsFalse(searchAbove.Matches(belowButton), "Button below should not match when filtering Above");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_WithDirectionFilter_PrefersClosestInDirection()
+        {
+            var label = CreateLabel("Center Flag", new Vector2(0, 50));
+            var closeBelow = CreateButton("CloseBelow", new Vector2(0, -30)); // Closer below
+            var farBelow = CreateButton("FarBelow", new Vector2(0, -150)); // Further below
+            yield return null;
+
+            var search = UITestBehaviour.Search.Near("Center Flag", UITestBehaviour.Direction.Below);
+            Assert.IsTrue(search.Matches(closeBelow), "Closer button below should match");
+            Assert.IsFalse(search.Matches(farBelow), "Farther button below should not match");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_DiagonalElement_MatchesClosest()
+        {
+            // Real world case: Label and button at diagonal positions
+            var label = CreateLabel("Texture", new Vector2(0, 50));
+            var diagonalClose = CreateButton("DiagonalButton", new Vector2(30, -20)); // Diagonal but closest
+            var straightFar = CreateButton("StraightButton", new Vector2(0, -150)); // Straight down but far
+            yield return null;
+
+            var search = UITestBehaviour.Search.Near("Texture");
+            Assert.IsTrue(search.Matches(diagonalClose), "Diagonal but closer button should match");
+            Assert.IsFalse(search.Matches(straightFar), "Straight but farther button should not match");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_ChainedWithName_FiltersResults()
+        {
+            var label = CreateLabel("Center Flag", new Vector2(0, 50));
+            var textureButton = CreateButton("TextureButton", new Vector2(0, -30));
+            var maskButton = CreateButton("MaskButton", new Vector2(0, -80));
+            yield return null;
+
+            // Near finds closest, but Name filters to only matching names
+            var search = UITestBehaviour.Search.Near("Center Flag", UITestBehaviour.Direction.Below).Name("*Texture*");
+            Assert.IsTrue(search.Matches(textureButton), "TextureButton should match Near+Name filter");
+            Assert.IsFalse(search.Matches(maskButton), "MaskButton should not match Name filter");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_NonExistentLabel_ReturnsFalse()
+        {
+            var button = CreateButton("SomeButton", new Vector2(0, 0));
+            yield return null;
+
+            var search = UITestBehaviour.Search.Near("NonExistentLabel");
+            Assert.IsFalse(search.Matches(button), "Should not match when label doesn't exist");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_WildcardPattern_Matches()
+        {
+            var label = CreateLabel("Center Flag", new Vector2(0, 50));
+            var button = CreateButton("NearbyButton", new Vector2(0, -30));
+            yield return null;
+
+            var search = UITestBehaviour.Search.Near("Center*");
+            Assert.IsTrue(search.Matches(button), "Should match with wildcard pattern");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_LeftDirection_FindsClosestToLeft()
+        {
+            var label = CreateLabel("Right Label", new Vector2(100, 0));
+            var leftButton = CreateButton("LeftButton", new Vector2(-50, 0)); // To the left
+            var rightButton = CreateButton("RightButton", new Vector2(200, 0)); // To the right
+            yield return null;
+
+            var search = UITestBehaviour.Search.Near("Right Label", UITestBehaviour.Direction.Left);
+            Assert.IsTrue(search.Matches(leftButton), "Button to the left should match");
+            Assert.IsFalse(search.Matches(rightButton), "Button to the right should not match");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_RightDirection_FindsClosestToRight()
+        {
+            var label = CreateLabel("Left Label", new Vector2(-100, 0));
+            var leftButton = CreateButton("LeftButton", new Vector2(-200, 0)); // To the left
+            var rightButton = CreateButton("RightButton", new Vector2(50, 0)); // To the right
+            yield return null;
+
+            var search = UITestBehaviour.Search.Near("Left Label", UITestBehaviour.Direction.Right);
+            Assert.IsFalse(search.Matches(leftButton), "Button to the left should not match");
+            Assert.IsTrue(search.Matches(rightButton), "Button to the right should match");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_VsAdjacent_NearIsMoreLenient()
+        {
+            // ByAdjacent requires strict row/column alignment
+            // Near uses pure distance, so diagonal elements can match
+            var label = CreateLabel("Test Label", new Vector2(0, 0));
+            // Diagonal position - not strictly "right" or "below" but close
+            var diagonalButton = CreateButton("DiagonalButton", new Vector2(80, -60));
+            yield return null;
+
+            // Adjacent.Right requires same row (within tolerance) - should fail for diagonal
+            var adjacentSearch = UITestBehaviour.Search.Adjacent("Test Label", UITestBehaviour.Direction.Right);
+
+            // Near without direction should find it as closest
+            var nearSearch = UITestBehaviour.Search.Near("Test Label");
+            Assert.IsTrue(nearSearch.Matches(diagonalButton), "Near should find diagonal element as closest");
         }
 
         #endregion
@@ -2196,6 +2337,24 @@ namespace ODDGames.UITest.Tests
             rect.anchoredPosition = position;
             var tmp = go.AddComponent<TextMeshProUGUI>();
             tmp.text = text;
+            return go;
+        }
+
+        private GameObject CreateButton(string name, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(100, 40);
+            rect.anchoredPosition = position;
+            go.AddComponent<Image>();
+            go.AddComponent<Button>();
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(go.transform, false);
+            _createdObjects.Add(textGO);
+            var tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text = name;
             return go;
         }
 

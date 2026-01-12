@@ -66,11 +66,11 @@ namespace ODDGames.UITest.Samples
             await Wait(Search.ByName("SampleFormPanel"), seconds: 5);
 
             // Form elements can be found by their adjacent label text
-            await TextInput(Search.ByAdjacent("Username:"), "Test");
-            await TextInput(Search.ByAdjacent("Email:"), "t@t.com");
-            await ClickDropdown(Search.ByAdjacent("Category:"), 1, throwIfMissing: false, searchTime: 2);
+            await TextInput(Search.Adjacent("Username:"), "Test");
+            await TextInput(Search.Adjacent("Email:"), "t@t.com");
+            await ClickDropdown(Search.Adjacent("Category:"), 1, throwIfMissing: false, searchTime: 2);
             // Slider control - click at 75% position
-            await ClickSlider(Search.ByAdjacent("Volume:"), 0.75f, throwIfMissing: false, searchTime: 2);
+            await ClickSlider(Search.Adjacent("Volume:"), 0.75f, throwIfMissing: false, searchTime: 2);
             // Search for any toggle that's not already on
             await Click(Search.ByType<Toggle>().Text("I agree*").With<Toggle>(t => !t.isOn), throwIfMissing: false, searchTime: 2);
             // Fallback if already toggled
