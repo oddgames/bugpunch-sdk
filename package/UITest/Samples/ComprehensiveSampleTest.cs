@@ -107,6 +107,21 @@ namespace ODDGames.UITest.Samples
             await PressKey(KeyCode.Tab);
             await PressKey(KeyCode.Escape);
 
+            // ==========================================
+            // Key Hold (for movement/driving controls)
+            // ==========================================
+            // Hold single key (walk forward)
+            await HoldKey(KeyCode.W, 0.5f);
+
+            // Hold multiple keys (diagonal movement)
+            await HoldKeys(0.5f, KeyCode.W, KeyCode.A);
+
+            // Using Keys fluent builder for complex sequences
+            // Walk forward, then turn left, then sprint forward
+            await Keys.Hold(UnityEngine.InputSystem.Key.W).For(0.3f)
+                      .Then(UnityEngine.InputSystem.Key.A).For(0.2f)
+                      .Then(UnityEngine.InputSystem.Key.LeftShift, UnityEngine.InputSystem.Key.W).For(0.3f);
+
             await Click("Back");
             await Wait(Search.ByName("MainMenu"), seconds: 5);
 

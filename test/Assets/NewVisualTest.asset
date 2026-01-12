@@ -1,0 +1,144 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2f4e790364bae947b962e11bfb05358, type: 3}
+  m_Name: NewVisualTest
+  m_EditorClassIdentifier: 
+  testName: NewVisualTest
+  description: 
+  startScene: Sample
+  blocks:
+  - id: 38cc219c-da9b-411e-9fca-dbfd9b84b863
+    type: 0
+    isCollapsed: 0
+    comment: 
+    target:
+      type: 1
+      pattern: Settings
+      elementId: 
+      displayName: Settings
+    text: 
+    clearFirst: 1
+    pressEnter: 0
+    dragTarget:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    dragDirection: 
+    dragDistance: 0
+    dragDuration: 0.3
+    scrollDirection: down
+    scrollAmount: 0
+    waitSeconds: 0
+    assertCondition: 0
+    assertExpected: 
+    recordedInput:
+      events: []
+      duration: 0
+      description: 
+      targetElement:
+        type: 0
+        pattern: 
+        elementId: 
+        displayName: 
+    persistentDataMode: 0
+    filePattern: 
+    dataSourceName: 
+    sceneName: 
+    additiveLoad: 0
+    customActionName: 
+    customActionParams: 
+  - id: 231c3b56-3b0c-4b17-98e3-f00336743e7b
+    type: 0
+    isCollapsed: 0
+    comment: 
+    target:
+      type: 1
+      pattern: Back
+      elementId: 
+      displayName: Back
+    text: 
+    clearFirst: 1
+    pressEnter: 0
+    dragTarget:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    dragDirection: 
+    dragDistance: 0
+    dragDuration: 0.3
+    scrollDirection: down
+    scrollAmount: 0
+    waitSeconds: 0
+    assertCondition: 0
+    assertExpected: 
+    recordedInput:
+      events: []
+      duration: 0
+      description: 
+      targetElement:
+        type: 0
+        pattern: 
+        elementId: 
+        displayName: 
+    persistentDataMode: 0
+    filePattern: 
+    dataSourceName: 
+    sceneName: 
+    additiveLoad: 0
+    customActionName: 
+    customActionParams: 
+  - id: b4c7bad0-28b0-442c-916d-1680b04649b7
+    type: 0
+    isCollapsed: 0
+    comment: 
+    target:
+      type: 1
+      pattern: Forms
+      elementId: 
+      displayName: Forms
+    text: 
+    clearFirst: 1
+    pressEnter: 0
+    dragTarget:
+      type: 0
+      pattern: 
+      elementId: 
+      displayName: 
+    dragDirection: 
+    dragDistance: 0
+    dragDuration: 0.3
+    scrollDirection: down
+    scrollAmount: 0
+    waitSeconds: 0
+    assertCondition: 0
+    assertExpected: 
+    recordedInput:
+      events: []
+      duration: 0
+      description: 
+      targetElement:
+        type: 0
+        pattern: 
+        elementId: 
+        displayName: 
+    persistentDataMode: 0
+    filePattern: 
+    dataSourceName: 
+    sceneName: 
+    additiveLoad: 0
+    customActionName: 
+    customActionParams: 
+  testDataFiles: []
+  originalPrompt: 
+  passCondition: 

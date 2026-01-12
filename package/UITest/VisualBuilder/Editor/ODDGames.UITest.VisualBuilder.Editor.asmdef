@@ -1,0 +1,23 @@
+{
+    "name": "ODDGames.UITest.VisualBuilder.Editor",
+    "rootNamespace": "ODDGames.UITest.VisualBuilder.Editor",
+    "references": [
+        "ODDGames.UITest",
+        "ODDGames.UITest.AI",
+        "ODDGames.UITest.VisualBuilder",
+        "UniTask",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

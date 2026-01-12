@@ -1,0 +1,20 @@
+{
+    "name": "ODDGames.UITest.VisualBuilder",
+    "rootNamespace": "ODDGames.UITest.VisualBuilder",
+    "references": [
+        "ODDGames.UITest",
+        "ODDGames.UITest.AI",
+        "UniTask",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

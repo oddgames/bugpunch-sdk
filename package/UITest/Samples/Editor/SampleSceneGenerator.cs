@@ -194,33 +194,97 @@ namespace ODDGames.UITest.Samples.Editor
 
         private static void CreateKeyboardPanel(Transform canvas)
         {
-            var panel = CreatePanel(canvas, "SampleKeyboardPanel");
+            var panel = CreatePanel(canvas, "SampleKeyboardPanel", size: new Vector2(400, 580));
             panel.SetActive(false);
 
-            CreateText(panel.transform, "Title", "Keyboard Input", 24, new Vector2(0, 180));
+            CreateText(panel.transform, "Title", "Keyboard Input", 24, new Vector2(0, 250));
 
             // Key press target
-            var target = CreateButton(panel.transform, "KeyPressTarget", "Press Space", new Vector2(0, 100));
-
-            // Status label
-            CreateText(panel.transform, "KeyStatusLabel", "Press keys...", 16, new Vector2(0, 50));
+            CreateButton(panel.transform, "KeyPressTarget", "Press Space", new Vector2(0, 200));
 
             // Input field for typing
-            CreateText(panel.transform, "TypeLabel", "Type here:", 14, new Vector2(-80, 0));
-            CreateLegacyInputField(panel.transform, "KeyboardInput", "Type something...", new Vector2(50, 0));
+            CreateText(panel.transform, "TypeLabel", "Type here:", 14, new Vector2(-80, 150));
+            CreateLegacyInputField(panel.transform, "KeyboardInput", "Type something...", new Vector2(50, 150));
 
             // Second input for tab navigation
-            CreateText(panel.transform, "Tab2Label", "Tab to:", 14, new Vector2(-80, -50));
-            CreateLegacyInputField(panel.transform, "SecondInput", "Second field...", new Vector2(50, -50));
+            CreateText(panel.transform, "Tab2Label", "Tab to:", 14, new Vector2(-80, 100));
+            CreateLegacyInputField(panel.transform, "SecondInput", "Second field...", new Vector2(50, 100));
 
-            // Arrow navigation indicator
-            CreateText(panel.transform, "ArrowLabel", "Arrow navigation:", 14, new Vector2(0, -100));
-            var indicator = CreatePanel(panel.transform, "ArrowIndicator", new Vector2(0, -140), new Vector2(100, 30));
-            indicator.GetComponent<Image>().color = new Color(0.4f, 0.6f, 0.8f);
-            CreateText(indicator.transform, "Label", "[ Selected ]", 12, Vector2.zero);
+            // === Key Hold Demo Section ===
+            CreateText(panel.transform, "KeyHoldTitle", "Key Hold Demo (WASD)", 16, new Vector2(0, 50));
+
+            // Create key hold indicator container
+            var keyHoldContainer = CreatePanel(panel.transform, "KeyHoldContainer", new Vector2(0, -40), new Vector2(200, 130));
+            keyHoldContainer.GetComponent<Image>().color = new Color(0.15f, 0.15f, 0.15f);
+            var indicator = keyHoldContainer.AddComponent<KeyHoldIndicator>();
+
+            // WASD keys visual
+            var wKey = CreateKeyVisual(keyHoldContainer.transform, "WKey", "W", new Vector2(0, 35));
+            var aKey = CreateKeyVisual(keyHoldContainer.transform, "AKey", "A", new Vector2(-35, 0));
+            var sKey = CreateKeyVisual(keyHoldContainer.transform, "SKey", "S", new Vector2(0, 0));
+            var dKey = CreateKeyVisual(keyHoldContainer.transform, "DKey", "D", new Vector2(35, 0));
+            var shiftKey = CreateKeyVisual(keyHoldContainer.transform, "ShiftKey", "⇧", new Vector2(-70, 0), new Vector2(25, 25));
+
+            // Position indicator (moves when WASD held)
+            var posArea = CreatePanel(keyHoldContainer.transform, "PositionArea", new Vector2(0, -45), new Vector2(180, 40));
+            posArea.GetComponent<Image>().color = new Color(0.1f, 0.1f, 0.1f);
+            var posIndicator = CreatePanel(posArea.transform, "PositionIndicator", Vector2.zero, new Vector2(15, 15));
+            posIndicator.GetComponent<Image>().color = new Color(0.3f, 0.8f, 1f);
+
+            // Status text
+            var statusText = CreateText(keyHoldContainer.transform, "KeyHoldStatus", "Press WASD to move", 10, new Vector2(0, -55));
+
+            // Wire up the indicator component using serialized fields reflection
+            var indicatorType = indicator.GetType();
+            SetPrivateField(indicator, "wKey", wKey.GetComponent<Image>());
+            SetPrivateField(indicator, "aKey", aKey.GetComponent<Image>());
+            SetPrivateField(indicator, "sKey", sKey.GetComponent<Image>());
+            SetPrivateField(indicator, "dKey", dKey.GetComponent<Image>());
+            SetPrivateField(indicator, "shiftKey", shiftKey.GetComponent<Image>());
+            SetPrivateField(indicator, "positionIndicator", posIndicator.GetComponent<RectTransform>());
+            SetPrivateField(indicator, "statusText", statusText);
 
             // Back button
-            CreateButton(panel.transform, "BackButton", "Back", new Vector2(0, -200));
+            CreateButton(panel.transform, "BackButton", "Back", new Vector2(0, -140));
+        }
+
+        private static GameObject CreateKeyVisual(Transform parent, string name, string label, Vector2 position, Vector2? size = null)
+        {
+            var keySize = size ?? new Vector2(30, 30);
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = keySize;
+            rect.anchoredPosition = position;
+
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.3f, 0.3f, 0.3f);
+
+            var textGo = new GameObject("Label");
+            textGo.transform.SetParent(go.transform, false);
+            var textRect = textGo.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var text = textGo.AddComponent<Text>();
+            text.text = label;
+            text.fontSize = 12;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.font = GetDefaultFont();
+            text.material = GetDefaultFontMaterial();
+
+            return go;
+        }
+
+        private static void SetPrivateField(object obj, string fieldName, object value)
+        {
+            var field = obj.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (field != null)
+                field.SetValue(obj, value);
         }
 
         private static void CreateAdvancedPanel(Transform canvas)

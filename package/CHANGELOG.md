@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.28] - 2026-01-12
+
+### Added
+- **Visual Test Builder** - Scratch-like visual test creator with drag-and-drop blocks:
+  - Block types: Click, Type, Wait, Scroll, KeyHold, Assert, Log, Screenshot
+  - Assert conditions: ElementExists, TextEquals, TextContains, ToggleIsOn/Off, SliderValue, DropdownIndex, DropdownText, InputValue, CustomExpression
+  - RunCode block - Execute custom C# code at runtime (interpreted)
+  - VisualScript block - Trigger Unity Visual Scripting graph events
+  - Visual block editor with color-coded blocks, drag reordering, and collapsible groups
+  - Test assets stored as ScriptableObjects (`.asset` files)
+- **RuntimeCodeCompiler** - Sandboxed C# interpreter for runtime code execution:
+  - Supports: Debug.Log, PlayerPrefs (Get/Set/Delete), GameObject.Find().SetActive()
+  - Boolean expression evaluation for custom asserts
+- **AI Test Generation** - Gemini-powered test generation from natural language:
+  - AITestRunner for step-by-step test execution with screenshots
+  - ConversationManager for maintaining context across actions
+  - GeminiProvider for API communication
+  - AIScreenCapture for capturing game state
+- **InputInjector public utility class** - Extracted from UITestBehaviour for reuse:
+  - `GetScreenPosition(GameObject)` - Get screen position of UI or world objects
+  - `GetScreenBounds(GameObject)` - Get screen-space bounding box
+  - `InjectPointerTap/Hold/Drag` - Cross-platform pointer input (mouse/touch)
+  - `InjectTouchTap/Hold/Drag` - Mobile touch input injection
+  - `InjectMouseDrag` - Mouse-specific drag injection
+  - `InjectScroll` - Scroll wheel input
+  - `TypeText` - Character-by-character text input
+  - `PressKey/HoldKey/HoldKeys` - Keyboard input injection
+- **Keys fluent builder** for complex key sequences:
+  - `Keys.Hold(Key.W).For(2f)` - Hold key for duration
+  - `Keys.Hold(Key.W, Key.A).For(2f)` - Hold multiple keys simultaneously
+  - `Keys.Hold(Key.W).For(1f).Then(Key.A).For(0.5f)` - Sequential key holds
+  - `Keys.Press(Key.Space).Then(Key.W).For(2f)` - Tap then hold
+- **KeyHoldIndicator** sample component for visualizing held keys
+
+### Fixed
+- **Keyboard input injection** - Keys now properly re-queue state each frame during hold for reliable detection
+- **Mouse/touch hold injection** - Added missing `InputSystem.Update()` calls for consistent event processing
+- All input injection methods now call `InputSystem.Update()` after state changes
+
+### Changed
+- Input injection methods moved from internal UITestBehaviour to public `InputInjector` static class
+- Improved consistency across all hold/drag methods with frame-by-frame state updates
+
 ## [1.0.27] - 2026-01-10
 
 ### Added

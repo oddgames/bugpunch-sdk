@@ -7,7 +7,13 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 using ODDGames.UITest;
+using ODDGames.UITest.VisualBuilder;
+using ODDGames.UITest.VisualBuilder.Editor;
 using Cysharp.Threading.Tasks;
+#if UITEST_AI
+using ODDGames.UITest.AI;
+using ODDGames.UITest.AI.Editor;
+#endif
 
 namespace ODDGames.UITest.Editor
 {
@@ -329,14 +335,44 @@ namespace ODDGames.UITest.Editor
             if (selectedTest == null)
             {
                 EditorGUILayout.HelpBox("Select a test to view details", MessageType.Info);
+#if UITEST_AI
+                DrawCreateAITestButtons();
+#endif
+                DrawCreateVisualTestButton();
             }
             else if (selectedTest.IsGroup)
             {
-                DrawGroupDetails(selectedTest);
+                if (selectedTest.IsVisualTestGroup)
+                {
+                    DrawVisualTestGroupDetails(selectedTest);
+                }
+#if UITEST_AI
+                else if (selectedTest.IsAITestGroup)
+                {
+                    DrawAITestGroupDetails(selectedTest);
+                }
+#endif
+                else
+                {
+                    DrawGroupDetails(selectedTest);
+                }
             }
             else
             {
-                DrawTestDetails(selectedTest);
+                if (selectedTest.IsVisualTest)
+                {
+                    DrawVisualTestDetails(selectedTest);
+                }
+#if UITEST_AI
+                else if (selectedTest.IsAITest)
+                {
+                    DrawAITestDetails(selectedTest);
+                }
+#endif
+                else
+                {
+                    DrawTestDetails(selectedTest);
+                }
             }
 
             EditorGUILayout.EndScrollView();
@@ -371,6 +407,343 @@ namespace ODDGames.UITest.Editor
                 RunTestGroup(group);
             }
         }
+
+        // === Visual Test Support ===
+
+        private void DrawCreateVisualTestButton()
+        {
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("Create New Test", EditorStyles.boldLabel);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("New Test Script", GUILayout.Height(30)))
+            {
+                CreateTestScript();
+            }
+            if (GUILayout.Button("New Visual Test", GUILayout.Height(30)))
+            {
+                CreateVisualTest();
+            }
+            EditorGUILayout.EndHorizontal();
+
+            if (GUILayout.Button("Open Test Builder", GUILayout.Height(24)))
+            {
+                TestBuilder.ShowWindow();
+            }
+        }
+
+        private void CreateTestScript()
+        {
+            var path = EditorUtility.SaveFilePanelInProject(
+                "Create Test Script",
+                "NewUITest",
+                "cs",
+                "Create a new UITest script");
+
+            if (string.IsNullOrEmpty(path)) return;
+
+            var className = Path.GetFileNameWithoutExtension(path);
+            // Sanitize class name (remove invalid characters)
+            className = System.Text.RegularExpressions.Regex.Replace(className, @"[^a-zA-Z0-9_]", "");
+            if (char.IsDigit(className[0]))
+                className = "_" + className;
+
+            // Get next available scenario number
+            var nextScenario = GetNextAvailableScenario();
+
+            var template = $@"using Cysharp.Threading.Tasks;
+using ODDGames.UITest;
+using UnityEngine;
+
+/// <summary>
+/// UI Test: {className}
+/// </summary>
+[UITest(
+    scenario: {nextScenario},
+    Feature = ""Feature Name"",
+    Story = ""Story Description"",
+    Severity = TestSeverity.Normal,
+    Description = ""Test description goes here""
+)]
+public class {className} : UITestBehaviour
+{{
+    protected override async UniTask RunTest()
+    {{
+        // Arrange
+        await Wait(0.5f);
+
+        // Act
+        // await Click(""ButtonName"");
+
+        // Assert
+        // await AssertExists(""ExpectedElement"");
+
+        Pass(""Test completed successfully"");
+    }}
+}}
+";
+
+            File.WriteAllText(path, template);
+            AssetDatabase.Refresh();
+
+            // Open the script in the editor
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            if (script != null)
+            {
+                Selection.activeObject = script;
+                EditorGUIUtility.PingObject(script);
+                AssetDatabase.OpenAsset(script);
+            }
+
+            RefreshTests();
+        }
+
+        private int GetNextAvailableScenario()
+        {
+            var usedScenarios = new HashSet<int>();
+            foreach (var item in allTests)
+            {
+                CollectScenarios(item, usedScenarios);
+            }
+
+            // Start from 1 and find the first unused scenario
+            int scenario = 1;
+            while (usedScenarios.Contains(scenario))
+            {
+                scenario++;
+            }
+            return scenario;
+        }
+
+        private void CollectScenarios(UITestItem item, HashSet<int> scenarios)
+        {
+            if (!item.IsGroup && item.Attribute != null && item.Attribute.Scenario > 0)
+            {
+                scenarios.Add(item.Attribute.Scenario);
+            }
+
+            if (item.Children != null)
+            {
+                foreach (var child in item.Children)
+                {
+                    CollectScenarios(child, scenarios);
+                }
+            }
+        }
+
+        private void CreateVisualTest()
+        {
+            var path = EditorUtility.SaveFilePanelInProject(
+                "Create Visual Test",
+                "NewVisualTest",
+                "asset",
+                "Create a new visual test asset");
+
+            if (string.IsNullOrEmpty(path)) return;
+
+            var test = ScriptableObject.CreateInstance<VisualTest>();
+            test.testName = Path.GetFileNameWithoutExtension(path);
+            AssetDatabase.CreateAsset(test, path);
+            AssetDatabase.SaveAssets();
+
+            Selection.activeObject = test;
+            EditorGUIUtility.PingObject(test);
+
+            RefreshTests();
+
+            // Open in Visual Builder
+            var window = TestBuilder.ShowWindow();
+            window.LoadTest(test);
+        }
+
+        private void DrawVisualTestGroupDetails(UITestItem group)
+        {
+            EditorGUILayout.LabelField(group.DisplayName, headerStyle);
+            EditorGUILayout.Space();
+
+            var children = GetAllTestsInGroup(group);
+            var passed = children.Count(t => GetTestStatus(t) == TestStatus.Passed);
+            var failed = children.Count(t => GetTestStatus(t) == TestStatus.Failed);
+            var notRun = children.Count(t => GetTestStatus(t) == TestStatus.NotRun);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Tests:", detailsLabelStyle);
+            EditorGUILayout.LabelField($"{children.Count} total", detailsValueStyle);
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Status:", detailsLabelStyle);
+            var statusText = $"<color=#4CAF50>{passed} passed</color>, <color=#F44336>{failed} failed</color>, {notRun} not run";
+            EditorGUILayout.LabelField(statusText, new GUIStyle(detailsValueStyle) { richText = true });
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space();
+
+            // Run all visual tests in group
+            EditorGUILayout.BeginHorizontal();
+            GUI.enabled = Application.isPlaying;
+            if (GUILayout.Button("Run All in Group", GUILayout.Height(30)))
+            {
+                RunVisualTestGroup(group);
+            }
+            GUI.enabled = true;
+            EditorGUILayout.EndHorizontal();
+
+            if (!Application.isPlaying)
+            {
+                EditorGUILayout.HelpBox("Enter Play mode to run visual tests.", MessageType.Info);
+            }
+
+            EditorGUILayout.Space();
+
+            // Create new test button
+            if (GUILayout.Button("Create New Visual Test", GUILayout.Height(24)))
+            {
+                CreateVisualTest();
+            }
+        }
+
+        private void DrawVisualTestDetails(UITestItem test)
+        {
+            var visualTest = test.VisualTest;
+            if (visualTest == null)
+            {
+                EditorGUILayout.HelpBox("Visual Test asset not found.", MessageType.Error);
+                return;
+            }
+
+            // Header with status icon
+            EditorGUILayout.BeginHorizontal();
+            var status = GetTestStatus(test);
+            var statusIcon = GetStatusIcon(status);
+            GUILayout.Label(statusIcon, GUILayout.Width(20), GUILayout.Height(20));
+            EditorGUILayout.LabelField(test.DisplayName, headerStyle);
+
+            // Open in Inspector button
+            if (GUILayout.Button("Inspector", GUILayout.Width(70)))
+            {
+                Selection.activeObject = visualTest;
+                EditorGUIUtility.PingObject(visualTest);
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space();
+
+            // Test metadata
+            if (!string.IsNullOrEmpty(visualTest.description))
+            {
+                EditorGUILayout.LabelField("Description:", detailsLabelStyle);
+                EditorGUILayout.LabelField(visualTest.description, EditorStyles.wordWrappedLabel);
+                EditorGUILayout.Space();
+            }
+
+            DrawDetailRow("Blocks:", $"{visualTest.blocks?.Count ?? 0} steps");
+
+            if (!string.IsNullOrEmpty(visualTest.startScene))
+            {
+                DrawDetailRow("Start Scene:", visualTest.startScene);
+            }
+
+            // Block summary
+            if (visualTest.blocks != null && visualTest.blocks.Count > 0)
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Block Types:", detailsLabelStyle);
+
+                var blockTypeCounts = visualTest.blocks
+                    .GroupBy(b => b.type)
+                    .ToDictionary(g => g.Key, g => g.Count());
+
+                EditorGUILayout.BeginHorizontal();
+                foreach (var kvp in blockTypeCounts.OrderByDescending(x => x.Value))
+                {
+                    GUILayout.Label($"{kvp.Key}: {kvp.Value}", EditorStyles.miniLabel);
+                    GUILayout.Space(10);
+                }
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+            }
+
+            // AI prompt if generated
+            if (!string.IsNullOrEmpty(visualTest.originalPrompt))
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Generated from AI:", detailsLabelStyle);
+                EditorGUILayout.LabelField(visualTest.originalPrompt, EditorStyles.wordWrappedLabel);
+            }
+
+            EditorGUILayout.Space(10);
+
+            // Action buttons
+            EditorGUILayout.BeginHorizontal();
+
+            if (GUILayout.Button("Open in Visual Builder", GUILayout.Height(28)))
+            {
+                var window = TestBuilder.ShowWindow();
+                window.LoadTest(visualTest);
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+
+            GUI.enabled = Application.isPlaying;
+            if (GUILayout.Button("Run", GUILayout.Height(28)))
+            {
+                RunVisualTest(test);
+            }
+            GUI.enabled = true;
+
+            EditorGUILayout.EndHorizontal();
+
+            if (!Application.isPlaying)
+            {
+                EditorGUILayout.HelpBox("Enter Play mode to run this test.", MessageType.Info);
+            }
+
+            // Last run results
+            if (testResults.TryGetValue(test.FullName, out var result))
+            {
+                EditorGUILayout.Space(10);
+                EditorGUILayout.LabelField("Last Run", headerStyle);
+
+                DrawDetailRow("Status:", result.Status.ToString());
+                DrawDetailRow("Duration:", $"{result.Duration:F2}s");
+                DrawDetailRow("Time:", result.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"));
+
+                if (!string.IsNullOrEmpty(result.ErrorMessage))
+                {
+                    EditorGUILayout.Space();
+                    EditorGUILayout.LabelField("Error:", detailsLabelStyle);
+                    EditorGUILayout.HelpBox(result.ErrorMessage, MessageType.Error);
+                }
+            }
+        }
+
+        private void RunVisualTest(UITestItem test)
+        {
+            if (test.VisualTest == null) return;
+
+            SetTestStatus(test, TestStatus.Running);
+
+            // TODO: Integrate with VisualTestRunner when implemented
+            Debug.Log($"[VisualTest] Running: {test.DisplayName}");
+            Debug.LogWarning("[VisualTest] Test execution not yet implemented. Visual test runner coming soon.");
+
+            // For now, mark as not run since we can't actually run it yet
+            SetTestStatus(test, TestStatus.NotRun);
+        }
+
+        private void RunVisualTestGroup(UITestItem group)
+        {
+            var tests = GetAllTestsInGroup(group).Where(t => t.IsVisualTest).ToList();
+            foreach (var test in tests)
+            {
+                RunVisualTest(test);
+            }
+        }
+
+        // === End Visual Test Support ===
 
         private void DrawTestDetails(UITestItem test)
         {
@@ -482,10 +855,417 @@ namespace ODDGames.UITest.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+#if UITEST_AI
+        // Editing state for AI tests
+        private bool isEditingAITest;
+        private string editPrompt;
+        private string editPassCondition;
+        private string editFailCondition;
+        private string editKnowledge;
+        private Vector2 aiTestScrollPos;
+
+        private void DrawCreateAITestButtons()
+        {
+            EditorGUILayout.Space(20);
+            EditorGUILayout.LabelField("Create New AI Test", EditorStyles.boldLabel);
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("New AI Test", GUILayout.Height(30)))
+            {
+                AI.Editor.AITestExplorerIntegration.CreateAITest();
+                RefreshTests();
+            }
+            if (GUILayout.Button("New AI Test Group", GUILayout.Height(30)))
+            {
+                AI.Editor.AITestExplorerIntegration.CreateAITestGroup();
+                RefreshTests();
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawAITestGroupDetails(UITestItem group)
+        {
+            EditorGUILayout.LabelField(group.DisplayName, headerStyle);
+
+            // Show group knowledge if available
+            if (group.AITestGroup != null)
+            {
+                EditorGUILayout.Space();
+
+                if (!string.IsNullOrEmpty(group.AITestGroup.description))
+                {
+                    EditorGUILayout.LabelField(group.AITestGroup.description, EditorStyles.wordWrappedLabel);
+                }
+
+                EditorGUILayout.Space();
+
+                if (!string.IsNullOrEmpty(group.AITestGroup.knowledge))
+                {
+                    EditorGUILayout.LabelField("Group Knowledge:", detailsLabelStyle);
+                    EditorGUILayout.LabelField(group.AITestGroup.knowledge, EditorStyles.wordWrappedLabel);
+                }
+
+                EditorGUILayout.Space();
+
+                // Edit group button
+                if (GUILayout.Button("Edit Group", GUILayout.Height(24)))
+                {
+                    Selection.activeObject = group.AITestGroup;
+                    EditorGUIUtility.PingObject(group.AITestGroup);
+                }
+            }
+
+            EditorGUILayout.Space();
+
+            var children = GetAllTestsInGroup(group);
+            EditorGUILayout.LabelField($"Tests: {children.Count}", detailsLabelStyle);
+
+            EditorGUILayout.Space();
+
+            // Run all AI tests in group
+            EditorGUILayout.BeginHorizontal();
+            GUI.enabled = Application.isPlaying && !AI.AITestRunner.IsRunning;
+            if (GUILayout.Button("Run All in Group", GUILayout.Height(30)))
+            {
+                RunAITestGroup(group).Forget();
+            }
+            GUI.enabled = true;
+            EditorGUILayout.EndHorizontal();
+
+            if (!Application.isPlaying)
+            {
+                EditorGUILayout.HelpBox("Enter Play mode to run AI tests.", MessageType.Info);
+            }
+
+            EditorGUILayout.Space();
+
+            // Create new test in this group
+            if (group.AITestGroup != null)
+            {
+                if (GUILayout.Button("Create Test in Group", GUILayout.Height(24)))
+                {
+                    var folder = Path.GetDirectoryName(AssetDatabase.GetAssetPath(group.AITestGroup));
+                    AI.Editor.AITestExplorerIntegration.CreateAITest(folder, group.AITestGroup);
+                    RefreshTests();
+                }
+            }
+        }
+
+        private void DrawAITestDetails(UITestItem test)
+        {
+            var aiTest = test.AITest;
+            if (aiTest == null)
+            {
+                EditorGUILayout.HelpBox("AI Test asset not found.", MessageType.Error);
+                return;
+            }
+
+            // Header
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(test.DisplayName, headerStyle);
+
+            // Open in Inspector button
+            if (GUILayout.Button("Inspector", GUILayout.Width(70)))
+            {
+                Selection.activeObject = aiTest;
+                EditorGUIUtility.PingObject(aiTest);
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space();
+
+            // Inline editing toggle
+            isEditingAITest = EditorGUILayout.Toggle("Edit Mode", isEditingAITest);
+
+            EditorGUILayout.Space();
+
+            if (isEditingAITest)
+            {
+                DrawAITestEditor(aiTest);
+            }
+            else
+            {
+                DrawAITestViewer(aiTest);
+            }
+
+            EditorGUILayout.Space(10);
+
+            // Run controls
+            DrawAITestRunControls(test);
+
+            EditorGUILayout.Space(10);
+
+            // Last run results
+            DrawAITestLastRun(test);
+        }
+
+        private void DrawAITestViewer(AI.AITest aiTest)
+        {
+            // Prompt
+            EditorGUILayout.LabelField("Prompt:", detailsLabelStyle);
+            EditorGUILayout.LabelField(aiTest.prompt, EditorStyles.wordWrappedLabel);
+
+            EditorGUILayout.Space();
+
+            // Pass Condition
+            EditorGUILayout.LabelField("Pass Condition:", detailsLabelStyle);
+            EditorGUILayout.LabelField(aiTest.passCondition, EditorStyles.wordWrappedLabel);
+
+            if (!string.IsNullOrEmpty(aiTest.failCondition))
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Fail Condition:", detailsLabelStyle);
+                EditorGUILayout.LabelField(aiTest.failCondition, EditorStyles.wordWrappedLabel);
+            }
+
+            if (!string.IsNullOrEmpty(aiTest.knowledge))
+            {
+                EditorGUILayout.Space();
+                EditorGUILayout.LabelField("Knowledge:", detailsLabelStyle);
+                EditorGUILayout.LabelField(aiTest.knowledge, EditorStyles.wordWrappedLabel);
+            }
+
+            EditorGUILayout.Space();
+
+            // Configuration
+            EditorGUILayout.LabelField("Configuration:", detailsLabelStyle);
+            DrawDetailRow("Starting Tier:", aiTest.startingTier.ToString());
+            DrawDetailRow("Max Actions:", aiTest.maxActions.ToString());
+            DrawDetailRow("Timeout:", $"{aiTest.timeoutSeconds}s");
+
+            if (aiTest.Group != null)
+            {
+                DrawDetailRow("Group:", aiTest.Group.displayName ?? aiTest.Group.name);
+            }
+        }
+
+        private void DrawAITestEditor(AI.AITest aiTest)
+        {
+            // Initialize edit values if needed
+            if (editPrompt == null || Selection.activeObject != aiTest)
+            {
+                editPrompt = aiTest.prompt;
+                editPassCondition = aiTest.passCondition;
+                editFailCondition = aiTest.failCondition;
+                editKnowledge = aiTest.knowledge;
+            }
+
+            EditorGUI.BeginChangeCheck();
+
+            // Prompt
+            EditorGUILayout.LabelField("Prompt:", detailsLabelStyle);
+            editPrompt = EditorGUILayout.TextArea(editPrompt, GUILayout.Height(60));
+
+            EditorGUILayout.Space();
+
+            // Pass Condition
+            EditorGUILayout.LabelField("Pass Condition:", detailsLabelStyle);
+            editPassCondition = EditorGUILayout.TextArea(editPassCondition, GUILayout.Height(40));
+
+            EditorGUILayout.Space();
+
+            // Fail Condition
+            EditorGUILayout.LabelField("Fail Condition (Optional):", detailsLabelStyle);
+            editFailCondition = EditorGUILayout.TextArea(editFailCondition, GUILayout.Height(40));
+
+            EditorGUILayout.Space();
+
+            // Knowledge
+            EditorGUILayout.LabelField("Test Knowledge:", detailsLabelStyle);
+            editKnowledge = EditorGUILayout.TextArea(editKnowledge, GUILayout.Height(60));
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                // Mark dirty for save
+            }
+
+            EditorGUILayout.Space();
+
+            // Save/Revert buttons
+            EditorGUILayout.BeginHorizontal();
+
+            if (GUILayout.Button("Save Changes", GUILayout.Height(24)))
+            {
+                Undo.RecordObject(aiTest, "Edit AI Test");
+                aiTest.prompt = editPrompt;
+                aiTest.passCondition = editPassCondition;
+                aiTest.failCondition = editFailCondition;
+                aiTest.knowledge = editKnowledge;
+                EditorUtility.SetDirty(aiTest);
+                AssetDatabase.SaveAssets();
+                isEditingAITest = false;
+            }
+
+            if (GUILayout.Button("Revert", GUILayout.Height(24)))
+            {
+                editPrompt = aiTest.prompt;
+                editPassCondition = aiTest.passCondition;
+                editFailCondition = aiTest.failCondition;
+                editKnowledge = aiTest.knowledge;
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawAITestRunControls(UITestItem test)
+        {
+            EditorGUILayout.LabelField("Run Test", EditorStyles.boldLabel);
+
+            EditorGUILayout.BeginHorizontal();
+
+            GUI.enabled = Application.isPlaying && !AI.AITestRunner.IsRunning;
+
+            if (GUILayout.Button("Run", GUILayout.Height(30)))
+            {
+                RunAITest(test).Forget();
+            }
+
+            if (GUILayout.Button("Run with Debug Panel", GUILayout.Height(30)))
+            {
+                AI.Editor.AIDebugPanel.ShowWindow();
+                RunAITest(test).Forget();
+            }
+
+            GUI.enabled = true;
+
+            EditorGUILayout.EndHorizontal();
+
+            // Cancel button if running
+            if (AI.AITestRunner.IsRunning)
+            {
+                if (GUILayout.Button("Cancel", GUILayout.Height(24)))
+                {
+                    AI.AITestRunner.Current?.Cancel();
+                }
+            }
+
+            if (!Application.isPlaying)
+            {
+                EditorGUILayout.HelpBox("Enter Play mode to run AI tests.", MessageType.Info);
+            }
+        }
+
+        private void DrawAITestLastRun(UITestItem test)
+        {
+            var lastRun = AI.Editor.AITestExplorerIntegration.GetLastRunStatus(test.AITest);
+
+            if (lastRun.Status == AI.Editor.AITestStatus.NotRun)
+            {
+                EditorGUILayout.HelpBox("This test has not been run yet.", MessageType.Info);
+                return;
+            }
+
+            EditorGUILayout.LabelField("Last Run", EditorStyles.boldLabel);
+
+            var statusColor = lastRun.Status switch
+            {
+                AI.Editor.AITestStatus.Passed => new Color(0.2f, 0.8f, 0.2f),
+                AI.Editor.AITestStatus.Failed => new Color(0.8f, 0.2f, 0.2f),
+                AI.Editor.AITestStatus.Error => new Color(0.8f, 0.4f, 0.2f),
+                _ => Color.gray
+            };
+
+            GUI.color = statusColor;
+            EditorGUILayout.LabelField($"Status: {lastRun.Status}", EditorStyles.boldLabel);
+            GUI.color = Color.white;
+
+            DrawDetailRow("Duration:", $"{lastRun.Duration:F1}s");
+            DrawDetailRow("Time:", lastRun.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"));
+
+            EditorGUILayout.Space();
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("View Details", GUILayout.Height(24)))
+            {
+                AI.Editor.AIResultsWindow.ShowWindow();
+            }
+            if (GUILayout.Button("View Screenshots", GUILayout.Height(24)))
+            {
+                ShowScreenshotTimeline(lastRun.RunId);
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private async UniTask RunAITest(UITestItem test)
+        {
+            SetTestStatus(test, TestStatus.Running);
+
+            try
+            {
+                var result = await AI.Editor.AITestExplorerIntegration.RunAITestAsync(test.AITest);
+
+                // Check if we're still valid after await
+                if (!Application.isPlaying)
+                    return;
+
+                if (result != null)
+                {
+                    var status = result.IsSuccess ? TestStatus.Passed : TestStatus.Failed;
+                    UpdateTestResult(test.DisplayName, status, result.Message, result.DurationSeconds);
+                }
+                else
+                {
+                    SetTestStatus(test, TestStatus.NotRun); // Cancelled/failed to run
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                SetTestStatus(test, TestStatus.NotRun);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITest] RunAITest exception: {ex}");
+                SetTestStatus(test, TestStatus.Failed);
+            }
+
+            if (this != null)
+            {
+                Repaint();
+            }
+        }
+
+        private async UniTaskVoid RunAITestGroup(UITestItem group)
+        {
+            try
+            {
+                var tests = GetAllTestsInGroup(group).Where(t => t.IsAITest).ToList();
+
+                foreach (var test in tests)
+                {
+                    if (!Application.isPlaying)
+                        break;
+
+                    await RunAITest(test);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Group run was cancelled
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[AITest] RunAITestGroup exception: {ex}");
+            }
+        }
+
+        private void ShowScreenshotTimeline(string runId)
+        {
+            if (string.IsNullOrEmpty(runId))
+                return;
+
+            var run = AI.AITestResultStore.Instance.LoadRun(runId);
+            if (run != null)
+            {
+                AI.Editor.ScreenshotTimelineView.ShowWindow(run);
+            }
+        }
+#endif
+
         private void RefreshTests()
         {
             allTests.Clear();
 
+            // 1. Find traditional UITestBehaviour tests
             var testInfos = FindAllUITestBehaviours();
 
             // Group by namespace/assembly
@@ -547,10 +1327,157 @@ namespace ODDGames.UITest.Editor
                 allTests.Add(namespaceItem);
             }
 
+#if UITEST_AI
+            // 2. Find AI Tests and add them
+            AddAITests();
+#endif
+
+            // 3. Find Visual Tests and add them
+            AddVisualTests();
+
             // Rebuild tree view
             treeView = new UITestTreeView(treeViewState, allTests, testResults, this);
             ApplyFilters();
         }
+
+        private void AddVisualTests()
+        {
+            var visualTestGuids = AssetDatabase.FindAssets("t:VisualTest");
+            if (visualTestGuids.Length == 0)
+                return;
+
+            // Group visual tests by folder
+            var testsByFolder = new Dictionary<string, List<(VisualTest test, string path)>>();
+
+            foreach (var guid in visualTestGuids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var test = AssetDatabase.LoadAssetAtPath<VisualTest>(path);
+                if (test == null) continue;
+
+                var folder = Path.GetDirectoryName(path)?.Replace("\\", "/") ?? "Assets";
+                var folderName = Path.GetFileName(folder);
+                if (string.IsNullOrEmpty(folderName)) folderName = folder;
+
+                if (!testsByFolder.ContainsKey(folderName))
+                {
+                    testsByFolder[folderName] = new List<(VisualTest, string)>();
+                }
+                testsByFolder[folderName].Add((test, path));
+            }
+
+            // Create Visual Tests root
+            var visualTestsRoot = new UITestItem
+            {
+                DisplayName = "Visual Tests",
+                FullName = "Visual Tests",
+                IsGroup = true,
+                IsVisualTestGroup = true,
+                Children = new List<UITestItem>()
+            };
+
+            foreach (var kvp in testsByFolder.OrderBy(x => x.Key))
+            {
+                UITestItem parentItem;
+
+                // If there's only one folder, add tests directly under root
+                if (testsByFolder.Count == 1)
+                {
+                    parentItem = visualTestsRoot;
+                }
+                else
+                {
+                    var folderItem = new UITestItem
+                    {
+                        DisplayName = kvp.Key,
+                        FullName = $"Visual Tests/{kvp.Key}",
+                        IsGroup = true,
+                        IsVisualTestGroup = true,
+                        Children = new List<UITestItem>()
+                    };
+                    visualTestsRoot.Children.Add(folderItem);
+                    parentItem = folderItem;
+                }
+
+                foreach (var (test, path) in kvp.Value.OrderBy(x => x.test.testName ?? x.test.name))
+                {
+                    parentItem.Children.Add(new UITestItem
+                    {
+                        DisplayName = test.testName ?? test.name,
+                        FullName = path,
+                        IsGroup = false,
+                        IsVisualTest = true,
+                        VisualTest = test,
+                        VisualTestAssetPath = path
+                    });
+                }
+            }
+
+            // Only add if there are tests
+            if (visualTestsRoot.Children.Count > 0 ||
+                (testsByFolder.Count == 1 && testsByFolder.Values.First().Count > 0))
+            {
+                allTests.Add(visualTestsRoot);
+            }
+        }
+
+#if UITEST_AI
+        private void AddAITests()
+        {
+            var aiTests = AI.Editor.AITestExplorerIntegration.FindAllAITests();
+            if (aiTests.Count == 0)
+                return;
+
+            // Group AI tests by their group
+            var grouped = aiTests.GroupBy(t => t.GroupName ?? "(Ungrouped AI Tests)");
+
+            // Create AI Tests root
+            var aiTestsRoot = new UITestItem
+            {
+                DisplayName = "AI Tests",
+                FullName = "AI Tests",
+                IsGroup = true,
+                IsAITestGroup = true,
+                Children = new List<UITestItem>()
+            };
+
+            foreach (var group in grouped.OrderBy(g => g.Key))
+            {
+                var groupItem = new UITestItem
+                {
+                    DisplayName = group.Key,
+                    FullName = $"AI Tests/{group.Key}",
+                    IsGroup = true,
+                    IsAITestGroup = true,
+                    Children = new List<UITestItem>()
+                };
+
+                // Try to find the actual AITestGroup asset
+                var firstTest = group.FirstOrDefault()?.AITest;
+                if (firstTest?.Group != null)
+                {
+                    groupItem.AITestGroup = firstTest.Group;
+                }
+
+                foreach (var test in group.OrderBy(t => t.DisplayName))
+                {
+                    groupItem.Children.Add(new UITestItem
+                    {
+                        DisplayName = test.DisplayName,
+                        FullName = test.FullName,
+                        IsGroup = false,
+                        IsAITest = true,
+                        AITest = test.AITest,
+                        AITestAssetPath = test.AssetPath
+                    });
+                }
+
+                aiTestsRoot.Children.Add(groupItem);
+            }
+
+            allTests.Add(aiTestsRoot);
+        }
+#endif
 
         private void ApplyFilters()
         {
@@ -891,6 +1818,21 @@ namespace ODDGames.UITest.Editor
         public UITestAttribute Attribute { get; set; }
         public bool IsGroup { get; set; }
         public List<UITestItem> Children { get; set; }
+
+        // AI Test support
+        public bool IsAITest { get; set; }
+        public bool IsAITestGroup { get; set; }
+#if UITEST_AI
+        public ODDGames.UITest.AI.AITest AITest { get; set; }
+        public ODDGames.UITest.AI.AITestGroup AITestGroup { get; set; }
+        public string AITestAssetPath { get; set; }
+#endif
+
+        // Visual Test support
+        public bool IsVisualTest { get; set; }
+        public bool IsVisualTestGroup { get; set; }
+        public VisualTest VisualTest { get; set; }
+        public string VisualTestAssetPath { get; set; }
     }
 
     [Serializable]
@@ -1064,16 +2006,142 @@ namespace ODDGames.UITest.Editor
             var labelRect = new Rect(iconRect.xMax + 2, rect.y, rect.width - iconRect.xMax - 60, rect.height);
             GUI.Label(labelRect, item.displayName);
 
-            // Draw run button for tests
+            // Draw run button for tests (or Edit for Visual Tests)
             if (!testItem.IsGroup)
             {
                 var buttonRect = new Rect(rect.xMax - 50, rect.y + 2, 45, rect.height - 4);
-                if (GUI.Button(buttonRect, "Run"))
+
+                if (testItem.IsVisualTest)
                 {
-                    window.GetType().GetMethod("RunTest", BindingFlags.NonPublic | BindingFlags.Instance)
-                        ?.Invoke(window, new object[] { testItem, false, false });
+                    if (GUI.Button(buttonRect, "Edit"))
+                    {
+                        var builderWindow = TestBuilder.ShowWindow();
+                        builderWindow.LoadTest(testItem.VisualTest);
+                    }
+                }
+                else
+                {
+                    if (GUI.Button(buttonRect, "Run"))
+                    {
+                        window.GetType().GetMethod("RunTest", BindingFlags.NonPublic | BindingFlags.Instance)
+                            ?.Invoke(window, new object[] { testItem, false, false });
+                    }
                 }
             }
+        }
+
+        protected override void ContextClickedItem(int id)
+        {
+            if (!idToItem.TryGetValue(id, out var item))
+                return;
+
+            var menu = new GenericMenu();
+
+            if (item.IsVisualTest)
+            {
+                menu.AddItem(new GUIContent("Open in Visual Builder"), false, () =>
+                {
+                    var builderWindow = TestBuilder.ShowWindow();
+                    builderWindow.LoadTest(item.VisualTest);
+                });
+
+                menu.AddItem(new GUIContent("Show in Inspector"), false, () =>
+                {
+                    Selection.activeObject = item.VisualTest;
+                    EditorGUIUtility.PingObject(item.VisualTest);
+                });
+
+                menu.AddSeparator("");
+
+                menu.AddItem(new GUIContent("Run Test"), false, () =>
+                {
+                    window.GetType().GetMethod("RunVisualTest", BindingFlags.NonPublic | BindingFlags.Instance)
+                        ?.Invoke(window, new object[] { item });
+                });
+
+                menu.AddSeparator("");
+
+                menu.AddItem(new GUIContent("Duplicate"), false, () =>
+                {
+                    DuplicateVisualTest(item);
+                });
+
+                menu.AddItem(new GUIContent("Delete"), false, () =>
+                {
+                    if (EditorUtility.DisplayDialog("Delete Visual Test",
+                        $"Are you sure you want to delete '{item.DisplayName}'?", "Delete", "Cancel"))
+                    {
+                        AssetDatabase.DeleteAsset(item.VisualTestAssetPath);
+                        window.GetType().GetMethod("RefreshTests", BindingFlags.NonPublic | BindingFlags.Instance)
+                            ?.Invoke(window, null);
+                    }
+                });
+            }
+            else if (item.IsVisualTestGroup)
+            {
+                menu.AddItem(new GUIContent("Create New Visual Test"), false, () =>
+                {
+                    window.GetType().GetMethod("CreateVisualTest", BindingFlags.NonPublic | BindingFlags.Instance)
+                        ?.Invoke(window, null);
+                });
+
+                menu.AddItem(new GUIContent("Open Visual Builder"), false, () =>
+                {
+                    TestBuilder.ShowWindow();
+                });
+            }
+            else if (!item.IsGroup)
+            {
+                // Regular test context menu
+                menu.AddItem(new GUIContent("Run"), false, () =>
+                {
+                    window.GetType().GetMethod("RunTest", BindingFlags.NonPublic | BindingFlags.Instance)
+                        ?.Invoke(window, new object[] { item, false, false });
+                });
+
+                menu.AddItem(new GUIContent("Run (Debug)"), false, () =>
+                {
+                    window.GetType().GetMethod("RunTest", BindingFlags.NonPublic | BindingFlags.Instance)
+                        ?.Invoke(window, new object[] { item, true, false });
+                });
+            }
+
+            menu.ShowAsContext();
+        }
+
+        private void DuplicateVisualTest(UITestItem item)
+        {
+            if (item.VisualTest == null || string.IsNullOrEmpty(item.VisualTestAssetPath))
+                return;
+
+            var sourcePath = item.VisualTestAssetPath;
+            var directory = Path.GetDirectoryName(sourcePath);
+            var fileName = Path.GetFileNameWithoutExtension(sourcePath);
+            var extension = Path.GetExtension(sourcePath);
+
+            var newPath = AssetDatabase.GenerateUniqueAssetPath(
+                Path.Combine(directory, $"{fileName}_Copy{extension}"));
+
+            var duplicate = ScriptableObject.Instantiate(item.VisualTest);
+            duplicate.testName = item.VisualTest.testName + " (Copy)";
+
+            // Generate new IDs for blocks
+            if (duplicate.blocks != null)
+            {
+                foreach (var block in duplicate.blocks)
+                {
+                    block.id = Guid.NewGuid().ToString();
+                }
+            }
+
+            AssetDatabase.CreateAsset(duplicate, newPath);
+            AssetDatabase.SaveAssets();
+
+            Selection.activeObject = duplicate;
+            EditorGUIUtility.PingObject(duplicate);
+
+            window.GetType().GetMethod("RefreshTests", BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.Invoke(window, null);
         }
 
         private GUIContent GetStatusIcon(UITestItem item)
@@ -1136,9 +2204,18 @@ namespace ODDGames.UITest.Editor
         {
             if (idToItem.TryGetValue(id, out var item) && !item.IsGroup)
             {
-                // Run test on double-click
-                window.GetType().GetMethod("RunTest", BindingFlags.NonPublic | BindingFlags.Instance)
-                    ?.Invoke(window, new object[] { item, false, false });
+                if (item.IsVisualTest)
+                {
+                    // Open Visual Test in builder on double-click
+                    var builderWindow = TestBuilder.ShowWindow();
+                    builderWindow.LoadTest(item.VisualTest);
+                }
+                else
+                {
+                    // Run test on double-click
+                    window.GetType().GetMethod("RunTest", BindingFlags.NonPublic | BindingFlags.Instance)
+                        ?.Invoke(window, new object[] { item, false, false });
+                }
             }
         }
     }

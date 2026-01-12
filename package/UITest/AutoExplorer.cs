@@ -563,7 +563,7 @@ namespace ODDGames.UITest
             else if (selectable is TMP_InputField || selectable is InputField) score += 5f;
 
             // Center of screen bonus
-            var screenPos = GetScreenPosition(go);
+            var screenPos = InputInjector.GetScreenPosition(go);
             var screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
             var distFromCenter = Vector2.Distance(screenPos, screenCenter);
             var maxDist = Mathf.Sqrt(Screen.width * Screen.width + Screen.height * Screen.height) / 2f;
@@ -754,88 +754,13 @@ namespace ODDGames.UITest
 
         private async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration)
         {
-            var mouse = UnityEngine.InputSystem.Mouse.current;
-            if (mouse == null) return;
-
-            int steps = Mathf.Max(5, (int)(duration * 60));
-            for (int i = 0; i <= steps; i++)
-            {
-                float t = (float)i / steps;
-                var pos = Vector2.Lerp(startPos, endPos, t);
-
-                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse,
-                    new UnityEngine.InputSystem.LowLevel.MouseState
-                    {
-                        position = pos,
-                        buttons = 1
-                    });
-                UnityEngine.InputSystem.InputSystem.Update();
-                await UniTask.Yield();
-            }
-
-            // Release
-            UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse,
-                new UnityEngine.InputSystem.LowLevel.MouseState
-                {
-                    position = endPos,
-                    buttons = 0
-                });
-            UnityEngine.InputSystem.InputSystem.Update();
-            await UniTask.Yield();
+            await InputInjector.InjectPointerDrag(startPos, endPos, duration);
         }
 
         private async UniTask ClickElement(Selectable element)
         {
-            var screenPos = GetScreenPosition(element.gameObject);
-
-            // Use Input System if available
-            if (UnityEngine.InputSystem.Mouse.current != null)
-            {
-                var mouse = UnityEngine.InputSystem.Mouse.current;
-
-                // Move to position
-                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse,
-                    new UnityEngine.InputSystem.LowLevel.MouseState { position = screenPos });
-                UnityEngine.InputSystem.InputSystem.Update();
-                await UniTask.Yield();
-
-                // Click down
-                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse,
-                    new UnityEngine.InputSystem.LowLevel.MouseState
-                    {
-                        position = screenPos,
-                        buttons = 1 // Left button
-                    });
-                UnityEngine.InputSystem.InputSystem.Update();
-                await UniTask.Yield();
-
-                // Click up
-                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse,
-                    new UnityEngine.InputSystem.LowLevel.MouseState
-                    {
-                        position = screenPos,
-                        buttons = 0
-                    });
-                UnityEngine.InputSystem.InputSystem.Update();
-                await UniTask.Yield();
-            }
-            else
-            {
-                // Fallback: directly invoke click handlers
-                var button = element as Button;
-                if (button != null)
-                {
-                    button.onClick.Invoke();
-                }
-                else
-                {
-                    var toggle = element as Toggle;
-                    if (toggle != null)
-                    {
-                        toggle.isOn = !toggle.isOn;
-                    }
-                }
-            }
+            var screenPos = InputInjector.GetScreenPosition(element.gameObject);
+            await InputInjector.InjectPointerTap(screenPos);
         }
 
         private async UniTask<bool> TryClickBackButton()
@@ -902,34 +827,6 @@ namespace ODDGames.UITest
                 return true;
 
             return false;
-        }
-
-        private Vector2 GetScreenPosition(GameObject go)
-        {
-            var rectTransform = go.GetComponent<RectTransform>();
-            if (rectTransform != null)
-            {
-                var canvas = go.GetComponentInParent<Canvas>();
-                if (canvas != null)
-                {
-                    Vector3[] corners = new Vector3[4];
-                    rectTransform.GetWorldCorners(corners);
-                    Vector3 center = (corners[0] + corners[2]) / 2f;
-
-                    if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
-                    {
-                        return center;
-                    }
-                    else if (canvas.worldCamera != null)
-                    {
-                        return canvas.worldCamera.WorldToScreenPoint(center);
-                    }
-                }
-            }
-
-            return Camera.main != null
-                ? Camera.main.WorldToScreenPoint(go.transform.position)
-                : (Vector2)go.transform.position;
         }
 
         private string GetElementKey(Selectable element)

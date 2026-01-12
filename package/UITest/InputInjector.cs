@@ -1,0 +1,827 @@
+using System;
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
+using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
+using UnityEngine.UI;
+
+namespace ODDGames.UITest
+{
+    /// <summary>
+    /// Fluent builder for creating key sequences with hold durations.
+    /// Supports both simultaneous (Together) and sequential (Then) key combinations.
+    ///
+    /// Examples:
+    ///   // Walk forward for 2 seconds
+    ///   await Keys.Hold(Key.W, 2f);
+    ///
+    ///   // Walk forward-left for 2 seconds (diagonal movement)
+    ///   await Keys.Hold(Key.W, Key.A).For(2f);
+    ///
+    ///   // Sprint forward: hold Shift+W for 3 seconds
+    ///   await Keys.Hold(Key.LeftShift, Key.W).For(3f);
+    ///
+    ///   // Complex sequence: W for 1s, then A for 0.5s, then W+D together for 2s
+    ///   await Keys.Hold(Key.W).For(1f).Then(Key.A).For(0.5f).Then(Key.W, Key.D).For(2f);
+    ///
+    ///   // Tap then hold: press Space, then hold W for 2s
+    ///   await Keys.Press(Key.Space).Then(Key.W).For(2f);
+    /// </summary>
+    public class Keys
+    {
+        readonly List<KeyStep> _steps = new();
+
+        Keys() { }
+
+        /// <summary>
+        /// Start a sequence by holding one or more keys.
+        /// Call For() to specify the hold duration.
+        /// </summary>
+        public static Keys Hold(params Key[] keys) => new Keys().AddStep(keys, 0f, false);
+
+        /// <summary>
+        /// Start a sequence by pressing (tap) one or more keys.
+        /// </summary>
+        public static Keys Press(params Key[] keys) => new Keys().AddStep(keys, 0f, true);
+
+        /// <summary>
+        /// Set the duration for the current step.
+        /// </summary>
+        public Keys For(float seconds)
+        {
+            if (_steps.Count > 0)
+                _steps[_steps.Count - 1] = _steps[_steps.Count - 1].WithDuration(seconds);
+            return this;
+        }
+
+        /// <summary>
+        /// Chain another key hold after the current step.
+        /// </summary>
+        public Keys Then(params Key[] keys) => AddStep(keys, 0f, false);
+
+        /// <summary>
+        /// Chain a key press (tap) after the current step.
+        /// </summary>
+        public Keys ThenPress(params Key[] keys) => AddStep(keys, 0f, true);
+
+        Keys AddStep(Key[] keys, float duration, bool isPress)
+        {
+            _steps.Add(new KeyStep(keys, duration, isPress));
+            return this;
+        }
+
+        /// <summary>
+        /// Execute the key sequence.
+        /// </summary>
+        public async UniTask Execute()
+        {
+            foreach (var step in _steps)
+            {
+                if (step.IsPress || step.Duration <= 0f)
+                {
+                    // Quick press for each key
+                    foreach (var key in step.Keys)
+                        await InputInjector.PressKey(key);
+                }
+                else if (step.Keys.Length == 1)
+                {
+                    await InputInjector.HoldKey(step.Keys[0], step.Duration);
+                }
+                else
+                {
+                    await InputInjector.HoldKeys(step.Keys, step.Duration);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the awaiter for direct await support on Keys builder.
+        /// </summary>
+        public Cysharp.Threading.Tasks.UniTask.Awaiter GetAwaiter() => Execute().GetAwaiter();
+
+        readonly struct KeyStep
+        {
+            public readonly Key[] Keys;
+            public readonly float Duration;
+            public readonly bool IsPress;
+
+            public KeyStep(Key[] keys, float duration, bool isPress)
+            {
+                Keys = keys;
+                Duration = duration;
+                IsPress = isPress;
+            }
+
+            public KeyStep WithDuration(float duration) => new KeyStep(Keys, duration, IsPress);
+        }
+    }
+
+    /// <summary>
+    /// Public utility class for injecting input events using Unity's Input System.
+    /// Used by UITestBehaviour and AI testing systems.
+    /// </summary>
+    public static class InputInjector
+    {
+        /// <summary>
+        /// Gets the screen position of a GameObject (works with both UI and world-space objects).
+        /// </summary>
+        public static Vector2 GetScreenPosition(GameObject go)
+        {
+            if (go.TryGetComponent<RectTransform>(out var rt))
+            {
+                // UI element - get center of rect in screen space
+                Vector3[] corners = new Vector3[4];
+                rt.GetWorldCorners(corners);
+                Vector3 center = (corners[0] + corners[2]) / 2f;
+
+                // Find the canvas to determine if it's screen space or world space
+                var canvas = go.GetComponentInParent<Canvas>();
+                if (canvas != null && canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+                {
+                    return center;
+                }
+                else
+                {
+                    // World space or camera space canvas
+                    Camera cam = canvas?.worldCamera ?? Camera.main;
+                    return cam != null ? RectTransformUtility.WorldToScreenPoint(cam, center) : (Vector2)center;
+                }
+            }
+            else
+            {
+                // World-space object
+                Camera cam = Camera.main;
+                return cam != null ? cam.WorldToScreenPoint(go.transform.position) : Vector2.zero;
+            }
+        }
+
+        /// <summary>
+        /// Gets the screen-space bounding box of a GameObject.
+        /// </summary>
+        public static Rect GetScreenBounds(GameObject go)
+        {
+            if (go.TryGetComponent<RectTransform>(out var rt))
+            {
+                Vector3[] corners = new Vector3[4];
+                rt.GetWorldCorners(corners);
+
+                var canvas = go.GetComponentInParent<Canvas>();
+                if (canvas != null && canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+                {
+                    // Corners are already in screen space
+                    float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+                    float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+                    float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+                    float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+
+                    return new Rect(minX, minY, maxX - minX, maxY - minY);
+                }
+                else
+                {
+                    // World space or camera space canvas - use RectTransformUtility for consistency
+                    Camera cam = canvas?.worldCamera ?? Camera.main;
+                    if (cam != null)
+                    {
+                        Vector2[] screenCorners = new Vector2[4];
+                        for (int i = 0; i < 4; i++)
+                        {
+                            screenCorners[i] = RectTransformUtility.WorldToScreenPoint(cam, corners[i]);
+                        }
+
+                        float minX = Mathf.Min(screenCorners[0].x, screenCorners[1].x, screenCorners[2].x, screenCorners[3].x);
+                        float maxX = Mathf.Max(screenCorners[0].x, screenCorners[1].x, screenCorners[2].x, screenCorners[3].x);
+                        float minY = Mathf.Min(screenCorners[0].y, screenCorners[1].y, screenCorners[2].y, screenCorners[3].y);
+                        float maxY = Mathf.Max(screenCorners[0].y, screenCorners[1].y, screenCorners[2].y, screenCorners[3].y);
+
+                        return new Rect(minX, minY, maxX - minX, maxY - minY);
+                    }
+                }
+            }
+
+            // Fallback for non-UI elements
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer != null && Camera.main != null)
+            {
+                var bounds = renderer.bounds;
+                var screenMin = Camera.main.WorldToScreenPoint(bounds.min);
+                var screenMax = Camera.main.WorldToScreenPoint(bounds.max);
+
+                return new Rect(
+                    screenMin.x,
+                    screenMin.y,
+                    screenMax.x - screenMin.x,
+                    screenMax.y - screenMin.y
+                );
+            }
+
+            return Rect.zero;
+        }
+
+        /// <summary>
+        /// Ensures the Game view has focus in the Editor so input events are received.
+        /// Does nothing at runtime or in builds.
+        /// </summary>
+        public static async UniTask EnsureGameViewFocusAsync()
+        {
+#if UNITY_EDITOR
+            var gameViewType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
+            if (gameViewType != null)
+            {
+                var gameView = UnityEditor.EditorWindow.GetWindow(gameViewType, false, null, false);
+                if (gameView != null)
+                {
+                    gameView.Focus();
+                    // Wait for focus to take effect
+                    await UniTask.Yield();
+                    await UniTask.Yield();
+                }
+            }
+#else
+            await UniTask.CompletedTask;
+#endif
+        }
+
+        /// <summary>
+        /// Returns true if we should use touch input instead of mouse.
+        /// On mobile platforms or when no mouse is available but touchscreen is.
+        /// </summary>
+        public static bool ShouldUseTouchInput()
+        {
+#if UNITY_IOS || UNITY_ANDROID
+            return true;
+#else
+            // On desktop, use mouse if available, otherwise fall back to touch
+            return Mouse.current == null && Touchscreen.current != null;
+#endif
+        }
+
+        /// <summary>
+        /// Injects a click/tap at the specified screen position.
+        /// Uses touch on mobile (iOS/Android), mouse on desktop.
+        /// </summary>
+        public static async UniTask InjectPointerTap(Vector2 screenPosition)
+        {
+            await EnsureGameViewFocusAsync();
+
+            if (ShouldUseTouchInput())
+            {
+                await InjectTouchTap(screenPosition);
+                return;
+            }
+
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[InputInjector] Click - No mouse device found, cannot inject click");
+                return;
+            }
+
+            // Use MouseState struct for complete state control
+            var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+
+            // Move mouse to position
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update(); // Force event processing
+            await UniTask.Yield();
+
+            // Mouse button down
+            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update(); // Force event processing
+            await UniTask.Yield();
+
+            // Mouse button up
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update(); // Force event processing
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a single-finger tap gesture using the Input System.
+        /// Used on mobile platforms (iOS/Android).
+        /// </summary>
+        public static async UniTask InjectTouchTap(Vector2 screenPosition)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[InputInjector] TouchTap - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            const int touchId = 1; // Touch IDs must be non-zero
+
+            // Touch began
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, beginPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update(); // Force event processing
+
+            await UniTask.Yield();
+
+            // Touch ended (tap is just began + ended at same position)
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, endPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update(); // Force event processing
+
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a drag gesture using the appropriate input method for the platform.
+        /// Uses touch on mobile (iOS/Android), mouse on desktop.
+        /// </summary>
+        public static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration)
+        {
+            await EnsureGameViewFocusAsync();
+
+            if (ShouldUseTouchInput())
+            {
+                await InjectTouchDrag(startPos, endPos, duration);
+                return;
+            }
+
+            await InjectMouseDrag(startPos, endPos, duration);
+        }
+
+        /// <summary>
+        /// Injects a mouse drag from start to end position using the Input System.
+        /// Uses frame-based yields to ensure Unity processes events each frame (matching touch behavior).
+        /// </summary>
+        public static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration)
+        {
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[InputInjector] MouseDrag - No mouse device found, cannot inject drag");
+                return;
+            }
+
+            Debug.Log($"[InputInjector] MouseDrag - start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s");
+
+            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60)); // ~60fps
+            Vector2 previousPos = startPos;
+
+            // Move mouse to start position
+            using (StateEvent.From(mouse, out var posPtr))
+            {
+                mouse.position.WriteValueIntoEvent(startPos, posPtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, posPtr);
+                InputSystem.QueueEvent(posPtr);
+            }
+            InputSystem.Update(); // Force event processing
+            await UniTask.Yield();
+
+            // Mouse button down at start
+            using (StateEvent.From(mouse, out var downPtr))
+            {
+                mouse.position.WriteValueIntoEvent(startPos, downPtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, downPtr);
+                mouse.leftButton.WriteValueIntoEvent(1f, downPtr);
+                InputSystem.QueueEvent(downPtr);
+            }
+            InputSystem.Update(); // Force event processing
+            await UniTask.Yield(); // Allow PointerDown to register
+
+            Debug.Log($"[InputInjector] MouseDrag - mouse down at ({startPos.x:F0},{startPos.y:F0})");
+
+            // Interpolate mouse position over duration with frame-based yields (like touch)
+            for (int i = 1; i <= totalFrames; i++)
+            {
+                float t = (float)i / totalFrames;
+                Vector2 currentPos = Vector2.Lerp(startPos, endPos, t);
+                Vector2 delta = currentPos - previousPos;
+
+                using (StateEvent.From(mouse, out var movePtr))
+                {
+                    mouse.position.WriteValueIntoEvent(currentPos, movePtr);
+                    mouse.delta.WriteValueIntoEvent(delta, movePtr);
+                    mouse.leftButton.WriteValueIntoEvent(1f, movePtr);
+                    InputSystem.QueueEvent(movePtr);
+                }
+                InputSystem.Update(); // Force event processing each frame
+
+                previousPos = currentPos;
+                await UniTask.Yield(); // Frame-based to ensure event processing
+            }
+
+            // Mouse button up at end
+            using (StateEvent.From(mouse, out var upPtr))
+            {
+                mouse.position.WriteValueIntoEvent(endPos, upPtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, upPtr);
+                mouse.leftButton.WriteValueIntoEvent(0f, upPtr);
+                InputSystem.QueueEvent(upPtr);
+            }
+            InputSystem.Update(); // Force event processing
+
+            Debug.Log($"[InputInjector] MouseDrag - mouse up at ({endPos.x:F0},{endPos.y:F0})");
+
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a single-finger touch drag gesture using the Input System.
+        /// Used on mobile platforms (iOS/Android).
+        /// </summary>
+        public static async UniTask InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[InputInjector] TouchDrag - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            const int touchId = 1;
+            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60));
+            Vector2 previousPos = startPos;
+
+            // Touch began
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(startPos, beginPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Touch moved (interpolate)
+            for (int i = 1; i < totalFrames; i++)
+            {
+                float t = (float)i / totalFrames;
+                Vector2 currentPos = Vector2.Lerp(startPos, endPos, t);
+                Vector2 delta = currentPos - previousPos;
+
+                using (StateEvent.From(touchscreen, out var movePtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, movePtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(currentPos, movePtr);
+                    touchscreen.touches[0].delta.WriteValueIntoEvent(delta, movePtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
+                    InputSystem.QueueEvent(movePtr);
+                }
+                InputSystem.Update();
+                previousPos = currentPos;
+                await UniTask.Yield();
+            }
+
+            // Touch ended
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(endPos, endPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(endPos - previousPos, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a scroll event at the specified position.
+        /// </summary>
+        /// <param name="position">Screen position to scroll at</param>
+        /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
+        public static async UniTask InjectScroll(Vector2 position, float delta)
+        {
+            await EnsureGameViewFocusAsync();
+
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[InputInjector] Scroll - No mouse device found");
+                return;
+            }
+
+            // Move mouse to position first
+            using (StateEvent.From(mouse, out var posPtr))
+            {
+                mouse.position.WriteValueIntoEvent(position, posPtr);
+                InputSystem.QueueEvent(posPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Send scroll event (120 is standard scroll delta unit)
+            using (StateEvent.From(mouse, out var scrollPtr))
+            {
+                mouse.position.WriteValueIntoEvent(position, scrollPtr);
+                mouse.scroll.WriteValueIntoEvent(new Vector2(0, delta * 120), scrollPtr);
+                InputSystem.QueueEvent(scrollPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a scroll event at the specified position with a Vector2 delta.
+        /// </summary>
+        /// <param name="position">Screen position to scroll at</param>
+        /// <param name="scrollDelta">Scroll delta vector (for horizontal and vertical scrolling)</param>
+        public static async UniTask InjectScroll(Vector2 position, Vector2 scrollDelta)
+        {
+            await EnsureGameViewFocusAsync();
+
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[InputInjector] Scroll - No mouse device found");
+                return;
+            }
+
+            // Move to position first
+            using (StateEvent.From(mouse, out var posPtr))
+            {
+                mouse.position.WriteValueIntoEvent(position, posPtr);
+                InputSystem.QueueEvent(posPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Send scroll event
+            using (StateEvent.From(mouse, out var scrollPtr))
+            {
+                mouse.position.WriteValueIntoEvent(position, scrollPtr);
+                mouse.scroll.WriteValueIntoEvent(scrollDelta, scrollPtr);
+                InputSystem.QueueEvent(scrollPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Types text character by character using the keyboard.
+        /// </summary>
+        public static async UniTask TypeText(string text)
+        {
+            await EnsureGameViewFocusAsync();
+
+            var keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                Debug.LogWarning("[InputInjector] Type - No keyboard device found");
+                return;
+            }
+
+            foreach (char c in text)
+            {
+                if (!Application.isPlaying) break;
+
+                InputSystem.QueueTextEvent(keyboard, c);
+                InputSystem.Update();
+                await UniTask.Yield();
+            }
+        }
+
+        /// <summary>
+        /// Presses and releases a keyboard key.
+        /// </summary>
+        public static async UniTask PressKey(Key key)
+        {
+            await EnsureGameViewFocusAsync();
+
+            var keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                Debug.LogWarning("[InputInjector] PressKey - No keyboard device found");
+                return;
+            }
+
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(key));
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Holds a keyboard key for the specified duration.
+        /// </summary>
+        /// <param name="key">The key to hold</param>
+        /// <param name="duration">How long to hold the key in seconds</param>
+        public static async UniTask HoldKey(Key key, float duration)
+        {
+            await EnsureGameViewFocusAsync();
+
+            var keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                Debug.LogWarning("[InputInjector] HoldKey - No keyboard device found");
+                return;
+            }
+
+            var keyState = new KeyboardState(key);
+
+            // Key down
+            InputSystem.QueueStateEvent(keyboard, keyState);
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Hold for duration - re-queue key state each frame so input system registers continuous hold
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                InputSystem.QueueStateEvent(keyboard, keyState);
+                InputSystem.Update();
+                await UniTask.Yield();
+                elapsed += Time.deltaTime;
+            }
+
+            // Key up
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Holds multiple keyboard keys simultaneously for the specified duration.
+        /// </summary>
+        /// <param name="keys">The keys to hold together</param>
+        /// <param name="duration">How long to hold the keys in seconds</param>
+        public static async UniTask HoldKeys(Key[] keys, float duration)
+        {
+            if (keys == null || keys.Length == 0)
+                return;
+
+            await EnsureGameViewFocusAsync();
+
+            var keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                Debug.LogWarning("[InputInjector] HoldKeys - No keyboard device found");
+                return;
+            }
+
+            var keyState = new KeyboardState(keys);
+
+            // Keys down (all at once)
+            InputSystem.QueueStateEvent(keyboard, keyState);
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Hold for duration - re-queue key state each frame so input system registers continuous hold
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                InputSystem.QueueStateEvent(keyboard, keyState);
+                InputSystem.Update();
+                await UniTask.Yield();
+                elapsed += Time.deltaTime;
+            }
+
+            // Keys up
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a hold/long-press at the specified screen position.
+        /// Uses touch on mobile (iOS/Android), mouse on desktop.
+        /// </summary>
+        public static async UniTask InjectPointerHold(Vector2 screenPosition, float holdSeconds)
+        {
+            await EnsureGameViewFocusAsync();
+
+            if (ShouldUseTouchInput())
+            {
+                await InjectTouchHold(screenPosition, holdSeconds);
+                return;
+            }
+
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[InputInjector] Hold - No mouse device found, cannot inject hold");
+                return;
+            }
+
+            // Use MouseState struct for complete state control
+            var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+
+            // Move mouse to position
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Mouse button down
+            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Hold for specified duration - re-queue state each frame
+            float elapsed = 0f;
+            while (elapsed < holdSeconds)
+            {
+                InputSystem.QueueStateEvent(mouse, mouseState);
+                InputSystem.Update();
+                await UniTask.Yield();
+                elapsed += Time.deltaTime;
+            }
+
+            // Mouse button up
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Injects a touch hold/long-press gesture using the Input System.
+        /// Used on mobile platforms (iOS/Android).
+        /// </summary>
+        public static async UniTask InjectTouchHold(Vector2 screenPosition, float holdSeconds)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[InputInjector] TouchHold - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            const int touchId = 1; // Touch IDs must be non-zero
+
+            // Touch began
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, beginPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Hold for specified duration (touch stays in Stationary phase)
+            float elapsed = 0f;
+            while (elapsed < holdSeconds)
+            {
+                using (StateEvent.From(touchscreen, out var stationaryPtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, stationaryPtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, stationaryPtr);
+                    touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, stationaryPtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Stationary, stationaryPtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, stationaryPtr);
+                    InputSystem.QueueEvent(stationaryPtr);
+                }
+                InputSystem.Update();
+                await UniTask.Yield();
+                elapsed += Time.deltaTime;
+            }
+
+            // Touch ended
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, endPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+    }
+}

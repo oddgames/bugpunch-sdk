@@ -3,6 +3,10 @@
     "rootNamespace": "ODDGames.UITest.Editor",
     "references": [
         "ODDGames.UITest",
+        "ODDGames.UITest.AI",
+        "ODDGames.UITest.AI.Editor",
+        "ODDGames.UITest.VisualBuilder",
+        "ODDGames.UITest.VisualBuilder.Editor",
         "Unity.TextMeshPro",
         "Unity.InputSystem",
         "UniTask",
@@ -22,6 +26,11 @@
             "name": "com.unity.recorder",
             "expression": "",
             "define": "UNITY_RECORDER"
+        },
+        {
+            "name": "com.oddgames.uitest",
+            "expression": "",
+            "define": "UITEST_AI"
         }
     ],
     "noEngineReferences": false
