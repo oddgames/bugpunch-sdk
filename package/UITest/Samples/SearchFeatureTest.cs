@@ -33,78 +33,78 @@ namespace ODDGames.UITest.Samples
             // Search.ByName - Find by GameObject name
             // ==========================================
             // Exact name
-            await Click(Search.ByName("NameButton"));
+            await Click(Name("NameButton"));
 
             // Wildcard prefix
-            await Click(Search.ByName("Name*"));
+            await Click(Name("Name*"));
 
             // Wildcard suffix
-            await Click(Search.ByName("*Button"), index: 0);
+            await Click(Name("*Button"), index: 0);
 
             // Wildcard contains
-            await Click(Search.ByName("*ame*"));
+            await Click(Name("*ame*"));
 
             // Complex glob pattern
-            await Click(Search.ByName("btn_*_icon"));
+            await Click(Name("btn_*_icon"));
 
             // ==========================================
             // Search.ByText - Find by text content (Text/TMP_Text)
             // ==========================================
-            await Click(Search.ByText("Click Me"));
-            await Click(Search.ByText("*Me"), index: 0);
-            await Click(Search.ByText("Click*"));
+            await Click(Text("Click Me"));
+            await Click(Text("*Me"), index: 0);
+            await Click(Text("Click*"));
 
             // ==========================================
             // Search.ByType - Find by component type
             // ==========================================
             // Generic type
-            await Click(Search.ByType<Toggle>(), index: 0);
+            await Click(Type<Toggle>(), index: 0);
 
             // ==========================================
             // Search.ByPath - Find by hierarchy path
             // ==========================================
-            await Click(Search.ByPath("*ChildPanel*/*ChildButton*"));
+            await Click(Path("*ChildPanel*/*ChildButton*"));
 
             // ==========================================
             // Search.ByAny - Match name OR text OR sprite
             // ==========================================
-            await Click(Search.ByAny("AnyMatch"));
+            await Click(Any("AnyMatch"));
 
             // ==========================================
             // Chaining - Multiple conditions (AND logic)
             // ==========================================
             // Type AND Name
-            await Click(Search.ByType<Button>().Name("ChainButton"));
+            await Click(Type<Button>().Name("ChainButton"));
 
             // Name AND Text
-            await Click(Search.ByName("*Button").Text("Submit"));
+            await Click(Name("*Button").Text("Submit"));
 
             // Type AND Text AND Name
-            await Click(Search.ByType<Button>().Text("OK").Name("*Confirm*"));
+            await Click(Type<Button>().Text("OK").Name("*Confirm*"));
 
             // ==========================================
             // Search.With - Component property checks
             // ==========================================
             // Button that is interactable
-            await Click(Search.ByType<Button>().Name("InteractableBtn").With<Button>(b => b.interactable));
+            await Click(Type<Button>().Name("InteractableBtn").With<Button>(b => b.interactable));
 
             // Toggle that is off
-            await Click(Search.ByType<Toggle>().With<Toggle>(t => !t.isOn));
+            await Click(Type<Toggle>().With<Toggle>(t => !t.isOn));
 
             // Find slider with value > 0.5
-            var slider = await Find<Slider>(Search.ByType<Slider>().With<Slider>(s => s.value > 0.5f));
+            var slider = await Find<Slider>(Type<Slider>().With<Slider>(s => s.value > 0.5f));
             Assert(slider != null, "Should find slider with value > 0.5");
 
             // ==========================================
             // Search.Not - Negation
             // ==========================================
             // Button that is NOT named "DisabledButton"
-            await Click(Search.ByType<Button>().Name("Not*").Not.Name("NotThisOne"));
+            await Click(Type<Button>().Name("Not*").Not.Name("NotThisOne"));
 
             // ==========================================
             // Search.Where - Custom predicate
             // ==========================================
-            await Click(Search.Where(go => go.name == "CustomPredicateBtn"));
+            await Click(new Search().Where(go => go.name == "CustomPredicateBtn"));
 
             // ==========================================
             // Implicit string conversion
@@ -117,7 +117,7 @@ namespace ODDGames.UITest.Samples
             // Index parameter
             // ==========================================
             // Click second item with matching name
-            await Click(Search.ByName("ListItem"), index: 1);
+            await Click(Name("ListItem"), index: 1);
 
             CaptureScreenshot("search_test_complete");
         }

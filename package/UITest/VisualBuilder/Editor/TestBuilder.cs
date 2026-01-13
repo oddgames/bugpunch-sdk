@@ -16,6 +16,11 @@ namespace ODDGames.UITest.VisualBuilder.Editor
     /// </summary>
     public class TestBuilder : EditorWindow
     {
+        // Session state keys for domain reload persistence
+        private const string kSessionTestPath = "TestBuilder.SessionTestPath";
+        private const string kSessionSelectedBlock = "TestBuilder.SessionSelectedBlock";
+        private const string kSessionEditingBlock = "TestBuilder.SessionEditingBlock";
+
         private VisualTest currentTest;
         private int selectedBlockIndex = -1;
 
@@ -69,6 +74,9 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             Undo.undoRedoPerformed += OnUndoRedo;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             SceneView.duringSceneGui += OnSceneGUI;
+
+            // Restore state from session if we're recovering from domain reload
+            RestoreSessionState();
         }
 
         private void OnDisable()
@@ -78,6 +86,39 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             SceneView.duringSceneGui -= OnSceneGUI;
             aiAssistant?.Dispose();
             CancelPicking();
+
+            // Save state to session for domain reload recovery
+            SaveSessionState();
+        }
+
+        private void SaveSessionState()
+        {
+            // Save current test path
+            var testPath = currentTest != null ? AssetDatabase.GetAssetPath(currentTest) : "";
+            SessionState.SetString(kSessionTestPath, testPath);
+            SessionState.SetInt(kSessionSelectedBlock, selectedBlockIndex);
+            SessionState.SetInt(kSessionEditingBlock, editingBlockIndex);
+        }
+
+        private void RestoreSessionState()
+        {
+            // Only restore if we don't already have a test loaded
+            if (currentTest != null) return;
+
+            var testPath = SessionState.GetString(kSessionTestPath, "");
+            if (!string.IsNullOrEmpty(testPath))
+            {
+                var test = AssetDatabase.LoadAssetAtPath<VisualTest>(testPath);
+                if (test != null)
+                {
+                    currentTest = test;
+                    selectedBlockIndex = SessionState.GetInt(kSessionSelectedBlock, -1);
+                    editingBlockIndex = SessionState.GetInt(kSessionEditingBlock, -1);
+
+                    // Clear editing state after domain reload - unsaved changes are lost
+                    blockHasUnsavedChanges = false;
+                }
+            }
         }
 
         private void CancelPicking()
@@ -102,10 +143,24 @@ namespace ODDGames.UITest.VisualBuilder.Editor
         {
             if (state == PlayModeStateChange.EnteredPlayMode)
             {
+                // Restore session state after domain reload
+                RestoreSessionState();
+
+                // Update UI fields to reflect restored state
+                if (currentTest != null)
+                {
+                    testNameField?.SetValueWithoutNotify(currentTest.testName ?? "");
+                    var sceneName = string.IsNullOrEmpty(currentTest.startScene) ? "-- Select Scene --" : currentTest.startScene;
+                    sceneDropdown?.SetValueWithoutNotify(sceneName);
+                }
+
                 RefreshUI();
             }
             else if (state == PlayModeStateChange.ExitingPlayMode)
             {
+                // Save state before domain reload
+                SaveSessionState();
+
                 aiAssistant?.Stop();
                 editingBlockIndex = -1;
                 blockHasUnsavedChanges = false;
@@ -124,7 +179,18 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             BuildMainContent();
             BuildStatusBar();
 
-            LoadLastTest();
+            // If test was already restored in OnEnable, sync UI fields
+            // Otherwise load from EditorPrefs
+            if (currentTest != null)
+            {
+                testNameField?.SetValueWithoutNotify(currentTest.testName ?? "");
+                var sceneName = string.IsNullOrEmpty(currentTest.startScene) ? "-- Select Scene --" : currentTest.startScene;
+                sceneDropdown?.SetValueWithoutNotify(sceneName);
+            }
+            else
+            {
+                LoadLastTest();
+            }
             RefreshUI();
         }
 
@@ -1628,7 +1694,11 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
             var assetPath = AssetDatabase.GetAssetPath(test);
             if (!string.IsNullOrEmpty(assetPath))
+            {
                 EditorPrefs.SetString("TestBuilder.LastTest", assetPath);
+                // Also save to session state for domain reload persistence
+                SessionState.SetString(kSessionTestPath, assetPath);
+            }
 
             RefreshUI();
             statusLabel.text = $"Loaded: {test.testName}";
@@ -1636,7 +1706,10 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
         private void LoadLastTest()
         {
-            var lastPath = EditorPrefs.GetString("TestBuilder.LastTest", "");
+            // Try session state first (for domain reload), then EditorPrefs (for editor restart)
+            var sessionPath = SessionState.GetString(kSessionTestPath, "");
+            var lastPath = !string.IsNullOrEmpty(sessionPath) ? sessionPath : EditorPrefs.GetString("TestBuilder.LastTest", "");
+
             if (!string.IsNullOrEmpty(lastPath))
             {
                 var test = AssetDatabase.LoadAssetAtPath<VisualTest>(lastPath);

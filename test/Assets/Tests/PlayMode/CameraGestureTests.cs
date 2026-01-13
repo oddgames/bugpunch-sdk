@@ -281,7 +281,13 @@ namespace ODDGames.UITest.Tests
         {
             return UniTask.ToCoroutine(async () =>
             {
+                // Wait a few frames to ensure clean state from any previous touch gestures
                 await UniTask.Yield();
+                await UniTask.Yield();
+                await UniTask.Yield();
+
+                // Reset tracking to ensure we only measure this gesture
+                _cameraController.ResetTracking();
 
                 var helper = CreateGestureHelper();
 
@@ -363,7 +369,7 @@ namespace ODDGames.UITest.Tests
                 var helper = CreateGestureHelper();
 
                 // Rotate at top-left quadrant
-                await helper.TestRotateAt(0.25f, 0.75f, 30f, duration: 0.3f);
+                await helper.TestRotateAt(0.25f, 0.75f, 30f, duration: 0.4f);
 
                 Assert.Greater(_cameraController.TotalRotationDelta, 0,
                     "RotateAt should work at custom positions");

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: AITestSettings
   m_EditorClassIdentifier: 
   geminiApiKey: REDACTED_GEMINI_KEY_3
-  defaultModel: gemini-3-flash-preview
+  defaultModel: gemini-2.5-flash-lite
   defaultTimeout: 180
   defaultMaxActions: 50
   defaultActionDelay: 0.3

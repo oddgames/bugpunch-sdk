@@ -57,35 +57,58 @@ namespace ODDGames.UITest.AI
         }
 
         /// <summary>
-        /// Records a new screen state.
+        /// Records a new screen state using just the visual hash.
+        /// Prefer using RecordScreen(visualHash, elementStateHash) for accurate change detection.
         /// </summary>
         public void RecordScreen(string screenHash)
         {
+            RecordScreen(screenHash, null);
+        }
+
+        /// <summary>
+        /// Records a new screen state with both visual and element state hashes.
+        /// The screen is considered "changed" if either hash differs from the previous.
+        /// </summary>
+        public void RecordScreen(string visualHash, string elementStateHash)
+        {
             var record = new ScreenHashRecord
             {
-                Hash = screenHash,
+                VisualHash = visualHash,
+                ElementStateHash = elementStateHash,
                 Timestamp = Time.realtimeSinceStartup
             };
 
             screenHistory.Add(record);
 
-            // Check for similar screens
+            // Check for similar screens - screen is "changed" if EITHER hash changed
             if (screenHistory.Count > 1)
             {
-                var previousHash = screenHistory[screenHistory.Count - 2].Hash;
-                if (ScreenHash.AreSimilar(screenHash, previousHash, config.ScreenSimilarityThreshold))
+                var previous = screenHistory[screenHistory.Count - 2];
+
+                // Visual similarity check
+                bool visualSimilar = ScreenHash.AreSimilar(visualHash, previous.VisualHash, config.ScreenSimilarityThreshold);
+
+                // Element state check - states must be exactly equal for "no change"
+                bool elementStateSame = string.IsNullOrEmpty(elementStateHash) ||
+                                        string.IsNullOrEmpty(previous.ElementStateHash) ||
+                                        ScreenHash.AreElementStatesEqual(elementStateHash, previous.ElementStateHash);
+
+                // Screen is "unchanged" only if both visual AND element state are the same
+                if (visualSimilar && elementStateSame)
                 {
                     consecutiveSimilarScreens++;
+                    Debug.Log($"[StuckDetector] Screen unchanged (visual similar: {visualSimilar}, state same: {elementStateSame})");
                 }
                 else
                 {
                     consecutiveSimilarScreens = 0;
-                    lastSignificantScreenHash = screenHash;
+                    lastSignificantScreenHash = visualHash;
+                    Debug.Log($"[StuckDetector] Screen changed! (visual similar: {visualSimilar}, state same: {elementStateSame})");
                 }
             }
             else
             {
-                lastSignificantScreenHash = screenHash;
+                lastSignificantScreenHash = visualHash;
             }
 
             UpdateStuckLevel();
@@ -275,7 +298,8 @@ namespace ODDGames.UITest.AI
 
         private struct ScreenHashRecord
         {
-            public string Hash;
+            public string VisualHash;
+            public string ElementStateHash;
             public float Timestamp;
         }
 
@@ -294,8 +318,8 @@ namespace ODDGames.UITest.AI
     [Serializable]
     public class StuckDetectorConfig
     {
-        /// <summary>Screen hash similarity threshold (Hamming distance)</summary>
-        public int ScreenSimilarityThreshold = 10;
+        /// <summary>Screen hash similarity threshold (Hamming distance). With 2x2 (4-bit) hash, use 1.</summary>
+        public int ScreenSimilarityThreshold = 1;
 
         /// <summary>Number of similar screens before considering stuck</summary>
         public int SimilarScreensForStuck = 3;

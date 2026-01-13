@@ -212,8 +212,8 @@ namespace ODDGames.UITest.AI
                     OnScreenCaptured?.Invoke(screen);
                     RecordScreenshot(screen);
 
-                    // Update stuck detector
-                    stuckDetector.RecordScreen(screen.ScreenHash);
+                    // Update stuck detector with both visual and element state hashes
+                    stuckDetector.RecordScreen(screen.ScreenHash, screen.ElementStateHash);
 
                     // Check if stuck and send recovery message
                     if (stuckDetector.ShouldEscalate())
