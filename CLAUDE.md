@@ -169,25 +169,53 @@ The `test/` folder contains a Unity project for development testing:
 - Has Input System set to "New" mode only
 - References the package via `file:../../package`
 
-## Change History
+## Local Changelog (Uncommitted)
 
-Keep this section updated when making significant API changes. This helps track breaking changes and new features.
+**IMPORTANT**: This section tracks all local changes since the last deploy. Update this section as you work:
+- Add entries when making API changes, fixes, or new features
+- Remove entries if you undo/revert a change
+- This section is used to generate the CHANGELOG.md entry during `/deploy`
+- After `/deploy`, clear this section and write "(No uncommitted changes)"
 
-### Recent Changes (Local/Uncommitted)
+### Current Local Changes
 
 (No uncommitted changes)
 
+## Change History
+
+Reference of recent API changes. See [CHANGELOG.md](package/CHANGELOG.md) for complete version history.
+
+### v1.0.30 - 2026-01-13
+- **Extracted Search class** to separate `Search.cs` file
+- **Fixed two-finger gesture reliability** - added extra frame yields after ending touches
+
+### v1.0.29 - 2026-01-12
+- **Added `Search.Near()`** - distance-based proximity search
+- **Added `Search.HasSibling()`** - filter by sibling matching criteria
+- **Renamed `ByAdjacent` to `Adjacent`** - removed "By" prefix
+- **Renamed `Adjacent` enum to `Direction`** - avoids method name conflict
+- **Renamed transform methods** - `Parent()` → `GetParent()`, `Child()` → `GetChild()`, `Sibling()` → `GetSibling()`
+
+### v1.0.28 - 2026-01-12
+- **Visual Test Builder** - drag-and-drop block-based test creation
+- **AI Test Generation** - Gemini-powered test generation
+- **InputInjector public class** - extracted for reuse
+- **Keys fluent builder** - `Keys.Hold(Key.W).For(2f)`
+
+### v1.0.27 - 2026-01-10
+- **Random Click methods** - `RandomClick()`, `RandomClickExcept()`, `SetRandomSeed()`
+- **AutoExplorer** - static API, runtime component, CI batch mode
+- **Smart exploration** - exclusion patterns, action variety, priority scoring
+
+### v1.0.26 - 2026-01-09
+- **Component overloads** - `Click(Component)`, `Hold(Component)`, etc.
+- **FindItems** - iterate over scroll view/layout group items
+
+### v1.0.25 - 2026-01-09
+- **Search ordering** - `First()`, `Last()`, `Skip()`, `OrderBy()`, `OrderByPosition()`
+- **Search hierarchy** - `GetParent<T>()`, `GetChild<T>()`, `InRegion()`
+- **ScrollTo** - auto-scroll until target visible
+
 ### v1.0.23 - 2026-01-08
-
-**Removed `Availability` enum** - Availability filtering moved into Search class
-- Removed: `Availability` enum (`None`, `Active`, `Enabled`, `All`)
-- Removed: `Availability` parameter from `Find`, `FindAll`, `Click`, `ClickAny`, `Hold` methods
-- Added: `Search.IncludeInactive()` - chainable method to include inactive GameObjects
-- Added: `Search.IncludeDisabled()` - chainable method to include disabled/non-interactable components
-- Migration: `Find<T>(search, true, 10, Availability.Active)` → `Find<T>(search, true, 10)` (default behavior)
-- Migration: To include inactive: `Find<T>(search.IncludeInactive(), true, 10)`
-
-**Added `Search.ByAdjacent()`** - Find interactables by adjacent text labels
-- `Search.ByAdjacent("Username:", Adjacent.Right)` - finds input field to the right of "Username:" text
-- Supports all four directions: `Right`, `Left`, `Below`, `Above`
-- Uses spatial proximity scoring, not hierarchy
+- **Removed `Availability` enum** - replaced with `IncludeInactive()`, `IncludeDisabled()`
+- **Added `Search.Adjacent()`** - find interactables by adjacent text labels
