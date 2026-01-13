@@ -69,3 +69,6 @@ crashlytics-build.properties
 
 # Claude local settings
 .claude/settings.local.json
+
+# AI settings with API keys (should not be committed)
+**/AITestSettings.asset
