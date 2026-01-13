@@ -169,6 +169,35 @@ The `test/` folder contains a Unity project for development testing:
 - Has Input System set to "New" mode only
 - References the package via `file:../../package`
 
+## GitHub Wiki
+
+The wiki is a separate git repository. To update it:
+
+```bash
+# Clone wiki (already exists at wiki_temp/ if previously cloned)
+git clone https://github.com/oddgames/ui-automation.wiki.git wiki_temp
+
+# Edit files in wiki_temp/
+# Commit and push changes
+cd wiki_temp && git add -A && git commit -m "Update wiki" && git push
+```
+
+### Wiki Structure
+- `Home.md` - Landing page with quick start
+- `_Sidebar.md` - Navigation sidebar
+- `Installation.md`, `Creating-Your-First-Test.md`, `Test-Attributes.md` - Getting started
+- `Search-Queries.md`, `Search.ByName.md`, `Search.ByText.md`, etc. - Search API docs
+- `Click-Actions.md`, `Text-Input.md`, `Drag-Actions.md`, `Gesture-Input.md` - Action docs
+- `Availability-Filtering.md` - IncludeInactive/IncludeDisabled
+- `Best-Practices.md`, `Samples.md`, `Test-Recording.md` - Advanced topics
+
+### Wiki Update Checklist
+When updating the wiki, check these pages for API changes:
+- [ ] `Home.md` - Version number, quick start example
+- [ ] `Search.ByAdjacent.md` - Now `Adjacent()` with `Direction` enum (not `ByAdjacent` with `Adjacent` enum)
+- [ ] `Availability-Filtering.md` - Uses `IncludeInactive()`, `IncludeDisabled()`
+- [ ] `Search-Chaining.md` - Check for new methods like `Near()`, `HasSibling()`, `GetParent()`, etc.
+
 ## Local Changelog (Uncommitted)
 
 **IMPORTANT**: This section tracks all local changes since the last deploy. Update this section as you work:
