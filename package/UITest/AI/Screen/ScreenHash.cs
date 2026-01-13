@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -10,7 +11,7 @@ namespace ODDGames.UITest.AI
     /// </summary>
     public static class ScreenHash
     {
-        private const int HashSize = 8; // 8x8 = 64 bits
+        private const int HashSize = 2; // 2x2 = 4 bits (more accurate - relies on element state hash for fine changes)
 
         /// <summary>
         /// Computes a perceptual hash of a texture.
@@ -140,6 +141,69 @@ namespace ODDGames.UITest.AI
 
             // 64 bits total
             return (64 - distance) / 64f * 100f;
+        }
+
+        /// <summary>
+        /// Computes a hash of element states for detecting UI changes that don't affect visuals much.
+        /// This captures toggle states, slider values, dropdown selections, etc.
+        /// </summary>
+        public static string ComputeElementStateHash(List<ElementInfo> elements)
+        {
+            if (elements == null || elements.Count == 0)
+                return "empty";
+
+            var sb = new StringBuilder();
+
+            foreach (var element in elements)
+            {
+                // Include type (contains toggle on/off state)
+                sb.Append(element.type);
+                sb.Append('|');
+
+                // Include extra info (contains slider value, toggle checked state, dropdown selection)
+                if (!string.IsNullOrEmpty(element.extraInfo))
+                {
+                    sb.Append(element.extraInfo);
+                }
+                sb.Append('|');
+
+                // Include enabled state
+                sb.Append(element.isEnabled ? '1' : '0');
+                sb.Append(';');
+            }
+
+            // Return a simple hash of the state string
+            return GetStringHash(sb.ToString());
+        }
+
+        /// <summary>
+        /// Computes a simple hash of a string.
+        /// </summary>
+        private static string GetStringHash(string input)
+        {
+            // Use a simple but effective hash
+            unchecked
+            {
+                int hash1 = 5381;
+                int hash2 = hash1;
+
+                for (int i = 0; i < input.Length; i += 2)
+                {
+                    hash1 = ((hash1 << 5) + hash1) ^ input[i];
+                    if (i + 1 < input.Length)
+                        hash2 = ((hash2 << 5) + hash2) ^ input[i + 1];
+                }
+
+                return (hash1 + (hash2 * 1566083941)).ToString("X8");
+            }
+        }
+
+        /// <summary>
+        /// Checks if two element state hashes represent the same state.
+        /// </summary>
+        public static bool AreElementStatesEqual(string hash1, string hash2)
+        {
+            return string.Equals(hash1, hash2, StringComparison.Ordinal);
         }
 
         /// <summary>

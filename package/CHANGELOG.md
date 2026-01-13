@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.30] - 2026-01-13
+
+### Changed
+- **Extracted Search class to separate file** - `Search.cs` is now a standalone file for better organization
+  - All Search functionality remains the same
+  - Reduces UITestBehaviour.cs file size for easier maintenance
+
+### Fixed
+- **Two-finger gesture reliability** - Added extra frame yields after ending touch gestures
+  - Fixes flaky `PinchAt` and `RotateAt` tests at off-center positions
+  - Input System now has more time to process touch end states between gestures
+
 ## [1.0.29] - 2026-01-12
 
 ### Added

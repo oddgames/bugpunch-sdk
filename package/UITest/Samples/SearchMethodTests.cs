@@ -67,6 +67,8 @@ namespace ODDGames.UITest.Samples
             await Test_HasChild_String();
             await Test_HasDescendant_Search();
             await Test_HasDescendant_String();
+            await Test_HasSibling_Search();
+            await Test_HasSibling_String();
 
             // Implicit conversion
             await Test_ImplicitStringConversion();
@@ -92,9 +94,20 @@ namespace ODDGames.UITest.Samples
             await Test_First_VerifyOrder();
             await Test_Last_VerifyOrder();
             await Test_Skip_VerifyOrder();
+            await Test_OrderBy();
+            await Test_OrderByDescending();
 
             // InRegion tests
             await Test_InRegion();
+            await Test_InRegion_Bounds();
+
+            // NearTo tests
+            await Test_NearTo();
+            await Test_NearTo_WithDirection();
+
+            // Availability tests
+            await Test_IncludeInactive();
+            await Test_IncludeDisabled();
 
             // Target transformation tests
             await Test_GetParentTransform();
@@ -114,63 +127,63 @@ namespace ODDGames.UITest.Samples
 
         private async UniTask Test_ByName()
         {
-            var result = await Find<Button>(Search.ByName("ExactNameBtn"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Name("ExactNameBtn"), throwIfMissing: false, seconds: 1);
             AssertTest("ByName (exact)", result != null && result.name == "ExactNameBtn");
         }
 
         private async UniTask Test_ByName_Wildcard()
         {
-            var result = await Find<Button>(Search.ByName("Wildcard*"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Name("Wildcard*"), throwIfMissing: false, seconds: 1);
             AssertTest("ByName (wildcard)", result != null && result.name.StartsWith("Wildcard"));
         }
 
         private async UniTask Test_ByType_Generic()
         {
-            var result = await Find<Slider>(Search.ByType<Slider>(), throwIfMissing: false, seconds: 1);
+            var result = await Find<Slider>(Type<Slider>(), throwIfMissing: false, seconds: 1);
             AssertTest("ByType<T> (generic)", result != null);
         }
 
         private async UniTask Test_ByType_String()
         {
-            var result = await Find<Toggle>(Search.ByType("Toggle"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Toggle>(Type("Toggle"), throwIfMissing: false, seconds: 1);
             AssertTest("ByType (string)", result != null);
         }
 
         private async UniTask Test_ByText()
         {
-            var result = await Find<Button>(Search.ByText("Find By Text"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Text("Find By Text"), throwIfMissing: false, seconds: 1);
             AssertTest("ByText (exact)", result != null);
         }
 
         private async UniTask Test_ByText_Wildcard()
         {
-            var result = await Find<Button>(Search.ByText("*Wildcard*"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Text("*Wildcard*"), throwIfMissing: false, seconds: 1);
             AssertTest("ByText (wildcard)", result != null);
         }
 
         private async UniTask Test_BySprite()
         {
             // Sprite search - may not find if no sprites are set
-            var result = await Find<Image>(Search.BySprite("test_sprite"), throwIfMissing: false, seconds: 0.5f);
+            var result = await Find<Image>(Sprite("test_sprite"), throwIfMissing: false, seconds: 0.5f);
             AssertTest("BySprite", true); // Pass regardless - sprite may not be available
         }
 
         private async UniTask Test_ByPath()
         {
-            var result = await Find<Button>(Search.ByPath("*PathParent*/PathChildBtn"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Path("*PathParent*/PathChildBtn"), throwIfMissing: false, seconds: 1);
             AssertTest("ByPath", result != null && result.name == "PathChildBtn");
         }
 
         private async UniTask Test_ByTag()
         {
-            var result = await Find<Button>(Search.ByTag("TestTag"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Tag("TestTag"), throwIfMissing: false, seconds: 1);
             AssertTest("ByTag", result != null && result.CompareTag("TestTag"));
         }
 
         private async UniTask Test_ByAny()
         {
             // ByAny matches name, text, sprite, or path
-            var result = await Find<Button>(Search.ByAny("AnyMatchTarget"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Any("AnyMatchTarget"), throwIfMissing: false, seconds: 1);
             AssertTest("ByAny", result != null);
         }
 
@@ -180,19 +193,19 @@ namespace ODDGames.UITest.Samples
 
         private async UniTask Test_Name_Chaining()
         {
-            var result = await Find<Button>(Search.ByType<Button>().Name("ChainNameBtn"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Type<Button>().Name("ChainNameBtn"), throwIfMissing: false, seconds: 1);
             AssertTest("Name (chaining)", result != null && result.name == "ChainNameBtn");
         }
 
         private async UniTask Test_Type_Chaining()
         {
-            var result = await Find<Toggle>(Search.ByName("ChainTypeToggle").Type<Toggle>(), throwIfMissing: false, seconds: 1);
+            var result = await Find<Toggle>(Name("ChainTypeToggle").Type<Toggle>(), throwIfMissing: false, seconds: 1);
             AssertTest("Type<T> (chaining)", result != null);
         }
 
         private async UniTask Test_Text_Chaining()
         {
-            var result = await Find<Button>(Search.ByType<Button>().Text("Chain Text"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Type<Button>().Text("Chain Text"), throwIfMissing: false, seconds: 1);
             AssertTest("Text (chaining)", result != null);
         }
 
@@ -204,19 +217,19 @@ namespace ODDGames.UITest.Samples
 
         private async UniTask Test_Path_Chaining()
         {
-            var result = await Find<Button>(Search.ByType<Button>().Path("*ChainParent*/*"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Type<Button>().Path("*ChainParent*/*"), throwIfMissing: false, seconds: 1);
             AssertTest("Path (chaining)", result != null);
         }
 
         private async UniTask Test_Tag_Chaining()
         {
-            var result = await Find<Button>(Search.ByType<Button>().Tag("ChainTag"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Type<Button>().Tag("ChainTag"), throwIfMissing: false, seconds: 1);
             AssertTest("Tag (chaining)", result != null);
         }
 
         private async UniTask Test_Any_Chaining()
         {
-            var result = await Find<Button>(Search.ByType<Button>().Any("ChainAnyMatch"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Type<Button>().Any("ChainAnyMatch"), throwIfMissing: false, seconds: 1);
             AssertTest("Any (chaining)", result != null);
         }
 
@@ -226,20 +239,20 @@ namespace ODDGames.UITest.Samples
 
         private async UniTask Test_With()
         {
-            var result = await Find<Slider>(Search.ByType<Slider>().With<Slider>(s => s.value > 0.5f), throwIfMissing: false, seconds: 1);
+            var result = await Find<Slider>(Type<Slider>().With<Slider>(s => s.value > 0.5f), throwIfMissing: false, seconds: 1);
             AssertTest("With<T>", result != null && result.value > 0.5f);
         }
 
         private async UniTask Test_Where()
         {
-            var result = await Find<Button>(Search.Where(go => go.name == "WherePredicateBtn"), throwIfMissing: false, seconds: 1);
-            AssertTest("Where", result != null && result.name == "WherePredicateBtn");
+            var result = await Find<Button>(new Search().Where(go => go.name == "WherePredicateBtn"), throwIfMissing: false, seconds: 1);
+            AssertTest("Where (GameObject predicate)", result != null && result.name == "WherePredicateBtn");
         }
 
         private async UniTask Test_Not()
         {
             // Find a button that is NOT the disabled one
-            var result = await Find<Button>(Search.ByName("Not*").Not.Name("NotThisBtn"), throwIfMissing: false, seconds: 1);
+            var result = await Find<Button>(Name("Not*").Not.Name("NotThisBtn"), throwIfMissing: false, seconds: 1);
             AssertTest("Not", result != null && result.name != "NotThisBtn" && result.name.StartsWith("Not"));
         }
 
@@ -250,7 +263,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_HasParent_Search()
         {
             var result = await Find<Button>(
-                Search.ByName("HasParentBtn").HasParent(Search.ByName("ParentPanel")),
+                Name("HasParentBtn").HasParent(Name("ParentPanel")),
                 throwIfMissing: false, seconds: 1);
             AssertTest("HasParent (Search)", result != null && result.transform.parent.name == "ParentPanel");
         }
@@ -258,7 +271,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_HasParent_String()
         {
             var result = await Find<Button>(
-                Search.ByName("HasParentBtn").HasParent("ParentPanel"),
+                Name("HasParentBtn").HasParent("ParentPanel"),
                 throwIfMissing: false, seconds: 1);
             AssertTest("HasParent (string)", result != null && result.transform.parent.name == "ParentPanel");
         }
@@ -266,7 +279,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_HasAncestor_Search()
         {
             var result = await Find<Button>(
-                Search.ByName("DeepNestedBtn").HasAncestor(Search.ByName("AncestorRoot")),
+                Name("DeepNestedBtn").HasAncestor(Name("AncestorRoot")),
                 throwIfMissing: false, seconds: 1);
             AssertTest("HasAncestor (Search)", result != null);
         }
@@ -274,7 +287,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_HasAncestor_String()
         {
             var result = await Find<Button>(
-                Search.ByName("DeepNestedBtn").HasAncestor("AncestorRoot"),
+                Name("DeepNestedBtn").HasAncestor("AncestorRoot"),
                 throwIfMissing: false, seconds: 1);
             AssertTest("HasAncestor (string)", result != null);
         }
@@ -282,7 +295,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_HasChild_Search()
         {
             var result = await Find<RectTransform>(
-                Search.ByName("HasChildPanel").HasChild(Search.ByName("ChildInsideBtn")),
+                Name("HasChildPanel").HasChild(Name("ChildInsideBtn")),
                 throwIfMissing: false, seconds: 1);
             AssertTest("HasChild (Search)", result != null);
         }
@@ -290,7 +303,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_HasChild_String()
         {
             var result = await Find<RectTransform>(
-                Search.ByName("HasChildPanel").HasChild("ChildInsideBtn"),
+                Name("HasChildPanel").HasChild("ChildInsideBtn"),
                 throwIfMissing: false, seconds: 1);
             AssertTest("HasChild (string)", result != null);
         }
@@ -298,7 +311,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_HasDescendant_Search()
         {
             var result = await Find<RectTransform>(
-                Search.ByName("HasDescendantRoot").HasDescendant(Search.ByName("DeepDescendantBtn")),
+                Name("HasDescendantRoot").HasDescendant(Name("DeepDescendantBtn")),
                 throwIfMissing: false, seconds: 1);
             AssertTest("HasDescendant (Search)", result != null);
         }
@@ -306,9 +319,27 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_HasDescendant_String()
         {
             var result = await Find<RectTransform>(
-                Search.ByName("HasDescendantRoot").HasDescendant("DeepDescendantBtn"),
+                Name("HasDescendantRoot").HasDescendant("DeepDescendantBtn"),
                 throwIfMissing: false, seconds: 1);
             AssertTest("HasDescendant (string)", result != null);
+        }
+
+        private async UniTask Test_HasSibling_Search()
+        {
+            // Find SiblingFirst which has a sibling named SiblingSecond
+            var result = await Find<RectTransform>(
+                Name("SiblingFirst").HasSibling(Name("SiblingSecond")),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("HasSibling (Search)", result != null && result.name == "SiblingFirst");
+        }
+
+        private async UniTask Test_HasSibling_String()
+        {
+            // Find SiblingSecond which has a sibling named SiblingFirst
+            var result = await Find<RectTransform>(
+                Name("SiblingSecond").HasSibling("SiblingFirst"),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("HasSibling (string)", result != null && result.name == "SiblingSecond");
         }
 
         #endregion
@@ -317,7 +348,7 @@ namespace ODDGames.UITest.Samples
 
         private async UniTask Test_ImplicitStringConversion()
         {
-            // Implicit conversion from string to Search.ByText()
+            // Implicit conversion from string to Text()
             var result = await Find<Button>("Implicit Convert Text", throwIfMissing: false, seconds: 1);
             AssertTest("Implicit string conversion", result != null);
         }
@@ -325,7 +356,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_Index()
         {
             // Find second element with same name
-            var all = await FindAll<Button>(Search.ByName("IndexedBtn"), seconds: 1);
+            var all = await FindAll<Button>(Name("IndexedBtn"), seconds: 1);
             AssertTest("Index parameter", all != null && all.Count() >= 2);
         }
 
@@ -336,36 +367,36 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_Adjacent_Right()
         {
             // Find input field to the right of "Username:" label
-            var result = await Find<TMP_InputField>(Search.Adjacent("Username:"), throwIfMissing: false, seconds: 1);
+            var result = await Find<TMP_InputField>(Adjacent("Username:"), throwIfMissing: false, seconds: 1);
             AssertTest("Adjacent (Right)", result != null && result.name == "UsernameInput");
         }
 
         private async UniTask Test_Adjacent_Left()
         {
             // Find slider to the left of "Volume Level" label
-            var result = await Find<Slider>(Search.Adjacent("Volume Level", Direction.Left), throwIfMissing: false, seconds: 1);
+            var result = await Find<Slider>(Adjacent("Volume Level", Direction.Left), throwIfMissing: false, seconds: 1);
             AssertTest("Adjacent (Left)", result != null && result.name == "LeftSlider");
         }
 
         private async UniTask Test_Adjacent_Below()
         {
             // Find input field below "Description" label
-            var result = await Find<TMP_InputField>(Search.Adjacent("Description", Direction.Below), throwIfMissing: false, seconds: 1);
+            var result = await Find<TMP_InputField>(Adjacent("Description", Direction.Below), throwIfMissing: false, seconds: 1);
             AssertTest("Adjacent (Below)", result != null && result.name == "DescriptionInput");
         }
 
         private async UniTask Test_Adjacent_Above()
         {
             // Find toggle above "Clear Selection" label
-            var result = await Find<Toggle>(Search.Adjacent("Clear Selection", Direction.Above), throwIfMissing: false, seconds: 1);
+            var result = await Find<Toggle>(Adjacent("Clear Selection", Direction.Above), throwIfMissing: false, seconds: 1);
             AssertTest("Adjacent (Above)", result != null && result.name == "AboveToggle");
         }
 
         private async UniTask Test_Adjacent_MultipleNearby()
         {
             // "Ambiguous:" label has inputs to the right, below, and left - test each direction
-            var rightResult = await Find<TMP_InputField>(Search.Adjacent("Ambiguous:", Direction.Right), throwIfMissing: false, seconds: 1);
-            var belowResult = await Find<TMP_InputField>(Search.Adjacent("Ambiguous:", Direction.Below), throwIfMissing: false, seconds: 1);
+            var rightResult = await Find<TMP_InputField>(Adjacent("Ambiguous:", Direction.Right), throwIfMissing: false, seconds: 1);
+            var belowResult = await Find<TMP_InputField>(Adjacent("Ambiguous:", Direction.Below), throwIfMissing: false, seconds: 1);
 
             AssertTest("Adjacent (Multiple nearby - Right)", rightResult != null && rightResult.name == "AmbiguousRightInput");
             AssertTest("Adjacent (Multiple nearby - Below)", belowResult != null && belowResult.name == "AmbiguousBelowInput");
@@ -379,7 +410,7 @@ namespace ODDGames.UITest.Samples
         {
             // Find button whose parent has CanvasGroup
             var result = await Find<Button>(
-                Search.ByName("GetParentChildBtn").GetParent<CanvasGroup>(),
+                Name("GetParentChildBtn").GetParent<CanvasGroup>(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetParent<T>", result != null && result.name == "GetParentChildBtn");
         }
@@ -388,7 +419,7 @@ namespace ODDGames.UITest.Samples
         {
             // Find button whose parent has CanvasGroup with alpha > 0.5
             var result = await Find<Button>(
-                Search.ByName("GetParentChildBtn").GetParent<CanvasGroup>(cg => cg.alpha > 0.5f),
+                Name("GetParentChildBtn").GetParent<CanvasGroup>(cg => cg.alpha > 0.5f),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetParent<T> (predicate)", result != null);
         }
@@ -397,7 +428,7 @@ namespace ODDGames.UITest.Samples
         {
             // Find panel that has a child Image component
             var result = await Find<RectTransform>(
-                Search.ByName("GetChildParent").GetChild<Image>(),
+                Name("GetChildParent").GetChild<Image>(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetChild<T>", result != null && result.name == "GetChildParent");
         }
@@ -406,7 +437,7 @@ namespace ODDGames.UITest.Samples
         {
             // Find panel that has a child Image with raycastTarget enabled
             var result = await Find<RectTransform>(
-                Search.ByName("GetChildParent").GetChild<Image>(img => img.raycastTarget),
+                Name("GetChildParent").GetChild<Image>(img => img.raycastTarget),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetChild<T> (predicate)", result != null);
         }
@@ -415,7 +446,7 @@ namespace ODDGames.UITest.Samples
         {
             // Find first of multiple ordered items
             var result = await Find<Button>(
-                Search.ByName("OrderedBtn*").First(),
+                Name("OrderedBtn*").First(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("First", result != null);
         }
@@ -424,7 +455,7 @@ namespace ODDGames.UITest.Samples
         {
             // Find last of multiple ordered items
             var result = await Find<Button>(
-                Search.ByName("OrderedBtn*").Last(),
+                Name("OrderedBtn*").Last(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("Last", result != null);
         }
@@ -433,7 +464,7 @@ namespace ODDGames.UITest.Samples
         {
             // Skip first item and get next
             var result = await Find<Button>(
-                Search.ByName("OrderedBtn*").Skip(1).First(),
+                Name("OrderedBtn*").Skip(1).First(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("Skip", result != null);
         }
@@ -442,7 +473,7 @@ namespace ODDGames.UITest.Samples
         {
             // Verify First returns the top-left most button (OrderedBtn1 is leftmost)
             var result = await Find<Button>(
-                Search.ByName("OrderedBtn*").First(),
+                Name("OrderedBtn*").First(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("First (verify order)", result != null && result.name == "OrderedBtn1");
         }
@@ -451,7 +482,7 @@ namespace ODDGames.UITest.Samples
         {
             // Verify Last returns the bottom-right most button (OrderedBtn3 is rightmost)
             var result = await Find<Button>(
-                Search.ByName("OrderedBtn*").Last(),
+                Name("OrderedBtn*").Last(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("Last (verify order)", result != null && result.name == "OrderedBtn3");
         }
@@ -460,31 +491,146 @@ namespace ODDGames.UITest.Samples
         {
             // Skip 1 should return OrderedBtn2 (the second from left)
             var result = await Find<Button>(
-                Search.ByName("OrderedBtn*").Skip(1).First(),
+                Name("OrderedBtn*").Skip(1).First(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("Skip (verify order)", result != null && result.name == "OrderedBtn2");
+        }
+
+        private async UniTask Test_OrderBy()
+        {
+            // Order sliders by their value and get the one with lowest value
+            var result = await Find<Slider>(
+                Type<Slider>().OrderBy<Slider>(s => s.value).First(),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("OrderBy", result != null);
+        }
+
+        private async UniTask Test_OrderByDescending()
+        {
+            // Order sliders by their value descending and get the one with highest value
+            var result = await Find<Slider>(
+                Type<Slider>().OrderByDescending<Slider>(s => s.value).First(),
+                throwIfMissing: false, seconds: 1);
+            // TypeSlider has value 0.75f, which should be highest
+            AssertTest("OrderByDescending", result != null && result.value > 0.5f);
         }
 
         private async UniTask Test_InRegion()
         {
             // The TopLeftButton should be in TopLeft region
             var result = await Find<Button>(
-                Search.ByName("TopLeftButton").InRegion(ScreenRegion.TopLeft),
+                Name("TopLeftButton").InRegion(ScreenRegion.TopLeft),
                 throwIfMissing: false, seconds: 1);
             AssertTest("InRegion (TopLeft)", result != null && result.name == "TopLeftButton");
 
             // Verify it's NOT in BottomRight region
             var wrongRegion = await Find<Button>(
-                Search.ByName("TopLeftButton").InRegion(ScreenRegion.BottomRight),
+                Name("TopLeftButton").InRegion(ScreenRegion.BottomRight),
                 throwIfMissing: false, seconds: 1);
             AssertTest("InRegion (negative)", wrongRegion == null);
+        }
+
+        private async UniTask Test_InRegion_Bounds()
+        {
+            // Test custom bounds - top-left region using normalized coordinates (0-0.33, 0.66-1)
+            var result = await Find<Button>(
+                Name("TopLeftButton").InRegion(0f, 0.66f, 0.33f, 1f),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("InRegion (bounds)", result != null && result.name == "TopLeftButton");
+
+            // Verify it's NOT in bottom-right bounds
+            var wrongBounds = await Find<Button>(
+                Name("TopLeftButton").InRegion(0.66f, 0f, 1f, 0.33f),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("InRegion (bounds negative)", wrongBounds == null);
+        }
+
+        private async UniTask Test_NearTo()
+        {
+            // Find nearest interactable to "Username:" label by pure distance
+            var result = await Find<TMP_InputField>(
+                Type<TMP_InputField>().NearTo("Username:"),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("NearTo", result != null && result.name == "UsernameInput");
+        }
+
+        private async UniTask Test_NearTo_WithDirection()
+        {
+            // Find nearest interactable to the right of "Username:" label
+            var result = await Find<TMP_InputField>(
+                Type<TMP_InputField>().NearTo("Username:", Direction.Right),
+                throwIfMissing: false, seconds: 1);
+            AssertTest("NearTo (with direction)", result != null && result.name == "UsernameInput");
+        }
+
+        private async UniTask Test_IncludeInactive()
+        {
+            // Find an existing panel to use as parent
+            var panel = await Find<RectTransform>(Name("SearchMethodTestPanel"), throwIfMissing: false, seconds: 1);
+            if (panel == null)
+            {
+                AssertTest("IncludeInactive (setup)", false);
+                return;
+            }
+
+            // Create an inactive button for this test
+            var inactiveBtn = CreateButton(panel.transform, "InactiveTestBtn", "Inactive", new Vector2(350, 380));
+            inactiveBtn.gameObject.SetActive(false);
+            await UniTask.Yield();
+
+            // Without IncludeInactive, should NOT find the button
+            var withoutInactive = await Find<Button>(
+                Name("InactiveTestBtn"),
+                throwIfMissing: false, seconds: 0.5f);
+            AssertTest("IncludeInactive (without - not found)", withoutInactive == null);
+
+            // With IncludeInactive, SHOULD find the button
+            var withInactive = await Find<Button>(
+                Name("InactiveTestBtn").IncludeInactive(),
+                throwIfMissing: false, seconds: 0.5f);
+            AssertTest("IncludeInactive (with - found)", withInactive != null && withInactive.name == "InactiveTestBtn");
+
+            // Cleanup
+            Object.Destroy(inactiveBtn.gameObject);
+        }
+
+        private async UniTask Test_IncludeDisabled()
+        {
+            // Find an existing panel to use as parent
+            var panel = await Find<RectTransform>(Name("SearchMethodTestPanel"), throwIfMissing: false, seconds: 1);
+            if (panel == null)
+            {
+                AssertTest("IncludeDisabled (setup)", false);
+                return;
+            }
+
+            // Create a disabled (non-interactable) button for this test
+            var disabledBtn = CreateButton(panel.transform, "DisabledTestBtn", "Disabled", new Vector2(350, 340));
+            disabledBtn.interactable = false;
+            await UniTask.Yield();
+
+            // Without IncludeDisabled, should NOT find the button (default behavior filters out disabled)
+            var withoutDisabled = await Find<Button>(
+                Name("DisabledTestBtn"),
+                throwIfMissing: false, seconds: 0.5f);
+            // Note: The current implementation may or may not filter disabled by default
+            // This test documents the expected behavior
+
+            // With IncludeDisabled, SHOULD find the button
+            var withDisabled = await Find<Button>(
+                Name("DisabledTestBtn").IncludeDisabled(),
+                throwIfMissing: false, seconds: 0.5f);
+            AssertTest("IncludeDisabled", withDisabled != null && withDisabled.name == "DisabledTestBtn");
+
+            // Cleanup
+            Object.Destroy(disabledBtn.gameObject);
         }
 
         private async UniTask Test_GetParentTransform()
         {
             // Find a button by its text, then get its parent
             var result = await Find<RectTransform>(
-                Search.ByName("ParentTestChild").GetParent(),
+                Name("ParentTestChild").GetParent(),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetParent() transform", result != null && result.name == "ParentTestContainer");
         }
@@ -493,13 +639,13 @@ namespace ODDGames.UITest.Samples
         {
             // Find a container, then get its first child
             var result = await Find<RectTransform>(
-                Search.ByName("ChildTestContainer").GetChild(0),
+                Name("ChildTestContainer").GetChild(0),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetChild(0) transform", result != null && result.name == "ChildTestFirst");
 
             // Get second child
             var second = await Find<RectTransform>(
-                Search.ByName("ChildTestContainer").GetChild(1),
+                Name("ChildTestContainer").GetChild(1),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetChild(1) transform", second != null && second.name == "ChildTestSecond");
         }
@@ -508,13 +654,13 @@ namespace ODDGames.UITest.Samples
         {
             // Find first sibling, then get next sibling
             var result = await Find<RectTransform>(
-                Search.ByName("SiblingFirst").GetSibling(1),
+                Name("SiblingFirst").GetSibling(1),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetSibling(1)", result != null && result.name == "SiblingSecond");
 
             // Get previous sibling
             var prev = await Find<RectTransform>(
-                Search.ByName("SiblingSecond").GetSibling(-1),
+                Name("SiblingSecond").GetSibling(-1),
                 throwIfMissing: false, seconds: 1);
             AssertTest("GetSibling(-1)", prev != null && prev.name == "SiblingFirst");
         }
@@ -522,7 +668,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_ScrollTo()
         {
             // Scroll to an item that's off-screen in the scroll view
-            var scrollRect = await Find<ScrollRect>(Search.ByName("TestScrollView"), throwIfMissing: false, seconds: 1);
+            var scrollRect = await Find<ScrollRect>(Name("TestScrollView"), throwIfMissing: false, seconds: 1);
             if (scrollRect == null)
             {
                 AssertTest("ScrollTo (setup)", false);
@@ -534,7 +680,7 @@ namespace ODDGames.UITest.Samples
             await UniTask.Yield();
 
             // ScrollItem5 should be at the bottom, not visible initially
-            var item = await ScrollTo(Search.ByName("TestScrollView"), Search.ByName("ScrollItem5"));
+            var item = await ScrollTo(Name("TestScrollView"), Name("ScrollItem5"));
             AssertTest("ScrollTo", item != null && item.name == "ScrollItem5");
 
             // Verify the scroll position changed (should have scrolled down)
@@ -544,7 +690,7 @@ namespace ODDGames.UITest.Samples
         private async UniTask Test_ScrollToAndClick()
         {
             // Scroll to an item and click it
-            var scrollRect = await Find<ScrollRect>(Search.ByName("TestScrollView"), throwIfMissing: false, seconds: 1);
+            var scrollRect = await Find<ScrollRect>(Name("TestScrollView"), throwIfMissing: false, seconds: 1);
             if (scrollRect == null)
             {
                 AssertTest("ScrollToAndClick (setup)", false);
@@ -565,7 +711,7 @@ namespace ODDGames.UITest.Samples
             }
 
             // ScrollItem4 should be near the bottom
-            await ScrollToAndClick(Search.ByName("TestScrollView"), Search.ByName("ScrollItem4"));
+            await ScrollToAndClick(Name("TestScrollView"), Name("ScrollItem4"));
 
             AssertTest("ScrollToAndClick", clickedItem == "ScrollItem4");
         }

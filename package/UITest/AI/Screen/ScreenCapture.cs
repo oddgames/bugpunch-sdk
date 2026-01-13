@@ -37,20 +37,24 @@ namespace ODDGames.UITest.AI
             {
                 Debug.LogWarning("[AIScreenCapture] Screenshot capture cancelled");
                 // Still discover elements even if screenshot failed
+                var elementsOnly = ElementDiscovery.DiscoverElements();
                 return new ScreenState
                 {
-                    Elements = ElementDiscovery.DiscoverElements(),
-                    Timestamp = Time.realtimeSinceStartup
+                    Elements = elementsOnly,
+                    Timestamp = Time.realtimeSinceStartup,
+                    ElementStateHash = ScreenHash.ComputeElementStateHash(elementsOnly)
                 };
             }
             catch (System.Exception ex)
             {
                 Debug.LogWarning($"[AIScreenCapture] Screenshot capture failed: {ex.Message}");
                 // Still discover elements even if screenshot failed
+                var elementsOnly = ElementDiscovery.DiscoverElements();
                 return new ScreenState
                 {
-                    Elements = ElementDiscovery.DiscoverElements(),
-                    Timestamp = Time.realtimeSinceStartup
+                    Elements = elementsOnly,
+                    Timestamp = Time.realtimeSinceStartup,
+                    ElementStateHash = ScreenHash.ComputeElementStateHash(elementsOnly)
                 };
             }
 
@@ -58,10 +62,12 @@ namespace ODDGames.UITest.AI
             {
                 Debug.LogWarning("[AIScreenCapture] Screenshot returned null");
                 // Still discover elements even if screenshot is null
+                var elementsOnly = ElementDiscovery.DiscoverElements();
                 return new ScreenState
                 {
-                    Elements = ElementDiscovery.DiscoverElements(),
-                    Timestamp = Time.realtimeSinceStartup
+                    Elements = elementsOnly,
+                    Timestamp = Time.realtimeSinceStartup,
+                    ElementStateHash = ScreenHash.ComputeElementStateHash(elementsOnly)
                 };
             }
 
@@ -75,8 +81,11 @@ namespace ODDGames.UITest.AI
                 annotated = AnnotateScreenshot(screenshot, elements);
             }
 
-            // Compute hash from original before any resizing
+            // Compute visual hash from original before any resizing
             var screenHash = ScreenHash.ComputeHash(screenshot);
+
+            // Compute element state hash (detects toggle/slider/dropdown state changes)
+            var elementStateHash = ScreenHash.ComputeElementStateHash(elements);
 
             // Get the texture to encode (annotated or original)
             var textureToEncode = annotated ?? screenshot;
@@ -93,7 +102,8 @@ namespace ODDGames.UITest.AI
                 ScreenshotPng = imageBytes, // Still called Png but now JPEG
                 Elements = elements,
                 Timestamp = Time.realtimeSinceStartup,
-                ScreenHash = screenHash
+                ScreenHash = screenHash,
+                ElementStateHash = elementStateHash
             };
 
             // Clean up textures
@@ -481,8 +491,11 @@ namespace ODDGames.UITest.AI
         /// <summary>Timestamp of capture</summary>
         public float Timestamp { get; set; }
 
-        /// <summary>Perceptual hash of the screenshot</summary>
+        /// <summary>Perceptual hash of the screenshot (visual similarity)</summary>
         public string ScreenHash { get; set; }
+
+        /// <summary>Hash of element states (toggle on/off, slider values, etc.)</summary>
+        public string ElementStateHash { get; set; }
 
         /// <summary>
         /// Gets the element list formatted for the AI prompt.

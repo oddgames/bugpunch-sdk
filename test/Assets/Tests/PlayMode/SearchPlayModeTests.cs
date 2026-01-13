@@ -127,7 +127,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("ExactButton");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ExactButton");
+            var search = new Search().Name("ExactButton");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -136,7 +136,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("OtherButton");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ExactButton");
+            var search = new Search().Name("ExactButton");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -145,7 +145,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("PrefixButton");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Prefix*");
+            var search = new Search().Name("Prefix*");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -154,7 +154,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("ButtonSuffix");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("*Suffix");
+            var search = new Search().Name("*Suffix");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -163,7 +163,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("SomeMiddleText");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("*Middle*");
+            var search = new Search().Name("*Middle*");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -172,7 +172,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("btn_play_icon");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("btn_*_icon");
+            var search = new Search().Name("btn_*_icon");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -181,7 +181,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("btn_play_button");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("btn_*_icon");
+            var search = new Search().Name("btn_*_icon");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -190,9 +190,9 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("Button (1)");
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName("Button (1)").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("Button (*)").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("*(*)*").Matches(go));
+            Assert.IsTrue(new Search().Name("Button (1)").Matches(go));
+            Assert.IsTrue(new Search().Name("Button (*)").Matches(go));
+            Assert.IsTrue(new Search().Name("*(*)*").Matches(go));
         }
 
         [UnityTest]
@@ -200,8 +200,8 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("Кнопка_按钮_ボタン");
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName("Кнопка_按钮_ボタン").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("*按钮*").Matches(go));
+            Assert.IsTrue(new Search().Name("Кнопка_按钮_ボタン").Matches(go));
+            Assert.IsTrue(new Search().Name("*按钮*").Matches(go));
         }
 
         [UnityTest]
@@ -209,9 +209,9 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("MyButton");
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName("mybutton").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("MYBUTTON").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("MyBuTtOn").Matches(go));
+            Assert.IsTrue(new Search().Name("mybutton").Matches(go));
+            Assert.IsTrue(new Search().Name("MYBUTTON").Matches(go));
+            Assert.IsTrue(new Search().Name("MyBuTtOn").Matches(go));
         }
 
         [UnityTest]
@@ -219,10 +219,10 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("Prefix_Middle_Suffix");
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName("*_*_*").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("Prefix*Suffix").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("*Middle*").Matches(go));
-            Assert.IsFalse(UITestBehaviour.Search.ByName("*Other*").Matches(go));
+            Assert.IsTrue(new Search().Name("*_*_*").Matches(go));
+            Assert.IsTrue(new Search().Name("Prefix*Suffix").Matches(go));
+            Assert.IsTrue(new Search().Name("*Middle*").Matches(go));
+            Assert.IsFalse(new Search().Name("*Other*").Matches(go));
         }
 
         [UnityTest]
@@ -230,9 +230,9 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("TestButton");
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName("**Button").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("Test**").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("***").Matches(go));
+            Assert.IsTrue(new Search().Name("**Button").Matches(go));
+            Assert.IsTrue(new Search().Name("Test**").Matches(go));
+            Assert.IsTrue(new Search().Name("***").Matches(go));
         }
 
         [UnityTest]
@@ -240,7 +240,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("AnyName");
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName("*").Matches(go));
+            Assert.IsTrue(new Search().Name("*").Matches(go));
         }
 
         #endregion
@@ -253,7 +253,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("ButtonObj");
             go.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>();
+            var search = new Search().Type<Button>();
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -262,7 +262,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("EmptyObj");
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>();
+            var search = new Search().Type<Button>();
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -272,7 +272,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("ToggleObj");
             go.AddComponent<Toggle>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType("Toggle");
+            var search = new Search().Type("Toggle");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -281,7 +281,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("EmptyObj");
             yield return null;
-            var search = UITestBehaviour.Search.ByType("Toggle");
+            var search = new Search().Type("Toggle");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -291,9 +291,9 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("GraphicObj");
             go.AddComponent<Image>(); // Image inherits from Graphic
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByType<Graphic>().Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByType<Image>().Matches(go));
-            Assert.IsFalse(UITestBehaviour.Search.ByType<RawImage>().Matches(go));
+            Assert.IsTrue(new Search().Type<Graphic>().Matches(go));
+            Assert.IsTrue(new Search().Type<Image>().Matches(go));
+            Assert.IsFalse(new Search().Type<RawImage>().Matches(go));
         }
 
         #endregion
@@ -305,7 +305,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateButtonWithText("Btn", "Click Me");
             yield return null;
-            var search = UITestBehaviour.Search.ByText("Click Me");
+            var search = new Search().Text("Click Me");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -314,7 +314,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateButtonWithText("Btn", "Click Me");
             yield return null;
-            var search = UITestBehaviour.Search.ByText("Click*");
+            var search = new Search().Text("Click*");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -323,7 +323,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateButtonWithText("Btn", "Click Me");
             yield return null;
-            var search = UITestBehaviour.Search.ByText("*Me");
+            var search = new Search().Text("*Me");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -332,7 +332,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("NoText");
             yield return null;
-            var search = UITestBehaviour.Search.ByText("Click Me");
+            var search = new Search().Text("Click Me");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -346,7 +346,7 @@ namespace ODDGames.UITest.Tests
             tmp.text = "Nested Text";
             _createdObjects.Add(child);
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByText("Nested Text").Matches(parent));
+            Assert.IsTrue(new Search().Text("Nested Text").Matches(parent));
         }
 
         [UnityTest]
@@ -364,9 +364,9 @@ namespace ODDGames.UITest.Tests
             tmp2.text = "Second";
             _createdObjects.Add(child2);
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByText("First").Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByText("Second").Matches(go));
-            Assert.IsFalse(UITestBehaviour.Search.ByText("Third").Matches(go));
+            Assert.IsTrue(new Search().Text("First").Matches(go));
+            Assert.IsTrue(new Search().Text("Second").Matches(go));
+            Assert.IsFalse(new Search().Text("Third").Matches(go));
         }
 
         #endregion
@@ -379,7 +379,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByPath("*Parent*/*Child*");
+            var search = new Search().Path("*Parent*/*Child*");
             Assert.IsTrue(search.Matches(child));
         }
 
@@ -389,7 +389,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("OtherPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByPath("*Parent*/*Child*");
+            var search = new Search().Path("*Parent*/*Child*");
             Assert.IsFalse(search.Matches(child));
         }
 
@@ -401,9 +401,9 @@ namespace ODDGames.UITest.Tests
             var panel2 = CreateTestObject("SubPanel", panel1.transform);
             var button = CreateTestObject("ActionButton", panel2.transform);
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByPath("*Canvas*/*MainPanel*/*SubPanel*/*ActionButton*").Matches(button));
-            Assert.IsTrue(UITestBehaviour.Search.ByPath("*/*/*/*ActionButton*").Matches(button));
-            Assert.IsFalse(UITestBehaviour.Search.ByPath("*WrongPanel*/*ActionButton*").Matches(button));
+            Assert.IsTrue(new Search().Path("*Canvas*/*MainPanel*/*SubPanel*/*ActionButton*").Matches(button));
+            Assert.IsTrue(new Search().Path("*/*/*/*ActionButton*").Matches(button));
+            Assert.IsFalse(new Search().Path("*WrongPanel*/*ActionButton*").Matches(button));
         }
 
         #endregion
@@ -416,7 +416,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("TaggedObj");
             go.tag = "Untagged";
             yield return null;
-            var search = UITestBehaviour.Search.ByTag("Untagged");
+            var search = new Search().Tag("Untagged");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -426,7 +426,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("TaggedObj");
             go.tag = "Untagged";
             yield return null;
-            var search = UITestBehaviour.Search.ByTag("MainCamera");
+            var search = new Search().Tag("MainCamera");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -444,7 +444,7 @@ namespace ODDGames.UITest.Tests
             sprite.name = "btn_play_icon";
             image.sprite = sprite;
             yield return null;
-            var search = UITestBehaviour.Search.BySprite("btn_*_icon");
+            var search = new Search().Sprite("btn_*_icon");
             Assert.IsTrue(search.Matches(go));
             Object.Destroy(sprite);
             Object.Destroy(texture);
@@ -456,7 +456,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("NoSpriteObj");
             go.AddComponent<Image>();
             yield return null;
-            var search = UITestBehaviour.Search.BySprite("any_sprite");
+            var search = new Search().Sprite("any_sprite");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -470,7 +470,7 @@ namespace ODDGames.UITest.Tests
             sprite.name = "other_sprite";
             image.sprite = sprite;
             yield return null;
-            var search = UITestBehaviour.Search.BySprite("btn_*_icon");
+            var search = new Search().Sprite("btn_*_icon");
             Assert.IsFalse(search.Matches(go));
             Object.Destroy(sprite);
             Object.Destroy(texture);
@@ -485,7 +485,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("TargetName");
             yield return null;
-            var search = UITestBehaviour.Search.ByAny("TargetName");
+            var search = new Search().Any("TargetName");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -494,7 +494,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateButtonWithText("SomeButton", "TargetText");
             yield return null;
-            var search = UITestBehaviour.Search.ByAny("TargetText");
+            var search = new Search().Any("TargetText");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -503,7 +503,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateButtonWithText("OtherButton", "OtherText");
             yield return null;
-            var search = UITestBehaviour.Search.ByAny("Target");
+            var search = new Search().Any("Target");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -517,7 +517,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("SpecificButton");
             go.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().Name("Specific*");
+            var search = new Search().Type<Button>().Name("Specific*");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -527,7 +527,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("SpecificButton");
             go.AddComponent<Toggle>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().Name("Specific*");
+            var search = new Search().Type<Button>().Name("Specific*");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -537,7 +537,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("OtherButton");
             go.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().Name("Specific*");
+            var search = new Search().Type<Button>().Name("Specific*");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -546,7 +546,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateButtonWithText("SubmitBtn", "Submit");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("*Btn").Text("Submit");
+            var search = new Search().Name("*Btn").Text("Submit");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -556,7 +556,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateButtonWithText("ConfirmButton", "OK");
             go.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().Text("OK").Name("*Confirm*");
+            var search = new Search().Type<Button>().Text("OK").Name("*Confirm*");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -570,7 +570,7 @@ namespace ODDGames.UITest.Tests
             sprite.name = "icon_settings";
             image.sprite = sprite;
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Image>().Sprite("icon_*");
+            var search = new Search().Type<Image>().Sprite("icon_*");
             Assert.IsTrue(search.Matches(go));
             Object.Destroy(sprite);
             Object.Destroy(texture);
@@ -591,8 +591,8 @@ namespace ODDGames.UITest.Tests
             tmp.text = "Submit";
             _createdObjects.Add(textChild);
             yield return null;
-            var search = UITestBehaviour.Search
-                .ByType<Button>()
+            var search = new Search()
+                .Type<Button>()
                 .Name("*Button")
                 .Text("Submit")
                 .Tag("Untagged")
@@ -606,9 +606,9 @@ namespace ODDGames.UITest.Tests
             var go = CreateButtonWithText("TestButton", "Click");
             go.AddComponent<Button>();
             yield return null;
-            var search1 = UITestBehaviour.Search.ByName("TestButton").Text("Click").Type<Button>();
-            var search2 = UITestBehaviour.Search.ByType<Button>().Name("TestButton").Text("Click");
-            var search3 = UITestBehaviour.Search.ByText("Click").Type<Button>().Name("TestButton");
+            var search1 = new Search().Name("TestButton").Text("Click").Type<Button>();
+            var search2 = new Search().Type<Button>().Name("TestButton").Text("Click");
+            var search3 = new Search().Text("Click").Type<Button>().Name("TestButton");
             Assert.IsTrue(search1.Matches(go));
             Assert.IsTrue(search2.Matches(go));
             Assert.IsTrue(search3.Matches(go));
@@ -625,7 +625,7 @@ namespace ODDGames.UITest.Tests
             var button = go.AddComponent<Button>();
             button.interactable = true;
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().With<Button>(b => b.interactable);
+            var search = new Search().Type<Button>().With<Button>(b => b.interactable);
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -636,7 +636,7 @@ namespace ODDGames.UITest.Tests
             var button = go.AddComponent<Button>();
             button.interactable = false;
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().With<Button>(b => b.interactable);
+            var search = new Search().Type<Button>().With<Button>(b => b.interactable);
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -647,7 +647,7 @@ namespace ODDGames.UITest.Tests
             var toggle = go.AddComponent<Toggle>();
             toggle.isOn = true;
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Toggle>().With<Toggle>(t => t.isOn);
+            var search = new Search().Type<Toggle>().With<Toggle>(t => t.isOn);
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -658,7 +658,7 @@ namespace ODDGames.UITest.Tests
             var toggle = go.AddComponent<Toggle>();
             toggle.isOn = false;
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Toggle>().With<Toggle>(t => t.isOn);
+            var search = new Search().Type<Toggle>().With<Toggle>(t => t.isOn);
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -669,7 +669,7 @@ namespace ODDGames.UITest.Tests
             var slider = go.AddComponent<Slider>();
             slider.value = 0.75f;
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Slider>().With<Slider>(s => s.value > 0.5f);
+            var search = new Search().Type<Slider>().With<Slider>(s => s.value > 0.5f);
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -683,8 +683,8 @@ namespace ODDGames.UITest.Tests
             slider.value = 75;
             slider.interactable = true;
             yield return null;
-            var search = UITestBehaviour.Search
-                .ByType<Slider>()
+            var search = new Search()
+                .Type<Slider>()
                 .With<Slider>(s => s.value > 50)
                 .With<Slider>(s => s.value < 80)
                 .With<Slider>(s => s.interactable);
@@ -702,8 +702,8 @@ namespace ODDGames.UITest.Tests
             var image = go.AddComponent<Image>();
             image.raycastTarget = true;
             yield return null;
-            var search = UITestBehaviour.Search
-                .ByName("ComplexUI")
+            var search = new Search()
+                .Name("ComplexUI")
                 .With<Button>(b => b.interactable)
                 .With<Image>(i => i.raycastTarget);
             Assert.IsTrue(search.Matches(go));
@@ -720,7 +720,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("CustomTarget");
             yield return null;
-            var search = UITestBehaviour.Search.Where(g => g.name == "CustomTarget");
+            var search = new Search().Where(g => g.name == "CustomTarget");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -729,7 +729,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("OtherObject");
             yield return null;
-            var search = UITestBehaviour.Search.Where(g => g.name == "CustomTarget");
+            var search = new Search().Where(g => g.name == "CustomTarget");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -739,7 +739,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("ActiveEnabled");
             go.SetActive(true);
             yield return null;
-            var search = UITestBehaviour.Search.Where(g => g.activeInHierarchy && g.name.Contains("Active"));
+            var search = new Search().Where(g => g.activeInHierarchy && g.name.Contains("Active"));
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -751,7 +751,7 @@ namespace ODDGames.UITest.Tests
             var go3 = CreateTestObject("Other_3");
             var validNames = new[] { "Target_1", "Target_2" };
             yield return null;
-            var search = UITestBehaviour.Search.Where(go => validNames.Contains(go.name));
+            var search = new Search().Where(go => validNames.Contains(go.name));
             Assert.IsTrue(search.Matches(go1));
             Assert.IsTrue(search.Matches(go2));
             Assert.IsFalse(search.Matches(go3));
@@ -767,7 +767,7 @@ namespace ODDGames.UITest.Tests
             var go1 = CreateTestObject("NotThisOne");
             var go2 = CreateTestObject("NotOther");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Not*").Not.Name("NotThisOne");
+            var search = new Search().Name("Not*").Not.Name("NotThisOne");
             Assert.IsFalse(search.Matches(go1), "Should NOT match NotThisOne");
             Assert.IsTrue(search.Matches(go2), "Should match NotOther");
         }
@@ -780,7 +780,7 @@ namespace ODDGames.UITest.Tests
             var goWithToggle = CreateTestObject("WithToggle");
             goWithToggle.AddComponent<Toggle>();
             yield return null;
-            var search = UITestBehaviour.Search.ByName("With*").Not.Type<Button>();
+            var search = new Search().Name("With*").Not.Type<Button>();
             Assert.IsFalse(search.Matches(goWithButton), "Should NOT match object with Button");
             Assert.IsTrue(search.Matches(goWithToggle), "Should match object with Toggle");
         }
@@ -795,8 +795,8 @@ namespace ODDGames.UITest.Tests
             var go3 = CreateTestObject("ExcludeB");
             go3.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search
-                .ByType<Button>()
+            var search = new Search()
+                .Type<Button>()
                 .Not.Name("ExcludeA")
                 .Not.Name("ExcludeB");
             Assert.IsTrue(search.Matches(go1));
@@ -814,7 +814,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ChildButton").HasParent(UITestBehaviour.Search.ByName("ParentPanel"));
+            var search = new Search().Name("ChildButton").HasParent(new Search().Name("ParentPanel"));
             Assert.IsTrue(search.Matches(child));
         }
 
@@ -824,7 +824,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("OtherPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ChildButton").HasParent(UITestBehaviour.Search.ByName("ParentPanel"));
+            var search = new Search().Name("ChildButton").HasParent(new Search().Name("ParentPanel"));
             Assert.IsFalse(search.Matches(child));
         }
 
@@ -834,7 +834,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ChildButton").HasParent("ParentPanel");
+            var search = new Search().Name("ChildButton").HasParent("ParentPanel");
             Assert.IsTrue(search.Matches(child));
         }
 
@@ -844,7 +844,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("MyParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ChildButton").HasParent("*Parent*");
+            var search = new Search().Name("ChildButton").HasParent("*Parent*");
             Assert.IsTrue(search.Matches(child));
         }
 
@@ -855,8 +855,8 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("ParentPanel", grandparent.transform);
             var child = CreateTestObject("ChildButton", parent.transform);
             yield return null;
-            var searchParent = UITestBehaviour.Search.ByName("ChildButton").HasParent("ParentPanel");
-            var searchGrandparent = UITestBehaviour.Search.ByName("ChildButton").HasParent("GrandPanel");
+            var searchParent = new Search().Name("ChildButton").HasParent("ParentPanel");
+            var searchGrandparent = new Search().Name("ChildButton").HasParent("GrandPanel");
             Assert.IsTrue(searchParent.Matches(child));
             Assert.IsFalse(searchGrandparent.Matches(child), "HasParent should not match grandparent");
         }
@@ -872,7 +872,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("MiddlePanel", grandparent.transform);
             var child = CreateTestObject("DeepButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("DeepButton").HasAncestor(UITestBehaviour.Search.ByName("RootPanel"));
+            var search = new Search().Name("DeepButton").HasAncestor(new Search().Name("RootPanel"));
             Assert.IsTrue(search.Matches(child));
         }
 
@@ -883,7 +883,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("MiddlePanel", grandparent.transform);
             var child = CreateTestObject("DeepButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("DeepButton").HasAncestor(UITestBehaviour.Search.ByName("RootPanel"));
+            var search = new Search().Name("DeepButton").HasAncestor(new Search().Name("RootPanel"));
             Assert.IsFalse(search.Matches(child));
         }
 
@@ -895,7 +895,7 @@ namespace ODDGames.UITest.Tests
             var level2 = CreateTestObject("Level2", level1.transform);
             var level3 = CreateTestObject("Level3", level2.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Level3").HasAncestor("AncestorRoot");
+            var search = new Search().Name("Level3").HasAncestor("AncestorRoot");
             Assert.IsTrue(search.Matches(level3));
         }
 
@@ -908,10 +908,10 @@ namespace ODDGames.UITest.Tests
             var level3 = CreateTestObject("Level3", level2.transform);
             var level4 = CreateTestObject("DeepButton", level3.transform);
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName("DeepButton").HasAncestor("RootPanel").Matches(level4));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("DeepButton").HasAncestor("Level1").Matches(level4));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("DeepButton").HasAncestor("Level2").Matches(level4));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("DeepButton").HasAncestor("Level3").Matches(level4));
+            Assert.IsTrue(new Search().Name("DeepButton").HasAncestor("RootPanel").Matches(level4));
+            Assert.IsTrue(new Search().Name("DeepButton").HasAncestor("Level1").Matches(level4));
+            Assert.IsTrue(new Search().Name("DeepButton").HasAncestor("Level2").Matches(level4));
+            Assert.IsTrue(new Search().Name("DeepButton").HasAncestor("Level3").Matches(level4));
         }
 
         #endregion
@@ -924,7 +924,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ParentPanel").HasChild(UITestBehaviour.Search.ByName("ChildButton"));
+            var search = new Search().Name("ParentPanel").HasChild(new Search().Name("ChildButton"));
             Assert.IsTrue(search.Matches(parent));
         }
 
@@ -934,7 +934,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("OtherChild", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ParentPanel").HasChild(UITestBehaviour.Search.ByName("ChildButton"));
+            var search = new Search().Name("ParentPanel").HasChild(new Search().Name("ChildButton"));
             Assert.IsFalse(search.Matches(parent));
         }
 
@@ -944,7 +944,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("SpecificChildBtn", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ParentPanel").HasChild("*Child*");
+            var search = new Search().Name("ParentPanel").HasChild("*Child*");
             Assert.IsTrue(search.Matches(parent));
         }
 
@@ -955,8 +955,8 @@ namespace ODDGames.UITest.Tests
             var child = CreateTestObject("ChildPanel", parent.transform);
             var grandchild = CreateTestObject("GrandchildButton", child.transform);
             yield return null;
-            var searchChild = UITestBehaviour.Search.ByName("ParentPanel").HasChild("ChildPanel");
-            var searchGrandchild = UITestBehaviour.Search.ByName("ParentPanel").HasChild("GrandchildButton");
+            var searchChild = new Search().Name("ParentPanel").HasChild("ChildPanel");
+            var searchGrandchild = new Search().Name("ParentPanel").HasChild("GrandchildButton");
             Assert.IsTrue(searchChild.Matches(parent));
             Assert.IsFalse(searchGrandchild.Matches(parent), "HasChild should not match grandchildren");
         }
@@ -972,7 +972,7 @@ namespace ODDGames.UITest.Tests
             var middle = CreateTestObject("MiddlePanel", root.transform);
             var deep = CreateTestObject("DeepButton", middle.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("RootPanel").HasDescendant(UITestBehaviour.Search.ByName("DeepButton"));
+            var search = new Search().Name("RootPanel").HasDescendant(new Search().Name("DeepButton"));
             Assert.IsTrue(search.Matches(root));
         }
 
@@ -983,7 +983,7 @@ namespace ODDGames.UITest.Tests
             var middle = CreateTestObject("MiddlePanel", root.transform);
             var deep = CreateTestObject("OtherButton", middle.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("RootPanel").HasDescendant(UITestBehaviour.Search.ByName("DeepButton"));
+            var search = new Search().Name("RootPanel").HasDescendant(new Search().Name("DeepButton"));
             Assert.IsFalse(search.Matches(root));
         }
 
@@ -995,7 +995,7 @@ namespace ODDGames.UITest.Tests
             var level2 = CreateTestObject("Level2", level1.transform);
             var level3 = CreateTestObject("TargetDescendant", level2.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("DescendantRoot").HasDescendant("*Target*");
+            var search = new Search().Name("DescendantRoot").HasDescendant("*Target*");
             Assert.IsTrue(search.Matches(root));
         }
 
@@ -1007,9 +1007,9 @@ namespace ODDGames.UITest.Tests
             var level2 = CreateTestObject("Level2", level1.transform);
             var deepButton = CreateTestObject("DeepButton", level2.transform);
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName("RootPanel").HasDescendant("DeepButton").Matches(root));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("RootPanel").HasDescendant("Level2").Matches(root));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("Level1").HasDescendant("DeepButton").Matches(level1));
+            Assert.IsTrue(new Search().Name("RootPanel").HasDescendant("DeepButton").Matches(root));
+            Assert.IsTrue(new Search().Name("RootPanel").HasDescendant("Level2").Matches(root));
+            Assert.IsTrue(new Search().Name("Level1").HasDescendant("DeepButton").Matches(level1));
         }
 
         [UnityTest]
@@ -1019,8 +1019,8 @@ namespace ODDGames.UITest.Tests
             var panel = CreateTestObject("TargetPanel", root.transform);
             var button = CreateTestObject("TargetButton", panel.transform);
             yield return null;
-            var search = UITestBehaviour.Search
-                .ByName("TargetPanel")
+            var search = new Search()
+                .Name("TargetPanel")
                 .HasParent("Root")
                 .HasChild("TargetButton");
             Assert.IsTrue(search.Matches(panel));
@@ -1038,7 +1038,7 @@ namespace ODDGames.UITest.Tests
             var child = CreateTestObject("ChildButton", parent.transform);
             child.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            var search = new Search().Type<Button>().GetParent<CanvasGroup>();
             Assert.IsTrue(search.Matches(child));
         }
 
@@ -1049,7 +1049,7 @@ namespace ODDGames.UITest.Tests
             var child = CreateTestObject("ChildButton", parent.transform);
             child.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            var search = new Search().Type<Button>().GetParent<CanvasGroup>();
             Assert.IsFalse(search.Matches(child));
         }
 
@@ -1062,7 +1062,7 @@ namespace ODDGames.UITest.Tests
             var child = CreateTestObject("ChildButton", parent.transform);
             child.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
+            var search = new Search().Type<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
             Assert.IsTrue(search.Matches(child));
         }
 
@@ -1075,7 +1075,7 @@ namespace ODDGames.UITest.Tests
             var child = CreateTestObject("ChildButton", parent.transform);
             child.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
+            var search = new Search().Type<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
             Assert.IsFalse(search.Matches(child));
         }
 
@@ -1086,7 +1086,7 @@ namespace ODDGames.UITest.Tests
             go.AddComponent<Button>();
             go.AddComponent<CanvasGroup>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().GetParent<CanvasGroup>();
+            var search = new Search().Type<Button>().GetParent<CanvasGroup>();
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -1101,7 +1101,7 @@ namespace ODDGames.UITest.Tests
             var child2 = CreateTestObject("Child2", parent2.transform);
             child2.AddComponent<Button>();
             yield return null;
-            var search = UITestBehaviour.Search.ByType<Button>().Not.GetParent<CanvasGroup>();
+            var search = new Search().Type<Button>().Not.GetParent<CanvasGroup>();
             Assert.IsFalse(search.Matches(child1));
             Assert.IsTrue(search.Matches(child2));
         }
@@ -1117,7 +1117,7 @@ namespace ODDGames.UITest.Tests
             var child = CreateTestObject("ChildImage", parent.transform);
             child.AddComponent<Image>();
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>();
+            var search = new Search().Name("ParentSlot").GetChild<Image>();
             Assert.IsTrue(search.Matches(parent));
         }
 
@@ -1127,7 +1127,7 @@ namespace ODDGames.UITest.Tests
             var parent = CreateTestObject("ParentSlot");
             var child = CreateTestObject("ChildEmpty", parent.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>();
+            var search = new Search().Name("ParentSlot").GetChild<Image>();
             Assert.IsFalse(search.Matches(parent));
         }
 
@@ -1141,7 +1141,7 @@ namespace ODDGames.UITest.Tests
             var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
             image.sprite = sprite;
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>(img => img.sprite != null);
+            var search = new Search().Name("ParentSlot").GetChild<Image>(img => img.sprite != null);
             Assert.IsTrue(search.Matches(parent));
             Object.Destroy(sprite);
             Object.Destroy(texture);
@@ -1155,7 +1155,7 @@ namespace ODDGames.UITest.Tests
             var image = child.AddComponent<Image>();
             image.sprite = null;
             yield return null;
-            var search = UITestBehaviour.Search.ByName("ParentSlot").GetChild<Image>(img => img.sprite != null);
+            var search = new Search().Name("ParentSlot").GetChild<Image>(img => img.sprite != null);
             Assert.IsFalse(search.Matches(parent));
         }
 
@@ -1165,7 +1165,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("SelfTest");
             go.AddComponent<Image>();
             yield return null;
-            var search = UITestBehaviour.Search.ByName("SelfTest").GetChild<Image>();
+            var search = new Search().Name("SelfTest").GetChild<Image>();
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -1178,7 +1178,7 @@ namespace ODDGames.UITest.Tests
             var parent2 = CreateTestObject("ParentWithoutImage");
             var child2 = CreateTestObject("EmptyChild", parent2.transform);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Parent*").Not.GetChild<Image>();
+            var search = new Search().Name("Parent*").Not.GetChild<Image>();
             Assert.IsFalse(search.Matches(parent1));
             Assert.IsTrue(search.Matches(parent2));
         }
@@ -1192,7 +1192,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateButtonWithText("Btn", "Target Text");
             yield return null;
-            UITestBehaviour.Search search = "Target Text";
+            Search search = "Target Text";
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -1204,7 +1204,7 @@ namespace ODDGames.UITest.Tests
         public IEnumerator Search_NullGameObject_ReturnsFalse()
         {
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Any");
+            var search = new Search().Name("Any");
             Assert.IsFalse(search.Matches(null));
         }
 
@@ -1214,7 +1214,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("InactiveObject");
             go.SetActive(false);
             yield return null;
-            var search = UITestBehaviour.Search.ByName("InactiveObject");
+            var search = new Search().Name("InactiveObject");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -1223,7 +1223,7 @@ namespace ODDGames.UITest.Tests
         {
             var go = CreateTestObject("");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("");
+            var search = new Search().Name("");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -1233,13 +1233,13 @@ namespace ODDGames.UITest.Tests
             var go = CreateButtonWithText("SubmitButton", "Submit");
             go.AddComponent<Button>();
             yield return null;
-            var searchAllMatch = UITestBehaviour.Search
-                .ByType<Button>()
+            var searchAllMatch = new Search()
+                .Type<Button>()
                 .Name("*Button")
                 .Text("Submit");
             Assert.IsTrue(searchAllMatch.Matches(go));
-            var searchOneFails = UITestBehaviour.Search
-                .ByType<Button>()
+            var searchOneFails = new Search()
+                .Type<Button>()
                 .Name("*Button")
                 .Text("Cancel");
             Assert.IsFalse(searchOneFails.Matches(go));
@@ -1251,15 +1251,15 @@ namespace ODDGames.UITest.Tests
             var longName = new string('A', 500) + "_Button_" + new string('B', 500);
             var go = CreateTestObject(longName);
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByName(longName).Matches(go));
-            Assert.IsTrue(UITestBehaviour.Search.ByName("*_Button_*").Matches(go));
+            Assert.IsTrue(new Search().Name(longName).Matches(go));
+            Assert.IsTrue(new Search().Name("*_Button_*").Matches(go));
         }
 
         [UnityTest]
         public IEnumerator DestroyedGameObject_ReturnsFalse()
         {
             var go = CreateTestObject("WillBeDestroyed");
-            var search = UITestBehaviour.Search.ByName("WillBeDestroyed");
+            var search = new Search().Name("WillBeDestroyed");
             Assert.IsTrue(search.Matches(go));
             Object.DestroyImmediate(go);
             _createdObjects.Remove(go);
@@ -1274,7 +1274,7 @@ namespace ODDGames.UITest.Tests
             var btn = go.AddComponent<Button>();
             btn.enabled = false;
             yield return null;
-            Assert.IsTrue(UITestBehaviour.Search.ByType<Button>().Name("DisabledButton").Matches(go));
+            Assert.IsTrue(new Search().Type<Button>().Name("DisabledButton").Matches(go));
         }
 
         #endregion
@@ -1285,7 +1285,7 @@ namespace ODDGames.UITest.Tests
         public IEnumerator Skip_ReturnsCorrectSkipCount()
         {
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Item*").Skip(2);
+            var search = new Search().Name("Item*").Skip(2);
             Assert.IsTrue(search.HasPostProcessing);
         }
 
@@ -1293,7 +1293,7 @@ namespace ODDGames.UITest.Tests
         public IEnumerator First_SetsPostProcessing()
         {
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Item*").First();
+            var search = new Search().Name("Item*").First();
             Assert.IsTrue(search.HasPostProcessing);
         }
 
@@ -1301,7 +1301,7 @@ namespace ODDGames.UITest.Tests
         public IEnumerator Last_SetsPostProcessing()
         {
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Item*").Last();
+            var search = new Search().Name("Item*").Last();
             Assert.IsTrue(search.HasPostProcessing);
         }
 
@@ -1309,7 +1309,7 @@ namespace ODDGames.UITest.Tests
         public IEnumerator OrderByPosition_SetsPostProcessing()
         {
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Item*").OrderByPosition();
+            var search = new Search().Name("Item*").OrderByPosition();
             Assert.IsTrue(search.HasPostProcessing);
         }
 
@@ -1320,7 +1320,7 @@ namespace ODDGames.UITest.Tests
             var go2 = CreateTestObject("Item2");
             var go3 = CreateTestObject("Item3");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Item*").Skip(1);
+            var search = new Search().Name("Item*").Skip(1);
             var input = new[] { go1, go2, go3 };
             var result = search.ApplyPostProcessing(input).ToList();
             Assert.AreEqual(2, result.Count);
@@ -1335,7 +1335,7 @@ namespace ODDGames.UITest.Tests
             var go2 = CreateTestObject("Item2");
             var go3 = CreateTestObject("Item3");
             yield return null;
-            var search = UITestBehaviour.Search.ByName("Item*").Skip(1).First();
+            var search = new Search().Name("Item*").Skip(1).First();
             var input = new[] { go1, go2, go3 };
             var result = search.ApplyPostProcessing(input).ToList();
             Assert.AreEqual(1, result.Count);
@@ -1356,7 +1356,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("OrderedBtn*").First());
+                    new Search().Name("OrderedBtn*").First());
                 Assert.IsNotNull(result, "Should find button");
                 Assert.AreEqual("OrderedBtn1", result.name, "First() should return OrderedBtn1 (leftmost)");
             });
@@ -1376,7 +1376,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("OrderedBtn*").Skip(1).First());
+                    new Search().Name("OrderedBtn*").Skip(1).First());
                 Assert.IsNotNull(result, "Should find button after skip");
                 Assert.AreEqual("OrderedBtn2", result.name, "Skip(1).First() should return second button");
             });
@@ -1396,7 +1396,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("OrderedBtn*").Skip(2).First());
+                    new Search().Name("OrderedBtn*").Skip(2).First());
                 Assert.IsNotNull(result, "Should find button");
                 Assert.AreEqual("OrderedBtn3", result.name, "Skip(2).First() should return OrderedBtn3");
             });
@@ -1416,7 +1416,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("OrderedBtn*").Skip(1).Last());
+                    new Search().Name("OrderedBtn*").Skip(1).Last());
                 Assert.IsNotNull(result, "Should find button");
                 Assert.AreEqual("OrderedBtn3", result.name, "Skip(1).Last() should return third button");
             });
@@ -1436,7 +1436,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("*Btn").First());
+                    new Search().Name("*Btn").First());
                 Assert.IsNotNull(result, "Should find button");
                 Assert.AreEqual("TopBtn", result.name, "First() should return TopBtn (top-most)");
             });
@@ -1456,7 +1456,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("*Btn").Last());
+                    new Search().Name("*Btn").Last());
                 Assert.IsNotNull(result, "Should find button");
                 Assert.AreEqual("BotBtn", result.name, "Last() should return BotBtn (bottom-most)");
             });
@@ -1476,7 +1476,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindAllHelper>();
                 var results = await test.TestFindAll<Button>(
-                    UITestBehaviour.Search.ByName("OrderedBtn*").OrderByPosition());
+                    new Search().Name("OrderedBtn*").OrderByPosition());
                 Assert.AreEqual(3, results.Count, "Should find all 3 buttons");
                 Assert.AreEqual("OrderedBtn1", results[0].name, "First should be OrderedBtn1 (leftmost)");
                 Assert.AreEqual("OrderedBtn2", results[1].name, "Second should be OrderedBtn2 (middle)");
@@ -1498,11 +1498,11 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var lowest = await test.TestFind<Slider>(
-                    UITestBehaviour.Search.ByName("Slider*").OrderBy<Slider>(s => s.value).First());
+                    new Search().Name("Slider*").OrderBy<Slider>(s => s.value).First());
                 Assert.IsNotNull(lowest, "Should find slider");
                 Assert.AreEqual("Slider1", lowest.name, "First by value should be Slider1 (0.1)");
                 var highest = await test.TestFind<Slider>(
-                    UITestBehaviour.Search.ByName("Slider*").OrderBy<Slider>(s => s.value).Last());
+                    new Search().Name("Slider*").OrderBy<Slider>(s => s.value).Last());
                 Assert.IsNotNull(highest, "Should find slider");
                 Assert.AreEqual("Slider2", highest.name, "Last by value should be Slider2 (0.9)");
             });
@@ -1543,7 +1543,7 @@ namespace ODDGames.UITest.Tests
 
                 Debug.Log("[DIAGNOSTIC] === Testing OrderByPosition ===");
                 var results = await test.TestFindAll<Button>(
-                    UITestBehaviour.Search.ByName("DiagBtn*").OrderByPosition());
+                    new Search().Name("DiagBtn*").OrderByPosition());
 
                 Debug.Log($"[DIAGNOSTIC] Results count: {results.Count}");
                 for (int i = 0; i < results.Count; i++)
@@ -1579,7 +1579,7 @@ namespace ODDGames.UITest.Tests
 
                 // This should order by position, skip 1, take 1 - returning btn2
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("SkipDiagBtn*").Skip(1).First());
+                    new Search().Name("SkipDiagBtn*").Skip(1).First());
 
                 Debug.Log($"[DIAGNOSTIC] Skip(1).First() result: {(result != null ? result.name : "NULL")}");
 
@@ -1605,7 +1605,7 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result = await test.TestFind<RectTransform>(
-                    UITestBehaviour.Search.ByName("ChildButton").GetParent());
+                    new Search().Name("ChildButton").GetParent());
                 Assert.IsNotNull(result, "Should find parent");
                 Assert.AreEqual("ParentContainer", result.name, "Parent() should return the parent container");
             });
@@ -1625,11 +1625,11 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var result0 = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("Container").GetChild(0));
+                    new Search().Name("Container").GetChild(0));
                 Assert.IsNotNull(result0, "Should find child at index 0");
                 Assert.AreEqual("Child0", result0.name);
                 var result1 = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("Container").GetChild(1));
+                    new Search().Name("Container").GetChild(1));
                 Assert.IsNotNull(result1, "Should find child at index 1");
                 Assert.AreEqual("Child1", result1.name);
             });
@@ -1651,11 +1651,11 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestFindHelper>();
                 var nextSibling = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("Second").GetSibling(1));
+                    new Search().Name("Second").GetSibling(1));
                 Assert.IsNotNull(nextSibling, "Should find next sibling");
                 Assert.AreEqual("Third", nextSibling.name);
                 var prevSibling = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("Third").GetSibling(-1));
+                    new Search().Name("Third").GetSibling(-1));
                 Assert.IsNotNull(prevSibling, "Should find previous sibling");
                 Assert.AreEqual("Second", prevSibling.name);
             });
@@ -1686,13 +1686,13 @@ namespace ODDGames.UITest.Tests
 
                 Debug.Log("[DIAGNOSTIC] === Testing Find Level2 (no transformation) ===");
                 var level2Result = await test.TestFind<RectTransform>(
-                    UITestBehaviour.Search.ByName("Level2"));
+                    new Search().Name("Level2"));
                 Assert.IsNotNull(level2Result, "Should find Level2");
                 Assert.AreEqual("Level2", level2Result.name);
 
                 Debug.Log("[DIAGNOSTIC] === Testing Level2.GetChild(0) ===");
                 var result = await test.TestFind<RectTransform>(
-                    UITestBehaviour.Search.ByName("Level2").GetChild(0));
+                    new Search().Name("Level2").GetChild(0));
                 Assert.IsNotNull(result, "Should find child");
                 Assert.AreEqual("DeepButton", result.name);
             });
@@ -1712,7 +1712,7 @@ namespace ODDGames.UITest.Tests
                 Debug.Log($"[DIAGNOSTIC] Child0 = {container.transform.GetChild(0).name}");
 
                 // Manually verify the transformation works
-                var search = UITestBehaviour.Search.ByName("DiagContainer").GetChild(0);
+                var search = new Search().Name("DiagContainer").GetChild(0);
                 Debug.Log($"[DIAGNOSTIC] search.HasPostProcessing = {search.HasPostProcessing}");
 
                 // Apply post-processing manually to see what happens
@@ -1729,7 +1729,7 @@ namespace ODDGames.UITest.Tests
                 var test = testGO.AddComponent<TestFindHelper>();
 
                 var result = await test.TestFind<Button>(
-                    UITestBehaviour.Search.ByName("DiagContainer").GetChild(0));
+                    new Search().Name("DiagContainer").GetChild(0));
                 Assert.IsNotNull(result, "Should find child button via Child(0)");
                 Assert.AreEqual("DiagChild", result.name);
             });
@@ -1745,7 +1745,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Username:", new Vector2(-100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.Adjacent("Username:");
+            var search = new Search().AdjacentTo("Username:");
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input to the right of label");
         }
@@ -1756,7 +1756,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Username:", new Vector2(100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(-100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.Adjacent("Username:", UITestBehaviour.Direction.Right);
+            var search = new Search().AdjacentTo("Username:", Direction.Right);
             bool matches = search.Matches(input);
             Assert.IsFalse(matches, "Should not match input to the left when searching Right");
         }
@@ -1768,7 +1768,7 @@ namespace ODDGames.UITest.Tests
             var closeInput = CreateInputField("CloseInput", new Vector2(0, 0));
             var farInput = CreateInputField("FarInput", new Vector2(200, 0));
             yield return null;
-            var search = UITestBehaviour.Search.Adjacent("Field:");
+            var search = new Search().AdjacentTo("Field:");
             Assert.IsTrue(search.Matches(closeInput), "Closer input should match");
             Assert.IsFalse(search.Matches(farInput), "Farther input should not match");
         }
@@ -1779,7 +1779,7 @@ namespace ODDGames.UITest.Tests
             var input = CreateInputField("VolumeSlider", new Vector2(-100, 0));
             var label = CreateLabel("Volume Level", new Vector2(100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.Adjacent("Volume Level", UITestBehaviour.Direction.Left);
+            var search = new Search().AdjacentTo("Volume Level", Direction.Left);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input to the left of label");
         }
@@ -1790,7 +1790,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Description", new Vector2(0, 50));
             var input = CreateInputField("DescriptionInput", new Vector2(0, -50));
             yield return null;
-            var search = UITestBehaviour.Search.Adjacent("Description", UITestBehaviour.Direction.Below);
+            var search = new Search().AdjacentTo("Description", Direction.Below);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input below label");
         }
@@ -1801,7 +1801,7 @@ namespace ODDGames.UITest.Tests
             var input = CreateInputField("OptionToggle", new Vector2(0, 50));
             var label = CreateLabel("Clear Selection", new Vector2(0, -50));
             yield return null;
-            var search = UITestBehaviour.Search.Adjacent("Clear Selection", UITestBehaviour.Direction.Above);
+            var search = new Search().AdjacentTo("Clear Selection", Direction.Above);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input above label");
         }
@@ -1812,7 +1812,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Other Label:", new Vector2(-100, 0));
             var input = CreateInputField("TestInput", new Vector2(100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.Adjacent("NonExistent:");
+            var search = new Search().AdjacentTo("NonExistent:");
             bool matches = search.Matches(input);
             Assert.IsFalse(matches, "Should not match when label text doesn't exist");
         }
@@ -1823,7 +1823,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Username:", new Vector2(-100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(100, 0));
             yield return null;
-            var search = UITestBehaviour.Search.Adjacent("User*");
+            var search = new Search().AdjacentTo("User*");
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should match with wildcard pattern");
         }
@@ -1841,7 +1841,7 @@ namespace ODDGames.UITest.Tests
             var farButton = CreateButton("OtherButton", new Vector2(200, 0)); // Further away
             yield return null;
 
-            var search = UITestBehaviour.Search.Near("Center Flag");
+            var search = new Search().NearTo("Center Flag");
             Assert.IsTrue(search.Matches(closeButton), "Closest button should match");
             Assert.IsFalse(search.Matches(farButton), "Farther button should not match");
         }
@@ -1854,11 +1854,11 @@ namespace ODDGames.UITest.Tests
             var aboveButton = CreateButton("AboveButton", new Vector2(0, 80)); // Above
             yield return null;
 
-            var searchBelow = UITestBehaviour.Search.Near("Center Flag", UITestBehaviour.Direction.Below);
+            var searchBelow = new Search().NearTo("Center Flag", Direction.Below);
             Assert.IsTrue(searchBelow.Matches(belowButton), "Button below should match when filtering Below");
             Assert.IsFalse(searchBelow.Matches(aboveButton), "Button above should not match when filtering Below");
 
-            var searchAbove = UITestBehaviour.Search.Near("Center Flag", UITestBehaviour.Direction.Above);
+            var searchAbove = new Search().NearTo("Center Flag", Direction.Above);
             Assert.IsTrue(searchAbove.Matches(aboveButton), "Button above should match when filtering Above");
             Assert.IsFalse(searchAbove.Matches(belowButton), "Button below should not match when filtering Above");
         }
@@ -1871,7 +1871,7 @@ namespace ODDGames.UITest.Tests
             var farBelow = CreateButton("FarBelow", new Vector2(0, -150)); // Further below
             yield return null;
 
-            var search = UITestBehaviour.Search.Near("Center Flag", UITestBehaviour.Direction.Below);
+            var search = new Search().NearTo("Center Flag", Direction.Below);
             Assert.IsTrue(search.Matches(closeBelow), "Closer button below should match");
             Assert.IsFalse(search.Matches(farBelow), "Farther button below should not match");
         }
@@ -1885,7 +1885,7 @@ namespace ODDGames.UITest.Tests
             var straightFar = CreateButton("StraightButton", new Vector2(0, -150)); // Straight down but far
             yield return null;
 
-            var search = UITestBehaviour.Search.Near("Texture");
+            var search = new Search().NearTo("Texture");
             Assert.IsTrue(search.Matches(diagonalClose), "Diagonal but closer button should match");
             Assert.IsFalse(search.Matches(straightFar), "Straight but farther button should not match");
         }
@@ -1899,7 +1899,7 @@ namespace ODDGames.UITest.Tests
             yield return null;
 
             // Near finds closest, but Name filters to only matching names
-            var search = UITestBehaviour.Search.Near("Center Flag", UITestBehaviour.Direction.Below).Name("*Texture*");
+            var search = new Search().NearTo("Center Flag", Direction.Below).Name("*Texture*");
             Assert.IsTrue(search.Matches(textureButton), "TextureButton should match Near+Name filter");
             Assert.IsFalse(search.Matches(maskButton), "MaskButton should not match Name filter");
         }
@@ -1910,7 +1910,7 @@ namespace ODDGames.UITest.Tests
             var button = CreateButton("SomeButton", new Vector2(0, 0));
             yield return null;
 
-            var search = UITestBehaviour.Search.Near("NonExistentLabel");
+            var search = new Search().NearTo("NonExistentLabel");
             Assert.IsFalse(search.Matches(button), "Should not match when label doesn't exist");
         }
 
@@ -1921,7 +1921,7 @@ namespace ODDGames.UITest.Tests
             var button = CreateButton("NearbyButton", new Vector2(0, -30));
             yield return null;
 
-            var search = UITestBehaviour.Search.Near("Center*");
+            var search = new Search().NearTo("Center*");
             Assert.IsTrue(search.Matches(button), "Should match with wildcard pattern");
         }
 
@@ -1933,7 +1933,7 @@ namespace ODDGames.UITest.Tests
             var rightButton = CreateButton("RightButton", new Vector2(200, 0)); // To the right
             yield return null;
 
-            var search = UITestBehaviour.Search.Near("Right Label", UITestBehaviour.Direction.Left);
+            var search = new Search().NearTo("Right Label", Direction.Left);
             Assert.IsTrue(search.Matches(leftButton), "Button to the left should match");
             Assert.IsFalse(search.Matches(rightButton), "Button to the right should not match");
         }
@@ -1946,7 +1946,7 @@ namespace ODDGames.UITest.Tests
             var rightButton = CreateButton("RightButton", new Vector2(50, 0)); // To the right
             yield return null;
 
-            var search = UITestBehaviour.Search.Near("Left Label", UITestBehaviour.Direction.Right);
+            var search = new Search().NearTo("Left Label", Direction.Right);
             Assert.IsFalse(search.Matches(leftButton), "Button to the left should not match");
             Assert.IsTrue(search.Matches(rightButton), "Button to the right should match");
         }
@@ -1962,10 +1962,10 @@ namespace ODDGames.UITest.Tests
             yield return null;
 
             // Adjacent.Right requires same row (within tolerance) - should fail for diagonal
-            var adjacentSearch = UITestBehaviour.Search.Adjacent("Test Label", UITestBehaviour.Direction.Right);
+            var adjacentSearch = new Search().AdjacentTo("Test Label", Direction.Right);
 
             // Near without direction should find it as closest
-            var nearSearch = UITestBehaviour.Search.Near("Test Label");
+            var nearSearch = new Search().NearTo("Test Label");
             Assert.IsTrue(nearSearch.Matches(diagonalButton), "Near should find diagonal element as closest");
         }
 
@@ -2014,8 +2014,8 @@ namespace ODDGames.UITest.Tests
 
                 Debug.Log("[DIAGNOSTIC] === Testing ScrollTo with visible item ===");
                 var result = await test.TestScrollTo(
-                    UITestBehaviour.Search.ByName("DiagScrollView"),
-                    UITestBehaviour.Search.ByName("DiagVisibleItem"));
+                    new Search().Name("DiagScrollView"),
+                    new Search().Name("DiagVisibleItem"));
 
                 Debug.Log($"[DIAGNOSTIC] ScrollTo result: {(result != null ? result.name : "NULL")}");
                 Assert.IsNotNull(result, "Should find visible item");
@@ -2048,8 +2048,8 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestScrollHelper>();
                 var result = await test.TestScrollTo(
-                    UITestBehaviour.Search.ByName("TestScrollView"),
-                    UITestBehaviour.Search.ByName("VisibleItem"));
+                    new Search().Name("TestScrollView"),
+                    new Search().Name("VisibleItem"));
                 Assert.IsNotNull(result, "Should find visible item");
                 Assert.AreEqual("VisibleItem", result.name);
             });
@@ -2088,8 +2088,8 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(testGO);
                 var test = testGO.AddComponent<TestScrollHelper>();
                 var result = await test.TestScrollTo(
-                    UITestBehaviour.Search.ByName("TestScrollView"),
-                    UITestBehaviour.Search.ByName("TargetItem"),
+                    new Search().Name("TestScrollView"),
+                    new Search().Name("TargetItem"),
                     maxScrollAttempts: 20);
 
                 Debug.Log($"[TEST] Final scroll position: {scrollRect.verticalNormalizedPosition}");
@@ -2114,7 +2114,7 @@ namespace ODDGames.UITest.Tests
                 var centerBtn = CreateButton("CenterBtn", "C", _canvas.transform, new Vector2(0, 0));
                 await UniTask.Yield();
                 Canvas.ForceUpdateCanvases();
-                var search = UITestBehaviour.Search.ByType<Button>().InRegion(UITestBehaviour.ScreenRegion.TopLeft);
+                var search = new Search().Type<Button>().InRegion(ScreenRegion.TopLeft);
                 Assert.IsTrue(search.Matches(topLeftBtn.gameObject), "TopLeft button should match TopLeft region");
                 Assert.IsFalse(search.Matches(bottomRightBtn.gameObject), "BottomRight button should not match TopLeft region");
                 Assert.IsFalse(search.Matches(centerBtn.gameObject), "Center button should not match TopLeft region");
@@ -2131,7 +2131,7 @@ namespace ODDGames.UITest.Tests
                 var centerBtn = CreateButton("CenterBtn", "C", _canvas.transform, new Vector2(0, 0));
                 await UniTask.Yield();
                 Canvas.ForceUpdateCanvases();
-                var search = UITestBehaviour.Search.ByType<Button>().InRegion(UITestBehaviour.ScreenRegion.Center);
+                var search = new Search().Type<Button>().InRegion(ScreenRegion.Center);
                 Assert.IsFalse(search.Matches(topLeftBtn.gameObject), "TopLeft button should not match Center region");
                 Assert.IsFalse(search.Matches(bottomRightBtn.gameObject), "BottomRight button should not match Center region");
                 Assert.IsTrue(search.Matches(centerBtn.gameObject), "Center button should match Center region");
@@ -2439,7 +2439,7 @@ namespace ODDGames.UITest.Tests
                 LayoutRebuilder.ForceRebuildLayoutImmediate(content);
 
                 var helper = CreateFindItemsHelper();
-                var container = await helper.TestFindItems("FilterList", UITestBehaviour.Search.ByName("Rare*"));
+                var container = await helper.TestFindItems("FilterList", new Search().Name("Rare*"));
 
                 var items = container.Items.ToList();
                 Assert.AreEqual(2, items.Count, "Should find 2 rare items");
@@ -2597,7 +2597,7 @@ namespace ODDGames.UITest.Tests
                 Canvas.ForceUpdateCanvases();
 
                 var helper = CreateComponentHelper();
-                var buttons = await helper.TestFindAllButtons(UITestBehaviour.Search.ByName("Btn*"));
+                var buttons = await helper.TestFindAllButtons(new Search().Name("Btn*"));
 
                 foreach (var button in buttons)
                 {
