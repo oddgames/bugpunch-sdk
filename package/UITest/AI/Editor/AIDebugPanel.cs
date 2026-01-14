@@ -284,10 +284,10 @@ namespace ODDGames.UITest.AI.Editor
         {
             return action switch
             {
-                ClickAction click => click.ElementId ?? $"({click.ScreenPosition?.x:F2},{click.ScreenPosition?.y:F2})",
-                TypeAction type => type.ElementId,
-                DragAction drag => drag.FromElementId,
-                ScrollAction scroll => scroll.ElementId,
+                ClickAction click => click.SearchQuery ?? $"({click.ScreenPosition?.x:F2},{click.ScreenPosition?.y:F2})",
+                TypeAction type => type.SearchQuery,
+                DragAction drag => drag.FromSearch,
+                ScrollAction scroll => scroll.SearchQuery,
                 WaitAction wait => $"{wait.Seconds}s",
                 PassAction pass => pass.Reason,
                 FailAction fail => fail.Reason,

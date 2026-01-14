@@ -20,10 +20,6 @@ namespace ODDGames.UITest
 {
     public abstract class UITestBehaviour : MonoBehaviour
     {
-        // Touch ID counter to ensure unique IDs across gestures.
-        // Unity's Input System may not properly reset touch state when reusing the same IDs.
-        private static int _nextTouchId = 1;
-
         #region Inlined Utilities
 
         static string GetHierarchyPath(Transform transform)
@@ -197,7 +193,7 @@ namespace ODDGames.UITest
         /// // Find button below a header
         /// await Click(Adjacent("Game Options", Direction.Below));
         /// </example>
-        protected static Search Adjacent(string textPattern, Direction direction = Direction.Right) => new Search().AdjacentTo(textPattern, direction);
+        protected static Search Adjacent(string textPattern, Direction direction = Direction.Right) => new Search().Adjacent(textPattern, direction);
 
         #endregion
 
@@ -1103,8 +1099,7 @@ namespace ODDGames.UITest
             if (tmpInput != null)
             {
                 // Click to focus
-                Vector2 screenPosition = InputInjector.GetScreenPosition(tmpInput.gameObject);
-                await InputInjector.InjectPointerTap(screenPosition);
+                await ActionExecutor.ClickAsync(tmpInput.gameObject);
                 await UniTask.Yield();
 
                 // Type characters using ProcessEvent (adds to text) + ForceLabelUpdate (updates display)
@@ -1145,8 +1140,7 @@ namespace ODDGames.UITest
             var legacyInput = legacyInputQuick ?? await Find<InputField>(search, true, seconds);
 
             // Click to focus the input field
-            Vector2 legacyScreenPosition = InputInjector.GetScreenPosition(legacyInput.gameObject);
-            await InputInjector.InjectPointerTap(legacyScreenPosition);
+            await ActionExecutor.ClickAsync(legacyInput.gameObject);
 
             // Type characters using ProcessEvent + ForceLabelUpdate
             if (!string.IsNullOrEmpty(input))
@@ -1569,7 +1563,7 @@ namespace ODDGames.UITest
                 Debug.LogWarning($"[UITEST] HoldKey - Unable to map KeyCode.{key} to Input System Key");
                 return;
             }
-            await InputInjector.HoldKey(inputKey, duration);
+            await ActionExecutor.HoldKeyAsync(inputKey, duration);
         }
 
         /// <summary>
@@ -1583,7 +1577,7 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask HoldKey(Key key, float duration)
         {
-            await InputInjector.HoldKey(key, duration);
+            await ActionExecutor.HoldKeyAsync(key, duration);
         }
 
         /// <summary>
@@ -1612,7 +1606,7 @@ namespace ODDGames.UITest
                     return;
                 }
             }
-            await InputInjector.HoldKeys(inputKeys, duration);
+            await ActionExecutor.HoldKeysAsync(inputKeys, duration);
         }
 
         /// <summary>
@@ -1623,7 +1617,7 @@ namespace ODDGames.UITest
         /// <returns>A UniTask that completes when all keys are released.</returns>
         protected async UniTask HoldKeys(float duration, params Key[] keys)
         {
-            await InputInjector.HoldKeys(keys, duration);
+            await ActionExecutor.HoldKeysAsync(keys, duration);
         }
 
         #endregion
@@ -1695,12 +1689,7 @@ namespace ODDGames.UITest
 
                 Debug.Log($"[UITEST] CLICK executing - Name: '{component.name}' Path: '{path}' Text: '{textContent}'");
 
-                // Get screen position of target
-                Vector2 screenPosition = InputInjector.GetScreenPosition(component.gameObject);
-                LogDebug($"SimulateClick: screen position ({screenPosition.x:F0}, {screenPosition.y:F0})");
-
-                // Use Input System to inject mouse click
-                await InputInjector.InjectPointerTap(screenPosition);
+                await ActionExecutor.ClickAsync(component.gameObject);
             }
         }
 
@@ -1733,8 +1722,7 @@ namespace ODDGames.UITest
 
                 if (b != null && b is UnityEngine.Component c1)
                 {
-                    Vector2 screenPosition = InputInjector.GetScreenPosition(c1.gameObject);
-                    await InputInjector.InjectPointerHold(screenPosition, seconds);
+                    await ActionExecutor.HoldAsync(c1.gameObject, seconds);
                     await ActionComplete();
                     return;
                 }
@@ -1870,7 +1858,7 @@ namespace ODDGames.UITest
             Vector2 pos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             Debug.Log($"[UITEST] ClickAt ({xPercent:P0}, {yPercent:P0}) at ({pos.x:F0}, {pos.y:F0})");
 
-            await InputInjector.InjectPointerTap(pos);
+            await ActionExecutor.ClickAtAsync(pos);
             await ActionComplete();
         }
 
@@ -1890,7 +1878,7 @@ namespace ODDGames.UITest
             Vector2 pos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             Debug.Log($"[UITEST] DoubleClickAt ({xPercent:P0}, {yPercent:P0}) at ({pos.x:F0}, {pos.y:F0})");
 
-            await InjectMouseDoubleClick(pos);
+            await ActionExecutor.DoubleClickAtAsync(pos);
             await ActionComplete();
         }
 
@@ -1918,8 +1906,7 @@ namespace ODDGames.UITest
 
             if (target is UnityEngine.Component c)
             {
-                Vector2 screenPosition = InputInjector.GetScreenPosition(c.gameObject);
-                await InjectMouseDoubleClick(screenPosition);
+                await ActionExecutor.DoubleClickAsync(c.gameObject);
                 await ActionComplete();
             }
         }
@@ -1933,30 +1920,8 @@ namespace ODDGames.UITest
             Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
             Debug.Log($"[UITEST] DoubleClick (screen center) at ({screenCenter.x:F0}, {screenCenter.y:F0})");
 
-            await InjectMouseDoubleClick(screenCenter);
+            await ActionExecutor.DoubleClickAtAsync(screenCenter);
             await ActionComplete();
-        }
-
-        /// <summary>
-        /// Injects a mouse double-click at the specified screen position.
-        /// </summary>
-        private static async UniTask InjectMouseDoubleClick(Vector2 screenPosition)
-        {
-            var mouse = Mouse.current;
-            if (mouse == null)
-            {
-                Debug.LogWarning("[UITEST] DoubleClick - No mouse device found");
-                return;
-            }
-
-            // First click
-            await InputInjector.InjectPointerTap(screenPosition);
-
-            // Short delay between clicks (typical double-click threshold is ~500ms)
-            await UniTask.Delay(50, true);
-
-            // Second click
-            await InputInjector.InjectPointerTap(screenPosition);
         }
 
         /// <summary>
@@ -1982,8 +1947,7 @@ namespace ODDGames.UITest
             var target = await Find<RectTransform>(search, throwIfMissing, searchTime);
             if (target == null) return;
 
-            Vector2 screenPos = InputInjector.GetScreenPosition(target.gameObject);
-            await InputInjector.InjectScroll(screenPos, delta);
+            await ActionExecutor.ScrollAsync(target.gameObject, delta);
             await ActionComplete();
         }
 
@@ -1997,7 +1961,7 @@ namespace ODDGames.UITest
             Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
             Debug.Log($"[UITEST] Scroll (screen center) delta={delta}");
 
-            await InputInjector.InjectScroll(screenCenter, delta);
+            await ActionExecutor.ScrollAtAsync(screenCenter, delta);
             await ActionComplete();
         }
 
@@ -2013,7 +1977,7 @@ namespace ODDGames.UITest
             Vector2 pos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             Debug.Log($"[UITEST] ScrollAt ({xPercent:P0}, {yPercent:P0}) delta={delta} at ({pos.x:F0}, {pos.y:F0})");
 
-            await InputInjector.InjectScroll(pos, delta);
+            await ActionExecutor.ScrollAtAsync(pos, delta);
             await ActionComplete();
         }
 
@@ -2164,14 +2128,7 @@ namespace ODDGames.UITest
         /// </summary>
         private async UniTask PinchAt(Vector2 center, float scale, float duration, float fingerDistancePixels)
         {
-            float endDistance = fingerDistancePixels * scale;
-
-            Vector2 finger1Start = center + new Vector2(-fingerDistancePixels, 0);
-            Vector2 finger2Start = center + new Vector2(fingerDistancePixels, 0);
-            Vector2 finger1End = center + new Vector2(-endDistance, 0);
-            Vector2 finger2End = center + new Vector2(endDistance, 0);
-
-            await InjectTwoFingerGesture(finger1Start, finger1End, finger2Start, finger2End, duration);
+            await ActionExecutor.PinchAtAsync(center, scale, duration, fingerDistancePixels);
             await ActionComplete();
         }
 
@@ -2246,22 +2203,13 @@ namespace ODDGames.UITest
         /// </summary>
         private async UniTask TwoFingerSwipeAt(Vector2 center, SwipeDirection direction, float distancePixels, float duration, float spacingPixels)
         {
-            Vector2 delta = direction switch
-            {
-                SwipeDirection.Left => new Vector2(-distancePixels, 0),
-                SwipeDirection.Right => new Vector2(distancePixels, 0),
-                SwipeDirection.Up => new Vector2(0, distancePixels),
-                SwipeDirection.Down => new Vector2(0, -distancePixels),
-                _ => Vector2.zero
-            };
+            // Convert enum to string direction
+            string directionStr = direction.ToString().ToLower();
+            // Convert pixel values to normalized values
+            float normalizedDistance = distancePixels / Screen.height;
+            float normalizedSpacing = spacingPixels / Screen.height;
 
-            float halfSpacing = spacingPixels / 2f;
-            Vector2 finger1Start = center + new Vector2(-halfSpacing, 0);
-            Vector2 finger2Start = center + new Vector2(halfSpacing, 0);
-            Vector2 finger1End = finger1Start + delta;
-            Vector2 finger2End = finger2Start + delta;
-
-            await InjectTwoFingerGesture(finger1Start, finger1End, finger2Start, finger2End, duration);
+            await ActionExecutor.TwoFingerSwipeAtAsync(center, directionStr, normalizedDistance, duration, normalizedSpacing);
             await ActionComplete();
         }
 
@@ -2334,225 +2282,8 @@ namespace ODDGames.UITest
         /// </summary>
         private static async UniTask RotateAt(Vector2 center, float degrees, float duration, float radiusPixels)
         {
-            float startAngle = 0f;
-            float endAngle = degrees * Mathf.Deg2Rad;
-
-            await InjectTwoFingerRotation(center, radiusPixels, startAngle, endAngle, duration);
+            await ActionExecutor.RotateAtPixelsAsync(center, degrees, duration, radiusPixels);
             await ActionComplete();
-        }
-
-        /// <summary>
-        /// Injects a two-finger rotation gesture. Uses circular interpolation for smooth rotation.
-        /// </summary>
-        private static async UniTask InjectTwoFingerRotation(Vector2 center, float radius, float startAngle, float endAngle, float duration)
-        {
-            var touchscreen = Touchscreen.current;
-            if (touchscreen == null)
-            {
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[UITEST] Rotate - Could not create touchscreen device");
-                    return;
-                }
-            }
-
-            // Use unique touch IDs for each gesture to avoid stale state issues
-            int touch0Id = _nextTouchId++;
-            int touch1Id = _nextTouchId++;
-
-            int steps = Mathf.Max(10, (int)(duration * 60));
-            int delayPerStep = Mathf.Max(1, (int)(duration * 1000 / steps));
-
-            // Calculate initial positions
-            Vector2 finger1Start = center + new Vector2(Mathf.Cos(startAngle) * radius, Mathf.Sin(startAngle) * radius);
-            Vector2 finger2Start = center + new Vector2(Mathf.Cos(startAngle + Mathf.PI) * radius, Mathf.Sin(startAngle + Mathf.PI) * radius);
-            Vector2 prev1 = finger1Start;
-            Vector2 prev2 = finger2Start;
-
-            // Begin touches
-            using (StateEvent.From(touchscreen, out var beginPtr))
-            {
-                touchscreen.touches[0].touchId.WriteValueIntoEvent(touch0Id, beginPtr);
-                touchscreen.touches[0].position.WriteValueIntoEvent(finger1Start, beginPtr);
-                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
-                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
-                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
-
-                touchscreen.touches[1].touchId.WriteValueIntoEvent(touch1Id, beginPtr);
-                touchscreen.touches[1].position.WriteValueIntoEvent(finger2Start, beginPtr);
-                touchscreen.touches[1].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
-                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
-                touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, beginPtr);
-
-                InputSystem.QueueEvent(beginPtr);
-            }
-            InputSystem.Update();
-
-            await UniTask.Yield();
-
-            // Move touches in a circular path
-            for (int i = 1; i <= steps; i++)
-            {
-                float t = (float)i / steps;
-                float currentAngle = Mathf.Lerp(startAngle, endAngle, t);
-
-                Vector2 pos1 = center + new Vector2(Mathf.Cos(currentAngle) * radius, Mathf.Sin(currentAngle) * radius);
-                Vector2 pos2 = center + new Vector2(Mathf.Cos(currentAngle + Mathf.PI) * radius, Mathf.Sin(currentAngle + Mathf.PI) * radius);
-                Vector2 delta1 = pos1 - prev1;
-                Vector2 delta2 = pos2 - prev2;
-
-                using (StateEvent.From(touchscreen, out var movePtr))
-                {
-                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touch0Id, movePtr);
-                    touchscreen.touches[0].position.WriteValueIntoEvent(pos1, movePtr);
-                    touchscreen.touches[0].delta.WriteValueIntoEvent(delta1, movePtr);
-                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
-                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
-
-                    touchscreen.touches[1].touchId.WriteValueIntoEvent(touch1Id, movePtr);
-                    touchscreen.touches[1].position.WriteValueIntoEvent(pos2, movePtr);
-                    touchscreen.touches[1].delta.WriteValueIntoEvent(delta2, movePtr);
-                    touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
-                    touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, movePtr);
-
-                    InputSystem.QueueEvent(movePtr);
-                }
-                InputSystem.Update();
-
-                prev1 = pos1;
-                prev2 = pos2;
-                await UniTask.Delay(delayPerStep, true);
-            }
-
-            // End touches
-            Vector2 finger1End = center + new Vector2(Mathf.Cos(endAngle) * radius, Mathf.Sin(endAngle) * radius);
-            Vector2 finger2End = center + new Vector2(Mathf.Cos(endAngle + Mathf.PI) * radius, Mathf.Sin(endAngle + Mathf.PI) * radius);
-
-            using (StateEvent.From(touchscreen, out var endPtr))
-            {
-                touchscreen.touches[0].touchId.WriteValueIntoEvent(touch0Id, endPtr);
-                touchscreen.touches[0].position.WriteValueIntoEvent(finger1End, endPtr);
-                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
-                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
-                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
-
-                touchscreen.touches[1].touchId.WriteValueIntoEvent(touch1Id, endPtr);
-                touchscreen.touches[1].position.WriteValueIntoEvent(finger2End, endPtr);
-                touchscreen.touches[1].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
-                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
-                touchscreen.touches[1].pressure.WriteValueIntoEvent(0f, endPtr);
-
-                InputSystem.QueueEvent(endPtr);
-            }
-            InputSystem.Update();
-
-            // Wait for Input System to fully process the end state and reset touch controls
-            await UniTask.Yield();
-            await UniTask.Yield();
-        }
-
-        /// <summary>
-        /// Injects a two-finger touch gesture using the Input System.
-        /// </summary>
-        private static async UniTask InjectTwoFingerGesture(Vector2 finger1Start, Vector2 finger1End, Vector2 finger2Start, Vector2 finger2End, float duration)
-        {
-            var touchscreen = Touchscreen.current;
-            if (touchscreen == null)
-            {
-                // Add a touchscreen if none exists
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[UITEST] TwoFingerGesture - Could not create touchscreen device");
-                    return;
-                }
-            }
-
-            // Use unique touch IDs for each gesture to avoid stale state issues
-            int touch0Id = _nextTouchId++;
-            int touch1Id = _nextTouchId++;
-
-            int steps = Mathf.Max(10, (int)(duration * 60));
-            int delayPerStep = Mathf.Max(1, (int)(duration * 1000 / steps));
-            Vector2 prev1 = finger1Start;
-            Vector2 prev2 = finger2Start;
-
-            // Begin touches
-            using (StateEvent.From(touchscreen, out var beginPtr))
-            {
-                touchscreen.touches[0].touchId.WriteValueIntoEvent(touch0Id, beginPtr);
-                touchscreen.touches[0].position.WriteValueIntoEvent(finger1Start, beginPtr);
-                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
-                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
-                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
-
-                touchscreen.touches[1].touchId.WriteValueIntoEvent(touch1Id, beginPtr);
-                touchscreen.touches[1].position.WriteValueIntoEvent(finger2Start, beginPtr);
-                touchscreen.touches[1].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
-                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
-                touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, beginPtr);
-
-                InputSystem.QueueEvent(beginPtr);
-            }
-            InputSystem.Update();
-
-            await UniTask.Yield();
-
-            // Move touches
-            for (int i = 1; i <= steps; i++)
-            {
-                float t = (float)i / steps;
-                Vector2 pos1 = Vector2.Lerp(finger1Start, finger1End, t);
-                Vector2 pos2 = Vector2.Lerp(finger2Start, finger2End, t);
-                Vector2 delta1 = pos1 - prev1;
-                Vector2 delta2 = pos2 - prev2;
-
-                using (StateEvent.From(touchscreen, out var movePtr))
-                {
-                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touch0Id, movePtr);
-                    touchscreen.touches[0].position.WriteValueIntoEvent(pos1, movePtr);
-                    touchscreen.touches[0].delta.WriteValueIntoEvent(delta1, movePtr);
-                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
-                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
-
-                    touchscreen.touches[1].touchId.WriteValueIntoEvent(touch1Id, movePtr);
-                    touchscreen.touches[1].position.WriteValueIntoEvent(pos2, movePtr);
-                    touchscreen.touches[1].delta.WriteValueIntoEvent(delta2, movePtr);
-                    touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
-                    touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, movePtr);
-
-                    InputSystem.QueueEvent(movePtr);
-                }
-                InputSystem.Update();
-
-                prev1 = pos1;
-                prev2 = pos2;
-                await UniTask.Delay(delayPerStep, true);
-            }
-
-            // End touches
-            using (StateEvent.From(touchscreen, out var endPtr))
-            {
-                touchscreen.touches[0].touchId.WriteValueIntoEvent(touch0Id, endPtr);
-                touchscreen.touches[0].position.WriteValueIntoEvent(finger1End, endPtr);
-                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
-                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
-                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
-
-                touchscreen.touches[1].touchId.WriteValueIntoEvent(touch1Id, endPtr);
-                touchscreen.touches[1].position.WriteValueIntoEvent(finger2End, endPtr);
-                touchscreen.touches[1].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
-                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
-                touchscreen.touches[1].pressure.WriteValueIntoEvent(0f, endPtr);
-
-                InputSystem.QueueEvent(endPtr);
-            }
-            InputSystem.Update();
-
-            // Wait for Input System to fully process the end state and reset touch controls
-            await UniTask.Yield();
-            await UniTask.Yield();
         }
 
         /// <summary>
@@ -2640,7 +2371,7 @@ namespace ODDGames.UITest
         {
             Debug.Log($"[UITEST] DragFromTo ({duration}s) from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
 
-            await InputInjector.InjectPointerDrag(startPos, endPos, duration);
+            await ActionExecutor.DragFromToAsync(startPos, endPos, duration);
 
             await ActionComplete();
         }
@@ -2672,12 +2403,7 @@ namespace ODDGames.UITest
             var target = await Find<RectTransform>(targetSearch, throwIfMissing, searchTime);
             if (target == null) return;
 
-            Vector2 sourcePos = InputInjector.GetScreenPosition(source.gameObject);
-            Vector2 targetPos = InputInjector.GetScreenPosition(target.gameObject);
-
-            Debug.Log($"[UITEST] DragTo - dragging from ({sourcePos.x:F0},{sourcePos.y:F0}) to ({targetPos.x:F0},{targetPos.y:F0})");
-
-            await InputInjector.InjectPointerDrag(sourcePos, targetPos, duration);
+            await ActionExecutor.DragToAsync(source.gameObject, target.gameObject, duration);
             await ActionComplete();
         }
 
@@ -2694,12 +2420,11 @@ namespace ODDGames.UITest
             var source = await Find<RectTransform>(sourceSearch, throwIfMissing, searchTime);
             if (source == null) return;
 
-            Vector2 sourcePos = InputInjector.GetScreenPosition(source.gameObject);
             Vector2 targetPos = new Vector2(targetPercent.x * Screen.width, targetPercent.y * Screen.height);
 
             Debug.Log($"[UITEST] DragTo '{source.name}' -> ({targetPercent.x:P0}, {targetPercent.y:P0})");
 
-            await InputInjector.InjectPointerDrag(sourcePos, targetPos, duration);
+            await ActionExecutor.DragToAsync(source.gameObject, targetPos, duration);
             await ActionComplete();
         }
 
@@ -2735,10 +2460,7 @@ namespace ODDGames.UITest
             var slider = await Find<Slider>(search, throwIfMissing, searchTime);
             if (slider == null) return;
 
-            Vector2 clickPos = GetSliderPositionAtPercent(slider, percent);
-            Debug.Log($"[UITEST] ClickSlider - clicking at ({clickPos.x:F0},{clickPos.y:F0})");
-
-            await InputInjector.InjectPointerTap(clickPos);
+            await ActionExecutor.ClickSliderAsync(slider, percent);
             await ActionComplete();
         }
 
@@ -2769,12 +2491,7 @@ namespace ODDGames.UITest
             var slider = await Find<Slider>(search, throwIfMissing, searchTime);
             if (slider == null) return;
 
-            Vector2 startPos = GetSliderPositionAtPercent(slider, fromPercent);
-            Vector2 endPos = GetSliderPositionAtPercent(slider, toPercent);
-
-            Debug.Log($"[UITEST] DragSlider - dragging from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
-
-            await InputInjector.InjectPointerDrag(startPos, endPos, duration);
+            await ActionExecutor.DragSliderAsync(slider, fromPercent, toPercent, duration);
             await ActionComplete();
         }
 
@@ -3018,7 +2735,7 @@ namespace ODDGames.UITest
                     Debug.Log($"[UITEST] ScrollTo - raycast hit: {hit.gameObject.name} at depth {hit.depth}");
                 }
 
-                await InputInjector.InjectPointerDrag(scrollCenter, scrollCenter + dragDirection, 0.15f);
+                await ActionExecutor.DragFromToAsync(scrollCenter, scrollCenter + dragDirection, 0.15f);
                 await UniTask.Delay(100, true); // Wait for scroll to settle
                 float posAfter = scrollRect.vertical ? scrollRect.verticalNormalizedPosition : scrollRect.horizontalNormalizedPosition;
                 Debug.Log($"[UITEST] ScrollTo - scroll position changed: {posBefore:F3} -> {posAfter:F3}");
@@ -3054,8 +2771,7 @@ namespace ODDGames.UITest
             var target = await ScrollTo(scrollViewSearch, targetSearch, maxScrollAttempts, throwIfMissing, searchTime);
             if (target != null)
             {
-                Vector2 screenPos = InputInjector.GetScreenPosition(target);
-                await InputInjector.InjectPointerTap(screenPos);
+                await ActionExecutor.ClickAsync(target);
                 await ActionComplete();
             }
         }
@@ -3257,8 +2973,7 @@ namespace ODDGames.UITest
                 GameObject.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
 
             // Click the dropdown to open it
-            Vector2 dropdownPos = InputInjector.GetScreenPosition(dropdownGO);
-            await InputInjector.InjectPointerTap(dropdownPos);
+            await ActionExecutor.ClickAsync(dropdownGO);
 
             // Wait for new toggles to appear (the dropdown items)
             Toggle[] newToggles = null;
@@ -3282,8 +2997,7 @@ namespace ODDGames.UITest
                 if (newToggles.Length > optionIndex)
                 {
                     var targetToggle = newToggles[optionIndex];
-                    Vector2 itemPos = InputInjector.GetScreenPosition(targetToggle.gameObject);
-                    await InputInjector.InjectPointerTap(itemPos);
+                    await ActionExecutor.ClickAsync(targetToggle.gameObject);
                     await ActionComplete();
                     return;
                 }
@@ -3334,7 +3048,7 @@ namespace ODDGames.UITest
                 int holdDuration = UnityEngine.Random.Range(300, Mathf.Min(3000, seconds * 1000));
                 float holdSeconds = holdDuration / 1000f;
 
-                await InputInjector.InjectPointerHold(screenPosition, holdSeconds);
+                await ActionExecutor.HoldAtAsync(screenPosition, holdSeconds);
 
                 await UniTask.Delay(UnityEngine.Random.Range(10, 100), true);
             }

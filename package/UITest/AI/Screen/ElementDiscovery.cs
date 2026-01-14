@@ -15,6 +15,8 @@ namespace ODDGames.UITest.AI
     {
         /// <summary>
         /// Discovers all interactable UI elements and returns structured data for AI.
+        /// Includes both Selectable components AND non-Selectable interactables
+        /// (draggables, drop targets, custom clickables).
         /// </summary>
         public static List<ElementInfo> DiscoverElements()
         {
@@ -83,8 +85,46 @@ namespace ODDGames.UITest.AI
             }
             else
             {
-                Debug.Log($"[ElementDiscovery] Returning {elements.Count} elements " +
+                Debug.Log($"[ElementDiscovery] Returning {elements.Count} Selectable elements " +
                     $"(filtered: inactive={skippedInactive}, canvasGroup={skippedCanvasGroup}, bounds={skippedBounds})");
+            }
+
+            // Also discover non-Selectable interactables (draggables, drop targets, custom clickables)
+            var nonSelectables = ElementFinder.FindAllNonSelectableInteractables();
+            Debug.Log($"[ElementDiscovery] Found {nonSelectables.Count} non-Selectable interactables");
+
+            foreach (var interactable in nonSelectables)
+            {
+                if (interactable.GameObject == null) continue;
+
+                var bounds = InputInjector.GetScreenBounds(interactable.GameObject);
+                if (bounds.width <= 0 || bounds.height <= 0)
+                    continue;
+
+                var element = new ElementInfo
+                {
+                    id = $"e{idCounter++}",
+                    gameObject = interactable.GameObject,
+                    name = interactable.GameObject.name,
+                    type = interactable.Type,
+                    text = GetElementText(interactable.GameObject),
+                    bounds = bounds,
+                    normalizedBounds = new Rect(
+                        bounds.x / Screen.width,
+                        bounds.y / Screen.height,
+                        bounds.width / Screen.width,
+                        bounds.height / Screen.height
+                    ),
+                    isEnabled = true, // Non-selectables don't have interactable state
+                    componentType = interactable.Type,
+                    path = GetHierarchyPath(interactable.GameObject.transform),
+                    parentName = interactable.GameObject.transform.parent?.name,
+                    siblingIndex = interactable.GameObject.transform.GetSiblingIndex(),
+                    childCount = interactable.GameObject.transform.childCount,
+                    extraInfo = GetNonSelectableExtraInfo(interactable)
+                };
+
+                elements.Add(element);
             }
 
             // Find adjacent labels for elements that typically have them (inputs, sliders, etc.)
@@ -100,10 +140,50 @@ namespace ODDGames.UITest.AI
             }
 
             // Sort by screen position (top-to-bottom, left-to-right reading order)
-            return elements
+            var sorted = elements
                 .OrderByDescending(e => e.bounds.y) // Top first
                 .ThenBy(e => e.bounds.x) // Left first
                 .ToList();
+
+            // Assign search pattern IDs and detect which elements need disambiguation
+            AssignSearchPatternIds(sorted);
+
+            return sorted;
+        }
+
+        /// <summary>
+        /// Assigns search pattern IDs and marks elements that need disambiguation.
+        /// The search pattern is used as the element identifier.
+        /// </summary>
+        private static void AssignSearchPatternIds(List<ElementInfo> elements)
+        {
+            // First pass: detect duplicate patterns
+            var patternCounts = new Dictionary<string, List<ElementInfo>>();
+            foreach (var element in elements)
+            {
+                var pattern = element.GetSearchPattern(needsDisambiguation: false);
+                if (!patternCounts.ContainsKey(pattern))
+                    patternCounts[pattern] = new List<ElementInfo>();
+                patternCounts[pattern].Add(element);
+            }
+
+            // Mark elements that have duplicate patterns - they need disambiguation
+            foreach (var kvp in patternCounts)
+            {
+                if (kvp.Value.Count > 1)
+                {
+                    foreach (var element in kvp.Value)
+                    {
+                        element.needsDisambiguation = true;
+                    }
+                }
+            }
+
+            // Second pass: assign IDs using search patterns (with disambiguation if needed)
+            foreach (var element in elements)
+            {
+                element.id = element.GetSearchPattern(element.needsDisambiguation);
+            }
         }
 
         /// <summary>
@@ -355,6 +435,23 @@ namespace ODDGames.UITest.AI
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Gets extra info for non-Selectable interactables.
+        /// </summary>
+        private static string GetNonSelectableExtraInfo(ElementFinder.InteractableInfo interactable)
+        {
+            var parts = new List<string>();
+
+            if (interactable.IsDraggable)
+                parts.Add("can be dragged");
+            if (interactable.IsDropTarget)
+                parts.Add("accepts drops");
+            if (interactable.IsClickable && !interactable.IsDraggable)
+                parts.Add("clickable");
+
+            return parts.Count > 0 ? string.Join(", ", parts) : null;
         }
 
         /// <summary>

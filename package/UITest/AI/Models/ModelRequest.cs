@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace ODDGames.UITest.AI
 {
@@ -132,6 +133,7 @@ namespace ODDGames.UITest.AI
 
     /// <summary>
     /// A property in a tool's parameters.
+    /// Supports nested object schemas with Properties and Required fields.
     /// </summary>
     [Serializable]
     public class ToolProperty
@@ -139,17 +141,12 @@ namespace ODDGames.UITest.AI
         public string Type { get; set; }
         public string Description { get; set; }
         public List<string> Enum { get; set; }
-        /// <summary>For array types, specifies the type of items in the array</summary>
-        public ToolPropertyItems Items { get; set; }
-    }
-
-    /// <summary>
-    /// Specifies the type of items in an array property.
-    /// </summary>
-    [Serializable]
-    public class ToolPropertyItems
-    {
-        public string Type { get; set; }
+        /// <summary>For array types, specifies the schema for items in the array</summary>
+        public ToolProperty Items { get; set; }
+        /// <summary>For object types, defines the nested properties</summary>
+        public Dictionary<string, ToolProperty> Properties { get; set; }
+        /// <summary>For object types, lists required property names</summary>
+        public List<string> Required { get; set; }
     }
 
     /// <summary>
@@ -202,6 +199,55 @@ namespace ODDGames.UITest.AI
                     return parsed;
             }
             return defaultValue;
+        }
+
+        /// <summary>Get an argument as a SearchQuery (handles both object and string formats)</summary>
+        /// <param name="key">The argument key</param>
+        /// <param name="error">Out parameter containing any deserialization error message</param>
+        /// <returns>The parsed SearchQuery, or null if parsing failed</returns>
+        public SearchQuery GetSearchQuery(string key, out string error)
+        {
+            error = null;
+
+            if (!Arguments.TryGetValue(key, out var value) || value == null)
+                return null;
+
+            try
+            {
+                // Serialize to JSON and then deserialize to SearchQuery
+                // This handles both Dictionary<string, object> and already-parsed objects
+                var json = JsonConvert.SerializeObject(value);
+                return JsonConvert.DeserializeObject<SearchQuery>(json);
+            }
+            catch (JsonException ex)
+            {
+                error = $"Failed to parse search query: {ex.Message}";
+
+                // If it's a string, try to parse as JSON directly
+                if (value is string str && !string.IsNullOrEmpty(str))
+                {
+                    try
+                    {
+                        var result = SearchQuery.FromJson(str);
+                        if (result != null)
+                        {
+                            error = null;
+                            return result;
+                        }
+                    }
+                    catch (Exception innerEx)
+                    {
+                        error = $"Failed to parse search query JSON string: {innerEx.Message}";
+                    }
+                }
+                return null;
+            }
+        }
+
+        /// <summary>Get an argument as a SearchQuery (handles both object and string formats)</summary>
+        public SearchQuery GetSearchQuery(string key)
+        {
+            return GetSearchQuery(key, out _);
         }
     }
 }

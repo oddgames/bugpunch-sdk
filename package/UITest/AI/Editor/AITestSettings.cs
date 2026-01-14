@@ -57,6 +57,9 @@ namespace ODDGames.UITest.AI.Editor
         [Tooltip("Verbose logging")]
         public bool verboseLogging = false;
 
+        [Tooltip("Log all AI data (screenshots, prompts, responses) to AIDebug folder")]
+        public bool enableDebugLogging = true;
+
         private static AITestSettings instance;
 
         /// <summary>
@@ -120,12 +123,13 @@ namespace ODDGames.UITest.AI.Editor
             // Screenshots are on-demand now - AI requests them via screenshot action when needed
             var shouldSendScreenshots = false;
 
-            Debug.Log($"[AITest] Creating runner config: model={effectiveModel}, SendScreenshots={shouldSendScreenshots}");
+            Debug.Log($"[AITest] Creating runner config: model={effectiveModel}, SendScreenshots={shouldSendScreenshots}, Debug={enableDebugLogging}");
 
             var config = new AITestRunnerConfig
             {
                 EnableHistoryReplay = true,
-                SendScreenshots = shouldSendScreenshots
+                SendScreenshots = shouldSendScreenshots,
+                EnableDebugLogging = enableDebugLogging
             };
 
             // Create provider if we have an API key and model
@@ -367,6 +371,8 @@ namespace ODDGames.UITest.AI.Editor
                 new GUIContent("Save Screenshots", "Save screenshots for debugging (independent of AI)"));
             EditorGUILayout.PropertyField(serializedSettings.FindProperty("verboseLogging"),
                 new GUIContent("Verbose Logging"));
+            EditorGUILayout.PropertyField(serializedSettings.FindProperty("enableDebugLogging"),
+                new GUIContent("Debug Logging", "Log all AI data (screenshots, prompts, responses) to AIDebug folder"));
 
             EditorGUI.indentLevel--;
 

@@ -457,6 +457,28 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Performs a two-finger swipe gesture at a specific screen position.
+        /// </summary>
+        /// <param name="centerPosition">Center screen position for the swipe.</param>
+        /// <param name="direction">Direction: "up", "down", "left", "right".</param>
+        /// <param name="normalizedDistance">Distance as fraction of screen (0-1).</param>
+        /// <param name="duration">Duration of the swipe in seconds.</param>
+        /// <param name="fingerSpacing">Normalized spacing between fingers (0-1).</param>
+        public static async UniTask InjectTwoFingerSwipe(Vector2 centerPosition, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        {
+            var offset = GetDirectionOffset(direction, normalizedDistance);
+
+            // Calculate finger positions
+            var spacing = fingerSpacing * Screen.height / 2f;
+            var finger1Start = centerPosition + new Vector2(-spacing, 0);
+            var finger2Start = centerPosition + new Vector2(spacing, 0);
+            var finger1End = finger1Start + offset;
+            var finger2End = finger2Start + offset;
+
+            await InjectTwoFingerDrag(finger1Start, finger1End, finger2Start, finger2End, duration);
+        }
+
+        /// <summary>
         /// Performs a two-finger rotation gesture on an element or screen center.
         /// </summary>
         public static async UniTask Rotate(GameObject element, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
@@ -1240,6 +1262,102 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Injects a pinch gesture for zooming with custom finger distance.
+        /// </summary>
+        /// <param name="centerPosition">Center point of the pinch</param>
+        /// <param name="scale">Scale factor: less than 1 = pinch in (zoom out), greater than 1 = pinch out (zoom in)</param>
+        /// <param name="duration">Duration of the pinch gesture</param>
+        /// <param name="fingerDistancePixels">Initial distance of each finger from center in pixels</param>
+        public static async UniTask InjectPinch(Vector2 centerPosition, float scale, float duration, float fingerDistancePixels)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null)
+            {
+                touchscreen = InputSystem.AddDevice<Touchscreen>();
+                if (touchscreen == null)
+                {
+                    Debug.LogWarning("[InputInjector] Pinch - Could not create touchscreen device");
+                    return;
+                }
+            }
+
+            // Calculate start and end offsets based on scale and finger distance
+            float startOffset = fingerDistancePixels;
+            float endOffset = startOffset * scale;
+
+            // Two touch points that move symmetrically
+            Vector2 startTouch1 = centerPosition + new Vector2(-startOffset, 0);
+            Vector2 startTouch2 = centerPosition + new Vector2(startOffset, 0);
+            Vector2 endTouch1 = centerPosition + new Vector2(-endOffset, 0);
+            Vector2 endTouch2 = centerPosition + new Vector2(endOffset, 0);
+
+            const int touchId1 = 1;
+            const int touchId2 = 2;
+            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60));
+
+            // Both touches begin
+            using (StateEvent.From(touchscreen, out var beginPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, beginPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(startTouch1, beginPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, beginPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(startTouch2, beginPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, beginPtr);
+
+                InputSystem.QueueEvent(beginPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Interpolate pinch movement
+            for (int i = 1; i < totalFrames; i++)
+            {
+                float t = (float)i / totalFrames;
+                Vector2 currentTouch1 = Vector2.Lerp(startTouch1, endTouch1, t);
+                Vector2 currentTouch2 = Vector2.Lerp(startTouch2, endTouch2, t);
+
+                using (StateEvent.From(touchscreen, out var movePtr))
+                {
+                    touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, movePtr);
+                    touchscreen.touches[0].position.WriteValueIntoEvent(currentTouch1, movePtr);
+                    touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, movePtr);
+
+                    touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, movePtr);
+                    touchscreen.touches[1].position.WriteValueIntoEvent(currentTouch2, movePtr);
+                    touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, movePtr);
+                    touchscreen.touches[1].pressure.WriteValueIntoEvent(1f, movePtr);
+
+                    InputSystem.QueueEvent(movePtr);
+                }
+                InputSystem.Update();
+                await UniTask.Yield();
+            }
+
+            // Both touches end
+            using (StateEvent.From(touchscreen, out var endPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId1, endPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(endTouch1, endPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
+
+                touchscreen.touches[1].touchId.WriteValueIntoEvent(touchId2, endPtr);
+                touchscreen.touches[1].position.WriteValueIntoEvent(endTouch2, endPtr);
+                touchscreen.touches[1].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
+                touchscreen.touches[1].pressure.WriteValueIntoEvent(0f, endPtr);
+
+                InputSystem.QueueEvent(endPtr);
+            }
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
         /// Simulates a two-finger drag gesture (both fingers moving in parallel).
         /// </summary>
         public static async UniTask InjectTwoFingerDrag(Vector2 start1, Vector2 end1, Vector2 start2, Vector2 end2, float duration)
@@ -1330,6 +1448,20 @@ namespace ODDGames.UITest
         /// <param name="fingerDistance">Normalized distance from center (0-1) for finger positions.</param>
         public static async UniTask InjectRotate(Vector2 centerPosition, float degrees, float duration, float fingerDistance = 0.05f)
         {
+            // Calculate the radius based on screen size and finger distance
+            float radiusPixels = fingerDistance * Mathf.Min(Screen.width, Screen.height);
+            await InjectRotatePixels(centerPosition, degrees, duration, radiusPixels);
+        }
+
+        /// <summary>
+        /// Simulates a two-finger rotation gesture with pixel-based radius.
+        /// </summary>
+        /// <param name="centerPosition">Center point of the rotation.</param>
+        /// <param name="degrees">Rotation angle (positive = clockwise, negative = counter-clockwise).</param>
+        /// <param name="duration">Duration of the gesture in seconds.</param>
+        /// <param name="radiusPixels">Distance from center in pixels for finger positions.</param>
+        public static async UniTask InjectRotatePixels(Vector2 centerPosition, float degrees, float duration, float radiusPixels)
+        {
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
             {
@@ -1341,8 +1473,7 @@ namespace ODDGames.UITest
                 }
             }
 
-            // Calculate the radius based on screen size and finger distance
-            float radius = fingerDistance * Mathf.Min(Screen.width, Screen.height);
+            float radius = radiusPixels;
             float radians = degrees * Mathf.Deg2Rad;
 
             // Start positions (fingers on opposite sides horizontally)

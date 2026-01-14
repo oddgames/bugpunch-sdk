@@ -198,7 +198,7 @@ namespace ODDGames.UITest.AI
             switch (recorded.actionType.ToLower())
             {
                 case "click":
-                    var click = new ClickAction { ElementId = recorded.target };
+                    var click = new ClickAction { SearchQuery = recorded.target };
                     if (recorded.parameters != null)
                     {
                         if (recorded.parameters.TryGetValue("x", out var x) &&
@@ -213,7 +213,7 @@ namespace ODDGames.UITest.AI
                     return click;
 
                 case "type":
-                    var type = new TypeAction { ElementId = recorded.target };
+                    var type = new TypeAction { SearchQuery = recorded.target };
                     if (recorded.parameters != null)
                     {
                         if (recorded.parameters.TryGetValue("text", out var text))
@@ -226,11 +226,11 @@ namespace ODDGames.UITest.AI
                     return type;
 
                 case "drag":
-                    var drag = new DragAction { FromElementId = recorded.target };
+                    var drag = new DragAction { FromSearch = recorded.target };
                     if (recorded.parameters != null)
                     {
-                        if (recorded.parameters.TryGetValue("to_element_id", out var toId))
-                            drag.ToElementId = toId.ToString();
+                        if (recorded.parameters.TryGetValue("to", out var toSearch))
+                            drag.ToSearch = toSearch.ToString();
                         if (recorded.parameters.TryGetValue("direction", out var dir))
                             drag.Direction = dir.ToString();
                         if (recorded.parameters.TryGetValue("distance", out var dist))
@@ -241,7 +241,7 @@ namespace ODDGames.UITest.AI
                     return drag;
 
                 case "scroll":
-                    var scroll = new ScrollAction { ElementId = recorded.target };
+                    var scroll = new ScrollAction { SearchQuery = recorded.target };
                     if (recorded.parameters != null)
                     {
                         if (recorded.parameters.TryGetValue("direction", out var scrollDir))

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -8,7 +9,7 @@ using UnityEngine.UI;
 
 namespace ODDGames.UITest.AI
 {
-    using ODDGames.UITest; // For InputInjector
+    using ODDGames.UITest; // For InputInjector, Search
 
     /// <summary>
     /// Parses and executes AI tool calls as UI actions.
@@ -49,37 +50,31 @@ namespace ODDGames.UITest.AI
 
         private static ClickAction ParseClickAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
+            var searchQueryJson = searchQuery?.ToJson();
             var action = new ClickAction
             {
-                ElementId = call.GetString("element_id")
+                SearchQuery = searchQueryJson
             };
 
-            Debug.Log($"[AITest] ParseClickAction: ElementId='{action.ElementId}'");
+            Debug.Log($"[AITest] ParseClickAction: search={searchQueryJson}");
 
             // Check for screen position (normalized 0-1)
             var x = call.GetFloat("x", -1f);
             var y = call.GetFloat("y", -1f);
 
-            // Prioritize element_id over x/y coordinates when both are provided
-            // Element bounds are more reliable than AI-estimated positions
-            if (!string.IsNullOrEmpty(action.ElementId))
+            // Prioritize search query over x/y coordinates
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
                 if (action.TargetElement != null)
                 {
-                    Debug.Log($"[AITest] Found element '{action.ElementId}': {action.TargetElement.name} at bounds {action.TargetElement.bounds}");
+                    Debug.Log($"[AITest] Found element via search: {action.TargetElement.name} at bounds {action.TargetElement.bounds}");
                 }
                 else
                 {
-                    Debug.LogWarning($"[AITest] Element '{action.ElementId}' NOT FOUND! Available elements: {screen?.Elements?.Count ?? 0}");
-                    if (screen?.Elements != null)
-                    {
-                        foreach (var e in screen.Elements)
-                        {
-                            Debug.Log($"[AITest]   - {e.id}: {e.name} ({e.type})");
-                        }
-                    }
-                    // Fall back to x/y coordinates if element not found
+                    Debug.LogWarning($"[AITest] Search '{searchQueryJson}' found no elements!");
+                    // Fall back to x/y coordinates if search fails
                     if (x >= 0 && y >= 0)
                     {
                         action.ScreenPosition = new Vector2(x, y);
@@ -89,31 +84,112 @@ namespace ODDGames.UITest.AI
             }
             else if (x >= 0 && y >= 0)
             {
-                // Only use x/y if no element_id was provided
+                // Only use x/y if no search was provided
                 action.ScreenPosition = new Vector2(x, y);
-                Debug.Log($"[AITest] Using screen position (no element_id): ({x}, {y})");
+                Debug.Log($"[AITest] Using screen position (no search): ({x}, {y})");
             }
             else
             {
-                Debug.LogWarning("[AITest] Click action has no element_id and no screen position!");
+                Debug.LogWarning("[AITest] Click action has no search and no screen position!");
             }
 
             return action;
         }
 
+        /// <summary>
+        /// Finds an element using a SearchQuery object.
+        /// First tries to match against discovered elements, then falls back to live search.
+        /// </summary>
+        private static ElementInfo FindElementBySearchQuery(SearchQuery searchQuery, ScreenState screen)
+        {
+            if (searchQuery == null || screen == null)
+                return null;
+
+            // Convert SearchQuery to Search object
+            var search = searchQuery.ToSearch();
+            if (search == null)
+            {
+                Debug.LogWarning($"[AITest] Could not convert SearchQuery to Search: {searchQuery.ToJson()}");
+                return null;
+            }
+
+            // Execute the search against all GameObjects
+            var matchingObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)
+                .Where(go => search.Matches(go))
+                .ToList();
+
+            // Apply post-processing (First, Last, Skip, Take, etc.)
+            if (search.HasPostProcessing)
+            {
+                matchingObjects = search.ApplyPostProcessing(matchingObjects).ToList();
+            }
+
+            var queryJson = searchQuery.ToJson();
+
+            if (matchingObjects.Count == 0)
+            {
+                Debug.LogWarning($"[AITest] Search '{queryJson}' matched 0 elements");
+                return null;
+            }
+
+            if (matchingObjects.Count > 1)
+            {
+                Debug.LogWarning($"[AITest] Search '{queryJson}' matched {matchingObjects.Count} elements - using first. Consider using .First() or more specific filters.");
+            }
+
+            var go = matchingObjects.First();
+
+            // Find the corresponding ElementInfo if it exists
+            var elementInfo = screen.Elements?.FirstOrDefault(e => e.gameObject == go);
+            if (elementInfo != null)
+                return elementInfo;
+
+            // Create a new ElementInfo for the found GameObject
+            var bounds = InputInjector.GetScreenBounds(go);
+            return new ElementInfo
+            {
+                id = queryJson,
+                gameObject = go,
+                name = go.name,
+                type = "unknown",
+                bounds = bounds,
+                normalizedBounds = new Rect(
+                    bounds.x / Screen.width,
+                    bounds.y / Screen.height,
+                    bounds.width / Screen.width,
+                    bounds.height / Screen.height
+                ),
+                isEnabled = true
+            };
+        }
+
+        /// <summary>
+        /// Gets a SearchQuery from a tool call, throwing if there's a parse error.
+        /// </summary>
+        private static SearchQuery GetSearchQueryOrThrow(ToolCall call, string key)
+        {
+            var query = call.GetSearchQuery(key, out var error);
+            if (error != null)
+            {
+                throw new ArgumentException($"Invalid '{key}' search query: {error}");
+            }
+            return query;
+        }
+
         private static TypeAction ParseTypeAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new TypeAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQuery?.ToJson(),
                 Text = call.GetString("text", ""),
                 ClearFirst = call.Arguments.TryGetValue("clear_first", out var clear) ? Convert.ToBoolean(clear) : true,
                 PressEnter = call.Arguments.TryGetValue("press_enter", out var enter) && Convert.ToBoolean(enter)
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
 
             return action;
@@ -121,22 +197,24 @@ namespace ODDGames.UITest.AI
 
         private static DragAction ParseDragAction(ToolCall call, ScreenState screen)
         {
+            var fromSearch = GetSearchQueryOrThrow(call, "from");
+            var toSearch = GetSearchQueryOrThrow(call, "to");
             var action = new DragAction
             {
-                FromElementId = call.GetString("from_element_id"),
-                ToElementId = call.GetString("to_element_id"),
+                FromSearch = fromSearch?.ToJson(),
+                ToSearch = toSearch?.ToJson(),
                 Direction = call.GetString("direction"),
                 Distance = call.GetFloat("distance", 200f),
                 Duration = call.GetFloat("duration", 0.3f)
             };
 
-            if (!string.IsNullOrEmpty(action.FromElementId))
+            if (fromSearch != null)
             {
-                action.FromElement = screen?.FindElement(action.FromElementId);
+                action.FromElement = FindElementBySearchQuery(fromSearch, screen);
             }
-            if (!string.IsNullOrEmpty(action.ToElementId))
+            if (toSearch != null)
             {
-                action.ToElement = screen?.FindElement(action.ToElementId);
+                action.ToElement = FindElementBySearchQuery(toSearch, screen);
             }
 
             return action;
@@ -144,16 +222,17 @@ namespace ODDGames.UITest.AI
 
         private static ScrollAction ParseScrollAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new ScrollAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQuery?.ToJson(),
                 Direction = call.GetString("direction", "down"),
                 Amount = call.GetFloat("amount", 0.3f)
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
 
             return action;
@@ -169,17 +248,18 @@ namespace ODDGames.UITest.AI
 
         private static DoubleClickAction ParseDoubleClickAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new DoubleClickAction
             {
-                ElementId = call.GetString("element_id")
+                SearchQuery = searchQuery?.ToJson()
             };
 
             var x = call.GetFloat("x", -1f);
             var y = call.GetFloat("y", -1f);
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
             else if (x >= 0 && y >= 0)
             {
@@ -191,15 +271,16 @@ namespace ODDGames.UITest.AI
 
         private static HoldAction ParseHoldAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new HoldAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQuery?.ToJson(),
                 Duration = call.GetFloat("duration", 1f)
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
 
             return action;
@@ -207,17 +288,18 @@ namespace ODDGames.UITest.AI
 
         private static SwipeAction ParseSwipeAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new SwipeAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQuery?.ToJson(),
                 Direction = call.GetString("direction", "up"),
                 Distance = call.GetFloat("distance", 0.2f),
                 Duration = call.GetFloat("duration", 0.3f)
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
 
             return action;
@@ -225,16 +307,17 @@ namespace ODDGames.UITest.AI
 
         private static PinchAction ParsePinchAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new PinchAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQuery?.ToJson(),
                 Scale = call.GetFloat("scale", 1.5f),
                 Duration = call.GetFloat("duration", 0.5f)
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
 
             return action;
@@ -242,18 +325,19 @@ namespace ODDGames.UITest.AI
 
         private static TwoFingerSwipeAction ParseTwoFingerSwipeAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new TwoFingerSwipeAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQuery?.ToJson(),
                 Direction = call.GetString("direction", "up"),
                 Distance = call.GetFloat("distance", 0.2f),
                 Duration = call.GetFloat("duration", 0.3f),
                 FingerSpacing = call.GetFloat("finger_spacing", 0.03f)
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
 
             return action;
@@ -261,17 +345,18 @@ namespace ODDGames.UITest.AI
 
         private static RotateAction ParseRotateAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new RotateAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQuery?.ToJson(),
                 Degrees = call.GetFloat("degrees", 90f),
                 Duration = call.GetFloat("duration", 0.5f),
                 FingerDistance = call.GetFloat("finger_distance", 0.05f)
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
 
             return action;
@@ -279,15 +364,24 @@ namespace ODDGames.UITest.AI
 
         private static SetSliderAction ParseSetSliderAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
+            var searchQueryJson = searchQuery?.ToJson();
+            Debug.Log($"[AITest] ParseSetSliderAction: searchQuery={searchQueryJson}, value={call.GetFloat("value", 0.5f)}");
+
             var action = new SetSliderAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQueryJson,
                 Value = Mathf.Clamp01(call.GetFloat("value", 0.5f))
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
+                Debug.Log($"[AITest] ParseSetSliderAction: TargetElement={(action.TargetElement != null ? action.TargetElement.name : "null")}");
+            }
+            else
+            {
+                Debug.LogWarning("[AITest] ParseSetSliderAction: searchQuery is null!");
             }
 
             return action;
@@ -295,15 +389,16 @@ namespace ODDGames.UITest.AI
 
         private static SetScrollbarAction ParseSetScrollbarAction(ToolCall call, ScreenState screen)
         {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
             var action = new SetScrollbarAction
             {
-                ElementId = call.GetString("element_id"),
+                SearchQuery = searchQuery?.ToJson(),
                 Value = Mathf.Clamp01(call.GetFloat("value", 0.5f))
             };
 
-            if (!string.IsNullOrEmpty(action.ElementId))
+            if (searchQuery != null)
             {
-                action.TargetElement = screen?.FindElement(action.ElementId);
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
             }
 
             return action;
@@ -348,10 +443,22 @@ namespace ODDGames.UITest.AI
 
         /// <summary>
         /// Executes an AI action using Unity's Input System.
+        /// Captures screen state before and after to detect changes.
         /// </summary>
         public static async UniTask<ActionResult> ExecuteAsync(AIAction action, CancellationToken ct = default)
         {
             var startTime = Time.realtimeSinceStartup;
+
+            // Capture element state hash before action for change detection
+            string hashBefore = null;
+            try
+            {
+                hashBefore = ScreenHash.ComputeElementStateHash(ElementDiscovery.DiscoverElements());
+            }
+            catch
+            {
+                // Non-critical - just won't have before hash
+            }
 
             try
             {
@@ -430,10 +537,25 @@ namespace ODDGames.UITest.AI
                 // Brief delay after action for UI to update
                 await DelaySafe(50, ct);
 
+                // Capture element state hash after action
+                string hashAfter = null;
+                bool screenChanged = false;
+                try
+                {
+                    hashAfter = ScreenHash.ComputeElementStateHash(ElementDiscovery.DiscoverElements());
+                    screenChanged = hashBefore != null && hashAfter != null && hashBefore != hashAfter;
+                }
+                catch
+                {
+                    // Non-critical
+                }
+
                 return new ActionResult
                 {
                     Success = true,
-                    ExecutionTimeMs = (Time.realtimeSinceStartup - startTime) * 1000f
+                    ExecutionTimeMs = (Time.realtimeSinceStartup - startTime) * 1000f,
+                    ScreenHashAfter = hashAfter,
+                    ScreenChanged = screenChanged
                 };
             }
             catch (OperationCanceledException)
@@ -448,33 +570,23 @@ namespace ODDGames.UITest.AI
 
         private static async UniTask ExecuteClickAsync(ClickAction action, CancellationToken ct)
         {
-            Vector2 screenPos;
-
             if (action.ScreenPosition.HasValue)
             {
                 // Normalized position (0-1)
-                screenPos = new Vector2(
+                var screenPos = new Vector2(
                     action.ScreenPosition.Value.x * Screen.width,
                     action.ScreenPosition.Value.y * Screen.height
                 );
-                Debug.Log($"[AITest] Click using normalized position: ({action.ScreenPosition.Value.x:F2}, {action.ScreenPosition.Value.y:F2}) → screen {screenPos}");
+                await ActionExecutor.ClickAtAsync(screenPos);
             }
             else if (action.TargetElement?.gameObject != null)
             {
-                // Use the same screen position calculation as UITestBehaviour
-                screenPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
-                Debug.Log($"[AITest] Click using element '{action.TargetElement.id}' ({action.TargetElement.name}), screenPos: {screenPos}");
+                await ActionExecutor.ClickAsync(action.TargetElement.gameObject);
             }
             else
             {
-                Debug.LogError($"[AITest] Click action has no target! ElementId: {action.ElementId}, ScreenPosition: {action.ScreenPosition}");
                 throw new InvalidOperationException("Click action has no target position or element");
             }
-
-            // Use the shared InputInjector utility (same as UITestBehaviour)
-            Debug.Log($"[AITest] Injecting click at screen position: {screenPos} (screen size: {Screen.width}x{Screen.height})");
-            await InputInjector.InjectPointerTap(screenPos);
-            Debug.Log($"[AITest] Click injection complete at {screenPos}");
         }
 
         private static async UniTask ExecuteTypeAsync(TypeAction action, CancellationToken ct)
@@ -482,56 +594,38 @@ namespace ODDGames.UITest.AI
             if (action.TargetElement?.gameObject == null)
             {
                 // No target element, just type text directly
-                await InputInjector.TypeText(action.Text);
+                await ActionExecutor.TypeTextAsync(action.Text);
                 if (action.PressEnter)
                 {
                     await DelaySafe(50, ct);
-                    await InputInjector.PressKey(Key.Enter);
+                    await ActionExecutor.PressKeyAsync(Key.Enter);
                 }
                 return;
             }
 
-            Debug.Log($"[AITest] Typing into '{action.TargetElement.name}': \"{action.Text}\"");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.TypeIntoField(
-                action.TargetElement.gameObject,
-                action.Text,
-                clearFirst: action.ClearFirst,
-                pressEnter: action.PressEnter);
+            await ActionExecutor.TypeAsync(action.TargetElement.gameObject, action.Text, action.ClearFirst, action.PressEnter);
         }
 
         private static async UniTask ExecuteDragAsync(DragAction action, CancellationToken ct)
         {
-            Vector2 startPos;
-            Vector2 endPos;
-
-            if (action.FromElement?.gameObject != null)
-            {
-                startPos = InputInjector.GetScreenPosition(action.FromElement.gameObject);
-            }
-            else
+            if (action.FromElement?.gameObject == null)
             {
                 throw new InvalidOperationException("Drag action has no starting element");
             }
 
             if (action.ToElement?.gameObject != null)
             {
-                endPos = InputInjector.GetScreenPosition(action.ToElement.gameObject);
+                await ActionExecutor.DragToAsync(action.FromElement.gameObject, action.ToElement.gameObject, action.Duration);
             }
             else if (!string.IsNullOrEmpty(action.Direction))
             {
-                // Use shared helper for consistent distance scaling
-                var offset = InputInjector.GetDirectionOffset(action.Direction, action.Distance / Screen.height);
-                endPos = startPos + offset;
+                // Normalize distance to screen height fraction
+                await ActionExecutor.DragAsync(action.FromElement.gameObject, action.Direction, action.Distance / Screen.height, action.Duration);
             }
             else
             {
                 throw new InvalidOperationException("Drag action has no target or direction");
             }
-
-            Debug.Log($"[AITest] Injecting drag from {startPos} to {endPos} over {action.Duration}s");
-            await InputInjector.InjectPointerDrag(startPos, endPos, action.Duration);
         }
 
         private static async UniTask ExecuteScrollAsync(ScrollAction action, CancellationToken ct)
@@ -541,36 +635,27 @@ namespace ODDGames.UITest.AI
                 throw new InvalidOperationException("Scroll action has no target element");
             }
 
-            Debug.Log($"[AITest] Scrolling '{action.TargetElement.name}' {action.Direction}");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.ScrollElement(action.TargetElement.gameObject, action.Direction, action.Amount);
+            await ActionExecutor.ScrollAsync(action.TargetElement.gameObject, action.Direction, action.Amount);
         }
 
         private static async UniTask ExecuteDoubleClickAsync(DoubleClickAction action, CancellationToken ct)
         {
-            Vector2 screenPos;
-
             if (action.ScreenPosition.HasValue)
             {
-                screenPos = new Vector2(
+                var screenPos = new Vector2(
                     action.ScreenPosition.Value.x * Screen.width,
                     action.ScreenPosition.Value.y * Screen.height
                 );
+                await ActionExecutor.DoubleClickAtAsync(screenPos);
             }
             else if (action.TargetElement?.gameObject != null)
             {
-                screenPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
+                await ActionExecutor.DoubleClickAsync(action.TargetElement.gameObject);
             }
             else
             {
                 throw new InvalidOperationException("Double-click action has no target");
             }
-
-            // Double click = two rapid clicks
-            await InputInjector.InjectPointerTap(screenPos);
-            await DelaySafe(50, ct);
-            await InputInjector.InjectPointerTap(screenPos);
         }
 
         private static async UniTask ExecuteHoldAsync(HoldAction action, CancellationToken ct)
@@ -580,8 +665,7 @@ namespace ODDGames.UITest.AI
                 throw new InvalidOperationException("Hold action has no target element");
             }
 
-            var screenPos = InputInjector.GetScreenPosition(action.TargetElement.gameObject);
-            await InputInjector.InjectPointerHold(screenPos, action.Duration);
+            await ActionExecutor.HoldAsync(action.TargetElement.gameObject, action.Duration);
         }
 
         private static async UniTask ExecuteSwipeAsync(SwipeAction action, CancellationToken ct)
@@ -591,26 +675,17 @@ namespace ODDGames.UITest.AI
                 throw new InvalidOperationException("Swipe action has no target element");
             }
 
-            Debug.Log($"[AITest] Swiping {action.Direction} on '{action.TargetElement.name}'");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.Swipe(action.TargetElement.gameObject, action.Direction, action.Distance, action.Duration);
+            await ActionExecutor.SwipeAsync(action.TargetElement.gameObject, action.Direction, action.Distance, action.Duration);
         }
 
         private static async UniTask ExecutePinchAsync(PinchAction action, CancellationToken ct)
         {
-            Debug.Log($"[AITest] Pinch {(action.Scale < 1 ? "in" : "out")} {action.Scale:F1}x on '{action.TargetElement?.name ?? "screen"}'");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.Pinch(action.TargetElement?.gameObject, action.Scale, action.Duration);
+            await ActionExecutor.PinchAsync(action.TargetElement?.gameObject, action.Scale, action.Duration);
         }
 
         private static async UniTask ExecuteTwoFingerSwipeAsync(TwoFingerSwipeAction action, CancellationToken ct)
         {
-            Debug.Log($"[AITest] Two-finger swipe {action.Direction} on '{action.TargetElement?.name ?? "screen"}'");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.TwoFingerSwipe(
+            await ActionExecutor.TwoFingerSwipeAsync(
                 action.TargetElement?.gameObject,
                 action.Direction,
                 action.Distance,
@@ -620,10 +695,7 @@ namespace ODDGames.UITest.AI
 
         private static async UniTask ExecuteRotateAsync(RotateAction action, CancellationToken ct)
         {
-            Debug.Log($"[AITest] Rotate {(action.Degrees >= 0 ? "CW" : "CCW")} {Mathf.Abs(action.Degrees)}° on '{action.TargetElement?.name ?? "screen"}'");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.Rotate(
+            await ActionExecutor.RotateAsync(
                 action.TargetElement?.gameObject,
                 action.Degrees,
                 action.Duration,
@@ -640,14 +712,11 @@ namespace ODDGames.UITest.AI
             var slider = action.TargetElement.gameObject.GetComponent<Slider>();
             if (slider == null)
             {
-                throw new InvalidOperationException($"Element {action.ElementId} is not a Slider");
+                throw new InvalidOperationException($"Element {action.SearchQuery} is not a Slider");
             }
 
-            Debug.Log($"[AITest] SetSlider '{action.TargetElement.name}' to {action.Value:P0}");
-
-            // Use shared InputInjector helper for consistent behavior
             // AI sends value as 0-1 normalized
-            await InputInjector.SetSlider(slider, action.Value);
+            await ActionExecutor.SetSliderAsync(slider, action.Value);
         }
 
         private static async UniTask ExecuteSetScrollbarAsync(SetScrollbarAction action, CancellationToken ct)
@@ -660,21 +729,18 @@ namespace ODDGames.UITest.AI
             var scrollbar = action.TargetElement.gameObject.GetComponent<Scrollbar>();
             if (scrollbar == null)
             {
-                throw new InvalidOperationException($"Element {action.ElementId} is not a Scrollbar");
+                throw new InvalidOperationException($"Element {action.SearchQuery} is not a Scrollbar");
             }
 
-            Debug.Log($"[AITest] SetScrollbar '{action.TargetElement.name}' to {action.Value:P0}");
-
-            // Use shared InputInjector helper for consistent behavior
             // AI sends value as 0-1 normalized
-            await InputInjector.SetScrollbar(scrollbar, action.Value);
+            await ActionExecutor.SetScrollbarAsync(scrollbar, action.Value);
         }
 
         private static async UniTask ExecuteKeyPressAsync(KeyPressAction action, CancellationToken ct)
         {
             if (Enum.TryParse<Key>(action.Key, true, out var key))
             {
-                await InputInjector.PressKey(key);
+                await ActionExecutor.PressKeyAsync(key);
             }
             else
             {
@@ -699,7 +765,7 @@ namespace ODDGames.UITest.AI
 
             if (keys.Count > 0)
             {
-                await InputInjector.HoldKeys(keys.ToArray(), action.Duration);
+                await ActionExecutor.HoldKeysAsync(keys.ToArray(), action.Duration);
             }
         }
 
