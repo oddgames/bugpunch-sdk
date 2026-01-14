@@ -2,10 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.33] - 2026-01-14
+
+### Fixed
+- **Fixed `Near()` with direction filtering** - Now correctly matches all elements in the specified direction
+  - `Near("Center Flag", Direction.Below)` matches ALL elements below the anchor text, ordered by distance
+  - The first result from `Find()` is always the closest element
+  - Combined with `Text()`, enables reliable selection of duplicates: `Near("Center Flag", Direction.Below).Text("Mask")`
+  - Fixes regression from v1.0.32 where `Near()` was completely broken
+
+### Changed
+- **`Near()` behavior clarified** - Matches all elements in direction, orders by distance
+  - `Matches()` returns true for ALL elements in the specified direction (not just the closest)
+  - `Find()` returns results ordered by distance, so the closest element comes first
+  - Use `First()` to ensure only the closest is selected: `Near("Label", Direction.Below).First()`
+
 ## [1.0.32] - 2026-01-14
 
 ### Changed
-- **Simplified `Near()` implementation** - Now returns multiple matches ordered by distance
+- **Simplified `Near()` implementation** - BROKEN (fixed in v1.0.33)
   - Removes complex `IsNearestElementToText` check that was causing incorrect filtering
   - Results are ordered by distance to anchor text (closest first)
   - When combined with other filters like `Text()`, the closest matching element is returned first
