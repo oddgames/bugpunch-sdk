@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.32] - 2026-01-14
+
+### Changed
+- **Simplified `Near()` implementation** - Now returns multiple matches ordered by distance
+  - Removes complex `IsNearestElementToText` check that was causing incorrect filtering
+  - Results are ordered by distance to anchor text (closest first)
+  - When combined with other filters like `Text()`, the closest matching element is returned first
+  - Example: `Text("Mask").Near("Right Flag", Direction.Below)` returns all "Mask" elements below "Right Flag", closest first
+
 ## [1.0.31] - 2026-01-14
 
 ### Added
