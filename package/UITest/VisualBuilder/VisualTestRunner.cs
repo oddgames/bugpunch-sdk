@@ -350,9 +350,7 @@ namespace ODDGames.UITest.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Click target not found: {GetSelectorDisplay(block.target)}");
 
-            var screenPos = InputInjector.GetScreenPosition(element.gameObject);
-            Debug.Log($"[VisualTestRunner] Click at {screenPos} on '{element.name}'");
-            await InputInjector.InjectPointerTap(screenPos);
+            await ActionExecutor.ClickAsync(element.gameObject);
         }
 
         private static async UniTask ExecuteDoubleClickAsync(VisualBlock block, CancellationToken ct)
@@ -361,13 +359,7 @@ namespace ODDGames.UITest.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"DoubleClick target not found: {GetSelectorDisplay(block.target)}");
 
-            var screenPos = InputInjector.GetScreenPosition(element.gameObject);
-            Debug.Log($"[VisualTestRunner] DoubleClick at {screenPos} on '{element.name}'");
-
-            // Perform two quick clicks
-            await InputInjector.InjectPointerTap(screenPos);
-            await UniTask.Delay(50, cancellationToken: ct);
-            await InputInjector.InjectPointerTap(screenPos);
+            await ActionExecutor.DoubleClickAsync(element.gameObject);
         }
 
         private static async UniTask ExecuteHoldAsync(VisualBlock block, CancellationToken ct)
@@ -376,9 +368,7 @@ namespace ODDGames.UITest.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Hold target not found: {GetSelectorDisplay(block.target)}");
 
-            var screenPos = InputInjector.GetScreenPosition(element.gameObject);
-            Debug.Log($"[VisualTestRunner] Hold at {screenPos} on '{element.name}' for {block.holdSeconds}s");
-            await InputInjector.InjectPointerHold(screenPos, block.holdSeconds);
+            await ActionExecutor.HoldAsync(element.gameObject, block.holdSeconds);
         }
 
         private static async UniTask ExecuteTypeAsync(VisualBlock block, CancellationToken ct)
@@ -387,14 +377,7 @@ namespace ODDGames.UITest.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Type target not found: {GetSelectorDisplay(block.target)}");
 
-            Debug.Log($"[VisualTestRunner] Typing into '{element.name}': \"{block.text}\"");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.TypeIntoField(
-                element.gameObject,
-                block.text,
-                clearFirst: block.clearFirst,
-                pressEnter: block.pressEnter);
+            await ActionExecutor.TypeAsync(element.gameObject, block.text, block.clearFirst, block.pressEnter);
         }
 
         private static async UniTask ExecuteDragAsync(VisualBlock block, CancellationToken ct)
@@ -403,10 +386,7 @@ namespace ODDGames.UITest.VisualBuilder
             if (fromElement?.gameObject == null)
                 throw new InvalidOperationException($"Drag source not found: {GetSelectorDisplay(block.target)}");
 
-            var startPos = InputInjector.GetScreenPosition(fromElement.gameObject);
-            Vector2 endPos;
-
-            // Determine end position
+            // Determine end position and execute drag
             if (block.dragTarget != null && block.dragTarget.IsValid())
             {
                 // Drag to another element
@@ -414,21 +394,17 @@ namespace ODDGames.UITest.VisualBuilder
                 if (toElement?.gameObject == null)
                     throw new InvalidOperationException($"Drag target not found: {GetSelectorDisplay(block.dragTarget)}");
 
-                endPos = InputInjector.GetScreenPosition(toElement.gameObject);
+                await ActionExecutor.DragToAsync(fromElement.gameObject, toElement.gameObject, block.dragDuration);
             }
             else if (!string.IsNullOrEmpty(block.dragDirection))
             {
-                // Directional drag - use shared helper for consistent distance scaling
-                var offset = InputInjector.GetDirectionOffset(block.dragDirection, block.dragDistance);
-                endPos = startPos + offset;
+                // Directional drag
+                await ActionExecutor.DragAsync(fromElement.gameObject, block.dragDirection, block.dragDistance, block.dragDuration);
             }
             else
             {
                 throw new InvalidOperationException("Drag block has no target or direction specified");
             }
-
-            Debug.Log($"[VisualTestRunner] Dragging from {startPos} to {endPos} over {block.dragDuration}s");
-            await InputInjector.InjectPointerDrag(startPos, endPos, block.dragDuration);
         }
 
         private static async UniTask ExecuteScrollAsync(VisualBlock block, CancellationToken ct)
@@ -437,10 +413,7 @@ namespace ODDGames.UITest.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Scroll target not found: {GetSelectorDisplay(block.target)}");
 
-            Debug.Log($"[VisualTestRunner] Scrolling '{element.name}' {block.scrollDirection}");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.ScrollElement(element.gameObject, block.scrollDirection, block.scrollAmount);
+            await ActionExecutor.ScrollAsync(element.gameObject, block.scrollDirection, block.scrollAmount);
         }
 
         private static async UniTask ExecuteWaitAsync(VisualBlock block, CancellationToken ct)
@@ -584,11 +557,11 @@ namespace ODDGames.UITest.VisualBuilder
 
             if (keys.Count == 1)
             {
-                await InputInjector.HoldKey(keys[0], block.keyHoldDuration);
+                await ActionExecutor.HoldKeyAsync(keys[0], block.keyHoldDuration);
             }
             else
             {
-                await InputInjector.HoldKeys(keys.ToArray(), block.keyHoldDuration);
+                await ActionExecutor.HoldKeysAsync(keys.ToArray(), block.keyHoldDuration);
             }
         }
 
@@ -601,7 +574,7 @@ namespace ODDGames.UITest.VisualBuilder
             }
 
             Debug.Log($"[VisualTestRunner] Pressing key: {key}");
-            await InputInjector.PressKey(key);
+            await ActionExecutor.PressKeyAsync(key);
         }
 
         private static async UniTask ExecuteWaitForElementAsync(VisualBlock block, CancellationToken ct)
@@ -722,10 +695,9 @@ namespace ODDGames.UITest.VisualBuilder
             if (slider == null)
                 throw new InvalidOperationException($"Element '{element.name}' is not a Slider");
 
-            // Convert percentage (0-100) to normalized (0-1) and use shared helper
+            // Convert percentage (0-100) to normalized (0-1)
             var normalizedValue = block.sliderValue / 100f;
-            Debug.Log($"[VisualTestRunner] SetSlider '{element.name}' to {block.sliderValue}%");
-            await InputInjector.SetSlider(slider, normalizedValue);
+            await ActionExecutor.SetSliderAsync(slider, normalizedValue);
         }
 
         private static async UniTask ExecuteSetScrollbarAsync(VisualBlock block, CancellationToken ct)
@@ -738,10 +710,9 @@ namespace ODDGames.UITest.VisualBuilder
             if (scrollbar == null)
                 throw new InvalidOperationException($"Element '{element.name}' is not a Scrollbar");
 
-            // Convert percentage (0-100) to normalized (0-1) and use shared helper
+            // Convert percentage (0-100) to normalized (0-1)
             var normalizedValue = block.scrollbarValue / 100f;
-            Debug.Log($"[VisualTestRunner] SetScrollbar '{element.name}' to {block.scrollbarValue}%");
-            await InputInjector.SetScrollbar(scrollbar, normalizedValue);
+            await ActionExecutor.SetScrollbarAsync(scrollbar, normalizedValue);
         }
 
         private static async UniTask ExecuteSwipeAsync(VisualBlock block, CancellationToken ct)
@@ -750,10 +721,7 @@ namespace ODDGames.UITest.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Swipe target not found: {GetSelectorDisplay(block.target)}");
 
-            Debug.Log($"[VisualTestRunner] Swipe {block.swipeDirection} on '{element.name}'");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.Swipe(element.gameObject, block.swipeDirection, block.swipeDistance, block.swipeDuration);
+            await ActionExecutor.SwipeAsync(element.gameObject, block.swipeDirection, block.swipeDistance, block.swipeDuration);
         }
 
         private static async UniTask ExecutePinchAsync(VisualBlock block, CancellationToken ct)
@@ -763,24 +731,18 @@ namespace ODDGames.UITest.VisualBuilder
             // Block supports explicit center position override
             if (block.pinchCenterPosition.HasValue)
             {
-                Debug.Log($"[VisualTestRunner] Pinch {(block.pinchScale < 1 ? "in" : "out")} {block.pinchScale:F1}x at explicit position");
-                await InputInjector.InjectPinch(block.pinchCenterPosition.Value, block.pinchScale, block.pinchDuration);
+                await ActionExecutor.PinchAtAsync(block.pinchCenterPosition.Value, block.pinchScale, block.pinchDuration);
                 return;
             }
 
-            Debug.Log($"[VisualTestRunner] Pinch {(block.pinchScale < 1 ? "in" : "out")} {block.pinchScale:F1}x on '{element?.name ?? "screen"}'");
-
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.Pinch(element?.gameObject, block.pinchScale, block.pinchDuration);
+            await ActionExecutor.PinchAsync(element?.gameObject, block.pinchScale, block.pinchDuration);
         }
 
         private static async UniTask ExecuteTwoFingerSwipeAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
-            Debug.Log($"[VisualTestRunner] Two-finger swipe {block.swipeDirection} on '{element?.name ?? "screen"}'");
 
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.TwoFingerSwipe(
+            await ActionExecutor.TwoFingerSwipeAsync(
                 element?.gameObject,
                 block.swipeDirection,
                 block.swipeDistance,
@@ -791,10 +753,8 @@ namespace ODDGames.UITest.VisualBuilder
         private static async UniTask ExecuteRotateAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
-            Debug.Log($"[VisualTestRunner] Rotate {(block.rotateDegrees >= 0 ? "CW" : "CCW")} {Mathf.Abs(block.rotateDegrees)}° on '{element?.name ?? "screen"}'");
 
-            // Use shared InputInjector helper for consistent behavior
-            await InputInjector.Rotate(
+            await ActionExecutor.RotateAsync(
                 element?.gameObject,
                 block.rotateDegrees,
                 block.rotateDuration,
@@ -1125,27 +1085,29 @@ namespace ODDGames.UITest.VisualBuilder
             if (elements == null || elements.Count == 0)
                 return null;
 
-            switch (selector.type)
+            // Convert selector to Search and execute
+            var search = selector.ToSearch();
+            if (search == null)
+                return null;
+
+            // Find all matching GameObjects
+            var matchingObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)
+                .Where(go => search.Matches(go))
+                .ToList();
+
+            // Apply post-processing (First, Last, Skip, Take, etc.)
+            if (search.HasPostProcessing)
             {
-                case SelectorType.ById:
-                    return ElementDiscovery.FindElementById(elements, selector.elementId);
-
-                case SelectorType.ByName:
-                    return FindByNamePattern(elements, selector.pattern);
-
-                case SelectorType.ByText:
-                    return FindByTextPattern(elements, selector.pattern);
-
-                case SelectorType.ByType:
-                    var typeMatches = ElementDiscovery.FindElementsByType(elements, selector.pattern);
-                    return typeMatches.Count > 0 ? typeMatches[0] : null;
-
-                case SelectorType.ByPath:
-                    return FindByPath(elements, selector.pattern);
-
-                default:
-                    return null;
+                matchingObjects = search.ApplyPostProcessing(matchingObjects).ToList();
             }
+
+            if (matchingObjects.Count == 0)
+                return null;
+
+            var go = matchingObjects.First();
+
+            // Find the corresponding ElementInfo if it exists
+            return elements.FirstOrDefault(e => e.gameObject == go);
         }
 
         private static ElementInfo FindByNamePattern(List<ElementInfo> elements, string pattern)

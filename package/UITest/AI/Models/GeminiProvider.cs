@@ -264,26 +264,7 @@ namespace ODDGames.UITest.AI
                 {
                     foreach (var prop in tool.Parameters.Properties)
                     {
-                        var propDef = new Dictionary<string, object>
-                        {
-                            ["type"] = MapType(prop.Value.Type),
-                            ["description"] = prop.Value.Description
-                        };
-
-                        if (prop.Value.Enum != null && prop.Value.Enum.Count > 0)
-                        {
-                            propDef["enum"] = prop.Value.Enum;
-                        }
-
-                        if (prop.Value.Items != null)
-                        {
-                            propDef["items"] = new Dictionary<string, object>
-                            {
-                                ["type"] = MapType(prop.Value.Items.Type)
-                            };
-                        }
-
-                        properties[prop.Key] = propDef;
+                        properties[prop.Key] = BuildPropertySchema(prop.Value);
                     }
                 }
 
@@ -301,6 +282,48 @@ namespace ODDGames.UITest.AI
             }
 
             return new { functionDeclarations = functionDeclarations };
+        }
+
+        private Dictionary<string, object> BuildPropertySchema(ToolProperty prop)
+        {
+            var propDef = new Dictionary<string, object>
+            {
+                ["type"] = MapType(prop.Type)
+            };
+
+            if (!string.IsNullOrEmpty(prop.Description))
+            {
+                propDef["description"] = prop.Description;
+            }
+
+            if (prop.Enum != null && prop.Enum.Count > 0)
+            {
+                propDef["enum"] = prop.Enum;
+            }
+
+            // Handle array items
+            if (prop.Items != null)
+            {
+                propDef["items"] = BuildPropertySchema(prop.Items);
+            }
+
+            // Handle nested object properties
+            if (prop.Properties != null && prop.Properties.Count > 0)
+            {
+                var nestedProps = new Dictionary<string, object>();
+                foreach (var nested in prop.Properties)
+                {
+                    nestedProps[nested.Key] = BuildPropertySchema(nested.Value);
+                }
+                propDef["properties"] = nestedProps;
+
+                if (prop.Required != null && prop.Required.Count > 0)
+                {
+                    propDef["required"] = prop.Required;
+                }
+            }
+
+            return propDef;
         }
 
         private string MapType(string type) => type?.ToUpperInvariant() switch

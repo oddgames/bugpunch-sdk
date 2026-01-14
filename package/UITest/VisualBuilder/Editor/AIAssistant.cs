@@ -250,12 +250,12 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             {
                 case ClickAction click:
                     block.type = BlockType.Click;
-                    block.target = CreateSelector(click.ElementId, click.TargetElement);
+                    block.target = CreateSelector(click.SearchQuery, click.TargetElement);
                     break;
 
                 case TypeAction type:
                     block.type = BlockType.Type;
-                    block.target = CreateSelector(type.ElementId, type.TargetElement);
+                    block.target = CreateSelector(type.SearchQuery, type.TargetElement);
                     block.text = type.Text;
                     block.clearFirst = type.ClearFirst;
                     block.pressEnter = type.PressEnter;
@@ -263,10 +263,10 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
                 case DragAction drag:
                     block.type = BlockType.Drag;
-                    block.target = CreateSelector(drag.FromElementId, drag.FromElement);
-                    if (drag.ToElement != null || !string.IsNullOrEmpty(drag.ToElementId))
+                    block.target = CreateSelector(drag.FromSearch, drag.FromElement);
+                    if (drag.ToElement != null || !string.IsNullOrEmpty(drag.ToSearch))
                     {
-                        block.dragTarget = CreateSelector(drag.ToElementId, drag.ToElement);
+                        block.dragTarget = CreateSelector(drag.ToSearch, drag.ToElement);
                     }
                     else
                     {
@@ -278,7 +278,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
                 case ScrollAction scroll:
                     block.type = BlockType.Scroll;
-                    block.target = CreateSelector(scroll.ElementId, scroll.TargetElement);
+                    block.target = CreateSelector(scroll.SearchQuery, scroll.TargetElement);
                     block.scrollDirection = scroll.Direction;
                     block.scrollAmount = scroll.Amount;
                     break;
@@ -290,12 +290,12 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
                 case DoubleClickAction doubleClick:
                     block.type = BlockType.DoubleClick;
-                    block.target = CreateSelector(doubleClick.ElementId, doubleClick.TargetElement);
+                    block.target = CreateSelector(doubleClick.SearchQuery, doubleClick.TargetElement);
                     break;
 
                 case HoldAction hold:
                     block.type = BlockType.Hold;
-                    block.target = CreateSelector(hold.ElementId, hold.TargetElement);
+                    block.target = CreateSelector(hold.SearchQuery, hold.TargetElement);
                     block.holdSeconds = hold.Duration;
                     break;
 
@@ -312,19 +312,19 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
                 case SetSliderAction setSlider:
                     block.type = BlockType.SetSlider;
-                    block.target = CreateSelector(setSlider.ElementId, setSlider.TargetElement);
+                    block.target = CreateSelector(setSlider.SearchQuery, setSlider.TargetElement);
                     block.sliderValue = setSlider.Value * 100f; // Convert 0-1 to 0-100
                     break;
 
                 case SetScrollbarAction setScrollbar:
                     block.type = BlockType.SetScrollbar;
-                    block.target = CreateSelector(setScrollbar.ElementId, setScrollbar.TargetElement);
+                    block.target = CreateSelector(setScrollbar.SearchQuery, setScrollbar.TargetElement);
                     block.scrollbarValue = setScrollbar.Value * 100f; // Convert 0-1 to 0-100
                     break;
 
                 case SwipeAction swipe:
                     block.type = BlockType.Swipe;
-                    block.target = CreateSelector(swipe.ElementId, swipe.TargetElement);
+                    block.target = CreateSelector(swipe.SearchQuery, swipe.TargetElement);
                     block.swipeDirection = swipe.Direction;
                     block.swipeDistance = swipe.Distance;
                     block.swipeDuration = swipe.Duration;
@@ -332,14 +332,14 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
                 case PinchAction pinch:
                     block.type = BlockType.Pinch;
-                    block.target = CreateSelector(pinch.ElementId, pinch.TargetElement);
+                    block.target = CreateSelector(pinch.SearchQuery, pinch.TargetElement);
                     block.pinchScale = pinch.Scale;
                     block.pinchDuration = pinch.Duration;
                     break;
 
                 case TwoFingerSwipeAction twoFingerSwipe:
                     block.type = BlockType.TwoFingerSwipe;
-                    block.target = CreateSelector(twoFingerSwipe.ElementId, twoFingerSwipe.TargetElement);
+                    block.target = CreateSelector(twoFingerSwipe.SearchQuery, twoFingerSwipe.TargetElement);
                     block.swipeDirection = twoFingerSwipe.Direction;
                     block.swipeDistance = twoFingerSwipe.Distance;
                     block.swipeDuration = twoFingerSwipe.Duration;
@@ -348,7 +348,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
                 case RotateAction rotate:
                     block.type = BlockType.Rotate;
-                    block.target = CreateSelector(rotate.ElementId, rotate.TargetElement);
+                    block.target = CreateSelector(rotate.SearchQuery, rotate.TargetElement);
                     block.rotateDegrees = rotate.Degrees;
                     block.rotateDuration = rotate.Duration;
                     block.rotateFingerDistance = rotate.FingerDistance;
@@ -361,8 +361,25 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             return block;
         }
 
-        private ElementSelector CreateSelector(string elementId, ElementInfo elementInfo)
+        private ElementSelector CreateSelector(string searchQuery, ElementInfo elementInfo)
         {
+            // PREFER the SearchQuery JSON - it contains the full chain information
+            // that the AI used (e.g., Name("Settings").Near("Volume"))
+            if (!string.IsNullOrEmpty(searchQuery))
+            {
+                var selector = ElementSelector.FromJson(searchQuery);
+                if (selector != null)
+                {
+                    // Use element info for display name if available
+                    if (elementInfo != null)
+                    {
+                        selector.displayName = null; // Let GetDisplayText() generate from query
+                    }
+                    return selector;
+                }
+            }
+
+            // Fall back to using the resolved ElementInfo if no query
             if (elementInfo != null)
             {
                 if (!string.IsNullOrEmpty(elementInfo.text))
@@ -372,8 +389,11 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     return ElementSelector.ByName(elementInfo.name, elementInfo.name);
             }
 
-            if (!string.IsNullOrEmpty(elementId))
-                return ElementSelector.ById(elementId, elementId);
+            // Last resort - if searchQuery isn't valid JSON, try using it as name pattern
+            if (!string.IsNullOrEmpty(searchQuery))
+            {
+                return ElementSelector.ByName(searchQuery, searchQuery);
+            }
 
             return null;
         }

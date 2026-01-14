@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.31] - 2026-01-14
+
+### Added
+- **`ActionExecutor` class** - Unified action execution layer for all test runners
+  - UITestBehaviour, VisualTestRunner, and AIActionExecutor now share the same action execution code
+  - Ensures consistent behavior across all test execution paths
+  - Static async methods for all input actions (Click, Type, Drag, etc.)
+
+### Fixed
+- **`Near()` and `Adjacent()` with duplicate text labels** - Correctly handles UI with repeated text
+  - When multiple text labels match (e.g., "Mask" under both "Center Flag" and "Right Flag" sections)
+  - Now finds the closest matching anchor text to the candidate element first
+  - Then verifies the element is the nearest to that specific anchor
+  - Both query orderings work: `Near("Right Flag").Text("Mask")` and `Text("Mask").Near("Right Flag")`
+
+### Removed
+- **`SearchMethodTests.cs`** - Moved all tests to PlayMode tests in `SearchPlayModeTests.cs`
+
 ## [1.0.30] - 2026-01-13
 
 ### Changed

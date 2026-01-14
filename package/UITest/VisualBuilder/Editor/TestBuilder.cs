@@ -842,16 +842,19 @@ namespace ODDGames.UITest.VisualBuilder.Editor
 
         private void BuildRowContent(VisualElement row, VisualBlock block, int index, bool isEditing)
         {
-            var canEdit = EditorApplication.isPlaying && isEditing;
+            // Allow target button editing when isEditing (even outside play mode for AI-created blocks)
+            // But visual picking requires play mode
+            var canEditTarget = isEditing;
+            var canVisualPick = EditorApplication.isPlaying && isEditing;
 
             switch (block.type)
             {
                 case BlockType.Click:
-                    AddTargetButton(row, block, index, canEdit, 150);
+                    AddTargetButton(row, block, index, canEditTarget, 200, isEditing);
                     break;
 
                 case BlockType.Type:
-                    AddTargetButton(row, block, index, canEdit, 80);
+                    AddTargetButton(row, block, index, canEditTarget, 120, isEditing);
                     var txt = new TextField { value = block.text ?? "" };
                     txt.style.width = 80; txt.style.height = 16; txt.style.fontSize = 10;
                     txt.SetEnabled(isEditing);
@@ -879,7 +882,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.Assert:
-                    AddTargetButton(row, block, index, canEdit, 80);
+                    AddTargetButton(row, block, index, canEditTarget, 120, isEditing);
                     if (isEditing)
                     {
                         var conds = new List<string> { "exists", "!exists", "=text", "~text" };
@@ -903,13 +906,13 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.Drag:
-                    AddTargetButton(row, block, index, canEdit, 60);
+                    AddTargetButton(row, block, index, canEditTarget, 100, isEditing);
                     row.Add(new Label("→") { style = { marginLeft = 2, marginRight = 2 } });
                     if (block.dragTarget != null && block.dragTarget.IsValid())
                     {
                         var toBtn = new Button(() => ShowDragTargetPicker(block, index)) { text = block.dragTarget.GetDisplayText() };
-                        toBtn.style.maxWidth = 60; toBtn.style.height = 16; toBtn.style.fontSize = 10;
-                        toBtn.SetEnabled(canEdit);
+                        toBtn.style.maxWidth = 100; toBtn.style.height = 16; toBtn.style.fontSize = 10;
+                        toBtn.SetEnabled(canEditTarget);
                         row.Add(toBtn);
                     }
                     else
@@ -942,7 +945,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.Scroll:
-                    AddTargetButton(row, block, index, canEdit, 80);
+                    AddTargetButton(row, block, index, canEditTarget, 120, isEditing);
                     if (isEditing)
                     {
                         var dirs = new List<string> { "up", "down", "left", "right" };
@@ -958,11 +961,11 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.DoubleClick:
-                    AddTargetButton(row, block, index, canEdit, 150);
+                    AddTargetButton(row, block, index, canEditTarget, 200, isEditing);
                     break;
 
                 case BlockType.SetSlider:
-                    AddTargetButton(row, block, index, canEdit, 100);
+                    AddTargetButton(row, block, index, canEditTarget, 160, isEditing);
                     if (isEditing)
                     {
                         var sliderVal = new FloatField { value = block.sliderValue };
@@ -978,7 +981,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.SetScrollbar:
-                    AddTargetButton(row, block, index, canEdit, 100);
+                    AddTargetButton(row, block, index, canEditTarget, 160, isEditing);
                     if (isEditing)
                     {
                         var scrollbarVal = new FloatField { value = block.scrollbarValue };
@@ -994,7 +997,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.Hold:
-                    AddTargetButton(row, block, index, canEdit, 100);
+                    AddTargetButton(row, block, index, canEditTarget, 160, isEditing);
                     var hf = new FloatField { value = block.holdSeconds };
                     hf.style.width = 35; hf.style.height = 16;
                     hf.SetEnabled(isEditing);
@@ -1045,7 +1048,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.WaitForElement:
-                    AddTargetButton(row, block, index, canEdit, 100);
+                    AddTargetButton(row, block, index, canEditTarget, 160, isEditing);
                     var tf = new FloatField { value = block.waitTimeout };
                     tf.style.width = 35; tf.style.height = 16;
                     tf.SetEnabled(isEditing);
@@ -1057,10 +1060,10 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 case BlockType.ScrollUntil:
                     // Target element to find
                     row.Add(new Label("Find:") { style = { fontSize = 10 } });
-                    AddTargetButton(row, block, index, canEdit, 80);
+                    AddTargetButton(row, block, index, canEditTarget, 100, isEditing);
                     // Scroll container (optional)
                     row.Add(new Label("In:") { style = { fontSize = 10, marginLeft = 4 } });
-                    AddScrollContainerButton(row, block, index, canEdit, 70);
+                    AddScrollContainerButton(row, block, index, canEditTarget, 80);
                     // Max attempts
                     var maxf = new IntegerField { value = block.scrollMaxAttempts };
                     maxf.style.width = 30; maxf.style.height = 16;
@@ -1101,7 +1104,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.Swipe:
-                    AddTargetButton(row, block, index, canEdit, 60);
+                    AddTargetButton(row, block, index, canEditTarget, 100, isEditing);
                     if (isEditing)
                     {
                         var dirs = new List<string> { "up", "down", "left", "right" };
@@ -1122,7 +1125,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.Pinch:
-                    AddTargetButton(row, block, index, canEdit, 60);
+                    AddTargetButton(row, block, index, canEditTarget, 100, isEditing);
                     if (isEditing)
                     {
                         var scale = new FloatField { value = block.pinchScale };
@@ -1143,7 +1146,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.TwoFingerSwipe:
-                    AddTargetButton(row, block, index, canEdit, 60);
+                    AddTargetButton(row, block, index, canEditTarget, 100, isEditing);
                     if (isEditing)
                     {
                         var dirs = new List<string> { "up", "down", "left", "right" };
@@ -1164,7 +1167,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.Rotate:
-                    AddTargetButton(row, block, index, canEdit, 60);
+                    AddTargetButton(row, block, index, canEditTarget, 100, isEditing);
                     if (isEditing)
                     {
                         var deg = new FloatField { value = block.rotateDegrees };
@@ -1185,7 +1188,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     break;
 
                 case BlockType.ForEach:
-                    AddTargetButton(row, block, index, canEdit, 80);
+                    AddTargetButton(row, block, index, canEditTarget, 120, isEditing);
                     if (isEditing)
                     {
                         row.Add(new Label("as") { style = { fontSize = 9, marginLeft = 2 } });
@@ -1211,18 +1214,403 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             }
         }
 
-        private void AddTargetButton(VisualElement row, VisualBlock block, int index, bool canEdit, int maxWidth)
+        private void AddTargetButton(VisualElement row, VisualBlock block, int index, bool canEdit, int maxWidth, bool canEditChain = false)
         {
             var hasValidTarget = block.target != null && block.target.IsValid();
-            var btn = new Button(() => ShowTargetPicker(block, index))
+            // Allow chain editing if canEdit is true OR if canEditChain is explicitly true
+            var chainEditable = canEdit || canEditChain;
+
+            // Build full display text including chain
+            var displayText = hasValidTarget ? GetFullTargetDisplay(block.target) : "[target]";
+
+            // Target label - shows full chain inline (clickable when editing)
+            var targetLabel = new Label(displayText);
+            targetLabel.style.fontSize = 10;
+            targetLabel.style.color = hasValidTarget ? Color.white : new Color(0.5f, 0.5f, 0.5f);
+            targetLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+            targetLabel.style.overflow = Overflow.Hidden;
+            targetLabel.style.textOverflow = TextOverflow.Ellipsis;
+            targetLabel.style.maxWidth = maxWidth;
+            targetLabel.style.paddingLeft = 4;
+            targetLabel.style.paddingRight = 4;
+            targetLabel.style.marginRight = 2;
+
+            if (canEdit)
             {
-                text = hasValidTarget ? block.target.GetDisplayText() : "[target]"
+                // Make it look clickable when editing
+                targetLabel.style.backgroundColor = new Color(0.25f, 0.25f, 0.3f);
+                targetLabel.style.borderTopLeftRadius = 3;
+                targetLabel.style.borderTopRightRadius = 3;
+                targetLabel.style.borderBottomLeftRadius = 3;
+                targetLabel.style.borderBottomRightRadius = 3;
+                targetLabel.RegisterCallback<ClickEvent>(evt => ShowTargetPicker(block, index));
+            }
+
+            row.Add(targetLabel);
+
+            // Always show "+" button when editing and have a valid target
+            if (chainEditable && hasValidTarget)
+            {
+                var chainBtn = new Button(() => ShowChainPicker(block, index))
+                {
+                    text = "+",
+                    tooltip = "Add search chain filter"
+                };
+                chainBtn.style.width = 18;
+                chainBtn.style.height = 16;
+                chainBtn.style.fontSize = 11;
+                chainBtn.style.marginLeft = 0;
+                chainBtn.style.paddingLeft = 0;
+                chainBtn.style.paddingRight = 0;
+                chainBtn.style.backgroundColor = new Color(0.3f, 0.5f, 0.3f);
+                chainBtn.style.borderTopLeftRadius = 3;
+                chainBtn.style.borderTopRightRadius = 3;
+                chainBtn.style.borderBottomLeftRadius = 3;
+                chainBtn.style.borderBottomRightRadius = 3;
+                row.Add(chainBtn);
+            }
+        }
+
+        private string GetFullTargetDisplay(ElementSelector selector)
+        {
+            if (selector?.query == null) return "(no target)";
+
+            var baseDisplay = GetTargetBaseDisplay(selector);
+            var chain = selector.query.chain;
+
+            if (chain == null || chain.Count == 0)
+                return baseDisplay;
+
+            // Append chain methods inline
+            var chainDisplay = GetChainInlineDisplay(chain);
+            return baseDisplay + chainDisplay;
+        }
+
+        private string GetChainInlineDisplay(List<SearchChainItem> chain)
+        {
+            if (chain == null || chain.Count == 0) return "";
+
+            var parts = new List<string>();
+            foreach (var item in chain)
+            {
+                var display = item.method switch
+                {
+                    "near" => $".Near(\"{TruncateText(item.value, 12)}\")",
+                    "hasParent" => $".HasParent(\"{TruncateText(item.value, 10)}\")",
+                    "hasAncestor" => $".HasAncestor(\"{TruncateText(item.value, 8)}\")",
+                    "hasChild" => $".HasChild(\"{TruncateText(item.value, 10)}\")",
+                    "hasDescendant" => $".HasDescendant(\"{TruncateText(item.value, 8)}\")",
+                    "hasSibling" => $".HasSibling(\"{TruncateText(item.value, 10)}\")",
+                    "first" => ".First()",
+                    "last" => ".Last()",
+                    "skip" => $".Skip({item.count})",
+                    "take" => $".Take({item.count})",
+                    "visible" => ".Visible()",
+                    "interactable" => ".Interactable()",
+                    "includeInactive" => ".IncludeInactive()",
+                    "includeDisabled" => ".IncludeDisabled()",
+                    "inRegion" => $".InRegion(\"{TruncateText(item.value, 10)}\")",
+                    "type" => $".Type(\"{item.value}\")",
+                    "text" => $".Text(\"{TruncateText(item.value, 10)}\")",
+                    "name" => $".Name(\"{TruncateText(item.value, 10)}\")",
+                    "getParent" => ".GetParent()",
+                    "getChild" => $".GetChild({item.index})",
+                    "getSibling" => $".GetSibling({item.offset})",
+                    _ => $".{item.method}()"
+                };
+                parts.Add(display);
+            }
+            return string.Join("", parts);
+        }
+
+        private string GetTargetBaseDisplay(ElementSelector selector)
+        {
+            if (selector?.query == null) return "(no target)";
+
+            return selector.query.searchBase switch
+            {
+                "text" => $"Text(\"{TruncateText(selector.query.value, 25)}\")",
+                "name" => $"Name(\"{TruncateText(selector.query.value, 25)}\")",
+                "type" => $"Type<{selector.query.value}>",
+                "adjacent" => $"Adjacent(\"{TruncateText(selector.query.value, 18)}\", {selector.query.direction ?? "?"})",
+                "near" => $"Near(\"{TruncateText(selector.query.value, 20)}\")",
+                "path" => $"Path(\"{TruncateText(selector.query.value, 25)}\")",
+                "sprite" => $"Sprite(\"{TruncateText(selector.query.value, 18)}\")",
+                "tag" => $"Tag(\"{selector.query.value}\")",
+                "any" => $"Any(\"{TruncateText(selector.query.value, 20)}\")",
+                _ => selector.query.value ?? "(unknown)"
             };
-            btn.style.maxWidth = maxWidth;
-            btn.style.height = 16;
-            btn.style.fontSize = 10;
-            btn.SetEnabled(canEdit);
-            row.Add(btn);
+        }
+
+        private string GetChainShortDisplay(SearchChainItem item)
+        {
+            return item.method switch
+            {
+                "near" => $"→\"{TruncateText(item.value, 6)}\"",
+                "hasParent" => $"↑\"{TruncateText(item.value, 6)}\"",
+                "hasAncestor" => $"⇑\"{TruncateText(item.value, 6)}\"",
+                "hasChild" => $"↓\"{TruncateText(item.value, 6)}\"",
+                "hasSibling" => $"↔\"{TruncateText(item.value, 6)}\"",
+                "first" => "①",
+                "last" => "⑨",
+                "skip" => $"⊳{item.count}",
+                "take" => $"#{item.count}",
+                "visible" => "👁",
+                "interactable" => "☑",
+                "inRegion" => $"◫{TruncateText(item.value, 4)}",
+                "type" => $"<{TruncateText(item.value, 4)}>",
+                "text" => $"\"{TruncateText(item.value, 4)}\"",
+                "name" => $"'{TruncateText(item.value, 4)}'",
+                _ => $".{item.method}"
+            };
+        }
+
+        private string GetChainFullDisplay(List<SearchChainItem> chain)
+        {
+            if (chain == null || chain.Count == 0) return "";
+            var parts = new List<string>();
+            foreach (var item in chain)
+            {
+                var display = item.method switch
+                {
+                    "near" => $".near(\"{item.value}\"{(string.IsNullOrEmpty(item.direction) ? "" : $", {item.direction}")})",
+                    "hasParent" => $".hasParent(\"{item.value}\")",
+                    "hasAncestor" => $".hasAncestor(\"{item.value}\")",
+                    "hasChild" => $".hasChild(\"{item.value}\")",
+                    "hasDescendant" => $".hasDescendant(\"{item.value}\")",
+                    "hasSibling" => $".hasSibling(\"{item.value}\")",
+                    "first" => ".first()",
+                    "last" => ".last()",
+                    "skip" => $".skip({item.count})",
+                    "take" => $".take({item.count})",
+                    "visible" => ".visible()",
+                    "interactable" => ".interactable()",
+                    "includeInactive" => ".includeInactive()",
+                    "includeDisabled" => ".includeDisabled()",
+                    "inRegion" => $".inRegion(\"{item.value}\")",
+                    "type" => $".type(\"{item.value}\")",
+                    "text" => $".text(\"{item.value}\")",
+                    "name" => $".name(\"{item.value}\")",
+                    "getParent" => ".getParent()",
+                    "getChild" => $".getChild({item.index})",
+                    "getSibling" => $".getSibling({item.offset})",
+                    _ => $".{item.method}()"
+                };
+                parts.Add(display);
+            }
+            return string.Join("", parts);
+        }
+
+        private string TruncateText(string text, int maxLen)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            return text.Length <= maxLen ? text : text.Substring(0, maxLen) + "…";
+        }
+
+        private void ShowChainPicker(VisualBlock block, int blockIndex)
+        {
+            if (block.target?.query == null) return;
+
+            var menu = new GenericMenu();
+            var chain = block.target.query.chain ?? new List<SearchChainItem>();
+            var popupPos = GUIUtility.GUIToScreenPoint(Event.current?.mousePosition ?? Vector2.zero);
+
+            // Current chain items - show with option to remove
+            if (chain.Count > 0)
+            {
+                menu.AddDisabledItem(new GUIContent("— Current Chain —"));
+                for (int i = 0; i < chain.Count; i++)
+                {
+                    var idx = i;
+                    var item = chain[i];
+                    var display = GetChainItemMenuDisplay(item);
+                    menu.AddItem(new GUIContent($"  ✕ {display}"), false, () =>
+                    {
+                        Undo.RecordObject(currentTest, "Remove chain filter");
+                        block.target.query.chain.RemoveAt(idx);
+                        if (block.target.query.chain.Count == 0)
+                            block.target.query.chain = null;
+                        OnBlockChanged(blockIndex);
+                        RefreshBlockList();
+                    });
+                }
+                menu.AddSeparator("");
+            }
+
+            // Hierarchy filters
+            menu.AddItem(new GUIContent("Add Filter/Hierarchy/hasParent..."), false, () =>
+                ShowChainValueInput("hasParent", "Parent name pattern:", block, blockIndex, popupPos));
+            menu.AddItem(new GUIContent("Add Filter/Hierarchy/hasAncestor..."), false, () =>
+                ShowChainValueInput("hasAncestor", "Ancestor name pattern:", block, blockIndex, popupPos));
+            menu.AddItem(new GUIContent("Add Filter/Hierarchy/hasChild..."), false, () =>
+                ShowChainValueInput("hasChild", "Child name pattern:", block, blockIndex, popupPos));
+            menu.AddItem(new GUIContent("Add Filter/Hierarchy/hasDescendant..."), false, () =>
+                ShowChainValueInput("hasDescendant", "Descendant name pattern:", block, blockIndex, popupPos));
+            menu.AddItem(new GUIContent("Add Filter/Hierarchy/hasSibling..."), false, () =>
+                ShowChainValueInput("hasSibling", "Sibling name pattern:", block, blockIndex, popupPos));
+
+            // Spatial filters
+            menu.AddItem(new GUIContent("Add Filter/Spatial/near (any direction)..."), false, () =>
+                ShowChainValueInput("near", "Text label to find element near:", block, blockIndex, popupPos));
+            menu.AddItem(new GUIContent("Add Filter/Spatial/near right..."), false, () =>
+                ShowChainValueInput("near", "Text label (look right):", block, blockIndex, popupPos, "right"));
+            menu.AddItem(new GUIContent("Add Filter/Spatial/near left..."), false, () =>
+                ShowChainValueInput("near", "Text label (look left):", block, blockIndex, popupPos, "left"));
+            menu.AddItem(new GUIContent("Add Filter/Spatial/near above..."), false, () =>
+                ShowChainValueInput("near", "Text label (look above):", block, blockIndex, popupPos, "above"));
+            menu.AddItem(new GUIContent("Add Filter/Spatial/near below..."), false, () =>
+                ShowChainValueInput("near", "Text label (look below):", block, blockIndex, popupPos, "below"));
+
+            // Region filters
+            menu.AddItem(new GUIContent("Add Filter/Region/TopLeft"), false, () => AddChainItem(block, blockIndex, "inRegion", "TopLeft"));
+            menu.AddItem(new GUIContent("Add Filter/Region/Top"), false, () => AddChainItem(block, blockIndex, "inRegion", "TopCenter"));
+            menu.AddItem(new GUIContent("Add Filter/Region/TopRight"), false, () => AddChainItem(block, blockIndex, "inRegion", "TopRight"));
+            menu.AddItem(new GUIContent("Add Filter/Region/Left"), false, () => AddChainItem(block, blockIndex, "inRegion", "MiddleLeft"));
+            menu.AddItem(new GUIContent("Add Filter/Region/Center"), false, () => AddChainItem(block, blockIndex, "inRegion", "Center"));
+            menu.AddItem(new GUIContent("Add Filter/Region/Right"), false, () => AddChainItem(block, blockIndex, "inRegion", "MiddleRight"));
+            menu.AddItem(new GUIContent("Add Filter/Region/BottomLeft"), false, () => AddChainItem(block, blockIndex, "inRegion", "BottomLeft"));
+            menu.AddItem(new GUIContent("Add Filter/Region/Bottom"), false, () => AddChainItem(block, blockIndex, "inRegion", "BottomCenter"));
+            menu.AddItem(new GUIContent("Add Filter/Region/BottomRight"), false, () => AddChainItem(block, blockIndex, "inRegion", "BottomRight"));
+
+            // Selection filters
+            menu.AddItem(new GUIContent("Add Filter/Selection/first()"), false, () => AddChainItem(block, blockIndex, "first", null));
+            menu.AddItem(new GUIContent("Add Filter/Selection/last()"), false, () => AddChainItem(block, blockIndex, "last", null));
+            menu.AddItem(new GUIContent("Add Filter/Selection/skip(1)"), false, () => AddChainItemWithCount(block, blockIndex, "skip", 1));
+            menu.AddItem(new GUIContent("Add Filter/Selection/skip(2)"), false, () => AddChainItemWithCount(block, blockIndex, "skip", 2));
+            menu.AddItem(new GUIContent("Add Filter/Selection/take(1)"), false, () => AddChainItemWithCount(block, blockIndex, "take", 1));
+            menu.AddItem(new GUIContent("Add Filter/Selection/take(3)"), false, () => AddChainItemWithCount(block, blockIndex, "take", 3));
+
+            // Visibility filters
+            menu.AddItem(new GUIContent("Add Filter/Visibility/visible()"), false, () => AddChainItem(block, blockIndex, "visible", null));
+            menu.AddItem(new GUIContent("Add Filter/Visibility/interactable()"), false, () => AddChainItem(block, blockIndex, "interactable", null));
+            menu.AddItem(new GUIContent("Add Filter/Visibility/includeInactive()"), false, () => AddChainItem(block, blockIndex, "includeInactive", null));
+            menu.AddItem(new GUIContent("Add Filter/Visibility/includeDisabled()"), false, () => AddChainItem(block, blockIndex, "includeDisabled", null));
+
+            // Type filter
+            menu.AddItem(new GUIContent("Add Filter/Type/Button"), false, () => AddChainItem(block, blockIndex, "type", "Button"));
+            menu.AddItem(new GUIContent("Add Filter/Type/Toggle"), false, () => AddChainItem(block, blockIndex, "type", "Toggle"));
+            menu.AddItem(new GUIContent("Add Filter/Type/Slider"), false, () => AddChainItem(block, blockIndex, "type", "Slider"));
+            menu.AddItem(new GUIContent("Add Filter/Type/InputField"), false, () => AddChainItem(block, blockIndex, "type", "TMP_InputField"));
+            menu.AddItem(new GUIContent("Add Filter/Type/Dropdown"), false, () => AddChainItem(block, blockIndex, "type", "TMP_Dropdown"));
+            menu.AddItem(new GUIContent("Add Filter/Type/ScrollRect"), false, () => AddChainItem(block, blockIndex, "type", "ScrollRect"));
+            menu.AddItem(new GUIContent("Add Filter/Type/Image"), false, () => AddChainItem(block, blockIndex, "type", "Image"));
+            menu.AddItem(new GUIContent("Add Filter/Type/Other..."), false, () =>
+                ShowChainValueInput("type", "Component type name:", block, blockIndex, popupPos));
+
+            // Traversal
+            menu.AddItem(new GUIContent("Add Filter/Traverse/getParent()"), false, () => AddChainItem(block, blockIndex, "getParent", null));
+            menu.AddItem(new GUIContent("Add Filter/Traverse/getChild(0)"), false, () => AddChainItemWithIndex(block, blockIndex, "getChild", 0));
+            menu.AddItem(new GUIContent("Add Filter/Traverse/getChild(1)"), false, () => AddChainItemWithIndex(block, blockIndex, "getChild", 1));
+            menu.AddItem(new GUIContent("Add Filter/Traverse/getSibling(+1)"), false, () => AddChainItemWithOffset(block, blockIndex, "getSibling", 1));
+            menu.AddItem(new GUIContent("Add Filter/Traverse/getSibling(-1)"), false, () => AddChainItemWithOffset(block, blockIndex, "getSibling", -1));
+
+            // Clear all
+            if (chain.Count > 0)
+            {
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent("Clear All Filters"), false, () =>
+                {
+                    Undo.RecordObject(currentTest, "Clear chain filters");
+                    block.target.query.chain = null;
+                    OnBlockChanged(blockIndex);
+                    RefreshBlockList();
+                });
+            }
+
+            menu.ShowAsContext();
+        }
+
+        private string GetChainItemMenuDisplay(SearchChainItem item)
+        {
+            return item.method switch
+            {
+                "near" => $"near(\"{item.value}\"{(string.IsNullOrEmpty(item.direction) ? "" : $", {item.direction}")})",
+                "hasParent" => $"hasParent(\"{item.value}\")",
+                "hasAncestor" => $"hasAncestor(\"{item.value}\")",
+                "hasChild" => $"hasChild(\"{item.value}\")",
+                "hasDescendant" => $"hasDescendant(\"{item.value}\")",
+                "hasSibling" => $"hasSibling(\"{item.value}\")",
+                "first" => "first()",
+                "last" => "last()",
+                "skip" => $"skip({item.count})",
+                "take" => $"take({item.count})",
+                "visible" => "visible()",
+                "interactable" => "interactable()",
+                "includeInactive" => "includeInactive()",
+                "includeDisabled" => "includeDisabled()",
+                "inRegion" => $"inRegion(\"{item.value}\")",
+                "type" => $"type(\"{item.value}\")",
+                "text" => $"text(\"{item.value}\")",
+                "name" => $"name(\"{item.value}\")",
+                "getParent" => "getParent()",
+                "getChild" => $"getChild({item.index})",
+                "getSibling" => $"getSibling({item.offset})",
+                _ => $"{item.method}()"
+            };
+        }
+
+        private void ShowChainValueInput(string method, string prompt, VisualBlock block, int blockIndex, Vector2 popupPos, string direction = null)
+        {
+            var popup = CreateInstance<TextInputPopup>();
+            popup.Init(prompt, "", val =>
+            {
+                if (string.IsNullOrEmpty(val)) return;
+                AddChainItem(block, blockIndex, method, val, direction);
+            });
+            popup.ShowAsDropDown(new Rect(popupPos, Vector2.zero), new Vector2(250, 70));
+        }
+
+        private void AddChainItem(VisualBlock block, int blockIndex, string method, string value, string direction = null)
+        {
+            Undo.RecordObject(currentTest, "Add chain filter");
+            block.target.query.chain ??= new List<SearchChainItem>();
+            block.target.query.chain.Add(new SearchChainItem
+            {
+                method = method,
+                value = value,
+                direction = direction
+            });
+            OnBlockChanged(blockIndex);
+            RefreshBlockList();
+        }
+
+        private void AddChainItemWithCount(VisualBlock block, int blockIndex, string method, int count)
+        {
+            Undo.RecordObject(currentTest, "Add chain filter");
+            block.target.query.chain ??= new List<SearchChainItem>();
+            block.target.query.chain.Add(new SearchChainItem
+            {
+                method = method,
+                count = count
+            });
+            OnBlockChanged(blockIndex);
+            RefreshBlockList();
+        }
+
+        private void AddChainItemWithIndex(VisualBlock block, int blockIndex, string method, int index)
+        {
+            Undo.RecordObject(currentTest, "Add chain filter");
+            block.target.query.chain ??= new List<SearchChainItem>();
+            block.target.query.chain.Add(new SearchChainItem
+            {
+                method = method,
+                index = index
+            });
+            OnBlockChanged(blockIndex);
+            RefreshBlockList();
+        }
+
+        private void AddChainItemWithOffset(VisualBlock block, int blockIndex, string method, int offset)
+        {
+            Undo.RecordObject(currentTest, "Add chain filter");
+            block.target.query.chain ??= new List<SearchChainItem>();
+            block.target.query.chain.Add(new SearchChainItem
+            {
+                method = method,
+                offset = offset
+            });
+            OnBlockChanged(blockIndex);
+            RefreshBlockList();
         }
 
         private void AddScrollContainerButton(VisualElement row, VisualBlock block, int index, bool canEdit, int maxWidth)
@@ -1257,11 +1645,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 var name = sr.gameObject.name;
                 menu.AddItem(new GUIContent(name), false, () =>
                 {
-                    block.scrollContainer = new ElementSelector
-                    {
-                        type = SelectorType.ByName,
-                        pattern = name
-                    };
+                    block.scrollContainer = ElementSelector.ByName(name, name);
                     OnBlockChanged(blockIndex);
                     RefreshBlockList();
                 });
@@ -1338,12 +1722,9 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     menu.AddItem(new GUIContent(display), false, () =>
                     {
                         Undo.RecordObject(currentTest, "Set drag target");
-                        block.dragTarget = new ElementSelector
-                        {
-                            type = !string.IsNullOrEmpty(e.text) ? SelectorType.ByText : SelectorType.ByName,
-                            pattern = !string.IsNullOrEmpty(e.text) ? e.text : e.name,
-                            displayName = label
-                        };
+                        block.dragTarget = !string.IsNullOrEmpty(e.text)
+                            ? ElementSelector.ByText(e.text, label)
+                            : ElementSelector.ByName(e.name, label);
                         OnBlockChanged(index);
                         RefreshBlockList();
                     });
@@ -1354,10 +1735,10 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             menu.AddItem(new GUIContent("Enter manually..."), false, () =>
             {
                 var popup = CreateInstance<TextInputPopup>();
-                popup.Init("Drag Target Name", block.dragTarget?.pattern ?? "", val =>
+                popup.Init("Drag Target Name", block.dragTarget?.query?.value ?? "", val =>
                 {
                     Undo.RecordObject(currentTest, "Set drag target");
-                    block.dragTarget = new ElementSelector { type = SelectorType.ByName, pattern = val, displayName = val };
+                    block.dragTarget = ElementSelector.ByName(val, val);
                     OnBlockChanged(index);
                     RefreshBlockList();
                 });
@@ -1400,12 +1781,9 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     menu.AddItem(new GUIContent(display), false, () =>
                     {
                         Undo.RecordObject(currentTest, "Set target");
-                        block.target = new ElementSelector
-                        {
-                            type = !string.IsNullOrEmpty(e.text) ? SelectorType.ByText : SelectorType.ByName,
-                            pattern = !string.IsNullOrEmpty(e.text) ? e.text : e.name,
-                            displayName = label
-                        };
+                        block.target = !string.IsNullOrEmpty(e.text)
+                            ? ElementSelector.ByText(e.text, label)
+                            : ElementSelector.ByName(e.name, label);
                         OnBlockChanged(index);
                         RefreshBlockList();
                     });
@@ -1416,10 +1794,10 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             menu.AddItem(new GUIContent("Enter manually..."), false, () =>
             {
                 var popup = CreateInstance<TextInputPopup>();
-                popup.Init("Target Name", block.target?.pattern ?? "", val =>
+                popup.Init("Target Name", block.target?.query?.value ?? "", val =>
                 {
                     Undo.RecordObject(currentTest, "Set target");
-                    block.target = new ElementSelector { type = SelectorType.ByName, pattern = val, displayName = val };
+                    block.target = ElementSelector.ByName(val, val);
                     OnBlockChanged(index);
                     RefreshBlockList();
                 });

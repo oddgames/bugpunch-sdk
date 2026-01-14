@@ -1222,16 +1222,16 @@ namespace ODDGames.UITest
         /// <example>
         /// <code>
         /// // Find the input field to the right of "Username:" label
-        /// new Search().AdjacentTo("Username:", Direction.Right)
+        /// new Search().Adjacent("Username:", Direction.Right)
         ///
         /// // Find the button below "Actions" label
-        /// new Search().AdjacentTo("Actions", Direction.Below)
+        /// new Search().Adjacent("Actions", Direction.Below)
         ///
         /// // Find slider to the right of "Volume:" (default direction)
-        /// new Search().AdjacentTo("Volume:")
+        /// new Search().Adjacent("Volume:")
         /// </code>
         /// </example>
-        public Search AdjacentTo(string textPattern, Direction direction = Direction.Right)
+        public Search Adjacent(string textPattern, Direction direction = Direction.Right)
         {
             bool negate = _nextNegate;
             _nextNegate = false;
@@ -1245,7 +1245,7 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Match elements that are the nearest interactable to a text label by pure distance.
-        /// Unlike AdjacentTo, this uses simple Euclidean distance without alignment scoring.
+        /// Unlike Adjacent, this uses simple Euclidean distance without alignment scoring.
         /// Optionally filters to a specific direction.
         /// </summary>
         /// <param name="textPattern">The text pattern to find the label by. Supports wildcards (*).</param>
@@ -1254,19 +1254,19 @@ namespace ODDGames.UITest
         /// <example>
         /// <code>
         /// // Find the nearest interactable to "Settings" label (any direction)
-        /// new Search().NearTo("Settings")
+        /// new Search().Near("Settings")
         ///
         /// // Find the nearest interactable below "Options" label
-        /// new Search().NearTo("Options", Direction.Below)
+        /// new Search().Near("Options", Direction.Below)
         /// </code>
         /// </example>
-        public Search NearTo(string textPattern, Direction? direction = null)
+        public Search Near(string textPattern, Direction? direction = null)
         {
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
             {
-                bool match = IsNearestInteractableToTextByDistance(go, textPattern, direction);
+                bool match = IsNearElement(go, textPattern, direction);
                 return negate != match;
             });
             return this;
@@ -1628,16 +1628,28 @@ namespace ODDGames.UITest
 
             Vector3[] interactableCorners = new Vector3[4];
             interactableRect.GetWorldCorners(interactableCorners);
-            var interactableBounds = new Rect(interactableCorners[0].x, interactableCorners[0].y,
-                interactableCorners[2].x - interactableCorners[0].x, interactableCorners[2].y - interactableCorners[0].y);
+            Vector2 interactableCenter = new Vector2(
+                (interactableCorners[0].x + interactableCorners[2].x) / 2,
+                (interactableCorners[0].y + interactableCorners[2].y) / 2);
 
+            // Find the closest matching text to this interactable
+            (GameObject textGo, Rect textBounds)? closestText = null;
+            float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
             {
-                var nearestInDirection = FindNearestInteractableInDirection(textBounds, direction);
-                if (nearestInDirection == interactable) return true;
+                float distance = Vector2.Distance(interactableCenter, textBounds.center);
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    closestText = (textGo, textBounds);
+                }
             }
 
-            return false;
+            if (!closestText.HasValue) return false;
+
+            // Check if this interactable is the nearest to the closest matching text
+            var nearestInDirection = FindNearestInteractableInDirection(closestText.Value.textBounds, direction);
+            return nearestInDirection == interactable;
         }
 
         static GameObject FindNearestInteractableInDirection(Rect textBounds, Direction direction)
@@ -1698,56 +1710,80 @@ namespace ODDGames.UITest
             return nearest;
         }
 
-        static bool IsNearestInteractableToTextByDistance(GameObject interactable, string textPattern, Direction? direction)
+        static bool IsNearElement(GameObject element, string textPattern, Direction? direction)
         {
-            if (!HasInteractableComponent(interactable)) return false;
-
-            var interactableRect = interactable.GetComponent<RectTransform>();
-            if (interactableRect == null) return false;
+            var elementRect = element.GetComponent<RectTransform>();
+            if (elementRect == null) return false;
 
             var matchingTexts = FindTextsMatchingPattern(textPattern);
             if (matchingTexts.Count == 0) return false;
 
-            Vector3[] interactableCorners = new Vector3[4];
-            interactableRect.GetWorldCorners(interactableCorners);
-            Vector2 interactableCenter = new Vector2(
-                (interactableCorners[0].x + interactableCorners[2].x) / 2,
-                (interactableCorners[0].y + interactableCorners[2].y) / 2);
+            Vector3[] elementCorners = new Vector3[4];
+            elementRect.GetWorldCorners(elementCorners);
+            Vector2 elementCenter = new Vector2(
+                (elementCorners[0].x + elementCorners[2].x) / 2,
+                (elementCorners[0].y + elementCorners[2].y) / 2);
 
+            // Find the closest matching anchor text to this element
+            (GameObject textGo, Rect textBounds)? closestText = null;
+            float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
             {
-                var nearest = FindNearestInteractableByDistance(textBounds, direction);
-                if (nearest == interactable) return true;
+                // Skip if the text is the element itself or a child of it
+                if (textGo == element || textGo.transform.IsChildOf(element.transform)) continue;
+
+                float distance = Vector2.Distance(elementCenter, textBounds.center);
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    closestText = (textGo, textBounds);
+                }
             }
 
-            return false;
+            if (!closestText.HasValue) return false;
+
+            // If direction specified, check element is in that direction from the anchor text
+            if (direction.HasValue)
+            {
+                var textBounds = closestText.Value.textBounds;
+                bool isInDirection = direction.Value switch
+                {
+                    Direction.Right => elementCenter.x > textBounds.xMax,
+                    Direction.Left => elementCenter.x < textBounds.xMin,
+                    Direction.Below => elementCenter.y < textBounds.yMin,
+                    Direction.Above => elementCenter.y > textBounds.yMax,
+                    _ => true
+                };
+                if (!isInDirection) return false;
+            }
+
+            // Check if this element is the nearest UI element to the anchor text
+            return IsNearestElementToText(element, closestText.Value.textBounds, elementCenter, direction);
         }
 
-        static GameObject FindNearestInteractableByDistance(Rect textBounds, Direction? direction)
+        static bool IsNearestElementToText(GameObject element, Rect textBounds, Vector2 elementCenter, Direction? direction)
         {
-            GameObject nearest = null;
-            float bestDistance = float.MaxValue;
-
-            var allInteractables = new List<GameObject>();
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<TMP_InputField>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<InputField>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<TMP_Dropdown>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<Dropdown>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<Slider>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<Toggle>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<Button>().Select(c => c.gameObject));
-
+            float elementDistance = Vector2.Distance(elementCenter, textBounds.center);
             Vector2 textCenter = textBounds.center;
 
-            foreach (var go in allInteractables.Distinct())
+            // Find all RectTransforms and check if any are closer
+            var allRects = UnityEngine.Object.FindObjectsOfType<RectTransform>();
+            foreach (var rect in allRects)
             {
-                var rect = go.GetComponent<RectTransform>();
-                if (rect == null) continue;
+                if (rect.gameObject == element) continue;
+                if (!rect.gameObject.activeInHierarchy) continue;
+
+                // Skip text elements themselves - we want UI elements near text, not other text
+                if (rect.GetComponent<TMP_Text>() != null || rect.GetComponent<Text>() != null) continue;
+
+                // Skip elements that are ancestors or descendants of the candidate
+                if (rect.transform.IsChildOf(element.transform) || element.transform.IsChildOf(rect.transform)) continue;
 
                 Vector3[] corners = new Vector3[4];
                 rect.GetWorldCorners(corners);
                 Vector2 center = new Vector2((corners[0].x + corners[2].x) / 2, (corners[0].y + corners[2].y) / 2);
 
+                // Check direction constraint
                 if (direction.HasValue)
                 {
                     bool isInDirection = direction.Value switch
@@ -1761,15 +1797,22 @@ namespace ODDGames.UITest
                     if (!isInDirection) continue;
                 }
 
-                float distance = Vector2.Distance(textCenter, center);
-                if (distance < bestDistance)
+                float distance = Vector2.Distance(center, textCenter);
+                if (distance < elementDistance)
                 {
-                    bestDistance = distance;
-                    nearest = go;
+                    // Found a closer element - but only count it if it has meaningful content
+                    // (has an interactable component, image, or is a container with children)
+                    if (HasInteractableComponent(rect.gameObject) ||
+                        rect.GetComponent<Image>() != null ||
+                        rect.GetComponent<RawImage>() != null ||
+                        rect.childCount > 0)
+                    {
+                        return false;
+                    }
                 }
             }
 
-            return nearest;
+            return true;
         }
 
         #endregion

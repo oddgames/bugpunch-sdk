@@ -1745,7 +1745,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Username:", new Vector2(-100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(100, 0));
             yield return null;
-            var search = new Search().AdjacentTo("Username:");
+            var search = new Search().Adjacent("Username:");
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input to the right of label");
         }
@@ -1756,7 +1756,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Username:", new Vector2(100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(-100, 0));
             yield return null;
-            var search = new Search().AdjacentTo("Username:", Direction.Right);
+            var search = new Search().Adjacent("Username:", Direction.Right);
             bool matches = search.Matches(input);
             Assert.IsFalse(matches, "Should not match input to the left when searching Right");
         }
@@ -1768,7 +1768,7 @@ namespace ODDGames.UITest.Tests
             var closeInput = CreateInputField("CloseInput", new Vector2(0, 0));
             var farInput = CreateInputField("FarInput", new Vector2(200, 0));
             yield return null;
-            var search = new Search().AdjacentTo("Field:");
+            var search = new Search().Adjacent("Field:");
             Assert.IsTrue(search.Matches(closeInput), "Closer input should match");
             Assert.IsFalse(search.Matches(farInput), "Farther input should not match");
         }
@@ -1779,7 +1779,7 @@ namespace ODDGames.UITest.Tests
             var input = CreateInputField("VolumeSlider", new Vector2(-100, 0));
             var label = CreateLabel("Volume Level", new Vector2(100, 0));
             yield return null;
-            var search = new Search().AdjacentTo("Volume Level", Direction.Left);
+            var search = new Search().Adjacent("Volume Level", Direction.Left);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input to the left of label");
         }
@@ -1790,7 +1790,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Description", new Vector2(0, 50));
             var input = CreateInputField("DescriptionInput", new Vector2(0, -50));
             yield return null;
-            var search = new Search().AdjacentTo("Description", Direction.Below);
+            var search = new Search().Adjacent("Description", Direction.Below);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input below label");
         }
@@ -1801,7 +1801,7 @@ namespace ODDGames.UITest.Tests
             var input = CreateInputField("OptionToggle", new Vector2(0, 50));
             var label = CreateLabel("Clear Selection", new Vector2(0, -50));
             yield return null;
-            var search = new Search().AdjacentTo("Clear Selection", Direction.Above);
+            var search = new Search().Adjacent("Clear Selection", Direction.Above);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input above label");
         }
@@ -1812,7 +1812,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Other Label:", new Vector2(-100, 0));
             var input = CreateInputField("TestInput", new Vector2(100, 0));
             yield return null;
-            var search = new Search().AdjacentTo("NonExistent:");
+            var search = new Search().Adjacent("NonExistent:");
             bool matches = search.Matches(input);
             Assert.IsFalse(matches, "Should not match when label text doesn't exist");
         }
@@ -1823,7 +1823,7 @@ namespace ODDGames.UITest.Tests
             var label = CreateLabel("Username:", new Vector2(-100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(100, 0));
             yield return null;
-            var search = new Search().AdjacentTo("User*");
+            var search = new Search().Adjacent("User*");
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should match with wildcard pattern");
         }
@@ -1841,7 +1841,7 @@ namespace ODDGames.UITest.Tests
             var farButton = CreateButton("OtherButton", new Vector2(200, 0)); // Further away
             yield return null;
 
-            var search = new Search().NearTo("Center Flag");
+            var search = new Search().Near("Center Flag");
             Assert.IsTrue(search.Matches(closeButton), "Closest button should match");
             Assert.IsFalse(search.Matches(farButton), "Farther button should not match");
         }
@@ -1854,11 +1854,11 @@ namespace ODDGames.UITest.Tests
             var aboveButton = CreateButton("AboveButton", new Vector2(0, 80)); // Above
             yield return null;
 
-            var searchBelow = new Search().NearTo("Center Flag", Direction.Below);
+            var searchBelow = new Search().Near("Center Flag", Direction.Below);
             Assert.IsTrue(searchBelow.Matches(belowButton), "Button below should match when filtering Below");
             Assert.IsFalse(searchBelow.Matches(aboveButton), "Button above should not match when filtering Below");
 
-            var searchAbove = new Search().NearTo("Center Flag", Direction.Above);
+            var searchAbove = new Search().Near("Center Flag", Direction.Above);
             Assert.IsTrue(searchAbove.Matches(aboveButton), "Button above should match when filtering Above");
             Assert.IsFalse(searchAbove.Matches(belowButton), "Button below should not match when filtering Above");
         }
@@ -1871,7 +1871,7 @@ namespace ODDGames.UITest.Tests
             var farBelow = CreateButton("FarBelow", new Vector2(0, -150)); // Further below
             yield return null;
 
-            var search = new Search().NearTo("Center Flag", Direction.Below);
+            var search = new Search().Near("Center Flag", Direction.Below);
             Assert.IsTrue(search.Matches(closeBelow), "Closer button below should match");
             Assert.IsFalse(search.Matches(farBelow), "Farther button below should not match");
         }
@@ -1885,7 +1885,7 @@ namespace ODDGames.UITest.Tests
             var straightFar = CreateButton("StraightButton", new Vector2(0, -150)); // Straight down but far
             yield return null;
 
-            var search = new Search().NearTo("Texture");
+            var search = new Search().Near("Texture");
             Assert.IsTrue(search.Matches(diagonalClose), "Diagonal but closer button should match");
             Assert.IsFalse(search.Matches(straightFar), "Straight but farther button should not match");
         }
@@ -1899,7 +1899,7 @@ namespace ODDGames.UITest.Tests
             yield return null;
 
             // Near finds closest, but Name filters to only matching names
-            var search = new Search().NearTo("Center Flag", Direction.Below).Name("*Texture*");
+            var search = new Search().Near("Center Flag", Direction.Below).Name("*Texture*");
             Assert.IsTrue(search.Matches(textureButton), "TextureButton should match Near+Name filter");
             Assert.IsFalse(search.Matches(maskButton), "MaskButton should not match Name filter");
         }
@@ -1910,7 +1910,7 @@ namespace ODDGames.UITest.Tests
             var button = CreateButton("SomeButton", new Vector2(0, 0));
             yield return null;
 
-            var search = new Search().NearTo("NonExistentLabel");
+            var search = new Search().Near("NonExistentLabel");
             Assert.IsFalse(search.Matches(button), "Should not match when label doesn't exist");
         }
 
@@ -1921,7 +1921,7 @@ namespace ODDGames.UITest.Tests
             var button = CreateButton("NearbyButton", new Vector2(0, -30));
             yield return null;
 
-            var search = new Search().NearTo("Center*");
+            var search = new Search().Near("Center*");
             Assert.IsTrue(search.Matches(button), "Should match with wildcard pattern");
         }
 
@@ -1933,7 +1933,7 @@ namespace ODDGames.UITest.Tests
             var rightButton = CreateButton("RightButton", new Vector2(200, 0)); // To the right
             yield return null;
 
-            var search = new Search().NearTo("Right Label", Direction.Left);
+            var search = new Search().Near("Right Label", Direction.Left);
             Assert.IsTrue(search.Matches(leftButton), "Button to the left should match");
             Assert.IsFalse(search.Matches(rightButton), "Button to the right should not match");
         }
@@ -1946,7 +1946,7 @@ namespace ODDGames.UITest.Tests
             var rightButton = CreateButton("RightButton", new Vector2(50, 0)); // To the right
             yield return null;
 
-            var search = new Search().NearTo("Left Label", Direction.Right);
+            var search = new Search().Near("Left Label", Direction.Right);
             Assert.IsFalse(search.Matches(leftButton), "Button to the left should not match");
             Assert.IsTrue(search.Matches(rightButton), "Button to the right should match");
         }
@@ -1962,11 +1962,136 @@ namespace ODDGames.UITest.Tests
             yield return null;
 
             // Adjacent.Right requires same row (within tolerance) - should fail for diagonal
-            var adjacentSearch = new Search().AdjacentTo("Test Label", Direction.Right);
+            var adjacentSearch = new Search().Adjacent("Test Label", Direction.Right);
 
             // Near without direction should find it as closest
-            var nearSearch = new Search().NearTo("Test Label");
+            var nearSearch = new Search().Near("Test Label");
             Assert.IsTrue(nearSearch.Matches(diagonalButton), "Near should find diagonal element as closest");
+        }
+
+        /// <summary>
+        /// Tests Near() with duplicate elements - simulates Garage scenario where
+        /// "Center Flag" and "Right Flag" sections both have "Texture" and "Mask" controls.
+        /// Tests both query orderings: Near first and Text first.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Near_DuplicateElements_CenterFlag_NearFirst()
+        {
+            // Create two sections with identical child structure
+            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+            var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
+
+            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+            var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
+
+            yield return null;
+
+            // Test: Near first, then Text - should find Center Flag's Mask
+            var search = new Search().Near("Center Flag", Direction.Below).Text("Mask");
+            Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "Near.Text should find CenterFlagMaskBtn");
+            Assert.IsFalse(search.Matches(rightMaskBtn.gameObject), "Near.Text should NOT match RightFlagMaskBtn");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_DuplicateElements_CenterFlag_TextFirst()
+        {
+            // Create two sections with identical child structure
+            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+            var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
+
+            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+            var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
+
+            yield return null;
+
+            // Test: Text first, then Near - should find Center Flag's Mask
+            var search = new Search().Text("Mask").Near("Center Flag", Direction.Below);
+            Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "Text.Near should find CenterFlagMaskBtn");
+            Assert.IsFalse(search.Matches(rightMaskBtn.gameObject), "Text.Near should NOT match RightFlagMaskBtn");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_DuplicateElements_RightFlag_NearFirst()
+        {
+            // Create two sections with identical child structure
+            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+            var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
+
+            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+            var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
+
+            yield return null;
+
+            // Test: Near first, then Text - should find Right Flag's Mask
+            var search = new Search().Near("Right Flag", Direction.Below).Text("Mask");
+            Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "Near.Text should find RightFlagMaskBtn");
+            Assert.IsFalse(search.Matches(centerMaskBtn.gameObject), "Near.Text should NOT match CenterFlagMaskBtn");
+        }
+
+        [UnityTest]
+        public IEnumerator Near_DuplicateElements_RightFlag_TextFirst()
+        {
+            // Create two sections with identical child structure
+            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+            var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
+
+            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+            var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
+
+            yield return null;
+
+            // Test: Text first, then Near - should find Right Flag's Mask
+            var search = new Search().Text("Mask").Near("Right Flag", Direction.Below);
+            Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "Text.Near should find RightFlagMaskBtn");
+            Assert.IsFalse(search.Matches(centerMaskBtn.gameObject), "Text.Near should NOT match CenterFlagMaskBtn");
+        }
+
+        [UnityTest]
+        public IEnumerator Adjacent_DuplicateElements_CenterFlag_AdjacentFirst()
+        {
+            // Create two sections with identical child structure
+            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+            var centerTextureBtn = CreateButton("CenterFlagTextureBtn", "Texture", centerSection.transform, new Vector2(0, -20));
+
+            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+            var rightTextureBtn = CreateButton("RightFlagTextureBtn", "Texture", rightSection.transform, new Vector2(0, -20));
+
+            yield return null;
+
+            // Test: Adjacent first, then Text - should find Center Flag's Texture
+            var search = new Search().Adjacent("Center Flag", Direction.Below).Text("Texture");
+            Assert.IsTrue(search.Matches(centerTextureBtn.gameObject), "Adjacent.Text should find CenterFlagTextureBtn");
+            Assert.IsFalse(search.Matches(rightTextureBtn.gameObject), "Adjacent.Text should NOT match RightFlagTextureBtn");
+        }
+
+        [UnityTest]
+        public IEnumerator Adjacent_DuplicateElements_CenterFlag_TextFirst()
+        {
+            // Create two sections with identical child structure
+            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+            var centerTextureBtn = CreateButton("CenterFlagTextureBtn", "Texture", centerSection.transform, new Vector2(0, -20));
+
+            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+            var rightTextureBtn = CreateButton("RightFlagTextureBtn", "Texture", rightSection.transform, new Vector2(0, -20));
+
+            yield return null;
+
+            // Test: Text first, then Adjacent - should find Center Flag's Texture
+            var search = new Search().Text("Texture").Adjacent("Center Flag", Direction.Below);
+            Assert.IsTrue(search.Matches(centerTextureBtn.gameObject), "Text.Adjacent should find CenterFlagTextureBtn");
+            Assert.IsFalse(search.Matches(rightTextureBtn.gameObject), "Text.Adjacent should NOT match RightFlagTextureBtn");
         }
 
         #endregion
@@ -2331,6 +2456,19 @@ namespace ODDGames.UITest.Tests
         {
             var go = new GameObject($"Label_{text}");
             go.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(100, 30);
+            rect.anchoredPosition = position;
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            return go;
+        }
+
+        private GameObject CreateLabelInParent(string text, Transform parent, Vector2 position)
+        {
+            var go = new GameObject($"Label_{text}");
+            go.transform.SetParent(parent, false);
             _createdObjects.Add(go);
             var rect = go.AddComponent<RectTransform>();
             rect.sizeDelta = new Vector2(100, 30);

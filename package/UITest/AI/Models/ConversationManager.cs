@@ -138,7 +138,7 @@ namespace ODDGames.UITest.AI
                 {
                     foreach (var tc in msg.ToolCalls)
                     {
-                        var target = tc.GetString("element_id");
+                        var target = tc.GetString("search");
                         if (string.IsNullOrEmpty(target))
                         {
                             var x = tc.GetFloat("x", -1f);

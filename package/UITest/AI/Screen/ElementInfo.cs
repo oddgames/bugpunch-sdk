@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEngine;
 
 namespace ODDGames.UITest.AI
@@ -10,7 +11,7 @@ namespace ODDGames.UITest.AI
     [Serializable]
     public class ElementInfo
     {
-        /// <summary>Unique identifier for this element in the current screen state (e.g., "e1", "e2")</summary>
+        /// <summary>Unique identifier for this element - descriptive like "Submit_button" or with disambiguation suffix</summary>
         public string id;
 
         /// <summary>Reference to the actual GameObject (for runtime click calculations)</summary>
@@ -59,33 +60,25 @@ namespace ODDGames.UITest.AI
         /// <summary>Direction of the adjacent label relative to this element (left, right, above, below)</summary>
         public string adjacentDirection;
 
+        /// <summary>Whether this element needs disambiguation (multiple elements with same search pattern)</summary>
+        public bool needsDisambiguation;
+
         /// <summary>
         /// Creates a short annotation string for the element list.
+        /// Shows the Search API pattern to find the element, plus type and state info.
         /// </summary>
         public string ToAnnotation()
         {
             var sb = new StringBuilder();
-            sb.Append($"[{id}] {type}");
 
-            if (!string.IsNullOrEmpty(text))
-            {
-                var truncatedText = text.Length > 30 ? text.Substring(0, 27) + "..." : text;
-                sb.Append($": \"{truncatedText}\"");
-            }
-            else if (!string.IsNullOrEmpty(name))
-            {
-                sb.Append($": {name}");
-            }
+            // Search pattern is the primary identifier - AI uses this in the 'search' parameter
+            var searchPattern = GetSearchPattern(needsDisambiguation);
+            sb.Append($"{searchPattern}");
 
-            // Show adjacent label if present (especially useful for input fields)
-            if (!string.IsNullOrEmpty(adjacentLabel))
-            {
-                var truncatedLabel = adjacentLabel.Length > 20 ? adjacentLabel.Substring(0, 17) + "..." : adjacentLabel;
-                sb.Append($" (label {adjacentDirection}: \"{truncatedLabel}\")");
-            }
+            // Type info
+            sb.Append($" [{type}]");
 
-            sb.Append($" at ({normalizedBounds.x:F2},{normalizedBounds.y:F2})");
-
+            // Extra info (slider value, toggle state, etc.)
             if (!string.IsNullOrEmpty(extraInfo))
             {
                 sb.Append($" [{extraInfo}]");
@@ -111,6 +104,109 @@ namespace ODDGames.UITest.AI
         {
             if (string.IsNullOrEmpty(str)) return "";
             return str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");
+        }
+
+        /// <summary>
+        /// Generates a Search API pattern showing how to find this element in code.
+        /// Used in the element annotation to teach the AI proper Search API usage.
+        /// </summary>
+        /// <param name="needsDisambiguation">If true, includes parent context (.Near) for disambiguation</param>
+        public string GetSearchPattern(bool needsDisambiguation = false)
+        {
+            string basePattern;
+
+            // Priority 1: Descriptive unique name (e.g., "VolumeSlider", "SubmitButton")
+            // These are most reliable - prefer over adjacent labels
+            if (!string.IsNullOrEmpty(name) && IsDescriptiveName(name))
+            {
+                var n = SanitizeForId(name);
+                basePattern = $"Name(\"{n}\")";
+            }
+            // Priority 2: Unique text content (buttons with text like "Submit", "Cancel")
+            else if (!string.IsNullOrEmpty(text) && !text.StartsWith("(placeholder"))
+            {
+                var txt = SanitizeForId(text);
+                basePattern = $"Text(\"{txt}\")";
+            }
+            // Priority 3: Adjacent label (for generic-named form fields)
+            else if (!string.IsNullOrEmpty(adjacentLabel) && !string.IsNullOrEmpty(adjacentDirection))
+            {
+                var label = SanitizeForId(adjacentLabel);
+                basePattern = $"Adjacent(\"{label}\", {adjacentDirection})";
+            }
+            // Priority 4: Any name (even generic ones)
+            else if (!string.IsNullOrEmpty(name))
+            {
+                var n = SanitizeForId(name);
+                basePattern = $"Name(\"{n}\")";
+            }
+            // Fallback: Type with position hint
+            else
+            {
+                var posHint = GetPositionHint();
+                basePattern = $"Type<{type}>({posHint})";
+            }
+
+            // Add parent context for disambiguation if needed
+            if (needsDisambiguation && !string.IsNullOrEmpty(parentName))
+            {
+                var parent = SanitizeForId(parentName);
+                return $"{basePattern}.Near(\"{parent}\")";
+            }
+
+            return basePattern;
+        }
+
+        /// <summary>
+        /// Checks if a name is descriptive (contains meaningful words, not just generic like "Slider" or "Button").
+        /// </summary>
+        private static bool IsDescriptiveName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+
+            // Generic names that don't help identify the element
+            var genericNames = new[] { "Slider", "Button", "Toggle", "Input", "InputField", "Dropdown", "ScrollView", "Image", "Text", "Panel" };
+
+            // Check if the name is just a generic type name
+            foreach (var generic in genericNames)
+            {
+                if (name.Equals(generic, System.StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+
+            // Name has more context (e.g., "VolumeSlider", "SubmitButton", "UsernameInput")
+            return true;
+        }
+
+        /// <summary>
+        /// Gets a position hint based on screen quadrant.
+        /// </summary>
+        private string GetPositionHint()
+        {
+            var x = normalizedBounds.x + normalizedBounds.width / 2;
+            var y = normalizedBounds.y + normalizedBounds.height / 2;
+
+            string hPos = x < 0.33f ? "left" : x > 0.66f ? "right" : "center";
+            string vPos = y < 0.33f ? "bottom" : y > 0.66f ? "top" : "middle";
+
+            return $"{vPos}_{hPos}";
+        }
+
+        /// <summary>
+        /// Sanitizes a string for use in an ID (removes special chars, truncates).
+        /// </summary>
+        private static string SanitizeForId(string str)
+        {
+            if (string.IsNullOrEmpty(str)) return "";
+
+            // Truncate long strings
+            if (str.Length > 25)
+                str = str.Substring(0, 22) + "...";
+
+            // Escape quotes
+            str = str.Replace("\"", "\\\"");
+
+            return str;
         }
     }
 }

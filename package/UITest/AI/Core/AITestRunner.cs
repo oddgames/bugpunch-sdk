@@ -86,6 +86,7 @@ namespace ODDGames.UITest.AI
         private IModelProvider modelProvider;
         private StuckDetector stuckDetector;
         private HistoryReplayer historyReplayer;
+        private AIDebugLogger debugLogger;
 
         private bool isRunning;
         private int actionCount;
@@ -194,6 +195,7 @@ namespace ODDGames.UITest.AI
                 // Set up conversation
                 var systemPrompt = KnowledgeBuilder.BuildSystemPrompt(test, globalKnowledge);
                 conversation.SetSystemMessage(systemPrompt);
+                debugLogger?.LogSystemPrompt(systemPrompt);
 
                 // Main execution loop
                 while (actionCount < test.maxActions)
@@ -297,6 +299,27 @@ namespace ODDGames.UITest.AI
 
                     conversation.AddAssistantMessage(response.RawContent, response.ToolCalls);
 
+                    // Log step to debug folder
+                    Log($"Logging step {actionCount + 1} to debug folder...");
+                    try
+                    {
+                        var stepPrompt = stuckDetector.ShouldEscalate()
+                            ? KnowledgeBuilder.BuildRecoveryMessage(screen, conversation.GetActionSummary(), stuckDetector.StuckReason)
+                            : KnowledgeBuilder.BuildStepMessage(screen, actionCount + 1, test.maxActions, stuckDetector.GetStuckSuggestions());
+                        debugLogger?.LogStep(
+                            actionCount + 1,
+                            screen,
+                            stepPrompt,
+                            response.Reasoning,
+                            response.ToolCalls,
+                            response.RawContent);
+                        Log($"Step {actionCount + 1} logged successfully");
+                    }
+                    catch (Exception logEx)
+                    {
+                        Log($"Failed to log step: {logEx.Message}");
+                    }
+
                     // Process tool calls
                     if (response.ToolCalls == null || response.ToolCalls.Count == 0)
                     {
@@ -356,6 +379,9 @@ namespace ODDGames.UITest.AI
                         OnActionExecuted?.Invoke(action, result);
                         RecordAction(action, result, response.Reasoning);
 
+                        // Log action to debug folder
+                        debugLogger?.LogAction(actionCount, action, result, GetActionTarget(action));
+
                         stuckDetector.RecordAction(
                             action.ActionType,
                             GetActionTarget(action),
@@ -368,7 +394,12 @@ namespace ODDGames.UITest.AI
                         }
                         else
                         {
-                            conversation.AddToolResult(toolCall.Id, "Action executed successfully");
+                            // Tell the AI whether the screen changed - this helps with drags
+                            // where the screen might look the same after but something changed
+                            var resultMsg = result.ScreenChanged
+                                ? "Action executed successfully. Screen state changed."
+                                : "Action executed successfully. Screen state unchanged.";
+                            conversation.AddToolResult(toolCall.Id, resultMsg);
                             stuckDetector.RecordProgress();
                         }
 
@@ -456,6 +487,9 @@ namespace ODDGames.UITest.AI
 
         private void InitializeComponents()
         {
+            // Initialize debug logger
+            debugLogger = new AIDebugLogger(config.EnableDebugLogging);
+
             // Initialize conversation manager
             conversation = new ConversationManager();
 
@@ -472,6 +506,9 @@ namespace ODDGames.UITest.AI
 
             // Initialize history replayer
             historyReplayer = new HistoryReplayer(config.HistoryReplayerConfig);
+
+            // Log config to debug folder
+            debugLogger?.LogConfig(test, config, modelProvider?.Name ?? test.model);
         }
 
         private async UniTask<ReplayResult> TryHistoryReplayAsync(CancellationToken ct)
@@ -542,6 +579,10 @@ namespace ODDGames.UITest.AI
                 Logs = new List<string>(logs)
             };
 
+            // Log result and close debug session
+            debugLogger?.LogResult(result);
+            debugLogger?.Dispose();
+
             OnTestCompleted?.Invoke(result);
             return result;
         }
@@ -577,13 +618,24 @@ namespace ODDGames.UITest.AI
         {
             return action switch
             {
-                ClickAction click => click.ElementId ?? $"({click.ScreenPosition?.x:F2},{click.ScreenPosition?.y:F2})",
-                TypeAction type => type.ElementId,
-                DragAction drag => drag.FromElementId,
-                ScrollAction scroll => scroll.ElementId,
+                ClickAction click => click.SearchQuery ?? $"({click.ScreenPosition?.x:F2},{click.ScreenPosition?.y:F2})",
+                DoubleClickAction doubleClick => doubleClick.SearchQuery ?? $"({doubleClick.ScreenPosition?.x:F2},{doubleClick.ScreenPosition?.y:F2})",
+                HoldAction hold => hold.SearchQuery,
+                TypeAction type => type.SearchQuery,
+                DragAction drag => drag.FromSearch,
+                ScrollAction scroll => scroll.SearchQuery,
+                SwipeAction swipe => swipe.SearchQuery,
+                TwoFingerSwipeAction twoFingerSwipe => twoFingerSwipe.SearchQuery,
+                PinchAction pinch => pinch.SearchQuery,
+                RotateAction rotate => rotate.SearchQuery,
+                SetSliderAction setSlider => setSlider.SearchQuery,
+                SetScrollbarAction setScrollbar => setScrollbar.SearchQuery,
+                KeyPressAction keyPress => keyPress.Key,
+                KeyHoldAction keyHold => string.Join("+", keyHold.Keys ?? Array.Empty<string>()),
                 WaitAction wait => $"{wait.Seconds}s",
                 PassAction pass => pass.Reason,
                 FailAction fail => fail.Reason,
+                ScreenshotAction screenshot => screenshot.Reason,
                 _ => ""
             };
         }
@@ -614,6 +666,9 @@ namespace ODDGames.UITest.AI
 
         /// <summary>Whether to send screenshots to AI (false = text-only mode for faster execution)</summary>
         public bool SendScreenshots = false;
+
+        /// <summary>Whether to log debug data (screenshots, prompts, responses) to AIDebug folder</summary>
+        public bool EnableDebugLogging = false;
 
         /// <summary>The model provider to use for AI test execution</summary>
         public IModelProvider ModelProvider;

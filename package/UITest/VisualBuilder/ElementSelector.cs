@@ -1,54 +1,48 @@
 using System;
+using System.Collections.Generic;
+using ODDGames.UITest.AI;
 using UnityEngine;
 
 namespace ODDGames.UITest.VisualBuilder
 {
     /// <summary>
-    /// How to identify/select a UI element.
-    /// </summary>
-    public enum SelectorType
-    {
-        /// <summary>Match by GameObject name (supports wildcards)</summary>
-        ByName,
-        /// <summary>Match by visible text content</summary>
-        ByText,
-        /// <summary>Match by component type (Button, Toggle, etc.)</summary>
-        ByType,
-        /// <summary>Match by runtime element ID (e.g., "e1")</summary>
-        ById,
-        /// <summary>Match by hierarchy path</summary>
-        ByPath
-    }
-
-    /// <summary>
-    /// Configuration for selecting a UI element at runtime.
-    /// Can be resolved to an actual element via ElementDiscovery.
+    /// Configuration for selecting a UI element at runtime using the Search API.
+    /// Uses JSON-based SearchQuery for full chaining support and strict parameter typing.
     /// </summary>
     [Serializable]
     public class ElementSelector
     {
-        /// <summary>How to identify the element</summary>
-        public SelectorType type = SelectorType.ByName;
-
-        /// <summary>Pattern to match (name, text, path, or type name)</summary>
-        public string pattern;
-
-        /// <summary>Runtime element ID from ElementDiscovery (e.g., "e1", "e2")</summary>
-        public string elementId;
+        /// <summary>
+        /// The search query that defines how to find the element.
+        /// Supports all Search API methods: text, name, type, adjacent, etc.
+        /// with chainable filters like near, hasParent, first, etc.
+        /// </summary>
+        public SearchQuery query;
 
         /// <summary>Human-readable display name for the UI</summary>
         public string displayName;
 
         /// <summary>
-        /// Creates a selector by element ID.
+        /// Creates a selector from a SearchQuery.
         /// </summary>
-        public static ElementSelector ById(string id, string displayName = null)
+        public static ElementSelector FromQuery(SearchQuery query, string displayName = null)
         {
             return new ElementSelector
             {
-                type = SelectorType.ById,
-                elementId = id,
-                displayName = displayName ?? id
+                query = query,
+                displayName = displayName
+            };
+        }
+
+        /// <summary>
+        /// Creates a selector by text pattern.
+        /// </summary>
+        public static ElementSelector ByText(string textPattern, string displayName = null)
+        {
+            return new ElementSelector
+            {
+                query = SearchQuery.Text(textPattern),
+                displayName = displayName ?? $"\"{textPattern}\""
             };
         }
 
@@ -59,22 +53,20 @@ namespace ODDGames.UITest.VisualBuilder
         {
             return new ElementSelector
             {
-                type = SelectorType.ByName,
-                pattern = namePattern,
+                query = SearchQuery.Name(namePattern),
                 displayName = displayName ?? namePattern
             };
         }
 
         /// <summary>
-        /// Creates a selector by text content.
+        /// Creates a selector by adjacent label.
         /// </summary>
-        public static ElementSelector ByText(string textPattern, string displayName = null)
+        public static ElementSelector Adjacent(string labelText, string direction = "right", string displayName = null)
         {
             return new ElementSelector
             {
-                type = SelectorType.ByText,
-                pattern = textPattern,
-                displayName = displayName ?? $"\"{textPattern}\""
+                query = SearchQuery.Adjacent(labelText, direction),
+                displayName = displayName ?? $"near \"{labelText}\""
             };
         }
 
@@ -85,23 +77,67 @@ namespace ODDGames.UITest.VisualBuilder
         {
             return new ElementSelector
             {
-                type = SelectorType.ByType,
-                pattern = typeName,
+                query = SearchQuery.Type(typeName),
                 displayName = displayName ?? typeName
             };
         }
 
         /// <summary>
-        /// Creates a selector by hierarchy path.
+        /// Adds a chain filter to the selector.
         /// </summary>
-        public static ElementSelector ByPath(string path, string displayName = null)
+        public ElementSelector Near(string target, string direction = null)
         {
-            return new ElementSelector
-            {
-                type = SelectorType.ByPath,
-                pattern = path,
-                displayName = displayName ?? path
-            };
+            query.chain ??= new List<SearchChainItem>();
+            query.chain.Add(SearchChainItem.Near(target, direction));
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a hasParent filter to the selector.
+        /// </summary>
+        public ElementSelector HasParent(string parentName)
+        {
+            query.chain ??= new List<SearchChainItem>();
+            query.chain.Add(SearchChainItem.HasParent(parentName));
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a hasAncestor filter to the selector.
+        /// </summary>
+        public ElementSelector HasAncestor(string ancestorName)
+        {
+            query.chain ??= new List<SearchChainItem>();
+            query.chain.Add(SearchChainItem.HasAncestor(ancestorName));
+            return this;
+        }
+
+        /// <summary>
+        /// Adds an includeInactive filter to the selector.
+        /// </summary>
+        public ElementSelector IncludeInactive()
+        {
+            query.chain ??= new List<SearchChainItem>();
+            query.chain.Add(SearchChainItem.IncludeInactive());
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a first filter to the selector.
+        /// </summary>
+        public ElementSelector First()
+        {
+            query.chain ??= new List<SearchChainItem>();
+            query.chain.Add(SearchChainItem.First());
+            return this;
+        }
+
+        /// <summary>
+        /// Converts this selector to a Search object that can find elements.
+        /// </summary>
+        public Search ToSearch()
+        {
+            return query?.ToSearch();
         }
 
         /// <summary>
@@ -112,15 +148,49 @@ namespace ODDGames.UITest.VisualBuilder
             if (!string.IsNullOrEmpty(displayName))
                 return displayName;
 
-            return type switch
+            if (query == null)
+                return "(no selector)";
+
+            // Build display from query - use prefixes to distinguish search types
+            var display = query.searchBase switch
             {
-                SelectorType.ById => elementId ?? "(no id)",
-                SelectorType.ByName => pattern ?? "(no name)",
-                SelectorType.ByText => $"\"{pattern ?? ""}\"",
-                SelectorType.ByType => pattern ?? "(no type)",
-                SelectorType.ByPath => pattern ?? "(no path)",
-                _ => "(unknown)"
+                "text" => $"Text(\"{query.value}\")",
+                "name" => $"Name(\"{query.value}\")",
+                "type" => $"Type<{query.value}>",
+                "adjacent" => $"Adjacent(\"{query.value}\", {query.direction ?? "?"})",
+                "near" => $"Near(\"{query.value}\")",
+                "path" => $"Path(\"{query.value}\")",
+                "sprite" => $"Sprite(\"{query.value}\")",
+                "tag" => $"Tag(\"{query.value}\")",
+                "any" => $"Any(\"{query.value}\")",
+                _ => query.value ?? "(unknown)"
             };
+
+            // Add chain info
+            if (query.chain != null && query.chain.Count > 0)
+            {
+                foreach (var item in query.chain)
+                {
+                    display += item.method switch
+                    {
+                        "near" => $".Near(\"{item.value}\")",
+                        "hasParent" => $".HasParent(\"{item.value}\")",
+                        "hasAncestor" => $".HasAncestor(\"{item.value}\")",
+                        "hasChild" => $".HasChild(\"{item.value}\")",
+                        "hasSibling" => $".HasSibling(\"{item.value}\")",
+                        "first" => ".First()",
+                        "last" => ".Last()",
+                        "skip" => $".Skip({item.count})",
+                        "take" => $".Take({item.count})",
+                        "visible" => ".Visible()",
+                        "interactable" => ".Interactable()",
+                        "inRegion" => $".InRegion(\"{item.value}\")",
+                        _ => $".{item.method}()"
+                    };
+                }
+            }
+
+            return display;
         }
 
         /// <summary>
@@ -128,13 +198,43 @@ namespace ODDGames.UITest.VisualBuilder
         /// </summary>
         public ElementSelector Clone()
         {
-            return new ElementSelector
+            var clone = new ElementSelector
             {
-                type = type,
-                pattern = pattern,
-                elementId = elementId,
                 displayName = displayName
             };
+
+            if (query != null)
+            {
+                clone.query = new SearchQuery
+                {
+                    searchBase = query.searchBase,
+                    value = query.value,
+                    direction = query.direction
+                };
+
+                if (query.chain != null)
+                {
+                    clone.query.chain = new List<SearchChainItem>();
+                    foreach (var item in query.chain)
+                    {
+                        clone.query.chain.Add(new SearchChainItem
+                        {
+                            method = item.method,
+                            value = item.value,
+                            direction = item.direction,
+                            count = item.count,
+                            index = item.index,
+                            offset = item.offset,
+                            xMin = item.xMin,
+                            yMin = item.yMin,
+                            xMax = item.xMax,
+                            yMax = item.yMax
+                        });
+                    }
+                }
+            }
+
+            return clone;
         }
 
         /// <summary>
@@ -142,15 +242,24 @@ namespace ODDGames.UITest.VisualBuilder
         /// </summary>
         public bool IsValid()
         {
-            return type switch
-            {
-                SelectorType.ById => !string.IsNullOrEmpty(elementId),
-                SelectorType.ByName => !string.IsNullOrEmpty(pattern),
-                SelectorType.ByText => !string.IsNullOrEmpty(pattern),
-                SelectorType.ByType => !string.IsNullOrEmpty(pattern),
-                SelectorType.ByPath => !string.IsNullOrEmpty(pattern),
-                _ => false
-            };
+            return query != null && !string.IsNullOrEmpty(query.searchBase);
+        }
+
+        /// <summary>
+        /// Serializes this selector's query to JSON.
+        /// </summary>
+        public string ToJson()
+        {
+            return query?.ToJson();
+        }
+
+        /// <summary>
+        /// Creates a selector from a JSON string.
+        /// </summary>
+        public static ElementSelector FromJson(string json, string displayName = null)
+        {
+            var q = SearchQuery.FromJson(json);
+            return q != null ? FromQuery(q, displayName) : null;
         }
     }
 }

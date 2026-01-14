@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Newtonsoft.Json;
+using ODDGames.UITest.AI;
 using UnityEngine;
 
 namespace ODDGames.UITest.VisualBuilder
@@ -162,9 +164,16 @@ namespace ODDGames.UITest.VisualBuilder
             }
 
             sb.AppendLine($"    {fieldName}:");
-            sb.AppendLine($"      type: {selector.type}");
-            sb.AppendLine($"      pattern: \"{EscapeString(selector.pattern)}\"");
-            if (!string.IsNullOrEmpty(selector.displayName) && selector.displayName != selector.pattern)
+            // Serialize the SearchQuery as JSON using Newtonsoft.Json
+            if (selector.query != null)
+            {
+                var queryJson = JsonConvert.SerializeObject(selector.query, Formatting.None, new JsonSerializerSettings
+                {
+                    NullValueHandling = NullValueHandling.Ignore
+                });
+                sb.AppendLine($"      query: {queryJson}");
+            }
+            if (!string.IsNullOrEmpty(selector.displayName))
                 sb.AppendLine($"      display: \"{EscapeString(selector.displayName)}\"");
         }
 
@@ -372,14 +381,24 @@ namespace ODDGames.UITest.VisualBuilder
 
             switch (key)
             {
-                case "type":
-                    selector.type = Enum.TryParse<SelectorType>(value, out var st) ? st : SelectorType.ByName;
-                    break;
-                case "pattern":
-                    selector.pattern = UnescapeString(value);
+                case "query":
+                    // Parse the SearchQuery JSON using Newtonsoft.Json
+                    try
+                    {
+                        selector.query = JsonConvert.DeserializeObject<SearchQuery>(value);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[VisualTestSerializer] Failed to parse SearchQuery JSON: {ex.Message}");
+                    }
                     break;
                 case "display":
                     selector.displayName = UnescapeString(value);
+                    break;
+                // Legacy support for old format
+                case "type":
+                case "pattern":
+                    // Old format no longer supported - ignore
                     break;
             }
         }

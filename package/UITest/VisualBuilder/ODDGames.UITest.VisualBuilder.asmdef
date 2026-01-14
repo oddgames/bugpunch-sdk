@@ -6,7 +6,8 @@
         "ODDGames.UITest.AI",
         "UniTask",
         "Unity.TextMeshPro",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Newtonsoft.Json"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -25,7 +25,7 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "click";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public Vector2? ScreenPosition { get; set; }
 
         public override string Description =>
@@ -33,7 +33,7 @@ namespace ODDGames.UITest.AI
                 ? $"Click '{TargetElement.text ?? TargetElement.name}'"
                 : ScreenPosition.HasValue
                     ? $"Click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
-                    : $"Click element {ElementId}";
+                    : $"Click {SearchQuery}";
     }
 
     /// <summary>
@@ -43,13 +43,13 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "type";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public string Text { get; set; }
         public bool ClearFirst { get; set; } = true;
         public bool PressEnter { get; set; } = false;
 
         public override string Description =>
-            $"Type \"{(Text.Length > 20 ? Text.Substring(0, 17) + "..." : Text)}\" into {TargetElement?.name ?? ElementId}";
+            $"Type \"{(Text.Length > 20 ? Text.Substring(0, 17) + "..." : Text)}\" into {TargetElement?.name ?? SearchQuery}";
     }
 
     /// <summary>
@@ -59,8 +59,8 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "drag";
 
-        public string FromElementId { get; set; }
-        public string ToElementId { get; set; }
+        public string FromSearch { get; set; }
+        public string ToSearch { get; set; }
         public string Direction { get; set; } // "up", "down", "left", "right"
         public float Distance { get; set; } = 200f;
         public float Duration { get; set; } = 0.3f;
@@ -73,10 +73,10 @@ namespace ODDGames.UITest.AI
             get
             {
                 if (ToElement != null)
-                    return $"Drag from {FromElement?.name ?? FromElementId} to {ToElement.name}";
+                    return $"Drag from {FromElement?.name ?? FromSearch} to {ToElement.name}";
                 if (!string.IsNullOrEmpty(Direction))
-                    return $"Drag {FromElement?.name ?? FromElementId} {Direction} by {Distance}px";
-                return $"Drag {FromElement?.name ?? FromElementId}";
+                    return $"Drag {FromElement?.name ?? FromSearch} {Direction} by {Distance}px";
+                return $"Drag {FromElement?.name ?? FromSearch}";
             }
         }
     }
@@ -88,12 +88,12 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "scroll";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public string Direction { get; set; } // "up", "down", "left", "right"
         public float Amount { get; set; } = 0.3f;
 
         public override string Description =>
-            $"Scroll {TargetElement?.name ?? ElementId} {Direction}";
+            $"Scroll {TargetElement?.name ?? SearchQuery} {Direction}";
     }
 
     /// <summary>
@@ -152,7 +152,7 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "double_click";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public Vector2? ScreenPosition { get; set; }
 
         public override string Description =>
@@ -160,7 +160,7 @@ namespace ODDGames.UITest.AI
                 ? $"Double-click '{TargetElement.text ?? TargetElement.name}'"
                 : ScreenPosition.HasValue
                     ? $"Double-click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
-                    : $"Double-click element {ElementId}";
+                    : $"Double-click {SearchQuery}";
     }
 
     /// <summary>
@@ -170,11 +170,11 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "hold";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public float Duration { get; set; } = 1f;
 
         public override string Description =>
-            $"Hold '{TargetElement?.text ?? TargetElement?.name ?? ElementId}' for {Duration:F1}s";
+            $"Hold '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}' for {Duration:F1}s";
     }
 
     /// <summary>
@@ -210,13 +210,13 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "swipe";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public string Direction { get; set; } // "up", "down", "left", "right"
         public float Distance { get; set; } = 0.2f; // Normalized distance (0-1)
         public float Duration { get; set; } = 0.3f;
 
         public override string Description =>
-            $"Swipe {Direction} on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'";
+            $"Swipe {Direction} on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
     }
 
     /// <summary>
@@ -226,14 +226,14 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "pinch";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public float Scale { get; set; } = 1.5f; // >1 = zoom in, <1 = zoom out
         public float Duration { get; set; } = 0.5f;
 
         public override string Description =>
             Scale > 1f
-                ? $"Pinch out (zoom in) on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'"
-                : $"Pinch in (zoom out) on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'";
+                ? $"Pinch out (zoom in) on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'"
+                : $"Pinch in (zoom out) on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
     }
 
     /// <summary>
@@ -243,11 +243,11 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "set_slider";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public float Value { get; set; } // 0-1 normalized value
 
         public override string Description =>
-            $"Set slider '{TargetElement?.text ?? TargetElement?.name ?? ElementId}' to {Value:P0}";
+            $"Set slider '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}' to {Value:P0}";
     }
 
     /// <summary>
@@ -257,11 +257,11 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "set_scrollbar";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public float Value { get; set; } // 0-1 normalized value
 
         public override string Description =>
-            $"Set scrollbar '{TargetElement?.text ?? TargetElement?.name ?? ElementId}' to {Value:P0}";
+            $"Set scrollbar '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}' to {Value:P0}";
     }
 
     /// <summary>
@@ -271,14 +271,14 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "two_finger_swipe";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public string Direction { get; set; } // "up", "down", "left", "right"
         public float Distance { get; set; } = 0.2f; // Normalized distance (0-1)
         public float Duration { get; set; } = 0.3f;
         public float FingerSpacing { get; set; } = 0.03f; // Distance between fingers
 
         public override string Description =>
-            $"Two-finger swipe {Direction} on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'";
+            $"Two-finger swipe {Direction} on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
     }
 
     /// <summary>
@@ -288,15 +288,15 @@ namespace ODDGames.UITest.AI
     {
         public override string ActionType => "rotate";
 
-        public string ElementId { get; set; }
+        public string SearchQuery { get; set; }
         public float Degrees { get; set; } = 90f; // Positive = clockwise, negative = counter-clockwise
         public float Duration { get; set; } = 0.5f;
         public float FingerDistance { get; set; } = 0.05f; // Distance from center for each finger
 
         public override string Description =>
             Degrees > 0
-                ? $"Rotate clockwise {Degrees}° on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'"
-                : $"Rotate counter-clockwise {-Degrees}° on '{TargetElement?.text ?? TargetElement?.name ?? ElementId}'";
+                ? $"Rotate clockwise {Degrees}° on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'"
+                : $"Rotate counter-clockwise {-Degrees}° on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
     }
 
     /// <summary>
@@ -316,14 +316,18 @@ namespace ODDGames.UITest.AI
         /// <summary>Screen hash after the action</summary>
         public string ScreenHashAfter { get; set; }
 
+        /// <summary>Whether the screen/element state changed as a result of this action</summary>
+        public bool ScreenChanged { get; set; }
+
         /// <summary>Time taken to execute in milliseconds</summary>
         public float ExecutionTimeMs { get; set; }
 
-        public static ActionResult Succeeded(byte[] screenshot = null, string hash = null) => new ActionResult
+        public static ActionResult Succeeded(byte[] screenshot = null, string hash = null, bool changed = false) => new ActionResult
         {
             Success = true,
             ScreenshotAfter = screenshot,
-            ScreenHashAfter = hash
+            ScreenHashAfter = hash,
+            ScreenChanged = changed
         };
 
         public static ActionResult Failed(string error) => new ActionResult

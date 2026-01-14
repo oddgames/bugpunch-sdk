@@ -35,22 +35,85 @@ namespace ODDGames.UITest.AI
             };
         }
 
+        /// <summary>
+        /// Creates the search query property schema used by most tools.
+        /// </summary>
+        private static ToolProperty CreateSearchProperty(string description = null)
+        {
+            return new ToolProperty
+            {
+                Type = "object",
+                Description = description ?? "Search query to find the target element",
+                Properties = new Dictionary<string, ToolProperty>
+                {
+                    ["base"] = new ToolProperty
+                    {
+                        Type = "string",
+                        Description = "Base search method",
+                        Enum = new List<string> { "text", "name", "type", "adjacent", "path", "any", "sprite", "tag" }
+                    },
+                    ["value"] = new ToolProperty
+                    {
+                        Type = "string",
+                        Description = "Pattern to search for (text content, name, type name, etc.)"
+                    },
+                    ["direction"] = new ToolProperty
+                    {
+                        Type = "string",
+                        Description = "Direction for adjacent searches",
+                        Enum = new List<string> { "right", "left", "above", "below" }
+                    },
+                    ["chain"] = new ToolProperty
+                    {
+                        Type = "array",
+                        Description = "Chain of filter methods to apply",
+                        Items = new ToolProperty
+                        {
+                            Type = "object",
+                            Properties = new Dictionary<string, ToolProperty>
+                            {
+                                ["method"] = new ToolProperty
+                                {
+                                    Type = "string",
+                                    Description = "Filter method name",
+                                    Enum = new List<string> { "near", "hasParent", "hasAncestor", "hasChild", "hasSibling", "includeInactive", "includeDisabled", "visible", "first", "last", "skip", "take", "inRegion" }
+                                },
+                                ["value"] = new ToolProperty
+                                {
+                                    Type = "string",
+                                    Description = "Value for the filter (e.g., parent name for hasParent)"
+                                },
+                                ["direction"] = new ToolProperty
+                                {
+                                    Type = "string",
+                                    Description = "Direction for near filter",
+                                    Enum = new List<string> { "right", "left", "above", "below" }
+                                },
+                                ["count"] = new ToolProperty
+                                {
+                                    Type = "integer",
+                                    Description = "Count for skip/take filters"
+                                }
+                            }
+                        }
+                    }
+                },
+                Required = new List<string> { "base", "value" }
+            };
+        }
+
         private static ToolDefinition CreateClickTool()
         {
             return new ToolDefinition
             {
                 Name = "click",
-                Description = "Click on a UI element by ID, or click at screen coordinates if you see something clickable that isn't in the element list",
+                Description = "Click on a UI element. Use search to find element, or x/y for coordinates.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID from the list (e.g., 'e1', 'e2'). Preferred when element is in the list."
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the element to click"),
                         ["x"] = new ToolProperty
                         {
                             Type = "number",
@@ -62,7 +125,6 @@ namespace ODDGames.UITest.AI
                             Description = "Screen Y coordinate (0.0-1.0 normalized). Use when target not in element list."
                         }
                     }
-                    // Note: Either element_id OR (x,y) required
                 }
             };
         }
@@ -78,11 +140,7 @@ namespace ODDGames.UITest.AI
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID from the list (e.g., 'e1', 'e2')"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the element to double-click"),
                         ["x"] = new ToolProperty
                         {
                             Type = "number",
@@ -109,18 +167,14 @@ namespace ODDGames.UITest.AI
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID to hold"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the element to hold"),
                         ["duration"] = new ToolProperty
                         {
                             Type = "number",
                             Description = "How long to hold in seconds (default: 1.0)"
                         }
                     },
-                    Required = new List<string> { "element_id" }
+                    Required = new List<string> { "search" }
                 }
             };
         }
@@ -136,28 +190,24 @@ namespace ODDGames.UITest.AI
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "The ID of the input field to type into"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the input field"),
                         ["text"] = new ToolProperty
                         {
                             Type = "string",
-                            Description = "The text to type"
+                            Description = "Text to type into the field"
                         },
                         ["clear_first"] = new ToolProperty
                         {
                             Type = "boolean",
-                            Description = "Whether to clear existing text before typing (default: true)"
+                            Description = "Clear existing text before typing (default: true)"
                         },
                         ["press_enter"] = new ToolProperty
                         {
                             Type = "boolean",
-                            Description = "Whether to press Enter after typing (default: false)"
+                            Description = "Press Enter after typing (default: false)"
                         }
                     },
-                    Required = new List<string> { "element_id", "text" }
+                    Required = new List<string> { "search", "text" }
                 }
             };
         }
@@ -173,16 +223,8 @@ namespace ODDGames.UITest.AI
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["from_element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID to drag from"
-                        },
-                        ["to_element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID to drag to (optional)"
-                        },
+                        ["from"] = CreateSearchProperty("Search query to find the element to drag from"),
+                        ["to"] = CreateSearchProperty("Search query to find the element to drag to (optional)"),
                         ["direction"] = new ToolProperty
                         {
                             Type = "string",
@@ -200,7 +242,7 @@ namespace ODDGames.UITest.AI
                             Description = "Duration of drag in seconds (default: 0.3)"
                         }
                     },
-                    Required = new List<string> { "from_element_id" }
+                    Required = new List<string> { "from" }
                 }
             };
         }
@@ -216,11 +258,7 @@ namespace ODDGames.UITest.AI
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "The scrollable element ID (ScrollRect, ScrollView)"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the scrollable element"),
                         ["direction"] = new ToolProperty
                         {
                             Type = "string",
@@ -230,10 +268,10 @@ namespace ODDGames.UITest.AI
                         ["amount"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Scroll amount (0.0-1.0, default: 0.3)"
+                            Description = "Amount to scroll (0.0-1.0 normalized, default: 0.3)"
                         }
                     },
-                    Required = new List<string> { "element_id", "direction" }
+                    Required = new List<string> { "search", "direction" }
                 }
             };
         }
@@ -243,17 +281,13 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "swipe",
-                Description = "Swipe gesture on an element (touch gesture). Use for mobile-style swipe interactions.",
+                Description = "Swipe gesture on an element or screen",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID to swipe on"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the element to swipe on"),
                         ["direction"] = new ToolProperty
                         {
                             Type = "string",
@@ -263,47 +297,15 @@ namespace ODDGames.UITest.AI
                         ["distance"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Swipe distance as fraction of screen (0.0-1.0, default: 0.2)"
+                            Description = "Distance to swipe (0.0-1.0 normalized, default: 0.2)"
                         },
                         ["duration"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Swipe duration in seconds (default: 0.3)"
+                            Description = "Duration of swipe in seconds (default: 0.3)"
                         }
                     },
-                    Required = new List<string> { "element_id", "direction" }
-                }
-            };
-        }
-
-        private static ToolDefinition CreatePinchTool()
-        {
-            return new ToolDefinition
-            {
-                Name = "pinch",
-                Description = "Pinch gesture for zoom in/out (touch gesture). Scale > 1 zooms in, < 1 zooms out.",
-                Parameters = new ToolParameters
-                {
-                    Type = "object",
-                    Properties = new Dictionary<string, ToolProperty>
-                    {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID to pinch on"
-                        },
-                        ["scale"] = new ToolProperty
-                        {
-                            Type = "number",
-                            Description = "Scale factor: >1 = zoom in, <1 = zoom out (default: 1.5)"
-                        },
-                        ["duration"] = new ToolProperty
-                        {
-                            Type = "number",
-                            Description = "Pinch duration in seconds (default: 0.5)"
-                        }
-                    },
-                    Required = new List<string> { "element_id", "scale" }
+                    Required = new List<string> { "search", "direction" }
                 }
             };
         }
@@ -313,39 +315,64 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "two_finger_swipe",
-                Description = "Two-finger swipe gesture (e.g., for map panning). Both fingers move in the same direction.",
+                Description = "Two-finger swipe gesture (e.g., for map panning)",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID to swipe on"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the element"),
                         ["direction"] = new ToolProperty
                         {
                             Type = "string",
-                            Description = "Swipe direction: up, down, left, right"
+                            Description = "Direction to swipe",
+                            Enum = new List<string> { "up", "down", "left", "right" }
                         },
                         ["distance"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Swipe distance (0-1 normalized, default: 0.2)"
+                            Description = "Distance to swipe (0.0-1.0 normalized, default: 0.2)"
                         },
                         ["duration"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Swipe duration in seconds (default: 0.3)"
+                            Description = "Duration of swipe in seconds (default: 0.3)"
                         },
                         ["finger_spacing"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Distance between fingers (0-1 normalized, default: 0.03)"
+                            Description = "Distance between fingers (0.0-1.0 normalized, default: 0.03)"
                         }
                     },
-                    Required = new List<string> { "element_id", "direction" }
+                    Required = new List<string> { "search", "direction" }
+                }
+            };
+        }
+
+        private static ToolDefinition CreatePinchTool()
+        {
+            return new ToolDefinition
+            {
+                Name = "pinch",
+                Description = "Pinch gesture to zoom in or out",
+                Parameters = new ToolParameters
+                {
+                    Type = "object",
+                    Properties = new Dictionary<string, ToolProperty>
+                    {
+                        ["search"] = CreateSearchProperty("Search query to find the element"),
+                        ["scale"] = new ToolProperty
+                        {
+                            Type = "number",
+                            Description = "Scale factor (>1.0 = zoom in, <1.0 = zoom out)"
+                        },
+                        ["duration"] = new ToolProperty
+                        {
+                            Type = "number",
+                            Description = "Duration of pinch in seconds (default: 0.5)"
+                        }
+                    },
+                    Required = new List<string> { "search", "scale" }
                 }
             };
         }
@@ -355,34 +382,30 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "rotate",
-                Description = "Two-finger rotation gesture. Positive degrees = clockwise, negative = counter-clockwise.",
+                Description = "Two-finger rotation gesture",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "Element ID to rotate on"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the element"),
                         ["degrees"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Rotation angle in degrees (positive = clockwise, default: 90)"
+                            Description = "Rotation in degrees (positive = clockwise, negative = counter-clockwise)"
                         },
                         ["duration"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Rotation duration in seconds (default: 0.5)"
+                            Description = "Duration of rotation in seconds (default: 0.5)"
                         },
                         ["finger_distance"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Distance of fingers from center (0-1 normalized, default: 0.05)"
+                            Description = "Distance of fingers from center (0.0-1.0 normalized, default: 0.05)"
                         }
                     },
-                    Required = new List<string> { "element_id", "degrees" }
+                    Required = new List<string> { "search", "degrees" }
                 }
             };
         }
@@ -392,24 +415,20 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "set_slider",
-                Description = "Set a slider to a specific value (0-1 normalized)",
+                Description = "Set a slider to a specific value",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "The slider element ID"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the slider"),
                         ["value"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Target value (0.0-1.0)"
+                            Description = "Target value (0.0-1.0 normalized)"
                         }
                     },
-                    Required = new List<string> { "element_id", "value" }
+                    Required = new List<string> { "search", "value" }
                 }
             };
         }
@@ -419,24 +438,20 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "set_scrollbar",
-                Description = "Set a scrollbar to a specific position (0-1 normalized)",
+                Description = "Set a scrollbar to a specific position",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolProperty>
                     {
-                        ["element_id"] = new ToolProperty
-                        {
-                            Type = "string",
-                            Description = "The scrollbar element ID"
-                        },
+                        ["search"] = CreateSearchProperty("Search query to find the scrollbar"),
                         ["value"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Target position (0.0-1.0)"
+                            Description = "Target position (0.0-1.0 normalized)"
                         }
                     },
-                    Required = new List<string> { "element_id", "value" }
+                    Required = new List<string> { "search", "value" }
                 }
             };
         }
@@ -446,7 +461,7 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "key_press",
-                Description = "Press a keyboard key. Use for keyboard shortcuts or special keys like Enter, Escape, Tab.",
+                Description = "Press a keyboard key",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -455,7 +470,7 @@ namespace ODDGames.UITest.AI
                         ["key"] = new ToolProperty
                         {
                             Type = "string",
-                            Description = "Key to press (e.g., 'Enter', 'Escape', 'Tab', 'Space', 'A', 'F1')"
+                            Description = "Key to press (e.g., 'Enter', 'Escape', 'Tab', 'Space', 'A', 'Backspace')"
                         }
                     },
                     Required = new List<string> { "key" }
@@ -468,7 +483,7 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "key_hold",
-                Description = "Hold one or more keys for a duration. Use for key combinations like Ctrl+C.",
+                Description = "Hold one or more keys for a duration (for key combinations or movement controls)",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -477,13 +492,13 @@ namespace ODDGames.UITest.AI
                         ["keys"] = new ToolProperty
                         {
                             Type = "array",
-                            Description = "Array of keys to hold together (e.g., ['LeftControl', 'C'])",
-                            Items = new ToolPropertyItems { Type = "string" }
+                            Description = "Keys to hold simultaneously",
+                            Items = new ToolProperty { Type = "string" }
                         },
                         ["duration"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "How long to hold in seconds (default: 0.5)"
+                            Description = "Duration to hold in seconds (default: 0.5)"
                         }
                     },
                     Required = new List<string> { "keys" }
@@ -496,7 +511,7 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "wait",
-                Description = "Wait for a specified duration. Use when expecting animations, loading, or transitions.",
+                Description = "Wait for a specified duration (use for animations/loading)",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -505,7 +520,7 @@ namespace ODDGames.UITest.AI
                         ["seconds"] = new ToolProperty
                         {
                             Type = "number",
-                            Description = "Seconds to wait (0.5-5.0)"
+                            Description = "Duration to wait in seconds (0.5-5.0)"
                         }
                     },
                     Required = new List<string> { "seconds" }
@@ -518,7 +533,7 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "screenshot",
-                Description = "Request a screenshot for visual confirmation. ONLY use this when you cannot determine the correct action from the element list alone. Screenshots are slow - prefer using the element list.",
+                Description = "Request a screenshot for visual context. Use when element list seems incomplete or you need to verify visual state.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -527,7 +542,7 @@ namespace ODDGames.UITest.AI
                         ["reason"] = new ToolProperty
                         {
                             Type = "string",
-                            Description = "Why you need visual confirmation (e.g., 'need to verify image content', 'confirming visual state change')"
+                            Description = "Why you need the screenshot (helps with debugging)"
                         }
                     }
                 }
@@ -539,7 +554,7 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "pass",
-                Description = "Declare the test as PASSED when the pass condition is met. Only call this when you are confident the test goal has been achieved.",
+                Description = "Declare the test as PASSED. Only use when confident the test goal has been achieved.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -550,7 +565,8 @@ namespace ODDGames.UITest.AI
                             Type = "string",
                             Description = "Explanation of why the test passed"
                         }
-                    }
+                    },
+                    Required = new List<string> { "reason" }
                 }
             };
         }
@@ -560,7 +576,7 @@ namespace ODDGames.UITest.AI
             return new ToolDefinition
             {
                 Name = "fail",
-                Description = "Declare the test as FAILED when the fail condition is met, or when the test cannot proceed. Use this when you're certain the test goal cannot be achieved.",
+                Description = "Declare the test as FAILED. Use when the test goal cannot be achieved.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
