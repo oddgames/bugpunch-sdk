@@ -1269,6 +1269,13 @@ namespace ODDGames.UITest
                 bool match = IsNearElement(go, textPattern, direction);
                 return negate != match;
             });
+
+            // Order results by distance to the anchor text (closest first)
+            if (!negate)
+            {
+                _orderBy = objects => objects.OrderBy(go => GetDistanceToNearestText(go, textPattern, direction));
+            }
+
             return this;
         }
 
@@ -1712,11 +1719,17 @@ namespace ODDGames.UITest
 
         static bool IsNearElement(GameObject element, string textPattern, Direction? direction)
         {
+            float distance = GetDistanceToNearestText(element, textPattern, direction);
+            return distance < float.MaxValue;
+        }
+
+        static float GetDistanceToNearestText(GameObject element, string textPattern, Direction? direction)
+        {
             var elementRect = element.GetComponent<RectTransform>();
-            if (elementRect == null) return false;
+            if (elementRect == null) return float.MaxValue;
 
             var matchingTexts = FindTextsMatchingPattern(textPattern);
-            if (matchingTexts.Count == 0) return false;
+            if (matchingTexts.Count == 0) return float.MaxValue;
 
             Vector3[] elementCorners = new Vector3[4];
             elementRect.GetWorldCorners(elementCorners);
@@ -1725,94 +1738,34 @@ namespace ODDGames.UITest
                 (elementCorners[0].y + elementCorners[2].y) / 2);
 
             // Find the closest matching anchor text to this element
-            (GameObject textGo, Rect textBounds)? closestText = null;
             float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
             {
                 // Skip if the text is the element itself or a child of it
                 if (textGo == element || textGo.transform.IsChildOf(element.transform)) continue;
 
-                float distance = Vector2.Distance(elementCenter, textBounds.center);
-                if (distance < closestDistance)
-                {
-                    closestDistance = distance;
-                    closestText = (textGo, textBounds);
-                }
-            }
-
-            if (!closestText.HasValue) return false;
-
-            // If direction specified, check element is in that direction from the anchor text
-            if (direction.HasValue)
-            {
-                var textBounds = closestText.Value.textBounds;
-                bool isInDirection = direction.Value switch
-                {
-                    Direction.Right => elementCenter.x > textBounds.xMax,
-                    Direction.Left => elementCenter.x < textBounds.xMin,
-                    Direction.Below => elementCenter.y < textBounds.yMin,
-                    Direction.Above => elementCenter.y > textBounds.yMax,
-                    _ => true
-                };
-                if (!isInDirection) return false;
-            }
-
-            // Check if this element is the nearest UI element to the anchor text
-            return IsNearestElementToText(element, closestText.Value.textBounds, elementCenter, direction);
-        }
-
-        static bool IsNearestElementToText(GameObject element, Rect textBounds, Vector2 elementCenter, Direction? direction)
-        {
-            float elementDistance = Vector2.Distance(elementCenter, textBounds.center);
-            Vector2 textCenter = textBounds.center;
-
-            // Find all RectTransforms and check if any are closer
-            var allRects = UnityEngine.Object.FindObjectsOfType<RectTransform>();
-            foreach (var rect in allRects)
-            {
-                if (rect.gameObject == element) continue;
-                if (!rect.gameObject.activeInHierarchy) continue;
-
-                // Skip text elements themselves - we want UI elements near text, not other text
-                if (rect.GetComponent<TMP_Text>() != null || rect.GetComponent<Text>() != null) continue;
-
-                // Skip elements that are ancestors or descendants of the candidate
-                if (rect.transform.IsChildOf(element.transform) || element.transform.IsChildOf(rect.transform)) continue;
-
-                Vector3[] corners = new Vector3[4];
-                rect.GetWorldCorners(corners);
-                Vector2 center = new Vector2((corners[0].x + corners[2].x) / 2, (corners[0].y + corners[2].y) / 2);
-
-                // Check direction constraint
+                // If direction specified, check element is in that direction from the anchor text
                 if (direction.HasValue)
                 {
                     bool isInDirection = direction.Value switch
                     {
-                        Direction.Right => center.x > textBounds.xMax,
-                        Direction.Left => center.x < textBounds.xMin,
-                        Direction.Below => center.y < textBounds.yMin,
-                        Direction.Above => center.y > textBounds.yMax,
+                        Direction.Right => elementCenter.x > textBounds.xMax,
+                        Direction.Left => elementCenter.x < textBounds.xMin,
+                        Direction.Below => elementCenter.y < textBounds.yMin,
+                        Direction.Above => elementCenter.y > textBounds.yMax,
                         _ => true
                     };
                     if (!isInDirection) continue;
                 }
 
-                float distance = Vector2.Distance(center, textCenter);
-                if (distance < elementDistance)
+                float distance = Vector2.Distance(elementCenter, textBounds.center);
+                if (distance < closestDistance)
                 {
-                    // Found a closer element - but only count it if it has meaningful content
-                    // (has an interactable component, image, or is a container with children)
-                    if (HasInteractableComponent(rect.gameObject) ||
-                        rect.GetComponent<Image>() != null ||
-                        rect.GetComponent<RawImage>() != null ||
-                        rect.childCount > 0)
-                    {
-                        return false;
-                    }
+                    closestDistance = distance;
                 }
             }
 
-            return true;
+            return closestDistance;
         }
 
         #endregion
