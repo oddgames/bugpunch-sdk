@@ -1726,10 +1726,18 @@ namespace ODDGames.UITest
         static float GetDistanceToNearestText(GameObject element, string textPattern, Direction? direction)
         {
             var elementRect = element.GetComponent<RectTransform>();
-            if (elementRect == null) return float.MaxValue;
+            if (elementRect == null)
+            {
+                Debug.Log($"[Near] Element '{element.name}' has no RectTransform");
+                return float.MaxValue;
+            }
 
             var matchingTexts = FindTextsMatchingPattern(textPattern);
-            if (matchingTexts.Count == 0) return float.MaxValue;
+            if (matchingTexts.Count == 0)
+            {
+                Debug.Log($"[Near] No texts found matching pattern '{textPattern}'");
+                return float.MaxValue;
+            }
 
             Vector3[] elementCorners = new Vector3[4];
             elementRect.GetWorldCorners(elementCorners);
@@ -1737,12 +1745,18 @@ namespace ODDGames.UITest
                 (elementCorners[0].x + elementCorners[2].x) / 2,
                 (elementCorners[0].y + elementCorners[2].y) / 2);
 
+            Debug.Log($"[Near] Element '{element.name}' center: {elementCenter}, checking {matchingTexts.Count} texts matching '{textPattern}'");
+
             // Find the closest matching anchor text to this element that satisfies direction constraint
             float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
             {
                 // Skip if the text is the element itself or a child of it
-                if (textGo == element || textGo.transform.IsChildOf(element.transform)) continue;
+                if (textGo == element || textGo.transform.IsChildOf(element.transform))
+                {
+                    Debug.Log($"[Near] Skipping '{textGo.name}' - is same as element or child");
+                    continue;
+                }
 
                 // If direction specified, check element is in that direction from the anchor text
                 if (direction.HasValue)
@@ -1755,16 +1769,19 @@ namespace ODDGames.UITest
                         Direction.Above => elementCenter.y > textBounds.yMax,
                         _ => true
                     };
+                    Debug.Log($"[Near] Text '{textGo.name}' bounds: yMin={textBounds.yMin}, yMax={textBounds.yMax}, elementY={elementCenter.y}, isInDirection({direction.Value})={isInDirection}");
                     if (!isInDirection) continue;
                 }
 
                 float distance = Vector2.Distance(elementCenter, textBounds.center);
+                Debug.Log($"[Near] Text '{textGo.name}' distance: {distance}");
                 if (distance < closestDistance)
                 {
                     closestDistance = distance;
                 }
             }
 
+            Debug.Log($"[Near] Final distance for '{element.name}': {closestDistance}");
             return closestDistance;
         }
 

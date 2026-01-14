@@ -1,6 +1,6 @@
 {
   "name": "com.oddgames.uitest",
-  "version": "1.0.33",
+  "version": "1.0.34",
   "displayName": "ODD Games UI Test Framework",
   "description": "UI automation testing framework for Unity projects",
   "unity": "2022.3",
