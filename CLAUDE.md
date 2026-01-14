@@ -208,11 +208,20 @@ When updating the wiki, check these pages for API changes:
 
 ### Current Local Changes
 
-(No uncommitted changes)
+- **Fixed `Near()` with direction filtering** - Now correctly matches all elements in the specified direction, ordered by distance
+- **Added `ActionExecutor` class** - Unified action execution layer used by UITestBehaviour, VisualTestRunner, and AIActionExecutor
 
 ## Change History
 
 Reference of recent API changes. See [CHANGELOG.md](package/CHANGELOG.md) for complete version history.
+
+### v1.0.33 - 2026-01-14
+- **Fixed `Near()` with direction filtering** - Matches all elements in direction, orders by distance
+- **Behavior change** - `Matches()` returns true for all elements in direction; `Find()` returns closest first
+
+### v1.0.31/v1.0.32 - 2026-01-14
+- **`ActionExecutor` class** - Unified action execution layer
+- v1.0.32 broke `Near()` (fixed in v1.0.33)
 
 ### v1.0.30 - 2026-01-13
 - **Extracted Search class** to separate `Search.cs` file

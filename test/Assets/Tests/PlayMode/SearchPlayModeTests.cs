@@ -1833,17 +1833,28 @@ namespace ODDGames.UITest.Tests
         #region Near Tests
 
         [UnityTest]
-        public IEnumerator Near_FindsClosestInteractable_AnyDirection()
+        public IEnumerator Near_MatchesAllInDirection_OrdersByDistance()
         {
-            // Label in center, button closest to it
-            var label = CreateLabel("Center Flag", new Vector2(0, 0));
-            var closeButton = CreateButton("TextureButton", new Vector2(50, -30)); // Closest, below-right
-            var farButton = CreateButton("OtherButton", new Vector2(200, 0)); // Further away
-            yield return null;
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Label in center, buttons at different distances
+                var label = CreateLabel("Center Flag", new Vector2(0, 0));
+                var closeButton = CreateButton("TextureButton", new Vector2(50, -30)); // Closest
+                var farButton = CreateButton("OtherButton", new Vector2(200, 0)); // Further away
+                await UniTask.Yield();
 
-            var search = new Search().Near("Center Flag");
-            Assert.IsTrue(search.Matches(closeButton), "Closest button should match");
-            Assert.IsFalse(search.Matches(farButton), "Farther button should not match");
+                // Near() without direction matches ALL elements
+                var search = new Search().Near("Center Flag");
+                Assert.IsTrue(search.Matches(closeButton), "Close button should match");
+                Assert.IsTrue(search.Matches(farButton), "Far button should also match (no direction filter)");
+
+                // Find() returns closest due to ordering
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(new Search().Near("Center Flag"));
+                Assert.AreEqual("TextureButton", result.name, "Find should return closest button");
+            });
         }
 
         [UnityTest]
@@ -1854,40 +1865,62 @@ namespace ODDGames.UITest.Tests
             var aboveButton = CreateButton("AboveButton", new Vector2(0, 80)); // Above
             yield return null;
 
+            // Direction filtering works - elements outside direction don't match
             var searchBelow = new Search().Near("Center Flag", Direction.Below);
             Assert.IsTrue(searchBelow.Matches(belowButton), "Button below should match when filtering Below");
-            Assert.IsFalse(searchBelow.Matches(aboveButton), "Button above should not match when filtering Below");
+            Assert.IsFalse(searchBelow.Matches(aboveButton), "Button above should NOT match when filtering Below");
 
             var searchAbove = new Search().Near("Center Flag", Direction.Above);
             Assert.IsTrue(searchAbove.Matches(aboveButton), "Button above should match when filtering Above");
-            Assert.IsFalse(searchAbove.Matches(belowButton), "Button below should not match when filtering Above");
+            Assert.IsFalse(searchAbove.Matches(belowButton), "Button below should NOT match when filtering Above");
         }
 
         [UnityTest]
-        public IEnumerator Near_WithDirectionFilter_PrefersClosestInDirection()
+        public IEnumerator Near_WithDirectionFilter_AllInDirectionMatch()
         {
-            var label = CreateLabel("Center Flag", new Vector2(0, 50));
-            var closeBelow = CreateButton("CloseBelow", new Vector2(0, -30)); // Closer below
-            var farBelow = CreateButton("FarBelow", new Vector2(0, -150)); // Further below
-            yield return null;
+            return UniTask.ToCoroutine(async () =>
+            {
+                var label = CreateLabel("Center Flag", new Vector2(0, 50));
+                var closeBelow = CreateButton("CloseBelow", new Vector2(0, -30)); // Closer below
+                var farBelow = CreateButton("FarBelow", new Vector2(0, -150)); // Further below
+                await UniTask.Yield();
 
-            var search = new Search().Near("Center Flag", Direction.Below);
-            Assert.IsTrue(search.Matches(closeBelow), "Closer button below should match");
-            Assert.IsFalse(search.Matches(farBelow), "Farther button below should not match");
+                // Both elements below match - Near() matches all in direction
+                var search = new Search().Near("Center Flag", Direction.Below);
+                Assert.IsTrue(search.Matches(closeBelow), "Closer button below should match");
+                Assert.IsTrue(search.Matches(farBelow), "Farther button below should also match");
+
+                // Find() returns closest
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(new Search().Near("Center Flag", Direction.Below));
+                Assert.AreEqual("CloseBelow", result.name, "Find should return closest button");
+            });
         }
 
         [UnityTest]
-        public IEnumerator Near_DiagonalElement_MatchesClosest()
+        public IEnumerator Near_DiagonalElement_AllMatch_OrderedByDistance()
         {
-            // Real world case: Label and button at diagonal positions
-            var label = CreateLabel("Texture", new Vector2(0, 50));
-            var diagonalClose = CreateButton("DiagonalButton", new Vector2(30, -20)); // Diagonal but closest
-            var straightFar = CreateButton("StraightButton", new Vector2(0, -150)); // Straight down but far
-            yield return null;
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Label and buttons - Near() without direction matches all
+                var label = CreateLabel("Texture", new Vector2(0, 50));
+                var diagonalClose = CreateButton("DiagonalButton", new Vector2(30, -20)); // Diagonal but closest
+                var straightFar = CreateButton("StraightButton", new Vector2(0, -150)); // Straight down but far
+                await UniTask.Yield();
 
-            var search = new Search().Near("Texture");
-            Assert.IsTrue(search.Matches(diagonalClose), "Diagonal but closer button should match");
-            Assert.IsFalse(search.Matches(straightFar), "Straight but farther button should not match");
+                var search = new Search().Near("Texture");
+                Assert.IsTrue(search.Matches(diagonalClose), "Diagonal button should match");
+                Assert.IsTrue(search.Matches(straightFar), "Straight button should also match");
+
+                // Find() returns closest
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+                var result = await test.TestFind<Button>(new Search().Near("Texture"));
+                Assert.AreEqual("DiagonalButton", result.name, "Find should return closest (diagonal) button");
+            });
         }
 
         [UnityTest]
@@ -1898,10 +1931,10 @@ namespace ODDGames.UITest.Tests
             var maskButton = CreateButton("MaskButton", new Vector2(0, -80));
             yield return null;
 
-            // Near finds closest, but Name filters to only matching names
+            // Name filter excludes MaskButton, Near matches both (in direction)
             var search = new Search().Near("Center Flag", Direction.Below).Name("*Texture*");
             Assert.IsTrue(search.Matches(textureButton), "TextureButton should match Near+Name filter");
-            Assert.IsFalse(search.Matches(maskButton), "MaskButton should not match Name filter");
+            Assert.IsFalse(search.Matches(maskButton), "MaskButton should not match Name filter (different name)");
         }
 
         [UnityTest]
@@ -1972,86 +2005,141 @@ namespace ODDGames.UITest.Tests
         /// <summary>
         /// Tests Near() with duplicate elements - simulates Garage scenario where
         /// "Center Flag" and "Right Flag" sections both have "Texture" and "Mask" controls.
-        /// Tests both query orderings: Near first and Text first.
+        /// Near() matches all elements in the specified direction, ordered by distance.
+        /// The closest element is returned first by Find().
         /// </summary>
         [UnityTest]
         public IEnumerator Near_DuplicateElements_CenterFlag_NearFirst()
         {
-            // Create two sections with identical child structure
-            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
-            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
-            var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create two sections with identical child structure
+                var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+                CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+                var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
 
-            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
-            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
-            var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
+                var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+                CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+                var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
 
-            yield return null;
+                await UniTask.Yield();
 
-            // Test: Near first, then Text - should find Center Flag's Mask
-            var search = new Search().Near("Center Flag", Direction.Below).Text("Mask");
-            Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "Near.Text should find CenterFlagMaskBtn");
-            Assert.IsFalse(search.Matches(rightMaskBtn.gameObject), "Near.Text should NOT match RightFlagMaskBtn");
+                // Near matches all elements below, ordered by distance
+                var search = new Search().Near("Center Flag", Direction.Below).Text("Mask");
+
+                // Both buttons are below "Center Flag" so both match
+                Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "centerMaskBtn should match (closest)");
+                Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "rightMaskBtn should match (farther but still below)");
+
+                // Find returns closest first - centerMaskBtn is closest to "Center Flag"
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindAllHelper>();
+                var results = await test.TestFindAll<Button>(search);
+                Assert.AreEqual(2, results.Count, "Should find 2 Mask buttons");
+                Assert.AreEqual("CenterFlagMaskBtn", results[0].name, "First result should be centerMaskBtn (closest)");
+                Assert.AreEqual("RightFlagMaskBtn", results[1].name, "Second result should be rightMaskBtn (farther)");
+            });
         }
 
         [UnityTest]
         public IEnumerator Near_DuplicateElements_CenterFlag_TextFirst()
         {
-            // Create two sections with identical child structure
-            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
-            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
-            var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create two sections with identical child structure
+                var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+                CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+                var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
 
-            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
-            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
-            var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
+                var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+                CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+                var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
 
-            yield return null;
+                await UniTask.Yield();
 
-            // Test: Text first, then Near - should find Center Flag's Mask
-            var search = new Search().Text("Mask").Near("Center Flag", Direction.Below);
-            Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "Text.Near should find CenterFlagMaskBtn");
-            Assert.IsFalse(search.Matches(rightMaskBtn.gameObject), "Text.Near should NOT match RightFlagMaskBtn");
+                // Text first, then Near - same result since Near sets ordering
+                var search = new Search().Text("Mask").Near("Center Flag", Direction.Below);
+
+                // Both buttons are below "Center Flag" so both match
+                Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "centerMaskBtn should match (closest)");
+                Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "rightMaskBtn should match (farther but still below)");
+
+                // Find returns closest first
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindAllHelper>();
+                var results = await test.TestFindAll<Button>(search);
+                Assert.AreEqual(2, results.Count, "Should find 2 Mask buttons");
+                Assert.AreEqual("CenterFlagMaskBtn", results[0].name, "First result should be centerMaskBtn (closest)");
+            });
         }
 
         [UnityTest]
         public IEnumerator Near_DuplicateElements_RightFlag_NearFirst()
         {
-            // Create two sections with identical child structure
-            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
-            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
-            var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create two sections with identical child structure
+                var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+                CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+                var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
 
-            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
-            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
-            var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
+                var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+                CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+                var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
 
-            yield return null;
+                await UniTask.Yield();
 
-            // Test: Near first, then Text - should find Right Flag's Mask
-            var search = new Search().Near("Right Flag", Direction.Below).Text("Mask");
-            Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "Near.Text should find RightFlagMaskBtn");
-            Assert.IsFalse(search.Matches(centerMaskBtn.gameObject), "Near.Text should NOT match CenterFlagMaskBtn");
+                // Near matches all elements below "Right Flag", ordered by distance
+                var search = new Search().Near("Right Flag", Direction.Below).Text("Mask");
+
+                // Both buttons are below "Right Flag" so both match
+                Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "rightMaskBtn should match (closest)");
+                Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "centerMaskBtn should match (farther but still below)");
+
+                // Find returns closest first - rightMaskBtn is closest to "Right Flag"
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindAllHelper>();
+                var results = await test.TestFindAll<Button>(search);
+                Assert.AreEqual(2, results.Count, "Should find 2 Mask buttons");
+                Assert.AreEqual("RightFlagMaskBtn", results[0].name, "First result should be rightMaskBtn (closest)");
+                Assert.AreEqual("CenterFlagMaskBtn", results[1].name, "Second result should be centerMaskBtn (farther)");
+            });
         }
 
         [UnityTest]
         public IEnumerator Near_DuplicateElements_RightFlag_TextFirst()
         {
-            // Create two sections with identical child structure
-            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
-            CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
-            var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create two sections with identical child structure
+                var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(-150, 0), new Vector2(200, 150));
+                CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 50));
+                var centerMaskBtn = CreateButton("CenterFlagMaskBtn", "Mask", centerSection.transform, new Vector2(0, -20));
 
-            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
-            CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
-            var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
+                var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(150, 0), new Vector2(200, 150));
+                CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
+                var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
 
-            yield return null;
+                await UniTask.Yield();
 
-            // Test: Text first, then Near - should find Right Flag's Mask
-            var search = new Search().Text("Mask").Near("Right Flag", Direction.Below);
-            Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "Text.Near should find RightFlagMaskBtn");
-            Assert.IsFalse(search.Matches(centerMaskBtn.gameObject), "Text.Near should NOT match CenterFlagMaskBtn");
+                // Text first, then Near - same result since Near sets ordering
+                var search = new Search().Text("Mask").Near("Right Flag", Direction.Below);
+
+                // Both buttons are below "Right Flag" so both match
+                Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "rightMaskBtn should match (closest)");
+                Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "centerMaskBtn should match (farther but still below)");
+
+                // Find returns closest first
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindAllHelper>();
+                var results = await test.TestFindAll<Button>(search);
+                Assert.AreEqual(2, results.Count, "Should find 2 Mask buttons");
+                Assert.AreEqual("RightFlagMaskBtn", results[0].name, "First result should be rightMaskBtn (closest)");
+            });
         }
 
         [UnityTest]
@@ -2092,6 +2180,158 @@ namespace ODDGames.UITest.Tests
             var search = new Search().Text("Texture").Adjacent("Center Flag", Direction.Below);
             Assert.IsTrue(search.Matches(centerTextureBtn.gameObject), "Text.Adjacent should find CenterFlagTextureBtn");
             Assert.IsFalse(search.Matches(rightTextureBtn.gameObject), "Text.Adjacent should NOT match RightFlagTextureBtn");
+        }
+
+        /// <summary>
+        /// Tests Near() with vertically stacked sections like the Garage UI.
+        /// Center Flag section is above Right Flag section, each with identical child labels.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Near_VerticalSections_HeaderAboveContent()
+        {
+            // Center Flag section at TOP (y=150)
+            var centerSection = CreatePanel("CenterFlagSection", _canvas.transform, new Vector2(0, 150), new Vector2(250, 200));
+            var centerLabel = CreateLabelInParent("Center Flag", centerSection.transform, new Vector2(0, 80));  // Header at top of section
+            var centerTexture = CreateButton("CenterTexture", "Texture", centerSection.transform, new Vector2(0, 40));
+            var centerMask = CreateButton("CenterMask", "Mask", centerSection.transform, new Vector2(0, 0));
+            var centerNone = CreateButton("CenterNone", "None", centerSection.transform, new Vector2(0, -40));
+
+            // Right Flag section BELOW (y=-100)
+            var rightSection = CreatePanel("RightFlagSection", _canvas.transform, new Vector2(0, -100), new Vector2(250, 200));
+            var rightLabel = CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 80));  // Header at top of section
+            var rightTexture = CreateButton("RightTexture", "Texture", rightSection.transform, new Vector2(0, 40));
+            var rightMask = CreateButton("RightMask", "Mask", rightSection.transform, new Vector2(0, 0));
+            var rightNone = CreateButton("RightNone", "None", rightSection.transform, new Vector2(0, -40));
+
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+
+            // Debug: Log world positions
+            Vector3[] corners = new Vector3[4];
+
+            rightLabel.GetComponent<RectTransform>().GetWorldCorners(corners);
+            var rightLabelY = (corners[0].y + corners[2].y) / 2;
+            Debug.Log($"[Near Test] Right Flag label world Y: {rightLabelY}");
+
+            rightTexture.GetComponent<RectTransform>().GetWorldCorners(corners);
+            var rightTextureY = (corners[0].y + corners[2].y) / 2;
+            Debug.Log($"[Near Test] rightTexture world Y: {rightTextureY}, distance to label: {Mathf.Abs(rightTextureY - rightLabelY)}");
+
+            rightMask.GetComponent<RectTransform>().GetWorldCorners(corners);
+            var rightMaskY = (corners[0].y + corners[2].y) / 2;
+            Debug.Log($"[Near Test] rightMask world Y: {rightMaskY}, distance to label: {Mathf.Abs(rightMaskY - rightLabelY)}");
+
+            // Test: Near("Right Flag", Below) alone - which elements match?
+            var searchNearRightFlag = new Search().Near("Right Flag", Direction.Below);
+            Debug.Log($"[Near Test] rightTexture matches Near('Right Flag', Below): {searchNearRightFlag.Matches(rightTexture.gameObject)}");
+            Debug.Log($"[Near Test] rightMask matches Near('Right Flag', Below): {searchNearRightFlag.Matches(rightMask.gameObject)}");
+            Debug.Log($"[Near Test] rightNone matches Near('Right Flag', Below): {searchNearRightFlag.Matches(rightNone.gameObject)}");
+
+            // Near() matches ALL elements in the direction, but orders by distance
+            // Both Textures are below "Center Flag" (since rightTexture is also below Center Flag at y=230)
+            var searchCenterTexture = new Search().Text("Texture").Near("Center Flag", Direction.Below);
+            Assert.IsTrue(searchCenterTexture.Matches(centerTexture.gameObject), "Center Texture should match (below Center Flag)");
+            // rightTexture is also below Center Flag, so it matches too
+            Assert.IsTrue(searchCenterTexture.Matches(rightTexture.gameObject), "Right Texture also matches (below Center Flag)");
+
+            // Near("Right Flag", Below) - both Masks are below Right Flag
+            var searchRightMask = new Search().Text("Mask").Near("Right Flag", Direction.Below);
+            Assert.IsTrue(searchRightMask.Matches(rightMask.gameObject), "Right Mask should match");
+            // centerMask is ABOVE Right Flag (y=150 vs y=-20), so it should NOT match
+            Assert.IsFalse(searchRightMask.Matches(centerMask.gameObject), "Center Mask should NOT match (above Right Flag)");
+
+            // Near first, then Text - Right Flag's None is below Right Flag
+            var searchNearFirst = new Search().Near("Right Flag", Direction.Below).Text("None");
+            Assert.IsTrue(searchNearFirst.Matches(rightNone.gameObject), "Right None should match (below Right Flag)");
+            // centerNone is ABOVE Right Flag, so it should NOT match
+            Assert.IsFalse(searchNearFirst.Matches(centerNone.gameObject), "Center None should NOT match (above Right Flag)");
+        }
+
+        /// <summary>
+        /// Tests Near() with three vertically stacked sections - Near() matches all in direction,
+        /// but Find() returns closest first due to ordering.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Near_ThreeVerticalSections_OrdersByDistance()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Top section (y=200)
+                var topSection = CreatePanel("TopSection", _canvas.transform, new Vector2(0, 200), new Vector2(200, 100));
+                CreateLabelInParent("Top Header", topSection.transform, new Vector2(0, 30));
+                var topBtn = CreateButton("TopBtn", "Action", topSection.transform, new Vector2(0, -20));
+
+                // Middle section (y=0)
+                var midSection = CreatePanel("MiddleSection", _canvas.transform, new Vector2(0, 0), new Vector2(200, 100));
+                CreateLabelInParent("Middle Header", midSection.transform, new Vector2(0, 30));
+                var midBtn = CreateButton("MiddleBtn", "Action", midSection.transform, new Vector2(0, -20));
+
+                // Bottom section (y=-200)
+                var bottomSection = CreatePanel("BottomSection", _canvas.transform, new Vector2(0, -200), new Vector2(200, 100));
+                CreateLabelInParent("Bottom Header", bottomSection.transform, new Vector2(0, 30));
+                var bottomBtn = CreateButton("BottomBtn", "Action", bottomSection.transform, new Vector2(0, -20));
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+
+                // Find() with Near() returns closest element first
+                var topResult = await test.TestFind<Button>(new Search().Text("Action").Near("Top Header", Direction.Below));
+                Assert.AreEqual("TopBtn", topResult.name, "Should find Top section's Action (closest to Top Header)");
+
+                var midResult = await test.TestFind<Button>(new Search().Text("Action").Near("Middle Header", Direction.Below));
+                Assert.AreEqual("MiddleBtn", midResult.name, "Should find Middle section's Action (closest to Middle Header)");
+
+                var bottomResult = await test.TestFind<Button>(new Search().Text("Action").Near("Bottom Header", Direction.Below));
+                Assert.AreEqual("BottomBtn", bottomResult.name, "Should find Bottom section's Action (closest to Bottom Header)");
+
+                // Verify direction filtering works - topBtn is ABOVE Middle Header, so shouldn't match
+                var searchMid = new Search().Text("Action").Near("Middle Header", Direction.Below);
+                Assert.IsFalse(searchMid.Matches(topBtn.gameObject), "Top button is above Middle Header");
+            });
+        }
+
+        /// <summary>
+        /// Tests Near() with form-style layout - label on left, control on right in each row.
+        /// Near() matches all elements in direction, Find() returns closest.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Near_FormLayout_LabelLeftControlRight()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Row 1: Username label -> input field
+                CreateLabelInParent("Username", _canvas.transform, new Vector2(-100, 50));
+                var usernameInput = CreateButton("UsernameInput", "input1", _canvas.transform, new Vector2(50, 50));
+
+                // Row 2: Password label -> input field
+                CreateLabelInParent("Password", _canvas.transform, new Vector2(-100, -50));
+                var passwordInput = CreateButton("PasswordInput", "input2", _canvas.transform, new Vector2(50, -50));
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+
+                // Find() returns closest input to the right of each label
+                var usernameResult = await test.TestFind<Button>(new Search().Near("Username", Direction.Right));
+                Assert.AreEqual("UsernameInput", usernameResult.name, "Should find Username's input (closest to Username)");
+
+                var passwordResult = await test.TestFind<Button>(new Search().Near("Password", Direction.Right));
+                Assert.AreEqual("PasswordInput", passwordResult.name, "Should find Password's input (closest to Password)");
+
+                // Verify direction filtering - passwordInput is NOT to the right of Username (it's below)
+                // Both inputs are at x=50, both labels at x=-100
+                // So both inputs ARE to the right of BOTH labels
+                var searchUsername = new Search().Near("Username", Direction.Right);
+                Assert.IsTrue(searchUsername.Matches(usernameInput.gameObject), "Username input is right of Username label");
+                Assert.IsTrue(searchUsername.Matches(passwordInput.gameObject), "Password input is also right of Username label (same x)");
+            });
         }
 
         #endregion

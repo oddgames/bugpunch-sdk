@@ -1737,7 +1737,7 @@ namespace ODDGames.UITest
                 (elementCorners[0].x + elementCorners[2].x) / 2,
                 (elementCorners[0].y + elementCorners[2].y) / 2);
 
-            // Find the closest matching anchor text to this element
+            // Find the closest matching anchor text to this element that satisfies direction constraint
             float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
             {
