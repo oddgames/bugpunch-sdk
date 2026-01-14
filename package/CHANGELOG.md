@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.35] - 2026-01-14
+
+### Fixed
+- **`Near()` no longer checks parent/child relationships** - Only uses screen-space positions for matching
+  - Elements that contain the anchor text as a child now properly match based on screen position
+
 ## [1.0.34] - 2026-01-14
 
 ### Added
