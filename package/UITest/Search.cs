@@ -1751,13 +1751,6 @@ namespace ODDGames.UITest
             float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
             {
-                // Skip if the text is the element itself or a child of it
-                if (textGo == element || textGo.transform.IsChildOf(element.transform))
-                {
-                    Debug.Log($"[Near] Skipping '{textGo.name}' - is same as element or child");
-                    continue;
-                }
-
                 // If direction specified, check element is in that direction from the anchor text
                 if (direction.HasValue)
                 {
