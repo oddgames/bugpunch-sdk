@@ -195,6 +195,22 @@ namespace ODDGames.UITest
         /// </example>
         protected static Search Adjacent(string textPattern, Direction direction = Direction.Right) => new Search().Adjacent(textPattern, direction);
 
+        /// <summary>
+        /// Creates a Search query that finds elements near a text label, ordered by distance.
+        /// Unlike Adjacent(), Near() matches all elements in the specified direction and orders them by distance.
+        /// </summary>
+        /// <param name="textPattern">The text label pattern to find nearby elements for.</param>
+        /// <param name="direction">Optional direction filter (Right, Left, Above, Below). If null, matches all directions.</param>
+        /// <returns>A new Search instance for chaining additional conditions.</returns>
+        /// <example>
+        /// // Find elements below "Center Flag", closest first
+        /// await Click(Near("Center Flag", Direction.Below).Text("Texture"));
+        ///
+        /// // Find closest element to "Settings" in any direction
+        /// await Click(Near("Settings"));
+        /// </example>
+        protected static Search Near(string textPattern, Direction? direction = null) => new Search().Near(textPattern, direction);
+
         #endregion
 
         public class TestException : Exception

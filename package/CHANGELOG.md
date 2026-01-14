@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.34] - 2026-01-14
+
+### Added
+- **`Near()` static helper in UITestBehaviour** - Can now use `Near()` as a starting point like `Text()` and `Name()`
+  - `await Click(Near("Center Flag", Direction.Below).Text("Texture"));`
+  - `await Click(Near("Settings"));`
+- **Debug logging for `Near()` searches** - Logs element positions and direction checks to help diagnose search issues
+
 ## [1.0.33] - 2026-01-14
 
 ### Fixed
