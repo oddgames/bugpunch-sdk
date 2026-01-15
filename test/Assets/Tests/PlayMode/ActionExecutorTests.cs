@@ -23,10 +23,15 @@ namespace ODDGames.UITest.Tests
         private EventSystem _eventSystem;
         private List<GameObject> _createdObjects;
 
+        private Mouse _mouse;
+
         [SetUp]
         public void SetUp()
         {
             _createdObjects = new List<GameObject>();
+
+            // Ensure mouse device exists for input injection
+            _mouse = Mouse.current ?? InputSystem.AddDevice<Mouse>();
 
             // Create EventSystem with Input System module
             var esGO = new GameObject("EventSystem");
@@ -498,6 +503,70 @@ namespace ODDGames.UITest.Tests
             });
         }
 
+        [UnityTest]
+        public IEnumerator ClickDropdownItems_ClicksAllOptions()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var dropdown = CreateDropdown("TestDropdown", Vector2.zero);
+                dropdown.value = 0;
+                var clickedValues = new List<int>();
+                dropdown.onValueChanged.AddListener(val => clickedValues.Add(val));
+
+                await UniTask.Yield();
+
+                // Create helper to access protected method
+                var helperGO = new GameObject("ClickDropdownHelper");
+                helperGO.transform.SetParent(_canvas.transform, false);
+                var helper = helperGO.AddComponent<TestClickDropdownHelper>();
+                _createdObjects.Add(helperGO);
+
+                await helper.TestClickDropdownItems(new Search().Name("TestDropdown"));
+
+                // onValueChanged only fires when value changes, so clicking option 0 when already at 0 doesn't trigger
+                // We expect changes: 0->1, 1->2 = 2 changes
+                Assert.AreEqual(2, clickedValues.Count, "Should have triggered 2 value changes (0->1, 1->2)");
+                Assert.AreEqual(2, dropdown.value, "Final value should be option 2");
+            });
+        }
+
+        #endregion
+
+        #region ScrollItems Tests
+
+        [UnityTest]
+        public IEnumerator ClickScrollItems_ClicksAllItems()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var scrollRect = CreateScrollRectWithButtons("TestScrollView", Vector2.zero, 3);
+                var clickCounts = new int[3];
+
+                // Get the buttons and add click listeners
+                var buttons = scrollRect.content.GetComponentsInChildren<Button>();
+                for (int i = 0; i < buttons.Length; i++)
+                {
+                    int idx = i;
+                    buttons[i].onClick.AddListener(() => clickCounts[idx]++);
+                }
+
+                await UniTask.Yield();
+
+                // Create helper to access protected method
+                var helperGO = new GameObject("ClickScrollHelper");
+                helperGO.transform.SetParent(_canvas.transform, false);
+                var helper = helperGO.AddComponent<TestClickScrollHelper>();
+                _createdObjects.Add(helperGO);
+
+                await helper.TestClickScrollItems(new Search().Name("TestScrollView"));
+
+                // Each button should have been clicked once
+                Assert.AreEqual(1, clickCounts[0], "Button 0 should be clicked once");
+                Assert.AreEqual(1, clickCounts[1], "Button 1 should be clicked once");
+                Assert.AreEqual(1, clickCounts[2], "Button 2 should be clicked once");
+            });
+        }
+
         #endregion
 
         #region Keyboard Tests
@@ -957,7 +1026,93 @@ namespace ODDGames.UITest.Tests
             return dropdown;
         }
 
+        private ScrollRect CreateScrollRectWithButtons(string name, Vector2 position, int buttonCount)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(200, 150);
+            rect.anchoredPosition = position;
+
+            go.AddComponent<Image>().color = new Color(0.2f, 0.2f, 0.2f);
+            var scrollRect = go.AddComponent<ScrollRect>();
+
+            // Viewport
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(go.transform, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            viewport.AddComponent<Image>().color = Color.clear;
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
+
+            // Content
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0, 1);
+            contentRect.anchorMax = new Vector2(1, 1);
+            contentRect.pivot = new Vector2(0.5f, 1);
+            contentRect.sizeDelta = new Vector2(0, buttonCount * 40);
+
+            // Add buttons
+            for (int i = 0; i < buttonCount; i++)
+            {
+                var btnGO = new GameObject($"Button{i}");
+                btnGO.transform.SetParent(content.transform, false);
+                var btnRect = btnGO.AddComponent<RectTransform>();
+                btnRect.anchorMin = new Vector2(0, 1);
+                btnRect.anchorMax = new Vector2(1, 1);
+                btnRect.pivot = new Vector2(0.5f, 1);
+                btnRect.sizeDelta = new Vector2(-20, 35);
+                btnRect.anchoredPosition = new Vector2(0, -i * 40 - 2);
+
+                btnGO.AddComponent<Image>().color = new Color(0.4f, 0.4f, 0.4f);
+                btnGO.AddComponent<Button>();
+            }
+
+            scrollRect.content = contentRect;
+            scrollRect.viewport = viewportRect;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+
+            _createdObjects.Add(go);
+            return scrollRect;
+        }
+
         #endregion
+    }
+
+    /// <summary>
+    /// Test helper for ClickDropdownItems.
+    /// </summary>
+    [UITest(Scenario = 9990, Feature = "Test Helper", Story = "ClickDropdown Helper")]
+    public class TestClickDropdownHelper : UITestBehaviour
+    {
+        protected override UniTask Test() => UniTask.CompletedTask;
+        private void Awake() { enabled = false; }
+        public async UniTask TestClickDropdownItems(Search search, int delayBetween = 0)
+        {
+            await ClickDropdownItems(search, delayBetween, throwIfMissing: true, searchTime: 2);
+        }
+    }
+
+    /// <summary>
+    /// Test helper for ClickScrollItems.
+    /// </summary>
+    [UITest(Scenario = 9989, Feature = "Test Helper", Story = "ClickScroll Helper")]
+    public class TestClickScrollHelper : UITestBehaviour
+    {
+        protected override UniTask Test() => UniTask.CompletedTask;
+        private void Awake() { enabled = false; }
+        public async UniTask TestClickScrollItems(Search search, int delayBetween = 0)
+        {
+            await ClickScrollItems(search, delayBetween, throwIfMissing: true, searchTime: 2);
+        }
     }
 
     /// <summary>
