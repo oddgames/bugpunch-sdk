@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.37] - 2026-01-15
+
+### Fixed
+- **`Text()` now matches only the element with the text** - Previously matched ancestors that contained text in children
+  - `Text("Australia")` now only matches the TMP_Text/Text element itself, not parent ScrollArea
+  - Fixes incorrect matches where `ClickAny(Text("X"))` would click on ancestor containers
+
+### Changed
+- **ActionExecutor logging now shows search query and element name** - Better debugging output
+  - Format: `[ActionExecutor] Click(Text("Button")) -> 'ButtonText' at (450, 300)`
+  - Shows what was searched for, what was found, and where the action occurred
+- **Separated action delay from search polling** - `Interval` (500ms) for action delay, `PollInterval` (100ms) for search loops
+  - Prevents flaky tests from actions being too fast while keeping searches responsive
+- **Removed verbose debug logging from Adjacent search** - Cleaner console output
+
 ## [1.0.36] - 2026-01-15
 
 ### Fixed

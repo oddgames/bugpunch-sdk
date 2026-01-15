@@ -225,7 +225,7 @@ namespace ODDGames.UITest.AI
                 // Use AsyncGPUReadback to read without blocking
                 var tcs = new UniTaskCompletionSource<Texture2D>();
 
-                AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBA32, (request) =>
+                _ = AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBA32, (request) =>
                 {
                     if (request.hasError || !Application.isPlaying)
                     {

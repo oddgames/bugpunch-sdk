@@ -29,11 +29,13 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
             {
-                var screenPos = search.GetScreenPosition(index);
-                if (screenPos.HasValue)
+                var results = search.FindAll();
+                if (results.Count > index)
                 {
-                    Debug.Log($"[ActionExecutor] Click at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0})");
-                    await InputInjector.InjectPointerTap(screenPos.Value);
+                    var target = results[index];
+                    var screenPos = InputInjector.GetScreenPosition(target);
+                    Debug.Log($"[ActionExecutor] Click({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
+                    await InputInjector.InjectPointerTap(screenPos);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -79,11 +81,13 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
             {
-                var screenPos = search.GetScreenPosition(index);
-                if (screenPos.HasValue)
+                var results = search.FindAll();
+                if (results.Count > index)
                 {
-                    Debug.Log($"[ActionExecutor] DoubleClick at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0})");
-                    await InputInjector.InjectPointerDoubleTap(screenPos.Value);
+                    var target = results[index];
+                    var screenPos = InputInjector.GetScreenPosition(target);
+                    Debug.Log($"[ActionExecutor] DoubleClick({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
+                    await InputInjector.InjectPointerDoubleTap(screenPos);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -130,11 +134,13 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
             {
-                var screenPos = search.GetScreenPosition(index);
-                if (screenPos.HasValue)
+                var results = search.FindAll();
+                if (results.Count > index)
                 {
-                    Debug.Log($"[ActionExecutor] TripleClick at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0})");
-                    await InputInjector.InjectPointerTripleTap(screenPos.Value);
+                    var target = results[index];
+                    var screenPos = InputInjector.GetScreenPosition(target);
+                    Debug.Log($"[ActionExecutor] TripleClick({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
+                    await InputInjector.InjectPointerTripleTap(screenPos);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -183,11 +189,13 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
             {
-                var screenPos = search.GetScreenPosition(index);
-                if (screenPos.HasValue)
+                var results = search.FindAll();
+                if (results.Count > index)
                 {
-                    Debug.Log($"[ActionExecutor] Hold at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0}) for {seconds}s");
-                    await InputInjector.InjectPointerHold(screenPos.Value, seconds);
+                    var target = results[index];
+                    var screenPos = InputInjector.GetScreenPosition(target);
+                    Debug.Log($"[ActionExecutor] Hold({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) for {seconds}s");
+                    await InputInjector.InjectPointerHold(screenPos, seconds);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -246,7 +254,7 @@ namespace ODDGames.UITest
                 if (results.Count > index)
                 {
                     var target = results[index];
-                    Debug.Log($"[ActionExecutor] Type \"{text}\" into '{target.name}' (clear={clearFirst}, enter={pressEnter})");
+                    Debug.Log($"[ActionExecutor] Type({search}) -> '{target.name}' text=\"{text}\" (clear={clearFirst}, enter={pressEnter})");
                     await InputInjector.TypeIntoField(target, text, clearFirst, pressEnter);
                     return true;
                 }
@@ -301,12 +309,14 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
             {
-                var screenPos = search.GetScreenPosition(index);
-                if (screenPos.HasValue)
+                var results = search.FindAll();
+                if (results.Count > index)
                 {
-                    var endPos = screenPos.Value + direction;
-                    Debug.Log($"[ActionExecutor] Drag from ({screenPos.Value.x:F0}, {screenPos.Value.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s");
-                    await InputInjector.InjectPointerDrag(screenPos.Value, endPos, duration);
+                    var target = results[index];
+                    var screenPos = InputInjector.GetScreenPosition(target);
+                    var endPos = screenPos + direction;
+                    Debug.Log($"[ActionExecutor] Drag({search}) -> '{target.name}' from ({screenPos.x:F0}, {screenPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s");
+                    await InputInjector.InjectPointerDrag(screenPos, endPos, duration);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -329,12 +339,16 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
             {
-                var fromPos = fromSearch.GetScreenPosition();
-                var toPos = toSearch.GetScreenPosition();
-                if (fromPos.HasValue && toPos.HasValue)
+                var fromResults = fromSearch.FindAll();
+                var toResults = toSearch.FindAll();
+                if (fromResults.Count > 0 && toResults.Count > 0)
                 {
-                    Debug.Log($"[ActionExecutor] Drag from ({fromPos.Value.x:F0}, {fromPos.Value.y:F0}) to ({toPos.Value.x:F0}, {toPos.Value.y:F0}) over {duration}s");
-                    await InputInjector.InjectPointerDrag(fromPos.Value, toPos.Value, duration);
+                    var fromTarget = fromResults[0];
+                    var toTarget = toResults[0];
+                    var fromPos = InputInjector.GetScreenPosition(fromTarget);
+                    var toPos = InputInjector.GetScreenPosition(toTarget);
+                    Debug.Log($"[ActionExecutor] DragTo({fromSearch}) -> '{fromTarget.name}' to ({toSearch}) -> '{toTarget.name}' over {duration}s");
+                    await InputInjector.InjectPointerDrag(fromPos, toPos, duration);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -482,11 +496,13 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
             {
-                var screenPos = search.GetScreenPosition(index);
-                if (screenPos.HasValue)
+                var results = search.FindAll();
+                if (results.Count > index)
                 {
-                    Debug.Log($"[ActionExecutor] Scroll at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0}) delta={delta}");
-                    await InputInjector.InjectScroll(screenPos.Value, delta);
+                    var target = results[index];
+                    var screenPos = InputInjector.GetScreenPosition(target);
+                    Debug.Log($"[ActionExecutor] Scroll({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) delta={delta}");
+                    await InputInjector.InjectScroll(screenPos, delta);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -514,7 +530,7 @@ namespace ODDGames.UITest
                 if (results.Count > index)
                 {
                     var target = results[index];
-                    Debug.Log($"[ActionExecutor] Scroll '{target.name}' {direction} amount={amount}");
+                    Debug.Log($"[ActionExecutor] Scroll({search}) -> '{target.name}' {direction} amount={amount}");
                     await InputInjector.ScrollElement(target, direction, amount);
                     return true;
                 }
@@ -642,6 +658,7 @@ namespace ODDGames.UITest
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
+                        Debug.Log($"[ActionExecutor] ClickSlider({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await ClickSliderAsync(slider, normalizedValue);
                         return true;
                     }
@@ -673,6 +690,7 @@ namespace ODDGames.UITest
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
+                        Debug.Log($"[ActionExecutor] DragSlider({search}) -> '{go.name}' from {fromValue:F2} to {toValue:F2}");
                         await DragSliderAsync(slider, fromValue, toValue, duration);
                         return true;
                     }
@@ -702,6 +720,7 @@ namespace ODDGames.UITest
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
+                        Debug.Log($"[ActionExecutor] SetSlider({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await SetSliderAsync(slider, normalizedValue);
                         return true;
                     }
@@ -731,6 +750,7 @@ namespace ODDGames.UITest
                     var scrollbar = go.GetComponent<Scrollbar>();
                     if (scrollbar != null)
                     {
+                        Debug.Log($"[ActionExecutor] SetScrollbar({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await SetScrollbarAsync(scrollbar, normalizedValue);
                         return true;
                     }
@@ -940,6 +960,7 @@ namespace ODDGames.UITest
                     var legacyDropdown = go.GetComponent<Dropdown>();
                     if (legacyDropdown != null)
                     {
+                        Debug.Log($"[ActionExecutor] ClickDropdown({search}) -> '{go.name}' index={optionIndex}");
                         await ClickDropdownItemAsync(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
                         return true;
                     }
@@ -948,6 +969,7 @@ namespace ODDGames.UITest
                     var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
                     if (tmpDropdown != null)
                     {
+                        Debug.Log($"[ActionExecutor] ClickDropdown({search}) -> '{go.name}' index={optionIndex}");
                         await ClickDropdownItemAsync(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
                         return true;
                     }
@@ -981,6 +1003,7 @@ namespace ODDGames.UITest
                         int optionIndex = legacyDropdown.options.FindIndex(o => o.text == optionLabel);
                         if (optionIndex >= 0)
                         {
+                            Debug.Log($"[ActionExecutor] ClickDropdown({search}) -> '{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
                             await ClickDropdownItemAsync(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
                             return true;
                         }
@@ -993,6 +1016,7 @@ namespace ODDGames.UITest
                         int optionIndex = tmpDropdown.options.FindIndex(o => o.text == optionLabel);
                         if (optionIndex >= 0)
                         {
+                            Debug.Log($"[ActionExecutor] ClickDropdown({search}) -> '{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
                             await ClickDropdownItemAsync(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
                             return true;
                         }
@@ -1072,7 +1096,8 @@ namespace ODDGames.UITest
                 {
                     // Randomly select one
                     var target = results.OrderBy(_ => rnd.Next()).First();
-                    Debug.Log($"[ActionExecutor] ClickAny selecting '{target.name}' from {results.Count} matches");
+                    var screenPos = InputInjector.GetScreenPosition(target);
+                    Debug.Log($"[ActionExecutor] ClickAny({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) (from {results.Count} matches)");
                     await ClickAsync(target);
                     return true;
                 }

@@ -229,13 +229,20 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Gets or sets the interval in milliseconds between test actions.
-        /// Default is 100ms. Increase for slower, more visible test playback.
+        /// Gets or sets the delay in milliseconds after a successful action.
+        /// Default is 500ms. Increase for slower, more visible test playback.
         /// </summary>
         /// <example>
-        /// UITestBehaviour.Interval = 200; // Slower playback
+        /// UITestBehaviour.Interval = 200; // Faster playback
         /// </example>
-        public static int Interval { get; set; } = 100;
+        public static int Interval { get; set; } = 500;
+
+        /// <summary>
+        /// Gets or sets the polling interval in milliseconds during search/wait operations.
+        /// Default is 100ms. This is separate from Interval to allow fast polling while still having
+        /// a longer delay after successful actions.
+        /// </summary>
+        public static int PollInterval { get; set; } = 100;
 
         /// <summary>
         /// When true, increases all intervals and enables verbose logging for debugging tests.
@@ -248,9 +255,14 @@ namespace ODDGames.UITest
         public static float DebugIntervalMultiplier { get; set; } = 3f;
 
         /// <summary>
-        /// Gets the effective interval, accounting for debug mode multiplier.
+        /// Gets the effective action interval, accounting for debug mode multiplier.
         /// </summary>
         static int EffectiveInterval => DebugMode ? (int)(Interval * DebugIntervalMultiplier) : Interval;
+
+        /// <summary>
+        /// Gets the effective poll interval, accounting for debug mode multiplier.
+        /// </summary>
+        static int EffectivePollInterval => DebugMode ? (int)(PollInterval * DebugIntervalMultiplier) : PollInterval;
 
         static void LogDebug(string message)
         {
@@ -979,7 +991,7 @@ namespace ODDGames.UITest
                     return;
                 }
 
-                await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                await UniTask.Delay(EffectivePollInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
 
             TestCancellationToken.ThrowIfCancellationRequested();
@@ -1023,7 +1035,7 @@ namespace ODDGames.UITest
                     return;
                 }
 
-                await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                await UniTask.Delay(EffectivePollInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
 
             TestCancellationToken.ThrowIfCancellationRequested();
@@ -1648,7 +1660,7 @@ namespace ODDGames.UITest
             }
             else if (throwIfMissing)
             {
-                throw new TestException($"Hold (Search) could not find any matching target within {searchTime}s");
+                throw new TestException($"Hold({search}) could not find any matching target within {searchTime}s");
             }
         }
 
@@ -1695,7 +1707,7 @@ namespace ODDGames.UITest
                 else if (throwIfMissing)
                 {
                     string indexMsg = index > 0 ? $" at index {index}" : "";
-                    throw new TestException($"Click (Search){indexMsg} could not find any matching target within {searchTime}s");
+                    throw new TestException($"Click({search}){indexMsg} could not find any matching target within {searchTime}s");
                 }
 
                 repeat--;
@@ -1787,7 +1799,7 @@ namespace ODDGames.UITest
             }
             else if (throwIfMissing)
             {
-                throw new TestException($"DoubleClick (Search) could not find any matching target within {searchTime}s");
+                throw new TestException($"DoubleClick({search}) could not find any matching target within {searchTime}s");
             }
         }
 
@@ -1829,7 +1841,7 @@ namespace ODDGames.UITest
             }
             else if (throwIfMissing)
             {
-                throw new TestException($"TripleClick (Search) could not find any matching target within {searchTime}s");
+                throw new TestException($"TripleClick({search}) could not find any matching target within {searchTime}s");
             }
         }
 
@@ -1895,7 +1907,7 @@ namespace ODDGames.UITest
             }
             else if (throwIfMissing)
             {
-                throw new TestException($"Scroll (Search) could not find any matching target within {searchTime}s");
+                throw new TestException($"Scroll({search}) could not find any matching target within {searchTime}s");
             }
         }
 
@@ -2301,7 +2313,7 @@ namespace ODDGames.UITest
             }
             else if (throwIfMissing)
             {
-                throw new TestException($"Drag (Search) could not find any matching target within {searchTime}s");
+                throw new TestException($"Drag({search}) could not find any matching target within {searchTime}s");
             }
         }
 
@@ -2841,7 +2853,7 @@ namespace ODDGames.UITest
             }
             else if (throwIfMissing)
             {
-                throw new TestException($"ClickAny (Search) could not find any matching target within {seconds}s");
+                throw new TestException($"ClickAny({search}) could not find any matching target within {seconds}s");
             }
         }
 
@@ -2871,7 +2883,7 @@ namespace ODDGames.UITest
 
             while ((Time.realtimeSinceStartup - startTime) < seconds)
             {
-                await UniTask.Delay(EffectiveInterval, true);
+                await UniTask.Delay(EffectivePollInterval, true);
 
                 var result = GameObject.FindAnyObjectByType<T>(findMode);
 
@@ -3035,7 +3047,7 @@ namespace ODDGames.UITest
                     }
                 }
 
-                await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                await UniTask.Delay(EffectivePollInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
 
             TestCancellationToken.ThrowIfCancellationRequested();
@@ -3149,7 +3161,7 @@ namespace ODDGames.UITest
                     }
                 }
 
-                await UniTask.Delay(EffectiveInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
+                await UniTask.Delay(EffectivePollInterval, true, PlayerLoopTiming.Update, TestCancellationToken);
             }
 
             TestCancellationToken.ThrowIfCancellationRequested();
