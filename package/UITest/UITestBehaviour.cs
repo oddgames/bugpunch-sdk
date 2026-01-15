@@ -944,7 +944,7 @@ namespace ODDGames.UITest
         {
             Debug.Log($"[UITEST] Wait ({seconds}s)");
             LogDebug($"Wait: with {seconds}s timeout");
-            await Find<MonoBehaviour>(search, true, seconds);
+            await Find<Transform>(search, true, seconds);
         }
 
         /// <summary>
@@ -1096,96 +1096,23 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask TextInput(Search search, string input, float seconds = 10, bool pressEnter = false)
         {
-            Debug.Log($"[UITEST] TextInput ({seconds}) '{input}' pressEnter={pressEnter}");
+            Debug.Log($"[UITEST] TextInput ({seconds}s) '{input}' search={search}");
 
-            // Try to find TMP_InputField or legacy InputField - quick check first (single iteration)
-            var findStart = Time.realtimeSinceStartup;
+            // Try to find TMP_InputField or legacy InputField
+            Debug.Log($"[UITEST] TextInput - searching for TMP_InputField...");
             var tmpInput = await Find<TMP_InputField>(search, false, 0.1f);
-            var legacyInputQuick = tmpInput == null ? await Find<InputField>(search, false, 0.1f) : null;
-
-            // If neither found on quick check, do full timeout search for TMP first, then legacy
-            if (tmpInput == null && legacyInputQuick == null)
-            {
-                Debug.Log($"[UITEST] Quick check failed, doing full {seconds}s search...");
-                tmpInput = await Find<TMP_InputField>(search, false, seconds);
-            }
-
-            Debug.Log($"[UITEST] Find took {(Time.realtimeSinceStartup - findStart) * 1000:F0}ms, TMP={tmpInput != null}, Legacy={legacyInputQuick != null}");
-
             if (tmpInput != null)
             {
-                // Click to focus
-                await ActionExecutor.ClickAsync(tmpInput.gameObject);
-                await UniTask.Yield();
-
-                // Type characters using ProcessEvent (adds to text) + ForceLabelUpdate (updates display)
-                // TMP_InputField uses IMGUI Event.PopEvent() internally which we can't inject into,
-                // so we must call ProcessEvent directly and then force the label update
-                if (!string.IsNullOrEmpty(input))
-                {
-                    foreach (char c in input)
-                    {
-                        var keyEvent = new Event
-                        {
-                            type = EventType.KeyDown,
-                            character = c,
-                            keyCode = CharToKeyCode(c)
-                        };
-                        tmpInput.ProcessEvent(keyEvent);
-                        tmpInput.ForceLabelUpdate();
-                        await UniTask.Yield();
-                    }
-                }
-
-                if (pressEnter)
-                {
-                    var enterEvent = new Event
-                    {
-                        type = EventType.KeyDown,
-                        character = '\n',
-                        keyCode = KeyCode.Return
-                    };
-                    tmpInput.ProcessEvent(enterEvent);
-                }
-
+                Debug.Log($"[UITEST] TextInput - found TMP_InputField: {tmpInput.name}");
+                await InputInjector.TypeIntoField(tmpInput.gameObject, input, clearFirst: true, pressEnter: pressEnter);
                 await ActionComplete();
                 return;
             }
+            Debug.Log($"[UITEST] TextInput - TMP_InputField not found, searching for legacy InputField...");
 
-            // Fall back to legacy InputField (use quick result if found, otherwise full search)
-            var legacyInput = legacyInputQuick ?? await Find<InputField>(search, true, seconds);
-
-            // Click to focus the input field
-            await ActionExecutor.ClickAsync(legacyInput.gameObject);
-
-            // Type characters using ProcessEvent + ForceLabelUpdate
-            if (!string.IsNullOrEmpty(input))
-            {
-                foreach (char c in input)
-                {
-                    var keyEvent = new Event
-                    {
-                        type = EventType.KeyDown,
-                        character = c,
-                        keyCode = CharToKeyCode(c)
-                    };
-                    legacyInput.ProcessEvent(keyEvent);
-                    legacyInput.ForceLabelUpdate();
-                    await UniTask.Yield();
-                }
-            }
-
-            if (pressEnter)
-            {
-                var enterEvent = new Event
-                {
-                    type = EventType.KeyDown,
-                    character = '\n',
-                    keyCode = KeyCode.Return
-                };
-                legacyInput.ProcessEvent(enterEvent);
-            }
-
+            var legacyInput = await Find<InputField>(search, true, seconds);
+            Debug.Log($"[UITEST] TextInput - found InputField: {legacyInput.name}");
+            await InputInjector.TypeIntoField(legacyInput.gameObject, input, clearFirst: true, pressEnter: pressEnter);
             await ActionComplete();
         }
 
@@ -1675,9 +1602,9 @@ namespace ODDGames.UITest
                 {
                     var b = await Find<IPointerClickHandler>(new Search().Any(searchPattern), throwIfMissing: false, seconds: 0.1f);
 
-                    if (b != null)
+                    if (b != null && b is UnityEngine.Component c)
                     {
-                        await SimulateClick(b);
+                        await ActionExecutor.ClickAsync(c.gameObject);
                         await ActionComplete();
                         return;
                     }
@@ -1689,23 +1616,6 @@ namespace ODDGames.UITest
             if (throwIfMissing)
             {
                 throw new TestException($"ClickAny on '{string.Join(", ", searches)}' could not find any matching target within {seconds}s");
-            }
-        }
-
-        private async UniTask SimulateClick(object target)
-        {
-            if (target is UnityEngine.Component component)
-            {
-                string path = GetHierarchyPath(component.transform);
-                string textContent = "";
-                if (TryGetComponentInChildren(component.gameObject, out TMP_Text tmpText) && tmpText != null)
-                    textContent = tmpText.text;
-                else if (TryGetComponentInChildren(component.gameObject, out Text uiText) && uiText != null)
-                    textContent = uiText.text;
-
-                Debug.Log($"[UITEST] CLICK executing - Name: '{component.name}' Path: '{path}' Text: '{textContent}'");
-
-                await ActionExecutor.ClickAsync(component.gameObject);
             }
         }
 
@@ -1728,27 +1638,17 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask Hold(Search search, float seconds, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Hold ({searchTime}) for {seconds}s");
+            Debug.Log($"[UITEST] Hold (Search) timeout={searchTime}s for {seconds}s");
 
-            float startTime = Time.realtimeSinceStartup;
+            bool found = await ActionExecutor.HoldAsync(search, seconds, searchTime);
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            if (found)
             {
-                var b = await Find<IPointerDownHandler>(search, false, 0.5f);
-
-                if (b != null && b is UnityEngine.Component c1)
-                {
-                    await ActionExecutor.HoldAsync(c1.gameObject, seconds);
-                    await ActionComplete();
-                    return;
-                }
-
-                await UniTask.Delay(100, true);
+                await ActionComplete();
             }
-
-            if (throwIfMissing)
+            else if (throwIfMissing)
             {
-                throw new TestException($"Hold could not find any matching target within {searchTime}s");
+                throw new TestException($"Hold (Search) could not find any matching target within {searchTime}s");
             }
         }
 
@@ -1785,57 +1685,19 @@ namespace ODDGames.UITest
             {
                 string indexInfo = index > 0 ? $" index={index}" : "";
                 Debug.Log($"[UITEST] Click (Search) timeout={searchTime}s{indexInfo}");
-                LogDebug($"Click: using Search query with {searchTime}s timeout{indexInfo}");
 
-                float startTime = Time.realtimeSinceStartup;
-                int searchIterations = 0;
-                var findMode = search.ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
+                bool found = await ActionExecutor.ClickAsync(search, searchTime, index);
 
-                while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+                if (found)
                 {
-                    searchIterations++;
-
-                    // Find all clickable objects and filter by Search query
-                    // Use GroupBy to deduplicate by GameObject (multiple MonoBehaviours on same object)
-                    var allClickables = GameObject.FindObjectsByType<MonoBehaviour>(findMode, FindObjectsSortMode.None)
-                        .Where(b => b != null && b is IPointerClickHandler && CheckAvailability(b, search) && search.Matches(b.gameObject))
-                        .GroupBy(b => b.gameObject)
-                        .Select(g => g.First())
-                        .ToList();
-
-                    // Apply post-processing (ordering, skip, take) if specified
-                    IEnumerable<MonoBehaviour> processed = allClickables;
-                    if (search.HasPostProcessing)
-                    {
-                        processed = search.ApplyPostProcessing(allClickables.Select(b => b.gameObject))
-                            .Select(go => go.GetComponent<MonoBehaviour>())
-                            .Where(b => b != null && b is IPointerClickHandler);
-                    }
-
-                    var finalList = processed.ToList();
-                    LogDebug($"Click: iteration {searchIterations}, found {allClickables.Count} matching clickables, {finalList.Count} after post-processing");
-
-                    if (finalList.Count > index)
-                    {
-                        var target = finalList[index];
-                        LogDebug($"Click: found target at index {index} after {searchIterations} iterations ({Time.realtimeSinceStartup - startTime:F2}s): {GetHierarchyPath(target.transform)}");
-                        await SimulateClick(target);
-                        await ActionComplete();
-                        goto nextRepeat;
-                    }
-
-                    await UniTask.Delay(100, true);
+                    await ActionComplete();
                 }
-
-                LogDebug($"Click: target not found after {searchIterations} iterations ({Time.realtimeSinceStartup - startTime:F2}s)");
-
-                if (throwIfMissing)
+                else if (throwIfMissing)
                 {
                     string indexMsg = index > 0 ? $" at index {index}" : "";
                     throw new TestException($"Click (Search){indexMsg} could not find any matching target within {searchTime}s");
                 }
 
-                nextRepeat:
                 repeat--;
             }
             while (repeat > 0);
@@ -1915,15 +1777,17 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask DoubleClick(Search search, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] DoubleClick");
+            Debug.Log($"[UITEST] DoubleClick (Search) timeout={searchTime}s");
 
-            var target = await Find<IPointerClickHandler>(search, throwIfMissing, searchTime);
-            if (target == null) return;
+            bool found = await ActionExecutor.DoubleClickAsync(search, searchTime);
 
-            if (target is UnityEngine.Component c)
+            if (found)
             {
-                await ActionExecutor.DoubleClickAsync(c.gameObject);
                 await ActionComplete();
+            }
+            else if (throwIfMissing)
+            {
+                throw new TestException($"DoubleClick (Search) could not find any matching target within {searchTime}s");
             }
         }
 
@@ -1937,6 +1801,69 @@ namespace ODDGames.UITest
             Debug.Log($"[UITEST] DoubleClick (screen center) at ({screenCenter.x:F0}, {screenCenter.y:F0})");
 
             await ActionExecutor.DoubleClickAtAsync(screenCenter);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Triple-clicks on an element found by search.
+        /// Performs three rapid clicks in succession.
+        /// Uses realistic mouse click injection via the Input System.
+        /// </summary>
+        /// <param name="search">Search query to find the element to triple-click on.</param>
+        /// <param name="throwIfMissing">If true, throws an exception when element is not found. Default is true.</param>
+        /// <param name="searchTime">Maximum time in seconds to search for the element. Default is 10 seconds.</param>
+        /// <returns>A UniTask that completes when the triple-click is performed.</returns>
+        /// <example>
+        /// // Triple-click on a button
+        /// await TripleClick(Name("MyButton"));
+        /// </example>
+        protected async UniTask TripleClick(Search search, bool throwIfMissing = true, float searchTime = 10)
+        {
+            Debug.Log($"[UITEST] TripleClick (Search) timeout={searchTime}s");
+
+            bool found = await ActionExecutor.TripleClickAsync(search, searchTime);
+
+            if (found)
+            {
+                await ActionComplete();
+            }
+            else if (throwIfMissing)
+            {
+                throw new TestException($"TripleClick (Search) could not find any matching target within {searchTime}s");
+            }
+        }
+
+        /// <summary>
+        /// Performs a triple-click at a specific screen position.
+        /// Performs three rapid clicks in succession.
+        /// </summary>
+        /// <param name="xPercent">X position as percentage of screen width (0-1).</param>
+        /// <param name="yPercent">Y position as percentage of screen height (0-1).</param>
+        /// <returns>A UniTask that completes when the triple-click is performed.</returns>
+        /// <example>
+        /// // Triple-click at screen center
+        /// await TripleClickAt(0.5f, 0.5f);
+        /// </example>
+        protected async UniTask TripleClickAt(float xPercent, float yPercent)
+        {
+            Vector2 pos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
+            Debug.Log($"[UITEST] TripleClickAt ({xPercent:P0}, {yPercent:P0}) at ({pos.x:F0}, {pos.y:F0})");
+
+            await ActionExecutor.TripleClickAtAsync(pos);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Performs a triple-click at screen center.
+        /// Performs three rapid clicks in succession.
+        /// </summary>
+        /// <returns>A UniTask that completes when the triple-click is performed.</returns>
+        protected async UniTask TripleClick()
+        {
+            Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            Debug.Log($"[UITEST] TripleClick (screen center) at ({screenCenter.x:F0}, {screenCenter.y:F0})");
+
+            await ActionExecutor.TripleClickAtAsync(screenCenter);
             await ActionComplete();
         }
 
@@ -1958,13 +1885,18 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask Scroll(Search search, float delta, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Scroll delta={delta}");
+            Debug.Log($"[UITEST] Scroll (Search) timeout={searchTime}s delta={delta}");
 
-            var target = await Find<RectTransform>(search, throwIfMissing, searchTime);
-            if (target == null) return;
+            bool found = await ActionExecutor.ScrollAsync(search, delta, searchTime);
 
-            await ActionExecutor.ScrollAsync(target.gameObject, delta);
-            await ActionComplete();
+            if (found)
+            {
+                await ActionComplete();
+            }
+            else if (throwIfMissing)
+            {
+                throw new TestException($"Scroll (Search) could not find any matching target within {searchTime}s");
+            }
         }
 
         /// <summary>
@@ -2359,17 +2291,18 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask Drag(Search search, Vector2 direction, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Drag ({duration}s) delta=({direction.x:F0},{direction.y:F0})");
+            Debug.Log($"[UITEST] Drag (Search) timeout={searchTime}s delta=({direction.x:F0},{direction.y:F0}) duration={duration}s");
 
-            var target = await Find<RectTransform>(search, throwIfMissing, searchTime);
-            if (target == null) return;
+            bool found = await ActionExecutor.DragAsync(search, direction, duration, searchTime);
 
-            Vector3[] corners = new Vector3[4];
-            target.GetWorldCorners(corners);
-            Vector2 center = (corners[0] + corners[2]) / 2f;
-            Vector2 screenCenter = RectTransformUtility.WorldToScreenPoint(null, center);
-
-            await DragFromTo(screenCenter, screenCenter + direction, duration);
+            if (found)
+            {
+                await ActionComplete();
+            }
+            else if (throwIfMissing)
+            {
+                throw new TestException($"Drag (Search) could not find any matching target within {searchTime}s");
+            }
         }
 
         /// <summary>
@@ -2411,16 +2344,18 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask DragTo(Search sourceSearch, Search targetSearch, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] DragTo ({duration}s)");
+            Debug.Log($"[UITEST] DragTo (Search, Search) timeout={searchTime}s duration={duration}s");
 
-            var source = await Find<RectTransform>(sourceSearch, throwIfMissing, searchTime);
-            if (source == null) return;
+            bool found = await ActionExecutor.DragToAsync(sourceSearch, targetSearch, duration, searchTime);
 
-            var target = await Find<RectTransform>(targetSearch, throwIfMissing, searchTime);
-            if (target == null) return;
-
-            await ActionExecutor.DragToAsync(source.gameObject, target.gameObject, duration);
-            await ActionComplete();
+            if (found)
+            {
+                await ActionComplete();
+            }
+            else if (throwIfMissing)
+            {
+                throw new TestException($"DragTo (Search, Search) could not find source or target within {searchTime}s");
+            }
         }
 
         /// <summary>
@@ -2471,13 +2406,18 @@ namespace ODDGames.UITest
         protected async UniTask ClickSlider(Search search, float percent, bool throwIfMissing = true, float searchTime = 10)
         {
             percent = Mathf.Clamp01(percent);
-            Debug.Log($"[UITEST] ClickSlider ({searchTime}s) at {percent:P0}");
+            Debug.Log($"[UITEST] ClickSlider (Search) timeout={searchTime}s at {percent:P0}");
 
-            var slider = await Find<Slider>(search, throwIfMissing, searchTime);
-            if (slider == null) return;
+            bool found = await ActionExecutor.ClickSliderAsync(search, percent, searchTime);
 
-            await ActionExecutor.ClickSliderAsync(slider, percent);
-            await ActionComplete();
+            if (found)
+            {
+                await ActionComplete();
+            }
+            else if (throwIfMissing)
+            {
+                throw new TestException($"ClickSlider (Search) could not find any matching Slider within {searchTime}s");
+            }
         }
 
         /// <summary>
@@ -2502,62 +2442,18 @@ namespace ODDGames.UITest
         {
             fromPercent = Mathf.Clamp01(fromPercent);
             toPercent = Mathf.Clamp01(toPercent);
-            Debug.Log($"[UITEST] DragSlider ({searchTime}s) from {fromPercent:P0} to {toPercent:P0}");
+            Debug.Log($"[UITEST] DragSlider (Search) timeout={searchTime}s from {fromPercent:P0} to {toPercent:P0}");
 
-            var slider = await Find<Slider>(search, throwIfMissing, searchTime);
-            if (slider == null) return;
+            bool found = await ActionExecutor.DragSliderAsync(search, fromPercent, toPercent, duration, searchTime);
 
-            await ActionExecutor.DragSliderAsync(slider, fromPercent, toPercent, duration);
-            await ActionComplete();
-        }
-
-        /// <summary>
-        /// Gets the screen position at a percentage along the slider's visible area.
-        /// </summary>
-        private static Vector2 GetSliderPositionAtPercent(Slider slider, float percent)
-        {
-            var sliderRT = slider.GetComponent<RectTransform>();
-
-            Vector3[] corners = new Vector3[4];
-            sliderRT.GetWorldCorners(corners);
-
-            // corners: 0=bottom-left, 1=top-left, 2=top-right, 3=bottom-right
-            Vector2 bottomLeft = corners[0];
-            Vector2 topRight = corners[2];
-
-            var canvas = slider.GetComponentInParent<Canvas>();
-            Camera cam = null;
-            if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+            if (found)
             {
-                cam = canvas.worldCamera ?? Camera.main;
+                await ActionComplete();
             }
-
-            // Determine direction - most sliders are horizontal left-to-right
-            bool isHorizontal = slider.direction == Slider.Direction.LeftToRight ||
-                               slider.direction == Slider.Direction.RightToLeft;
-            bool isReversed = slider.direction == Slider.Direction.RightToLeft ||
-                             slider.direction == Slider.Direction.TopToBottom;
-
-            if (isReversed)
-                percent = 1f - percent;
-
-            Vector3 worldPos;
-            if (isHorizontal)
+            else if (throwIfMissing)
             {
-                float x = Mathf.Lerp(bottomLeft.x, topRight.x, percent);
-                float y = (bottomLeft.y + topRight.y) / 2f;
-                worldPos = new Vector3(x, y, 0);
+                throw new TestException($"DragSlider (Search) could not find any matching Slider within {searchTime}s");
             }
-            else
-            {
-                float x = (bottomLeft.x + topRight.x) / 2f;
-                float y = Mathf.Lerp(bottomLeft.y, topRight.y, percent);
-                worldPos = new Vector3(x, y, 0);
-            }
-
-            return cam != null
-                ? RectTransformUtility.WorldToScreenPoint(cam, worldPos)
-                : (Vector2)worldPos;
         }
 
         /// <summary>
@@ -2877,34 +2773,18 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask ClickDropdown(Search search, int optionIndex, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) option index={optionIndex}");
+            Debug.Log($"[UITEST] ClickDropdown (Search) timeout={searchTime}s option index={optionIndex}");
 
-            // Try to find legacy Dropdown first, then TMP_Dropdown
-            var legacyDropdown = await Find<Dropdown>(search, false, searchTime / 2);
-            var tmpDropdown = legacyDropdown == null ? await Find<TMP_Dropdown>(search, false, searchTime / 2) : null;
+            bool found = await ActionExecutor.ClickDropdownAsync(search, optionIndex, searchTime);
 
-            GameObject dropdownGO = null;
-            RectTransform template = null;
-
-            if (legacyDropdown != null)
+            if (found)
             {
-                dropdownGO = legacyDropdown.gameObject;
-                template = legacyDropdown.template;
+                await ActionComplete();
             }
-            else if (tmpDropdown != null)
+            else if (throwIfMissing)
             {
-                dropdownGO = tmpDropdown.gameObject;
-                template = tmpDropdown.template;
+                throw new TestException($"ClickDropdown (Search) could not find any matching Dropdown within {searchTime}s");
             }
-
-            if (dropdownGO == null)
-            {
-                if (throwIfMissing)
-                    throw new TestException($"ClickDropdown - Could not find Dropdown or TMP_Dropdown");
-                return;
-            }
-
-            await ClickDropdownItem(dropdownGO, template, optionIndex);
         }
 
         /// <summary>
@@ -2926,151 +2806,19 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask ClickDropdown(Search search, string optionLabel, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] ClickDropdown ({searchTime}s) option='{optionLabel}'");
+            Debug.Log($"[UITEST] ClickDropdown (Search) timeout={searchTime}s option='{optionLabel}'");
 
-            // Try to find legacy Dropdown first, then TMP_Dropdown
-            var legacyDropdown = await Find<Dropdown>(search, false, searchTime / 2);
-            var tmpDropdown = legacyDropdown == null ? await Find<TMP_Dropdown>(search, false, searchTime / 2) : null;
+            bool found = await ActionExecutor.ClickDropdownAsync(search, optionLabel, searchTime);
 
-            int optionIndex = -1;
-            GameObject dropdownGO = null;
-            RectTransform template = null;
-
-            if (legacyDropdown != null)
+            if (found)
             {
-                dropdownGO = legacyDropdown.gameObject;
-                template = legacyDropdown.template;
-                for (int i = 0; i < legacyDropdown.options.Count; i++)
-                {
-                    if (legacyDropdown.options[i].text == optionLabel)
-                    {
-                        optionIndex = i;
-                        break;
-                    }
-                }
+                await ActionComplete();
             }
-            else if (tmpDropdown != null)
+            else if (throwIfMissing)
             {
-                dropdownGO = tmpDropdown.gameObject;
-                template = tmpDropdown.template;
-                for (int i = 0; i < tmpDropdown.options.Count; i++)
-                {
-                    if (tmpDropdown.options[i].text == optionLabel)
-                    {
-                        optionIndex = i;
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                if (throwIfMissing)
-                    throw new TestException($"ClickDropdown - Could not find Dropdown or TMP_Dropdown '{search}'");
-                return;
-            }
-
-            if (optionIndex < 0)
-            {
-                Debug.LogWarning($"[UITEST] ClickDropdown - Option '{optionLabel}' not found in dropdown");
-                return;
-            }
-
-            // Use the already-found dropdown directly
-            await ClickDropdownItem(dropdownGO, template, optionIndex);
-        }
-
-        /// <summary>
-        /// Internal method to click a dropdown item after the dropdown has been found.
-        /// </summary>
-        private async UniTask ClickDropdownItem(GameObject dropdownGO, RectTransform template, int optionIndex)
-        {
-            // Capture existing toggles before opening dropdown
-            var existingToggles = new HashSet<Toggle>(
-                GameObject.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
-
-            // Click the dropdown to open it
-            await ActionExecutor.ClickAsync(dropdownGO);
-
-            // Wait for new toggles to appear (the dropdown items)
-            Toggle[] newToggles = null;
-            float waitTime = 0f;
-            const float maxWaitTime = 0.5f;
-
-            while (waitTime < maxWaitTime)
-            {
-                await UniTask.DelayFrame(1);
-
-                var allToggles = GameObject.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-
-                // Find toggles that are new (created by opening the dropdown) and not part of the template
-                newToggles = allToggles
-                    .Where(t => !existingToggles.Contains(t))
-                    .Where(t => t.gameObject.activeInHierarchy)
-                    .Where(t => template == null || (!t.transform.IsChildOf(template) && t.transform != template))
-                    .OrderBy(t => t.transform.GetSiblingIndex())
-                    .ToArray();
-
-                if (newToggles.Length > optionIndex)
-                {
-                    var targetToggle = newToggles[optionIndex];
-                    await ActionExecutor.ClickAsync(targetToggle.gameObject);
-                    await ActionComplete();
-                    return;
-                }
-
-                await UniTask.Delay(50, true);
-                waitTime += 0.05f;
-            }
-
-            Debug.LogWarning($"[UITEST] ClickDropdown - Item at index {optionIndex} not found (found {newToggles?.Length ?? 0} new toggles)");
-        }
-
-        /// <summary>
-        /// Simulates gameplay by randomly holding specified targets for varying durations.
-        /// Useful for stress testing UI interactions over time.
-        /// </summary>
-        /// <param name="seconds">Duration in seconds to run the simulation. Default is 20 seconds.</param>
-        /// <param name="targets">Name/text patterns of elements to interact with.</param>
-        /// <returns>A UniTask that completes when the simulation ends.</returns>
-        protected async UniTask SimulatePlay(int seconds = 20, params string[] targets)
-        {
-
-            Debug.Log($"[UITEST] SimulatePlay ({seconds}) [{string.Join(',', targets)}]");
-
-            await UniTask.Delay(EffectiveInterval, true);
-
-            var startTime = Time.realtimeSinceStartup;
-
-            foreach (var t in targets)
-            {
-                SimulatePlayTarget(t, startTime, seconds).Forget();
-            }
-
-            await UniTask.Delay(TimeSpan.FromSeconds(seconds), true);
-
-        }
-
-        private async UniTaskVoid SimulatePlayTarget(string t, float startTime, int seconds)
-        {
-            var target = await Find<IPointerDownHandler>(new Search().Any(t), throwIfMissing: true, seconds: seconds);
-            if (target == null || !(target is UnityEngine.Component component))
-                return;
-
-            Vector2 screenPosition = InputInjector.GetScreenPosition(component.gameObject);
-
-            while (Time.realtimeSinceStartup - startTime < seconds && Application.isPlaying)
-            {
-                // Random hold duration
-                int holdDuration = UnityEngine.Random.Range(300, Mathf.Min(3000, seconds * 1000));
-                float holdSeconds = holdDuration / 1000f;
-
-                await ActionExecutor.HoldAtAsync(screenPosition, holdSeconds);
-
-                await UniTask.Delay(UnityEngine.Random.Range(10, 100), true);
+                throw new TestException($"ClickDropdown (Search) could not find Dropdown with option '{optionLabel}' within {searchTime}s");
             }
         }
-
-
 
         /// <summary>
         /// Clicks any one of the elements matching the search query.
@@ -3083,36 +2831,17 @@ namespace ODDGames.UITest
         /// <exception cref="TestException">Thrown when no matching element is found and throwIfMissing is true.</exception>
         protected async UniTask ClickAny(Search search, float seconds = 10, bool throwIfMissing = true)
         {
-            Debug.Log($"[UITEST] ClickAny ({seconds})");
+            Debug.Log($"[UITEST] ClickAny (Search) timeout={seconds}s");
 
-            float startTime = Time.realtimeSinceStartup;
+            bool found = await ActionExecutor.ClickAnyAsync(search, seconds);
 
-            while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying)
+            if (found)
             {
-                try
-                {
-                    var list = await FindAll<IPointerClickHandler>(search, 0.5f);
-                    var rnd = new System.Random((int)DateTime.Now.Millisecond);
-                    var clicktargets = list.OrderBy(i => rnd.Next());
-
-                    foreach (var item in clicktargets)
-                    {
-                        if (item != null)
-                        {
-                            await SimulateClick(item);
-                            await ActionComplete();
-                            return;
-                        }
-                    }
-                }
-                catch (TimeoutException) { }
-
-                await UniTask.Delay(100, true);
+                await ActionComplete();
             }
-
-            if (throwIfMissing)
+            else if (throwIfMissing)
             {
-                throw new TestException($"ClickAny could not find any matching target within {seconds}s");
+                throw new TestException($"ClickAny (Search) could not find any matching target within {seconds}s");
             }
         }
 
@@ -3312,7 +3041,7 @@ namespace ODDGames.UITest
             TestCancellationToken.ThrowIfCancellationRequested();
 
             if (throwIfMissing)
-                throw new TimeoutException($"Unable to locate {typeof(T).Name} matching Search query in {seconds} seconds after {iteration} iterations");
+                throw new TimeoutException($"Unable to locate {typeof(T).Name} matching '{search}' in {seconds} seconds after {iteration} iterations");
 
             return default;
         }

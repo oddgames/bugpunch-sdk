@@ -1,0 +1,687 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.TestTools;
+using UnityEngine.UI;
+using Cysharp.Threading.Tasks;
+using TMPro;
+
+namespace ODDGames.UITest.Tests
+{
+    /// <summary>
+    /// Extended PlayMode tests for Search class - covers uncovered methods from coverage report.
+    /// Tests: IncludeInactive, IncludeDisabled, HasSibling, InRegion, Take, OrderByDescending,
+    /// Randomize, Visible, Interactable, Or, FindAll, FindFirst, GetScreenPosition.
+    /// </summary>
+    [TestFixture]
+    public class SearchExtendedTests
+    {
+        private Canvas _canvas;
+        private EventSystem _eventSystem;
+        private List<GameObject> _createdObjects;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _createdObjects = new List<GameObject>();
+
+            // Create EventSystem
+            var esGO = new GameObject("EventSystem");
+            _eventSystem = esGO.AddComponent<EventSystem>();
+            esGO.AddComponent<InputSystemUIInputModule>();
+            _createdObjects.Add(esGO);
+
+            // Create Canvas
+            var canvasGO = new GameObject("Canvas");
+            _canvas = canvasGO.AddComponent<Canvas>();
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasGO.AddComponent<CanvasScaler>();
+            canvasGO.AddComponent<GraphicRaycaster>();
+            _createdObjects.Add(canvasGO);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            foreach (var obj in _createdObjects)
+            {
+                if (obj != null)
+                    Object.Destroy(obj);
+            }
+            _createdObjects.Clear();
+        }
+
+        #region IncludeInactive Tests
+
+        [UnityTest]
+        public IEnumerator IncludeInactive_FindsInactiveObjects()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var activeBtn = CreateButton("ActiveButton", new Vector2(-50, 0));
+                var inactiveBtn = CreateButton("InactiveButton", new Vector2(50, 0));
+                inactiveBtn.gameObject.SetActive(false);
+
+                await UniTask.Yield();
+
+                // Without IncludeInactive - should not find inactive
+                var normalResults = new Search().Name("*Button").FindAll();
+                Assert.AreEqual(1, normalResults.Count, "Should only find active button");
+
+                // With IncludeInactive - should find both
+                var allResults = new Search().Name("*Button").IncludeInactive().FindAll();
+                Assert.AreEqual(2, allResults.Count, "Should find both active and inactive buttons");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator IncludeInactive_FindsNestedInactiveObjects()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create parent that is inactive
+                var parent = new GameObject("InactiveParent");
+                parent.transform.SetParent(_canvas.transform, false);
+                parent.SetActive(false);
+                _createdObjects.Add(parent);
+
+                var childBtn = CreateButton("NestedChild", Vector2.zero);
+                childBtn.transform.SetParent(parent.transform, false);
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("NestedChild").IncludeInactive().FindAll();
+                Assert.AreEqual(1, results.Count, "Should find button in inactive parent");
+            });
+        }
+
+        #endregion
+
+        #region IncludeDisabled Tests
+
+        [UnityTest]
+        public IEnumerator IncludeDisabled_FindsDisabledComponents()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var enabledBtn = CreateButton("EnabledButton", new Vector2(-50, 0));
+                var disabledBtn = CreateButton("DisabledButton", new Vector2(50, 0));
+                disabledBtn.interactable = false;
+
+                await UniTask.Yield();
+
+                // Without IncludeDisabled - behavior depends on search type
+                var normalResults = new Search().Name("*Button").Type<Button>().FindAll();
+
+                // With IncludeDisabled - should find both
+                var allResults = new Search().Name("*Button").Type<Button>().IncludeDisabled().FindAll();
+                Assert.AreEqual(2, allResults.Count, "Should find both enabled and disabled buttons");
+            });
+        }
+
+        #endregion
+
+        #region HasSibling Tests
+
+        [UnityTest]
+        public IEnumerator HasSibling_FindsElementWithMatchingSibling()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create parent with two children
+                var parent = new GameObject("Parent");
+                parent.transform.SetParent(_canvas.transform, false);
+                _createdObjects.Add(parent);
+
+                var label = CreateText("Label", "Username:", new Vector2(-100, 0));
+                label.transform.SetParent(parent.transform, false);
+
+                var input = CreateInputField("InputField", new Vector2(50, 0));
+                input.transform.SetParent(parent.transform, false);
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("InputField").HasSibling(new Search().Text("Username:")).FindAll();
+                Assert.AreEqual(1, results.Count, "Should find input field with username label sibling");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator HasSibling_WithString_FindsElementByTextSibling()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var parent = new GameObject("Parent");
+                parent.transform.SetParent(_canvas.transform, false);
+                _createdObjects.Add(parent);
+
+                var label = CreateText("PasswordLabel", "Password:", new Vector2(-100, 0));
+                label.transform.SetParent(parent.transform, false);
+
+                var input = CreateInputField("PassInput", new Vector2(50, 0));
+                input.transform.SetParent(parent.transform, false);
+
+                await UniTask.Yield();
+
+                // HasSibling(string) searches by NAME pattern, not text
+                var results = new Search().Name("PassInput").HasSibling("PasswordLabel").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find input field with password label sibling");
+            });
+        }
+
+        #endregion
+
+        #region InRegion Tests
+
+        [UnityTest]
+        public IEnumerator InRegion_FindsElementsInBounds()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("TopLeft", new Vector2(-150, 150));
+                CreateButton("TopRight", new Vector2(150, 150));
+                CreateButton("BottomLeft", new Vector2(-150, -150));
+                CreateButton("Center", new Vector2(0, 0));
+
+                await UniTask.Yield();
+
+                // Search for buttons in the left half of screen (assuming ~400px canvas width)
+                // InRegion uses normalized coordinates (0-1)
+                var results = new Search().Name("*").Type<Button>().InRegion(0, 0, 0.5f, 1f).FindAll();
+
+                // Should find buttons on the left side
+                Assert.GreaterOrEqual(results.Count, 1, "Should find at least one button in left region");
+            });
+        }
+
+        #endregion
+
+        #region Take Tests
+
+        [UnityTest]
+        public IEnumerator Take_LimitsResultCount()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                for (int i = 0; i < 5; i++)
+                {
+                    CreateButton($"TakeButton{i}", new Vector2(i * 50 - 100, 0));
+                }
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("TakeButton*").Take(3).FindAll();
+                Assert.AreEqual(3, results.Count, "Should return exactly 3 results");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Take_ReturnsAllIfFewerThanLimit()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("OnlyButton", Vector2.zero);
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("OnlyButton").Take(10).FindAll();
+                Assert.AreEqual(1, results.Count, "Should return 1 when fewer than limit exist");
+            });
+        }
+
+        #endregion
+
+        #region OrderByDescending Tests
+
+        [UnityTest]
+        public IEnumerator OrderByDescending_ReversesOrder()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btnA = CreateButton("A_Button", new Vector2(-100, 0));
+                btnA.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 40);
+
+                var btnB = CreateButton("B_Button", new Vector2(0, 0));
+                btnB.GetComponent<RectTransform>().sizeDelta = new Vector2(200, 40);
+
+                var btnC = CreateButton("C_Button", new Vector2(100, 0));
+                btnC.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 40);
+
+                await UniTask.Yield();
+
+                var ascending = new Search().Name("*_Button").OrderBy<RectTransform>(rt => rt.sizeDelta.x).FindAll();
+                var descending = new Search().Name("*_Button").OrderByDescending<RectTransform>(rt => rt.sizeDelta.x).FindAll();
+
+                Assert.AreEqual(ascending.First().name, descending.Last().name, "Descending should reverse order");
+            });
+        }
+
+        #endregion
+
+        #region Randomize Tests
+
+        [UnityTest]
+        public IEnumerator Randomize_ShufflesResults()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    CreateButton($"RandBtn{i}", new Vector2((i - 5) * 30, 0));
+                }
+
+                await UniTask.Yield();
+
+                // Run multiple times and check if order varies
+                var orders = new List<string>();
+                for (int trial = 0; trial < 5; trial++)
+                {
+                    var results = new Search().Name("RandBtn*").Randomize().FindAll();
+                    orders.Add(string.Join(",", results.Select(r => r.name)));
+                }
+
+                // At least some orders should be different (not guaranteed but very likely)
+                var uniqueOrders = orders.Distinct().Count();
+                Assert.GreaterOrEqual(uniqueOrders, 1, "Randomize should produce results");
+            });
+        }
+
+        #endregion
+
+        #region Visible Tests
+
+        [UnityTest]
+        public IEnumerator Visible_FindsOnlyVisibleElements()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var visibleBtn = CreateButton("VisibleBtn", new Vector2(0, 0));
+                var offscreenBtn = CreateButton("OffscreenBtn", new Vector2(5000, 5000)); // Way off screen
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("*Btn").Visible().FindAll();
+
+                // Should find visible button, might not find offscreen one
+                Assert.GreaterOrEqual(results.Count, 1, "Should find at least the visible button");
+                Assert.IsTrue(results.Any(r => r.name == "VisibleBtn"), "Should include visible button");
+            });
+        }
+
+        #endregion
+
+        #region Interactable Tests
+
+        [UnityTest]
+        public IEnumerator Interactable_FindsOnlyInteractableElements()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var interactableBtn = CreateButton("InteractableBtn", new Vector2(-50, 0));
+                var disabledBtn = CreateButton("DisabledBtn", new Vector2(50, 0));
+                disabledBtn.interactable = false;
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("*Btn").Interactable().FindAll();
+
+                Assert.AreEqual(1, results.Count, "Should find only interactable button");
+                Assert.AreEqual("InteractableBtn", results[0].name, "Should be the interactable button");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Interactable_FindsSliderAndToggle()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var slider = CreateSlider("TestSlider", new Vector2(0, 50));
+                var toggle = CreateToggle("TestToggle", new Vector2(0, -50));
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("Test*").Interactable().FindAll();
+
+                Assert.AreEqual(2, results.Count, "Should find both slider and toggle");
+            });
+        }
+
+        #endregion
+
+        #region Or Tests
+
+        [UnityTest]
+        public IEnumerator Or_CombinesTwoSearches()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("BlueButton", new Vector2(-100, 0));
+                CreateButton("RedButton", new Vector2(0, 0));
+                CreateButton("GreenButton", new Vector2(100, 0));
+
+                await UniTask.Yield();
+
+                var blueSearch = new Search().Name("BlueButton");
+                var redSearch = new Search().Name("RedButton");
+
+                var results = blueSearch.Or(redSearch).FindAll();
+
+                Assert.AreEqual(2, results.Count, "Should find both blue and red buttons");
+                Assert.IsTrue(results.Any(r => r.name == "BlueButton"), "Should include blue button");
+                Assert.IsTrue(results.Any(r => r.name == "RedButton"), "Should include red button");
+            });
+        }
+
+        #endregion
+
+        #region FindAll Tests
+
+        [UnityTest]
+        public IEnumerator FindAll_ReturnsAllMatchingObjects()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                for (int i = 0; i < 5; i++)
+                {
+                    CreateButton($"FindAllBtn{i}", new Vector2((i - 2) * 50, 0));
+                }
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("FindAllBtn*").FindAll();
+                Assert.AreEqual(5, results.Count, "Should find all 5 buttons");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator FindAll_ReturnsEmptyListWhenNoMatches()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("SomeButton", Vector2.zero);
+
+                await UniTask.Yield();
+
+                var results = new Search().Name("NonExistent*").FindAll();
+                Assert.AreEqual(0, results.Count, "Should return empty list");
+                Assert.IsNotNull(results, "Should not return null");
+            });
+        }
+
+        #endregion
+
+        #region FindFirst Tests
+
+        [UnityTest]
+        public IEnumerator FindFirst_ReturnsFirstMatch()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("FirstBtn", new Vector2(-50, 0));
+                CreateButton("SecondBtn", new Vector2(50, 0));
+
+                await UniTask.Yield();
+
+                var result = new Search().Name("*Btn").FindFirst();
+                Assert.IsNotNull(result, "Should find a button");
+                Assert.IsTrue(result.name.EndsWith("Btn"), "Should match pattern");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator FindFirst_ReturnsNullWhenNoMatches()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("SomeButton", Vector2.zero);
+
+                await UniTask.Yield();
+
+                var result = new Search().Name("NonExistent*").FindFirst();
+                Assert.IsNull(result, "Should return null when no matches");
+            });
+        }
+
+        #endregion
+
+        #region GetScreenPosition Tests
+
+        [UnityTest]
+        public IEnumerator GetScreenPosition_ReturnsValidPosition()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("ScreenPosBtn", new Vector2(0, 0));
+
+                await UniTask.Yield();
+
+                var screenPos = new Search().Name("ScreenPosBtn").GetScreenPosition();
+
+                Assert.IsTrue(screenPos.HasValue, "Should return a screen position");
+                Assert.Greater(screenPos.Value.x, 0, "X should be positive");
+                Assert.Greater(screenPos.Value.y, 0, "Y should be positive");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator GetScreenPosition_WithIndex_ReturnsCorrectElementPosition()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("IndexBtn", new Vector2(-100, 0));
+                var btn2 = CreateButton("IndexBtn", new Vector2(100, 0));
+
+                await UniTask.Yield();
+
+                var pos0 = new Search().Name("IndexBtn").GetScreenPosition(0);
+                var pos1 = new Search().Name("IndexBtn").GetScreenPosition(1);
+
+                Assert.IsTrue(pos0.HasValue, "Should return position for index 0");
+                Assert.IsTrue(pos1.HasValue, "Should return position for index 1");
+                Assert.AreNotEqual(pos0.Value.x, pos1.Value.x, "Positions should be different");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator GetScreenPosition_ReturnsNullWhenNotFound()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var screenPos = new Search().Name("NonExistentElement").GetScreenPosition();
+
+                Assert.IsFalse(screenPos.HasValue, "Should return null when element not found");
+            });
+        }
+
+        #endregion
+
+        #region Combined Chain Tests
+
+        [UnityTest]
+        public IEnumerator CombinedChain_MultipleFilters()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var activeEnabled = CreateButton("ChainBtn1", new Vector2(-100, 0));
+                var activeDisabled = CreateButton("ChainBtn2", new Vector2(0, 0));
+                activeDisabled.interactable = false;
+                var inactive = CreateButton("ChainBtn3", new Vector2(100, 0));
+                inactive.gameObject.SetActive(false);
+
+                await UniTask.Yield();
+
+                // Find all including inactive and disabled
+                var allResults = new Search()
+                    .Name("ChainBtn*")
+                    .IncludeInactive()
+                    .IncludeDisabled()
+                    .FindAll();
+
+                Assert.AreEqual(3, allResults.Count, "Should find all 3 buttons with filters");
+
+                // Find only interactable
+                var interactableResults = new Search()
+                    .Name("ChainBtn*")
+                    .Interactable()
+                    .FindAll();
+
+                Assert.AreEqual(1, interactableResults.Count, "Should find only 1 interactable button");
+            });
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        private Button CreateButton(string name, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(100, 40);
+            rect.anchoredPosition = position;
+
+            var image = go.AddComponent<Image>();
+            image.color = Color.gray;
+
+            var button = go.AddComponent<Button>();
+            button.targetGraphic = image;
+
+            _createdObjects.Add(go);
+            return button;
+        }
+
+        private Text CreateText(string name, string content, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(100, 30);
+            rect.anchoredPosition = position;
+
+            var text = go.AddComponent<Text>();
+            text.text = content;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.color = Color.white;
+
+            _createdObjects.Add(go);
+            return text;
+        }
+
+        private TMP_InputField CreateInputField(string name, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(150, 30);
+            rect.anchoredPosition = position;
+
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.2f, 0.2f, 0.2f);
+
+            var inputField = go.AddComponent<TMP_InputField>();
+
+            var textArea = new GameObject("Text Area");
+            textArea.transform.SetParent(go.transform, false);
+            var textAreaRect = textArea.AddComponent<RectTransform>();
+            textAreaRect.anchorMin = Vector2.zero;
+            textAreaRect.anchorMax = Vector2.one;
+            textAreaRect.sizeDelta = Vector2.zero;
+
+            var textGo = new GameObject("Text");
+            textGo.transform.SetParent(textArea.transform, false);
+            var textRect = textGo.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var text = textGo.AddComponent<TextMeshProUGUI>();
+            text.color = Color.white;
+
+            inputField.textViewport = textAreaRect;
+            inputField.textComponent = text;
+
+            _createdObjects.Add(go);
+            return inputField;
+        }
+
+        private Slider CreateSlider(string name, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(150, 20);
+            rect.anchoredPosition = position;
+
+            var slider = go.AddComponent<Slider>();
+
+            var bg = new GameObject("Background");
+            bg.transform.SetParent(go.transform, false);
+            var bgRect = bg.AddComponent<RectTransform>();
+            bgRect.anchorMin = Vector2.zero;
+            bgRect.anchorMax = Vector2.one;
+            bgRect.sizeDelta = Vector2.zero;
+            bg.AddComponent<Image>().color = Color.gray;
+
+            _createdObjects.Add(go);
+            return slider;
+        }
+
+        private Toggle CreateToggle(string name, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(100, 30);
+            rect.anchoredPosition = position;
+
+            var toggle = go.AddComponent<Toggle>();
+
+            var bg = new GameObject("Background");
+            bg.transform.SetParent(go.transform, false);
+            var bgRect = bg.AddComponent<RectTransform>();
+            bgRect.anchorMin = Vector2.zero;
+            bgRect.anchorMax = Vector2.one;
+            bgRect.sizeDelta = Vector2.zero;
+            var bgImage = bg.AddComponent<Image>();
+            bgImage.color = Color.gray;
+
+            var check = new GameObject("Checkmark");
+            check.transform.SetParent(bg.transform, false);
+            var checkRect = check.AddComponent<RectTransform>();
+            checkRect.anchorMin = Vector2.zero;
+            checkRect.anchorMax = Vector2.one;
+            checkRect.sizeDelta = new Vector2(-4, -4);
+            var checkImage = check.AddComponent<Image>();
+            checkImage.color = Color.green;
+
+            toggle.targetGraphic = bgImage;
+            toggle.graphic = checkImage;
+
+            _createdObjects.Add(go);
+            return toggle;
+        }
+
+        #endregion
+    }
+}

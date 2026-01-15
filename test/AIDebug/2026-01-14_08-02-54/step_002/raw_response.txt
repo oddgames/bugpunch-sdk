@@ -1,0 +1,10 @@
+```json
+{
+  "reasoning": "The current screen has toggles, a slider, and a button. I should interact with these elements to test them. I'll start by toggling 'SoundToggle'.",
+  "action": "click",
+  "search": {
+    "base": "name",
+    "value": "SoundToggle"
+  }
+}
+```

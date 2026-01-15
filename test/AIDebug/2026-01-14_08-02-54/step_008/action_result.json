@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Simple Button'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"SimpleButton\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": false,
+  "ScreenHashAfter": "8E8A4A35",
+  "Timestamp": "08:03:11.366"
+}

@@ -1,0 +1,86 @@
+[
+  {
+    "name": "SettingsButton",
+    "text": "Settings",
+    "type": "button",
+    "bounds": {
+      "x": 430.6,
+      "y": 387.101563,
+      "width": 215.300018,
+      "height": 47.0968628
+    },
+    "isEnabled": true,
+    "path": "Canvas/MainMenu/SettingsButton",
+    "searchPattern": "Text(\"Settings\")"
+  },
+  {
+    "name": "ButtonsButton",
+    "text": "Buttons",
+    "type": "button",
+    "bounds": {
+      "x": 430.6,
+      "y": 326.548431,
+      "width": 215.300018,
+      "height": 47.0968628
+    },
+    "isEnabled": true,
+    "path": "Canvas/MainMenu/ButtonsButton",
+    "searchPattern": "Text(\"Buttons\")"
+  },
+  {
+    "name": "FormsButton",
+    "text": "Forms",
+    "type": "button",
+    "bounds": {
+      "x": 430.6,
+      "y": 265.995331,
+      "width": 215.300018,
+      "height": 47.0968628
+    },
+    "isEnabled": true,
+    "path": "Canvas/MainMenu/FormsButton",
+    "searchPattern": "Text(\"Forms\")"
+  },
+  {
+    "name": "DragButton",
+    "text": "Drag & Drop",
+    "type": "button",
+    "bounds": {
+      "x": 430.6,
+      "y": 205.4422,
+      "width": 215.300018,
+      "height": 47.0968628
+    },
+    "isEnabled": true,
+    "path": "Canvas/MainMenu/DragButton",
+    "searchPattern": "Text(\"Drag & Drop\")"
+  },
+  {
+    "name": "KeyboardButton",
+    "text": "Keyboard",
+    "type": "button",
+    "bounds": {
+      "x": 430.6,
+      "y": 144.889069,
+      "width": 215.300018,
+      "height": 47.0968628
+    },
+    "isEnabled": true,
+    "path": "Canvas/MainMenu/KeyboardButton",
+    "searchPattern": "Text(\"Keyboard\")"
+  },
+  {
+    "name": "AdvancedButton",
+    "text": "Advanced Input",
+    "type": "button",
+    "bounds": {
+      "x": 430.6,
+      "y": 84.33593,
+      "width": 215.300018,
+      "height": 47.09687
+    },
+    "isEnabled": true,
+    "path": "Canvas/MainMenu/AdvancedButton",
+    "searchPattern": "Text(\"Advanced Input\")"
+  }
+]

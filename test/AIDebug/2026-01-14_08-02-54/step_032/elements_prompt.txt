@@ -1,0 +1,6 @@
+Available UI elements (4 total):
+
+Name("KeyPressTarget") [button]
+Name("KeyboardInput") [input]
+Name("SecondInput") [input]
+Name("BackButton") [button]

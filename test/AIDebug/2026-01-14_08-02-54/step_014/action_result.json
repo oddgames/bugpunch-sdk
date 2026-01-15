@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Forms'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"FormsButton\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "963797B6",
+  "Timestamp": "08:03:21.940"
+}

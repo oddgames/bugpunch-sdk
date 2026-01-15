@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "eb1c8907-5389-47f8-95d2-eb308b4e9b45",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "Clicking 'SimpleButton' did not change the screen state. I will now interact with the 'SampleToggle'.",
+      "search": {
+        "base": "name",
+        "value": "SampleToggle"
+      }
+    }
+  }
+]

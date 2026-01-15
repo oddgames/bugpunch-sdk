@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Settings'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"SettingsButton\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "F1CD1414",
+  "Timestamp": "16:42:55.147"
+}

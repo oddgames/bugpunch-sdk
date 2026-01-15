@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "d25098fa-6327-4909-a1ad-3b48255a69c7",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "Pressing 'Enter' did not change the screen state. I will now click the 'BackButton' to return to the main menu.",
+      "search": {
+        "base": "name",
+        "value": "BackButton"
+      }
+    }
+  }
+]

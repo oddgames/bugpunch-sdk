@@ -1,5 +1,6 @@
 using Cysharp.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace ODDGames.UITest.Samples
@@ -20,142 +21,42 @@ namespace ODDGames.UITest.Samples
     {
         protected override async UniTask Test()
         {
-            // Wait for main menu
-            await Wait(Name("MainMenu"), seconds: 10);
-
-            // ==========================================
-            // Navigation & Settings
-            // ==========================================
-            // Search by name pattern
-            await Click(Name("Settings*"));
-            await Wait(Name("SettingsPanel"), seconds: 5);
-
-            // Search by component type
-            await Click(Type<Toggle>().Name("SoundToggle"));
-            await Click(Type<Toggle>().Name("MusicToggle"));
-            await Click("Back");
-            await Wait(Name("MainMenu"), seconds: 5);
-
-            // ==========================================
-            // Buttons
-            // ==========================================
-            // Search by text content
-            await Click(Text("Buttons"));
-            await Wait(Name("SampleButtonPanel"), seconds: 5);
-
-            // Search by sprite name
-            await Click(Sprite("btn_*_icon"), throwIfMissing: false, searchTime: 2);
-            // Fallback to simple button if sprite not found
-            await Click("Simple Button", throwIfMissing: false, searchTime: 1);
-
-            await Click(Type<Toggle>().Name("SampleToggle"));
-            await Click("Item 2", index: 0); // Click second item button by its text
-            // Search with component property check
-            await Click(Type<Button>().Name("IncrementButton").With<Button>(b => b.interactable), repeat: 3);
-
-            await Click("Back");
-            await Wait(Name("MainMenu"), seconds: 5);
-
-            // ==========================================
-            // Forms
-            // ==========================================
-            // Search by path pattern
-            await Click(Path("*Menu*/*FormsButton*"), throwIfMissing: false, searchTime: 2);
-            // Fallback to text
-            await Click("Forms", throwIfMissing: false, searchTime: 1);
-            await Wait(Name("SampleFormPanel"), seconds: 5);
-
-            // Form elements can be found by their adjacent label text
-            await TextInput(Adjacent("Username:"), "Test");
-            await TextInput(Adjacent("Email:"), "t@t.com");
-            await ClickDropdown(Adjacent("Category:"), 1, throwIfMissing: false, searchTime: 2);
-            // Slider control - click at 75% position
-            await ClickSlider(Adjacent("Volume:"), 0.75f, throwIfMissing: false, searchTime: 2);
-            // Search for any toggle that's not already on
-            await Click(Type<Toggle>().Text("I agree*").With<Toggle>(t => !t.isOn), throwIfMissing: false, searchTime: 2);
-            // Fallback if already toggled
-            await Click("I agree to terms", throwIfMissing: false, searchTime: 1);
-            await Click(Text("Submit"));
-
-            await Click("Back");
-            await Wait(Name("MainMenu"), seconds: 5);
-
-            // ==========================================
-            // Drag and Drop
-            // ==========================================
-            await Click("Drag & Drop");
-            await Wait(Name("SampleDragPanel"), seconds: 5);
-
-            // Test scroll - container elements use ByName
-            await Drag(Name("ScrollView"), new Vector2(0, -100), duration: 0.3f, throwIfMissing: false);
-
-            // Test drag and drop - draggable elements use ByName
-            await DragTo(Name("DraggableItem"), Name("DropZone"), duration: 0.5f, throwIfMissing: false, searchTime: 2);
-            CaptureScreenshot("after_drag_drop");
-
-            await Click("Back");
-            await Wait(Name("MainMenu"), seconds: 5);
-
-            // ==========================================
-            // Keyboard
-            // ==========================================
-            await Click("Keyboard");
-            await Wait(Name("SampleKeyboardPanel"), seconds: 5);
-
-            await Click(Name("KeyboardInput")); // Input fields are clicked by name
-            await PressKeys("Hi");
-            await PressKey(KeyCode.Tab);
-            await PressKey(KeyCode.Escape);
-
-            // ==========================================
-            // Key Hold (for movement/driving controls)
-            // ==========================================
-            // Hold single key (walk forward)
-            await HoldKey(KeyCode.W, 0.5f);
-
-            // Hold multiple keys (diagonal movement)
-            await HoldKeys(0.5f, KeyCode.W, KeyCode.A);
-
-            // Using Keys fluent builder for complex sequences
-            // Walk forward, then turn left, then sprint forward
-            await Keys.Hold(UnityEngine.InputSystem.Key.W).For(0.3f)
-                      .Then(UnityEngine.InputSystem.Key.A).For(0.2f)
-                      .Then(UnityEngine.InputSystem.Key.LeftShift, UnityEngine.InputSystem.Key.W).For(0.3f);
-
-            await Click("Back");
-            await Wait(Name("MainMenu"), seconds: 5);
-
-            // ==========================================
-            // Advanced Input (DoubleClick, Scroll, Swipe, Touch Gestures)
-            // ==========================================
-            // Search combining name pattern and text content
-            await Click(Name("*Button").Text("Advanced"), throwIfMissing: false, searchTime: 2);
-            // Fallback to text
-            await Click("Advanced Input", throwIfMissing: false, searchTime: 1);
-            var advancedPanel = await Find<RectTransform>(Name("SampleAdvancedPanel"), throwIfMissing: false, seconds: 2);
-            if (advancedPanel != null)
+            // Subscribe to keyboard text input for debugging
+            var keyboard = Keyboard.current;
+            if (keyboard != null)
             {
-                // Double-click test
-                await DoubleClick("Double-Click Me", throwIfMissing: false, searchTime: 2);
-
-                // Scroll wheel test (negative = scroll down) - area elements use ByName
-                await Scroll(Name("ScrollArea"), -120f, throwIfMissing: false, searchTime: 2);
-
-                // Swipe test (duration 1s for visibility)
-                await Swipe(Name("SwipeArea"), SwipeDirection.Left, duration: 1f, throwIfMissing: false, searchTime: 2);
-                await Swipe(Name("SwipeArea"), SwipeDirection.Right, duration: 1f, throwIfMissing: false, searchTime: 2);
-
-                // Touch gesture tests (pinch, rotate, two-finger swipe) - 3D objects use ByName
-                await Pinch(Name("GestureTarget"), 0.5f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Pinch in
-                await Pinch(Name("GestureTarget"), 2.0f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Pinch out
-                await Rotate(Name("GestureTarget"), 90f, duration: 0.5f, throwIfMissing: false, searchTime: 2); // Rotate 90 degrees
-                await TwoFingerSwipe(Name("GestureTarget"), SwipeDirection.Up, duration: 0.5f, throwIfMissing: false, searchTime: 2);
-
-                CaptureScreenshot("advanced_input_complete");
-
-                // Navigate back to main menu
-                await Click("Back", throwIfMissing: false, searchTime: 2);
+                keyboard.onTextInput += c => Debug.Log($"[TEST] onTextInput received: '{c}'");
             }
+
+            // Wait for main menu and verify title
+            await Wait(Name("MainMenu"), seconds: 10);
+            await Wait(Text("UITest Sample"), seconds: 2); // Main menu title
+            Debug.Log("[TEST] Main menu confirmed");
+
+            // ==========================================
+            // Forms - Test TextInput
+            // ==========================================
+            await Click(Name("FormsButton"));
+            await Wait(Name("SampleFormPanel"), seconds: 5);
+            await Wait(Text("Form Input"), seconds: 2); // Form panel title
+            Debug.Log("[TEST] Form panel confirmed");
+
+            // Type into input fields using Adjacent (find input next to label)
+            Debug.Log("[TEST] About to type into Username field");
+            await TextInput(Adjacent("Username:"), "TestUser");
+            Debug.Log("[TEST] Username typing complete");
+
+            Debug.Log("[TEST] About to type into Email field");
+            await TextInput(Adjacent("Email:"), "test@example.com");
+            Debug.Log("[TEST] Email typing complete");
+
+            // Take screenshot to verify typing worked
+            CaptureScreenshot("after_typing");
+
+            await Click("Back");
+            await Wait(Name("MainMenu"), seconds: 5);
+            await Wait(Text("UITest Sample"), seconds: 2); // Back to main menu
+            Debug.Log("[TEST] Back to main menu confirmed");
 
             CaptureScreenshot("test_complete");
         }

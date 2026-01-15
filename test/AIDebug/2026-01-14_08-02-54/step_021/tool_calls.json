@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "3e426e97-d4af-4ce7-8114-e5473f3b91f5",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "I have set the 'VolumeSlider' value. Now I will toggle the 'AgreeToggle'.",
+      "search": {
+        "base": "name",
+        "value": "AgreeToggle"
+      }
+    }
+  }
+]

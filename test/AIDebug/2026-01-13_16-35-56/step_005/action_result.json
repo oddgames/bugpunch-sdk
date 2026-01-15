@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click {\"base\":\"adjacent\",\"value\":\"Volume:\",\"direction\":\"above\",\"chain\":[{\"method\":\"near\",\"value\":\"SampleFormPanel\",\"count\":0,\"index\":0,\"offset\":0,\"xMin\":0.0,\"yMin\":0.0,\"xMax\":0.0,\"yMax\":0.0}]}",
+  "SearchQuery": "{\"base\":\"adjacent\",\"value\":\"Volume:\",\"direction\":\"above\",\"chain\":[{\"method\":\"near\",\"value\":\"SampleFormPanel\",\"count\":0,\"index\":0,\"offset\":0,\"xMin\":0.0,\"yMin\":0.0,\"xMax\":0.0,\"yMax\":0.0}]}",
+  "Success": false,
+  "Error": "Click action has no target position or element",
+  "ScreenChanged": false,
+  "ScreenHashAfter": null,
+  "Timestamp": "16:36:06.463"
+}

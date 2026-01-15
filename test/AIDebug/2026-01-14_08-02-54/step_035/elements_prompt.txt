@@ -1,0 +1,5 @@
+Available UI elements (3 total):
+
+Name("DoubleClickButton") [button]
+Name("ScrollArea") [draggable] [can be dragged]
+Name("BackButton") [button]

@@ -1,0 +1,72 @@
+[
+  {
+    "name": "ScrollView",
+    "text": "Item 1",
+    "type": "draggable",
+    "bounds": {
+      "x": 477.5,
+      "y": 458.5249,
+      "width": 573.0,
+      "height": 286.5
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleDragPanel/ScrollView",
+    "searchPattern": "Text(\"Item 1\")"
+  },
+  {
+    "name": "Carousel",
+    "text": null,
+    "type": "draggable",
+    "bounds": {
+      "x": 429.75,
+      "y": 286.624939,
+      "width": 668.5,
+      "height": 133.700012
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleDragPanel/Carousel",
+    "searchPattern": "Name(\"Carousel\")"
+  },
+  {
+    "name": "DraggableItem",
+    "text": "Drag",
+    "type": "draggable",
+    "bounds": {
+      "x": 506.15,
+      "y": 95.62495,
+      "width": 133.699982,
+      "height": 133.700012
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleDragPanel/DraggableItem",
+    "searchPattern": "Name(\"DraggableItem\")"
+  },
+  {
+    "name": "DropZone",
+    "text": "Drop Here",
+    "type": "droptarget",
+    "bounds": {
+      "x": 869.05,
+      "y": 76.52495,
+      "width": 171.899963,
+      "height": 171.9
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleDragPanel/DropZone",
+    "searchPattern": "Name(\"DropZone\")"
+  },
+  {
+    "name": "BackButton",
+    "text": "Back",
+    "type": "button",
+    "bounds": {
+      "x": 611.2,
+      "y": -23.750042,
+      "width": 305.599976,
+      "height": 66.85
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleDragPanel/BackButton",
+    "searchPattern": "Name(\"BackButton\")"
+  }
+]

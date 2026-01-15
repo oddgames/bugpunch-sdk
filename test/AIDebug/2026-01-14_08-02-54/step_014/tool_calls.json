@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "ffa0e891-eaf4-4cf3-bfb0-93f09d6df0e5",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "I am back to the main menu. I have tested 'SettingsButton' and 'ButtonsButton'. Now I will click on 'FormsButton'.",
+      "search": {
+        "base": "name",
+        "value": "FormsButton"
+      }
+    }
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'MainMenu'",
+  "SearchQuery": "{\"base\":\"text\",\"value\":\"Advanced Input\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "963797B6",
+  "Timestamp": "16:35:58.895"
+}

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
@@ -329,60 +330,151 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Clears an input field using keyboard input (Ctrl+A, Backspace).
+        /// Clears an input field's text content.
+        /// Note: Uses direct text manipulation as a workaround because Unity's IMGUI keyboard
+        /// shortcuts (Ctrl+A, Backspace) cannot be injected via the new Input System.
         /// </summary>
         public static async UniTask ClearInputField(GameObject inputFieldGO)
         {
             // Check if there's text to clear
-            string currentText = null;
-
-            if (inputFieldGO.TryGetComponent<TMPro.TMP_InputField>(out var tmpInput))
+            var tmpInput = inputFieldGO.GetComponent<TMP_InputField>();
+            if (tmpInput != null)
             {
-                currentText = tmpInput.text;
-            }
-            else if (inputFieldGO.TryGetComponent<InputField>(out var legacyInput))
-            {
-                currentText = legacyInput.text;
-            }
+                if (string.IsNullOrEmpty(tmpInput.text))
+                    return;
 
-            if (string.IsNullOrEmpty(currentText))
+                // Click to focus the field first
+                var screenPos = GetScreenPosition(inputFieldGO);
+                await InjectPointerTap(screenPos);
+                await UniTask.DelayFrame(2);
+
+                // Clear the text directly - workaround for IMGUI keyboard shortcut limitation
+                // Then re-activate the field since setting text can deactivate it
+                tmpInput.text = "";
+                tmpInput.ActivateInputField();
+                tmpInput.MoveTextEnd(false);
+                await UniTask.DelayFrame(2);
                 return;
+            }
 
-            // Use Ctrl+A to select all text
-            await HoldKeys(new[] { Key.LeftCtrl, Key.A }, 0.05f);
-            await UniTask.Delay(50);
+            var legacyInput = inputFieldGO.GetComponent<InputField>();
+            if (legacyInput != null)
+            {
+                if (string.IsNullOrEmpty(legacyInput.text))
+                    return;
 
-            // Use Backspace to delete selected text
-            await PressKey(Key.Backspace);
-            await UniTask.Delay(50);
+                // Click to focus the field first
+                var screenPos = GetScreenPosition(inputFieldGO);
+                await InjectPointerTap(screenPos);
+                await UniTask.DelayFrame(2);
+
+                // Clear the text directly - workaround for IMGUI keyboard shortcut limitation
+                // Then re-activate the field since setting text can deactivate it
+                legacyInput.text = "";
+                legacyInput.ActivateInputField();
+                legacyInput.MoveTextEnd(false);
+                await UniTask.DelayFrame(2);
+            }
         }
 
         /// <summary>
-        /// Types text into the currently focused input field, optionally clearing first.
+        /// Presses a key while holding a modifier key (e.g., Ctrl+A, Shift+Tab).
+        /// This simulates the real sequence: modifier down, key down, key up, modifier up.
+        /// </summary>
+        public static async UniTask PressKeyWithModifier(Key modifier, Key key)
+        {
+            await EnsureGameViewFocusAsync();
+
+            var keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                Debug.LogWarning("[InputInjector] PressKeyWithModifier - No keyboard device found");
+                return;
+            }
+
+            // Step 1: Press modifier key down
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
+            InputSystem.Update();
+            await UniTask.Yield();
+            await UniTask.DelayFrame(2); // Give time for EventSystem to process
+
+            // Step 2: Press the main key while modifier is held
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier, key));
+            InputSystem.Update();
+            await UniTask.Yield();
+            await UniTask.DelayFrame(2);
+
+            // Step 3: Release the main key (modifier still held)
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
+            InputSystem.Update();
+            await UniTask.Yield();
+
+            // Step 4: Release modifier
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Types text into an input field.
+        ///
+        /// Note: TMP_InputField uses IMGUI's Event.PopEvent() for keyboard input, not the Input System's
+        /// Keyboard.onTextInput. InputSystem.QueueTextEvent() does not work with TMP_InputField.
+        /// This method uses direct text manipulation as the only reliable cross-platform approach.
+        /// See: https://discussions.unity.com/t/code-to-fix-tmp_inputfield-to-support-new-inputsystem/774250
         /// </summary>
         public static async UniTask TypeIntoField(GameObject inputFieldGO, string text, bool clearFirst = true, bool pressEnter = false)
         {
-            // Click to focus
             var screenPos = GetScreenPosition(inputFieldGO);
+            Debug.Log($"[InputInjector] TypeIntoField - clicking at ({screenPos.x:F0},{screenPos.y:F0}) to focus '{inputFieldGO.name}'");
+
+            // Click to focus the field
             await InjectPointerTap(screenPos);
-            await UniTask.Delay(100);
+            await UniTask.DelayFrame(2);
 
-            // Clear if requested
-            if (clearFirst)
+            Debug.Log($"[InputInjector] TypeIntoField - setting text '{text}'");
+
+            // TMP_InputField uses IMGUI Event.PopEvent() for keyboard input, not Input System.
+            // InputSystem.QueueTextEvent() does NOT work with TMP_InputField.
+            // We must use direct text manipulation.
+            var tmpInput = inputFieldGO.GetComponent<TMP_InputField>();
+            if (tmpInput != null)
             {
-                await ClearInputField(inputFieldGO);
+                if (clearFirst)
+                    tmpInput.text = text ?? "";
+                else
+                    tmpInput.text += text ?? "";
+
+                // Re-activate and move cursor to end
+                tmpInput.ActivateInputField();
+                tmpInput.MoveTextEnd(false);
+                await UniTask.DelayFrame(2);
             }
-
-            // Type the text
-            if (!string.IsNullOrEmpty(text))
+            else
             {
-                await TypeText(text);
+                var legacyInput = inputFieldGO.GetComponent<InputField>();
+                if (legacyInput != null)
+                {
+                    if (clearFirst)
+                        legacyInput.text = text ?? "";
+                    else
+                        legacyInput.text += text ?? "";
+
+                    // Re-activate and move cursor to end
+                    legacyInput.ActivateInputField();
+                    legacyInput.MoveTextEnd(false);
+                    await UniTask.DelayFrame(2);
+                }
+                else
+                {
+                    Debug.LogWarning($"[InputInjector] TypeIntoField - No TMP_InputField or InputField found on '{inputFieldGO.name}'");
+                }
             }
 
             // Press Enter if requested
             if (pressEnter)
             {
-                await UniTask.Delay(50);
+                await UniTask.DelayFrame(2);
                 await PressKey(Key.Enter);
             }
         }
@@ -536,10 +628,12 @@ namespace ODDGames.UITest
         /// </summary>
         public static async UniTask InjectPointerTap(Vector2 screenPosition)
         {
+            Debug.Log($"[InputInjector] InjectPointerTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             await EnsureGameViewFocusAsync();
 
             if (ShouldUseTouchInput())
             {
+                Debug.Log("[InputInjector] Using touch input");
                 await InjectTouchTap(screenPosition);
                 return;
             }
@@ -550,6 +644,8 @@ namespace ODDGames.UITest
                 Debug.LogWarning("[InputInjector] Click - No mouse device found, cannot inject click");
                 return;
             }
+
+            Debug.Log($"[InputInjector] Using mouse input, device={mouse.deviceId}");
 
             // Use MouseState struct for complete state control
             var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
@@ -569,6 +665,7 @@ namespace ODDGames.UITest
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
+            Debug.Log("[InputInjector] InjectPointerTap complete");
             await UniTask.Yield();
         }
 
@@ -610,8 +707,15 @@ namespace ODDGames.UITest
             InputSystem.Update();
             await UniTask.Yield();
 
-            // Brief delay between clicks
-            await UniTask.Delay(50);
+            // Brief delay between clicks - needs to be long enough for Unity's Button to reset
+            // but short enough to be recognized as a double-click by the system
+            await UniTask.Delay(100);
+
+            // Re-set position before second click to ensure it's registered after the delay
+            mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await UniTask.Yield();
 
             // Second click
             mouseState = mouseState.WithButton(MouseButton.Left, true);
@@ -633,11 +737,74 @@ namespace ODDGames.UITest
             // First tap
             await InjectTouchTap(screenPosition);
 
-            // Brief delay between taps
-            await UniTask.Delay(50);
+            // Brief delay between taps - needs to be long enough for Unity's Button to reset
+            await UniTask.Delay(100);
 
             // Second tap
             await InjectTouchTap(screenPosition);
+        }
+
+        /// <summary>
+        /// Injects a triple click/tap at the specified screen position.
+        /// Triple-click is commonly used to select all text in input fields.
+        /// Uses touch on mobile (iOS/Android), mouse on desktop.
+        /// </summary>
+        public static async UniTask InjectPointerTripleTap(Vector2 screenPosition)
+        {
+            await EnsureGameViewFocusAsync();
+
+            if (ShouldUseTouchInput())
+            {
+                await InjectTouchTripleTap(screenPosition);
+                return;
+            }
+
+            var mouse = Mouse.current;
+            if (mouse == null)
+            {
+                Debug.LogWarning("[InputInjector] TripleClick - No mouse device found");
+                return;
+            }
+
+            // Three clicks in quick succession
+            for (int i = 0; i < 3; i++)
+            {
+                var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+
+                // Move to position
+                InputSystem.QueueStateEvent(mouse, mouseState);
+                InputSystem.Update();
+                await UniTask.Yield();
+
+                // Mouse down
+                mouseState = mouseState.WithButton(MouseButton.Left, true);
+                InputSystem.QueueStateEvent(mouse, mouseState);
+                InputSystem.Update();
+                await UniTask.Yield();
+
+                // Mouse up
+                mouseState = mouseState.WithButton(MouseButton.Left, false);
+                InputSystem.QueueStateEvent(mouse, mouseState);
+                InputSystem.Update();
+                await UniTask.Yield();
+
+                // Brief delay between clicks (short enough to be recognized as multi-click)
+                if (i < 2)
+                    await UniTask.Delay(50);
+            }
+        }
+
+        /// <summary>
+        /// Injects a triple-tap touch gesture.
+        /// </summary>
+        public static async UniTask InjectTouchTripleTap(Vector2 screenPosition)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                await InjectTouchTap(screenPosition);
+                if (i < 2)
+                    await UniTask.Delay(50);
+            }
         }
 
         /// <summary>
@@ -778,6 +945,8 @@ namespace ODDGames.UITest
 
             Debug.Log($"[InputInjector] MouseDrag - mouse up at ({endPos.x:F0},{endPos.y:F0})");
 
+            // Allow UI to process the drag end event
+            await UniTask.Yield();
             await UniTask.Yield();
         }
 
@@ -923,16 +1092,20 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Types text character by character using the keyboard.
+        /// Types text character by character using InputSystem.QueueTextEvent.
+        /// This triggers Keyboard.onTextInput callback for any subscribers.
+        ///
+        /// Note: TMP_InputField does NOT use Keyboard.onTextInput - it uses IMGUI Event.PopEvent().
+        /// For TMP_InputField, use TypeIntoField() instead which handles this limitation.
         /// </summary>
         public static async UniTask TypeText(string text)
         {
-            await EnsureGameViewFocusAsync();
+            Debug.Log($"[InputInjector] TypeText - typing '{text}' ({text?.Length ?? 0} chars)");
 
             var keyboard = Keyboard.current;
             if (keyboard == null)
             {
-                Debug.LogWarning("[InputInjector] Type - No keyboard device found");
+                Debug.LogWarning("[InputInjector] TypeText - No keyboard device found");
                 return;
             }
 
@@ -940,10 +1113,46 @@ namespace ODDGames.UITest
             {
                 if (!Application.isPlaying) break;
 
+                // Queue text event - this is how Unity's InputTestFixture does it
+                // See: https://github.com/Unity-Technologies/InputSystem/blob/develop/Assets/Tests/InputSystem/CoreTests_Devices.cs
                 InputSystem.QueueTextEvent(keyboard, c);
                 InputSystem.Update();
                 await UniTask.Yield();
             }
+
+            Debug.Log($"[InputInjector] TypeText - complete");
+        }
+
+        /// <summary>
+        /// Selects all text in the currently focused input field using Ctrl+A.
+        /// </summary>
+        public static async UniTask SelectAllText()
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                Debug.LogWarning("[InputInjector] SelectAllText - No keyboard device found");
+                return;
+            }
+
+            // Press Ctrl+A
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.LeftCtrl, Key.A));
+            InputSystem.Update();
+            await UniTask.DelayFrame(2);
+
+            // Release keys
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+            InputSystem.Update();
+            await UniTask.Yield();
+        }
+
+        /// <summary>
+        /// Deletes all text in the currently focused input field using Ctrl+A followed by Backspace.
+        /// </summary>
+        public static async UniTask DeleteAllText()
+        {
+            await SelectAllText();
+            await PressKey(Key.Backspace);
         }
 
         /// <summary>

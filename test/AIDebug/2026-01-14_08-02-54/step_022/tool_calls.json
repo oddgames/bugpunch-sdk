@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "e684c0d7-e378-4b92-9cfc-165e5bdb96c5",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "I have toggled the 'AgreeToggle' on. Now I will click the 'SubmitButton'.",
+      "search": {
+        "base": "name",
+        "value": "SubmitButton"
+      }
+    }
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "6c10195e-8b10-4e56-a053-a261322037a2",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "I have toggled the 'SoundToggle' on. Now I will toggle the 'MusicToggle'.",
+      "search": {
+        "base": "name",
+        "value": "MusicToggle"
+      }
+    }
+  }
+]

@@ -1,0 +1,11 @@
+```json
+{
+  "reasoning": "I have selected 'Option 2' from the dropdown. Now I will interact with the 'VolumeSlider'. I will set its value to 25%.",
+  "action": "set_slider",
+  "search": {
+    "base": "name",
+    "value": "VolumeSlider"
+  },
+  "value": 0.25
+}
+```

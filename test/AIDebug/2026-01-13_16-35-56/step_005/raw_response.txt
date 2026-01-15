@@ -1,0 +1,17 @@
+```json
+{
+  "reasoning": "The goal is to set the volume to 60%. The previous attempts to set the slider failed, and the 'Volume' toggle is still off. It's highly probable that the 'Volume' toggle needs to be activated for the volume controls to function. I will click the 'Volume' toggle again, this time ensuring I select the one that is most likely to be the correct control.",
+  "action": "click",
+  "search": {
+    "base": "adjacent",
+    "value": "Volume:",
+    "direction": "above",
+    "chain": [
+      {
+        "method": "near",
+        "value": "SampleFormPanel"
+      }
+    ]
+  }
+}
+```

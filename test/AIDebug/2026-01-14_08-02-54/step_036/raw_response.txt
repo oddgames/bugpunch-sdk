@@ -1,0 +1,10 @@
+```json
+{
+  "reasoning": "Scrolling the 'ScrollArea' did not change the screen state. I will now click the 'BackButton' to return to the main menu.",
+  "action": "click",
+  "search": {
+    "base": "name",
+    "value": "BackButton"
+  }
+}
+```

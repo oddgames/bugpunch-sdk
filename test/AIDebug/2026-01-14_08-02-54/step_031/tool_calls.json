@@ -1,0 +1,10 @@
+[
+  {
+    "Id": "997888dc-7307-4e79-8a86-bb3bf1c8229c",
+    "Name": "key_press",
+    "Arguments": {
+      "reasoning": "I have typed into both input fields. Now I will interact with the 'KeyPressTarget' button. I will try pressing the 'Enter' key.",
+      "key": "Enter"
+    }
+  }
+]

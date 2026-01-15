@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Sample Toggle'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"SampleToggle\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "8ACEDA14",
+  "Timestamp": "08:03:12.994"
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "Id": "6b4c0113-5b15-4969-a160-098220f76253",
+    "Name": "type",
+    "Arguments": {
+      "reasoning": "This screen has input fields and a button related to keyboard input. I will first type into the 'KeyboardInput' field.",
+      "search": {
+        "base": "name",
+        "value": "KeyboardInput"
+      },
+      "text": "Hello"
+    }
+  }
+]

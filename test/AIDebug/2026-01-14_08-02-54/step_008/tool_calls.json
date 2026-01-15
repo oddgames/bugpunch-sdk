@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "940fd496-95ce-4ef1-a7c9-617f94283981",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "This screen has several buttons, a toggle, and a disabled button. I will start by clicking 'SimpleButton'.",
+      "search": {
+        "base": "name",
+        "value": "SimpleButton"
+      }
+    }
+  }
+]

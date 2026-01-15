@@ -1,0 +1,58 @@
+[
+  {
+    "name": "KeyPressTarget",
+    "text": "Press Space",
+    "type": "button",
+    "bounds": {
+      "x": 611.2,
+      "y": 587.449951,
+      "width": 305.599976,
+      "height": 66.8499756
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleKeyboardPanel/KeyPressTarget",
+    "searchPattern": "Name(\"KeyPressTarget\")"
+  },
+  {
+    "name": "KeyboardInput",
+    "text": "(placeholder: Type something...)",
+    "type": "input",
+    "bounds": {
+      "x": 668.5,
+      "y": 401.224945,
+      "width": 382.0,
+      "height": 57.2999878
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleKeyboardPanel/KeyboardInput",
+    "searchPattern": "Name(\"KeyboardInput\")"
+  },
+  {
+    "name": "SecondInput",
+    "text": "(placeholder: Second field...)",
+    "type": "input",
+    "bounds": {
+      "x": 668.5,
+      "y": 305.724945,
+      "width": 382.0,
+      "height": 57.2999878
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleKeyboardPanel/SecondInput",
+    "searchPattern": "Name(\"SecondInput\")"
+  },
+  {
+    "name": "BackButton",
+    "text": "Back",
+    "type": "button",
+    "bounds": {
+      "x": 611.2,
+      "y": 14.44994,
+      "width": 305.599976,
+      "height": 66.8500061
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleKeyboardPanel/BackButton",
+    "searchPattern": "Name(\"BackButton\")"
+  }
+]

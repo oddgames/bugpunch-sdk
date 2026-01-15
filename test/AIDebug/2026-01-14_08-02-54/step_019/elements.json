@@ -1,0 +1,184 @@
+[
+  {
+    "name": "UsernameInput",
+    "text": "​",
+    "type": "input",
+    "bounds": {
+      "x": 668.5,
+      "y": 725.9249,
+      "width": 382.0,
+      "height": 57.30005
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/UsernameInput",
+    "searchPattern": "Name(\"UsernameInput\")"
+  },
+  {
+    "name": "EmailInput",
+    "text": "(placeholder: Enter email...)",
+    "type": "input",
+    "bounds": {
+      "x": 668.5,
+      "y": 630.4249,
+      "width": 382.0,
+      "height": 57.30005
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/EmailInput",
+    "searchPattern": "Name(\"EmailInput\")"
+  },
+  {
+    "name": "PasswordInput",
+    "text": "​",
+    "type": "input",
+    "bounds": {
+      "x": 668.5,
+      "y": 534.9249,
+      "width": 382.0,
+      "height": 57.30005
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/PasswordInput",
+    "searchPattern": "Name(\"PasswordInput\")"
+  },
+  {
+    "name": "CategoryDropdown",
+    "text": "Option 1",
+    "type": "dropdown",
+    "bounds": {
+      "x": 668.5,
+      "y": 439.424957,
+      "width": 382.0,
+      "height": 57.2999878
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/CategoryDropdown",
+    "searchPattern": "Name(\"CategoryDropdown\")"
+  },
+  {
+    "name": "Item 0: Option 1",
+    "text": "✓",
+    "type": "toggle (on)",
+    "bounds": {
+      "x": 668.5,
+      "y": 385.944946,
+      "width": 382.0,
+      "height": 53.47998
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/CategoryDropdown/Dropdown List/Viewport/Content/Item 0: Option 1",
+    "searchPattern": "Name(\"Item 0: Option 1\")"
+  },
+  {
+    "name": "VolumeSlider",
+    "text": null,
+    "type": "slider",
+    "bounds": {
+      "x": 668.5,
+      "y": 353.474945,
+      "width": 382.0,
+      "height": 38.2000122
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/VolumeSlider",
+    "searchPattern": "Name(\"VolumeSlider\")"
+  },
+  {
+    "name": "Item 1: Option 2",
+    "text": "✓",
+    "type": "toggle (off)",
+    "bounds": {
+      "x": 668.5,
+      "y": 332.464966,
+      "width": 382.0,
+      "height": 53.47998
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/CategoryDropdown/Dropdown List/Viewport/Content/Item 1: Option 2",
+    "searchPattern": "Name(\"Item 1: Option 2\")"
+  },
+  {
+    "name": "Item 2: Option 3",
+    "text": "✓",
+    "type": "toggle (off)",
+    "bounds": {
+      "x": 668.5,
+      "y": 278.984955,
+      "width": 382.0,
+      "height": 53.47998
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/CategoryDropdown/Dropdown List/Viewport/Content/Item 2: Option 3",
+    "searchPattern": "Name(\"Item 2: Option 3\")"
+  },
+  {
+    "name": "Dropdown List",
+    "text": "✓",
+    "type": "draggable",
+    "bounds": {
+      "x": 668.5,
+      "y": 278.984924,
+      "width": 382.0,
+      "height": 160.44
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/CategoryDropdown/Dropdown List",
+    "searchPattern": "Name(\"Dropdown List\")"
+  },
+  {
+    "name": "AgreeToggle",
+    "text": "I agree to terms",
+    "type": "toggle (off)",
+    "bounds": {
+      "x": 573.0,
+      "y": 248.424957,
+      "width": 382.0,
+      "height": 57.2999878
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/AgreeToggle",
+    "searchPattern": "Name(\"AgreeToggle\")"
+  },
+  {
+    "name": "SubmitButton",
+    "text": "Submit",
+    "type": "button",
+    "bounds": {
+      "x": 611.2,
+      "y": 148.149933,
+      "width": 305.599976,
+      "height": 66.8500061
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/SubmitButton",
+    "searchPattern": "Name(\"SubmitButton\")"
+  },
+  {
+    "name": "Blocker",
+    "text": null,
+    "type": "button",
+    "bounds": {
+      "x": 1.335144E-05,
+      "y": 4.91837454E-06,
+      "width": 1528.0,
+      "height": 859.7499
+    },
+    "isEnabled": true,
+    "path": "Canvas/Blocker",
+    "searchPattern": "Name(\"Blocker\")"
+  },
+  {
+    "name": "BackButton",
+    "text": "Back",
+    "type": "button",
+    "bounds": {
+      "x": 611.2,
+      "y": -23.750042,
+      "width": 305.599976,
+      "height": 66.85
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleFormPanel/BackButton",
+    "searchPattern": "Name(\"BackButton\")"
+  }
+]

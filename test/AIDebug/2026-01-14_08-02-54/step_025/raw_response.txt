@@ -1,0 +1,14 @@
+```json
+{
+  "reasoning": "This screen involves drag and drop functionality. I will drag 'Item 1' to the 'DropZone'.",
+  "action": "drag",
+  "from": {
+    "base": "text",
+    "value": "Item 1"
+  },
+  "to": {
+    "base": "name",
+    "value": "DropZone"
+  }
+}
+```
