@@ -1508,21 +1508,15 @@ namespace ODDGames.UITest
 
         static bool MatchText(GameObject go, string pattern)
         {
-            // Check all TMP_Text components in children (not just first)
-            var tmpTexts = go.GetComponentsInChildren<TMP_Text>();
-            foreach (var tmpText in tmpTexts)
-            {
-                if (WildcardMatch(tmpText.text, pattern))
-                    return true;
-            }
+            // Check TMP_Text on this object only (not children)
+            var tmpText = go.GetComponent<TMP_Text>();
+            if (tmpText != null && WildcardMatch(tmpText.text, pattern))
+                return true;
 
-            // Check all legacy Text components in children
-            var legacyTexts = go.GetComponentsInChildren<Text>();
-            foreach (var legacyText in legacyTexts)
-            {
-                if (WildcardMatch(legacyText.text, pattern))
-                    return true;
-            }
+            // Check legacy Text on this object only (not children)
+            var legacyText = go.GetComponent<Text>();
+            if (legacyText != null && WildcardMatch(legacyText.text, pattern))
+                return true;
 
             return false;
         }
@@ -1666,7 +1660,6 @@ namespace ODDGames.UITest
             var results = new List<(GameObject, Rect)>();
 
             var allTmpTexts = UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None);
-            Debug.Log($"[Adjacent] FindTextsMatchingPattern('{pattern}') - checking {allTmpTexts.Length} TMP_Text objects");
 
             foreach (var tmp in allTmpTexts)
             {
@@ -1686,7 +1679,6 @@ namespace ODDGames.UITest
                             Mathf.Abs(worldSize.x),
                             Mathf.Abs(worldSize.y));
                         results.Add((tmp.gameObject, bounds));
-                        Debug.Log($"[Adjacent]   MATCH: '{tmp.name}' text='{tmp.text}' at bounds={bounds}");
                     }
                 }
             }
@@ -1724,12 +1716,10 @@ namespace ODDGames.UITest
                             width * rect.lossyScale.x,
                             height * rect.lossyScale.y);
                         results.Add((text.gameObject, bounds));
-                        Debug.Log($"[Adjacent]   MATCH (legacy): '{text.name}' text='{text.text}' at bounds={bounds}");
                     }
                 }
             }
 
-            Debug.Log($"[Adjacent] FindTextsMatchingPattern('{pattern}') - found {results.Count} matches");
             return results;
         }
 
@@ -1737,20 +1727,14 @@ namespace ODDGames.UITest
         {
             var matchingTexts = FindTextsMatchingPattern(textPattern);
             if (matchingTexts.Count == 0)
-            {
-                Debug.Log($"[Adjacent] No texts matching pattern '{textPattern}'");
                 return false;
-            }
 
             // Find the best adjacent element for each matching text
             foreach (var (textGo, textBounds) in matchingTexts)
             {
                 var bestElement = FindBestAdjacentElement(textGo, textBounds, direction);
                 if (bestElement == element)
-                {
-                    Debug.Log($"[Adjacent] MATCH: '{element.name}' is best adjacent to '{textPattern}' in direction {direction}");
                     return true;
-                }
             }
 
             return false;
@@ -1888,8 +1872,6 @@ namespace ODDGames.UITest
                 elementCorners[2].x - elementCorners[0].x,
                 elementCorners[2].y - elementCorners[0].y);
 
-            Debug.Log($"[Near] GetDistanceToNearestText - element='{element.name}' at center=({elementCenter.x:F1}, {elementCenter.y:F1}), bounds=({elementBounds.xMin:F1}-{elementBounds.xMax:F1}, {elementBounds.yMin:F1}-{elementBounds.yMax:F1}), pattern='{textPattern}', direction={direction}");
-
             // Find the closest matching anchor text to this element that satisfies direction constraint
             float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
@@ -1938,7 +1920,6 @@ namespace ODDGames.UITest
                         Direction.Above => elementCenter.y >= textBounds.center.y,
                         _ => true
                     };
-                    Debug.Log($"[Near]   textBounds.center=({textBounds.center.x:F1}, {textBounds.center.y:F1}), elementEdge=({elementEdgeCenter.x:F1}, {elementEdgeCenter.y:F1}), textEdge=({textEdgeCenter.x:F1}, {textEdgeCenter.y:F1}), distance={distance:F1}, isInDirection={isInDirection}");
                     if (!isInDirection) continue;
                 }
                 else
@@ -1947,15 +1928,12 @@ namespace ODDGames.UITest
                     distance = Vector2.Distance(elementCenter, textBounds.center);
                 }
 
-                Debug.Log($"[Near]   distance to '{textGo.name}'={distance:F1}");
                 if (distance < closestDistance)
                 {
                     closestDistance = distance;
-                    Debug.Log($"[Near]   NEW CLOSEST: {distance:F1}");
                 }
             }
 
-            Debug.Log($"[Near] GetDistanceToNearestText result for '{element.name}': {closestDistance:F1}");
             return closestDistance;
         }
 
