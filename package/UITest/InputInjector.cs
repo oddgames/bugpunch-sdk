@@ -125,6 +125,14 @@ namespace ODDGames.UITest
     public static class InputInjector
     {
         /// <summary>
+        /// Logs a debug message only when UITestBehaviour.DebugMode is enabled.
+        /// </summary>
+        static void LogDebug(string message)
+        {
+            if (UITestBehaviour.DebugMode)
+                Debug.Log($"[InputInjector] {message}");
+        }
+        /// <summary>
         /// Gets the screen position of a GameObject (works with both UI and world-space objects).
         /// </summary>
         public static Vector2 GetScreenPosition(GameObject go)
@@ -426,13 +434,11 @@ namespace ODDGames.UITest
         public static async UniTask TypeIntoField(GameObject inputFieldGO, string text, bool clearFirst = true, bool pressEnter = false)
         {
             var screenPos = GetScreenPosition(inputFieldGO);
-            Debug.Log($"[InputInjector] TypeIntoField - clicking at ({screenPos.x:F0},{screenPos.y:F0}) to focus '{inputFieldGO.name}'");
+            LogDebug($"TypeIntoField '{inputFieldGO.name}' at ({screenPos.x:F0},{screenPos.y:F0}) text='{text}'");
 
             // Click to focus the field
             await InjectPointerTap(screenPos);
             await UniTask.DelayFrame(2);
-
-            Debug.Log($"[InputInjector] TypeIntoField - setting text '{text}'");
 
             // TMP_InputField uses IMGUI Event.PopEvent() for keyboard input, not Input System.
             // InputSystem.QueueTextEvent() does NOT work with TMP_InputField.
@@ -628,12 +634,12 @@ namespace ODDGames.UITest
         /// </summary>
         public static async UniTask InjectPointerTap(Vector2 screenPosition)
         {
-            Debug.Log($"[InputInjector] InjectPointerTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
+            LogDebug($"InjectPointerTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             await EnsureGameViewFocusAsync();
 
             if (ShouldUseTouchInput())
             {
-                Debug.Log("[InputInjector] Using touch input");
+                LogDebug("Using touch input");
                 await InjectTouchTap(screenPosition);
                 return;
             }
@@ -645,7 +651,7 @@ namespace ODDGames.UITest
                 return;
             }
 
-            Debug.Log($"[InputInjector] Using mouse input, device={mouse.deviceId}");
+            LogDebug($"Using mouse input, device={mouse.deviceId}");
 
             // Use MouseState struct for complete state control
             var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
@@ -665,7 +671,7 @@ namespace ODDGames.UITest
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
-            Debug.Log("[InputInjector] InjectPointerTap complete");
+            LogDebug("InjectPointerTap complete");
             await UniTask.Yield();
         }
 
@@ -885,7 +891,7 @@ namespace ODDGames.UITest
                 return;
             }
 
-            Debug.Log($"[InputInjector] MouseDrag - start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s");
+            LogDebug($"MouseDrag start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s");
 
             int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60)); // ~60fps
             Vector2 previousPos = startPos;
@@ -911,7 +917,7 @@ namespace ODDGames.UITest
             InputSystem.Update(); // Force event processing
             await UniTask.Yield(); // Allow PointerDown to register
 
-            Debug.Log($"[InputInjector] MouseDrag - mouse down at ({startPos.x:F0},{startPos.y:F0})");
+            LogDebug($"MouseDrag mouse down at ({startPos.x:F0},{startPos.y:F0})");
 
             // Interpolate mouse position over duration with frame-based yields (like touch)
             for (int i = 1; i <= totalFrames; i++)
@@ -943,7 +949,7 @@ namespace ODDGames.UITest
             }
             InputSystem.Update(); // Force event processing
 
-            Debug.Log($"[InputInjector] MouseDrag - mouse up at ({endPos.x:F0},{endPos.y:F0})");
+            LogDebug($"MouseDrag mouse up at ({endPos.x:F0},{endPos.y:F0})");
 
             // Allow UI to process the drag end event
             await UniTask.Yield();
@@ -1100,7 +1106,7 @@ namespace ODDGames.UITest
         /// </summary>
         public static async UniTask TypeText(string text)
         {
-            Debug.Log($"[InputInjector] TypeText - typing '{text}' ({text?.Length ?? 0} chars)");
+            LogDebug($"TypeText '{text}' ({text?.Length ?? 0} chars)");
 
             var keyboard = Keyboard.current;
             if (keyboard == null)
@@ -1120,7 +1126,7 @@ namespace ODDGames.UITest
                 await UniTask.Yield();
             }
 
-            Debug.Log($"[InputInjector] TypeText - complete");
+            LogDebug("TypeText complete");
         }
 
         /// <summary>
