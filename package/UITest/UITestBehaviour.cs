@@ -1650,8 +1650,6 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask Hold(Search search, float seconds, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Hold (Search) timeout={searchTime}s for {seconds}s");
-
             bool found = await ActionExecutor.HoldAsync(search, seconds, searchTime);
 
             if (found)
@@ -1695,9 +1693,6 @@ namespace ODDGames.UITest
         {
             do
             {
-                string indexInfo = index > 0 ? $" index={index}" : "";
-                Debug.Log($"[UITEST] Click (Search) timeout={searchTime}s{indexInfo}");
-
                 bool found = await ActionExecutor.ClickAsync(search, searchTime, index);
 
                 if (found)
@@ -1789,8 +1784,6 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask DoubleClick(Search search, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] DoubleClick (Search) timeout={searchTime}s");
-
             bool found = await ActionExecutor.DoubleClickAsync(search, searchTime);
 
             if (found)
@@ -1831,8 +1824,6 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask TripleClick(Search search, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] TripleClick (Search) timeout={searchTime}s");
-
             bool found = await ActionExecutor.TripleClickAsync(search, searchTime);
 
             if (found)
@@ -1897,8 +1888,6 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask Scroll(Search search, float delta, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Scroll (Search) timeout={searchTime}s delta={delta}");
-
             bool found = await ActionExecutor.ScrollAsync(search, delta, searchTime);
 
             if (found)
@@ -2303,8 +2292,6 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask Drag(Search search, Vector2 direction, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Drag (Search) timeout={searchTime}s delta=({direction.x:F0},{direction.y:F0}) duration={duration}s");
-
             bool found = await ActionExecutor.DragAsync(search, direction, duration, searchTime);
 
             if (found)
@@ -2418,8 +2405,6 @@ namespace ODDGames.UITest
         protected async UniTask ClickSlider(Search search, float percent, bool throwIfMissing = true, float searchTime = 10)
         {
             percent = Mathf.Clamp01(percent);
-            Debug.Log($"[UITEST] ClickSlider (Search) timeout={searchTime}s at {percent:P0}");
-
             bool found = await ActionExecutor.ClickSliderAsync(search, percent, searchTime);
 
             if (found)
@@ -2454,7 +2439,6 @@ namespace ODDGames.UITest
         {
             fromPercent = Mathf.Clamp01(fromPercent);
             toPercent = Mathf.Clamp01(toPercent);
-            Debug.Log($"[UITEST] DragSlider (Search) timeout={searchTime}s from {fromPercent:P0} to {toPercent:P0}");
 
             bool found = await ActionExecutor.DragSliderAsync(search, fromPercent, toPercent, duration, searchTime);
 
@@ -2785,8 +2769,6 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask ClickDropdown(Search search, int optionIndex, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] ClickDropdown (Search) timeout={searchTime}s option index={optionIndex}");
-
             bool found = await ActionExecutor.ClickDropdownAsync(search, optionIndex, searchTime);
 
             if (found)
@@ -2818,8 +2800,6 @@ namespace ODDGames.UITest
         /// </example>
         protected async UniTask ClickDropdown(Search search, string optionLabel, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] ClickDropdown (Search) timeout={searchTime}s option='{optionLabel}'");
-
             bool found = await ActionExecutor.ClickDropdownAsync(search, optionLabel, searchTime);
 
             if (found)
@@ -2829,6 +2809,93 @@ namespace ODDGames.UITest
             else if (throwIfMissing)
             {
                 throw new TestException($"ClickDropdown (Search) could not find Dropdown with option '{optionLabel}' within {searchTime}s");
+            }
+        }
+
+        /// <summary>
+        /// Clicks each dropdown option sequentially.
+        /// Opens the dropdown, clicks an option, then repeats for all options.
+        /// </summary>
+        /// <param name="search">Search query to find the Dropdown or TMP_Dropdown component.</param>
+        /// <param name="delayBetween">Delay in milliseconds between each option click. Default is 0.</param>
+        /// <param name="throwIfMissing">If true, throws an exception when dropdown is not found. Default is true.</param>
+        /// <param name="searchTime">Maximum time in seconds to search for the dropdown. Default is 10 seconds.</param>
+        /// <returns>A UniTask that completes when all options have been clicked.</returns>
+        protected async UniTask ClickDropdownItems(Search search, int delayBetween = 0, bool throwIfMissing = true, float searchTime = 10)
+        {
+            var go = search.FindFirst();
+            if (go == null)
+            {
+                if (throwIfMissing)
+                    throw new TestException($"ClickDropdownItems({search}) could not find dropdown");
+                return;
+            }
+
+            int optionCount = 0;
+            var tmpDropdown = go.GetComponent<TMP_Dropdown>();
+            var legacyDropdown = go.GetComponent<Dropdown>();
+
+            if (tmpDropdown != null)
+                optionCount = tmpDropdown.options.Count;
+            else if (legacyDropdown != null)
+                optionCount = legacyDropdown.options.Count;
+
+            if (optionCount == 0)
+            {
+                if (throwIfMissing)
+                    throw new TestException($"ClickDropdownItems({search}) found '{go.name}' but it has no Dropdown component or no options");
+                return;
+            }
+
+            Debug.Log($"[UITEST] ClickDropdownItems({search}) -> '{go.name}' found {optionCount} options");
+
+            for (int i = 0; i < optionCount; i++)
+            {
+                await ClickDropdown(search, i, throwIfMissing, searchTime);
+
+                if (delayBetween > 0 && i < optionCount - 1)
+                    await UniTask.Delay(delayBetween);
+            }
+        }
+
+        /// <summary>
+        /// Clicks each clickable child item inside a ScrollRect sequentially.
+        /// Scrolls to each item before clicking to ensure it's visible.
+        /// </summary>
+        /// <param name="search">Search query to find the ScrollRect.</param>
+        /// <param name="delayBetween">Delay in milliseconds between each click. Default is 0.</param>
+        /// <param name="throwIfMissing">If true, throws an exception when scroll view is not found. Default is true.</param>
+        /// <param name="searchTime">Maximum time in seconds to search for the scroll view. Default is 10 seconds.</param>
+        /// <returns>A UniTask that completes when all items have been clicked.</returns>
+        protected async UniTask ClickScrollItems(Search search, int delayBetween = 0, bool throwIfMissing = true, float searchTime = 10)
+        {
+            var scrollRect = await Find<ScrollRect>(search, throwIfMissing, searchTime);
+            if (scrollRect == null) return;
+
+            var content = scrollRect.content;
+            if (content == null)
+            {
+                if (throwIfMissing)
+                    throw new TestException($"ClickScrollItems({search}) ScrollRect '{scrollRect.name}' has no content assigned");
+                return;
+            }
+
+            var selectables = content.GetComponentsInChildren<Selectable>(true)
+                .Where(s => s.interactable)
+                .ToList();
+
+            Debug.Log($"[UITEST] ClickScrollItems({search}) -> '{scrollRect.name}' found {selectables.Count} items");
+
+            for (int i = 0; i < selectables.Count; i++)
+            {
+                var item = selectables[i];
+                // ScrollTo handles visibility check and scrolling
+                await ScrollTo(search, Name(item.name), throwIfMissing: false);
+                await ActionExecutor.ClickAsync(item.gameObject);
+                await ActionComplete();
+
+                if (delayBetween > 0 && i < selectables.Count - 1)
+                    await UniTask.Delay(delayBetween);
             }
         }
 
@@ -2843,8 +2910,6 @@ namespace ODDGames.UITest
         /// <exception cref="TestException">Thrown when no matching element is found and throwIfMissing is true.</exception>
         protected async UniTask ClickAny(Search search, float seconds = 10, bool throwIfMissing = true)
         {
-            Debug.Log($"[UITEST] ClickAny (Search) timeout={seconds}s");
-
             bool found = await ActionExecutor.ClickAnyAsync(search, seconds);
 
             if (found)
@@ -3743,6 +3808,113 @@ namespace ODDGames.UITest
             var go = component.gameObject;
             return $"{go.name}_{go.transform.GetSiblingIndex()}_{go.transform.parent?.name ?? "root"}";
         }
+
+        #endregion
+
+        #region Assertions
+
+        // --- UI Element Assertions ---
+
+        /// <summary>
+        /// Asserts that an element matching the search exists.
+        /// </summary>
+        protected static void AssertExists(Search search, string message = null)
+            => ActionExecutor.AssertExists(search, message);
+
+        /// <summary>
+        /// Asserts that no element matching the search exists.
+        /// </summary>
+        protected static void AssertNotExists(Search search, string message = null)
+            => ActionExecutor.AssertNotExists(search, message);
+
+        /// <summary>
+        /// Asserts that the text content of an element matches expected value.
+        /// </summary>
+        protected static void AssertText(Search search, string expected, string message = null)
+            => ActionExecutor.AssertText(search, expected, message);
+
+        /// <summary>
+        /// Asserts that a toggle is in the expected state.
+        /// </summary>
+        protected static void AssertToggle(Search search, bool expectedOn, string message = null)
+            => ActionExecutor.AssertToggle(search, expectedOn, message);
+
+        /// <summary>
+        /// Asserts that a slider value is within expected range.
+        /// </summary>
+        protected static void AssertSlider(Search search, float expected, float tolerance = 0.01f, string message = null)
+            => ActionExecutor.AssertSlider(search, expected, tolerance, message);
+
+        /// <summary>
+        /// Asserts that an element is interactable.
+        /// </summary>
+        protected static void AssertInteractable(Search search, bool expectedInteractable = true, string message = null)
+            => ActionExecutor.AssertInteractable(search, expectedInteractable, message);
+
+        // --- Static Path Assertions ---
+
+        /// <summary>
+        /// Asserts that a static path resolves to a truthy value.
+        /// </summary>
+        /// <param name="path">Dot-separated path (e.g., "GameManager.Instance.IsReady")</param>
+        protected static void Assert(string path, string message = null)
+            => ActionExecutor.Assert(path, message);
+
+        /// <summary>
+        /// Asserts that a static path equals an expected value.
+        /// </summary>
+        protected static void Assert<T>(string path, T expected, string message = null)
+            => ActionExecutor.Assert(path, expected, message);
+
+        /// <summary>
+        /// Asserts that a numeric value at a static path is greater than expected.
+        /// </summary>
+        protected static void AssertGreater(string path, double greaterThan, string message = null)
+            => ActionExecutor.AssertGreater(path, greaterThan, message);
+
+        /// <summary>
+        /// Asserts that a numeric value at a static path is less than expected.
+        /// </summary>
+        protected static void AssertLess(string path, double lessThan, string message = null)
+            => ActionExecutor.AssertLess(path, lessThan, message);
+
+        // --- Waits ---
+
+        /// <summary>
+        /// Waits until an element matching the search exists.
+        /// </summary>
+        protected static UniTask<bool> WaitFor(Search search, float timeout = 10f)
+            => ActionExecutor.WaitFor(search, timeout);
+
+        /// <summary>
+        /// Waits until an element's text matches the expected value.
+        /// </summary>
+        protected static UniTask<bool> WaitFor(Search search, string expectedText, float timeout = 10f)
+            => ActionExecutor.WaitFor(search, expectedText, timeout);
+
+        /// <summary>
+        /// Waits until a toggle is in the expected state.
+        /// </summary>
+        protected static UniTask<bool> WaitFor(Search search, bool expectedOn, float timeout = 10f)
+            => ActionExecutor.WaitFor(search, expectedOn, timeout);
+
+        /// <summary>
+        /// Waits until no element matching the search exists.
+        /// </summary>
+        protected static UniTask<bool> WaitForNot(Search search, float timeout = 10f)
+            => ActionExecutor.WaitForNot(search, timeout);
+
+        /// <summary>
+        /// Waits until a static path resolves to a truthy value.
+        /// </summary>
+        protected static UniTask<bool> WaitFor(string path, float timeout = 10f)
+            => ActionExecutor.WaitFor(path, timeout);
+
+        /// <summary>
+        /// Waits until a static path equals an expected value.
+        /// </summary>
+        protected static UniTask<bool> WaitFor<T>(string path, T expected, float timeout = 10f)
+            => ActionExecutor.WaitFor(path, expected, timeout);
 
         #endregion
     }

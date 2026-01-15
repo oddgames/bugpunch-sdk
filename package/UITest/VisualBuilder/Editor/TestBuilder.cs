@@ -1293,6 +1293,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             var parts = new List<string>();
             foreach (var item in chain)
             {
+                if (item == null) continue;
                 var display = item.method switch
                 {
                     "near" => $".Near(\"{TruncateText(item.value, 12)}\")",

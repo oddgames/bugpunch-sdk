@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.40] - 2026-01-15
+
+### Added
+- **`ClickDropdownItems()`** - Click each dropdown option sequentially
+  - Automatically iterates through all options in a Dropdown/TMP_Dropdown
+  - Optional `delayBetween` parameter for delay between clicks
+  - Example: `await ClickDropdownItems(Name("Dropdown"), delayBetween: 500);`
+- **`ClickScrollItems()`** - Click each item in a ScrollRect sequentially
+  - Scrolls to each item before clicking to ensure visibility
+  - Finds all Selectable children in the scroll view content
+  - Example: `await ClickScrollItems(Name("Scroll View"));`
+
+### Fixed
+- **Null reference in TestBuilder** when chain item is null in VisualBuilder editor
+
 ## [1.0.39] - 2026-01-15
 
 ### Changed

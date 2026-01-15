@@ -1,4 +1,6 @@
+using System;
 using System.Linq;
+using System.Reflection;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -13,6 +15,14 @@ namespace ODDGames.UITest
     /// </summary>
     public static class ActionExecutor
     {
+        static void Log(string message) => Debug.Log($"[UIAUTOMATOR] {message}");
+
+        static void LogDebug(string message)
+        {
+            if (UITestBehaviour.DebugMode)
+                Debug.Log($"[UIAUTOMATOR:DEBUG] {message}");
+        }
+
         #region Click Actions
 
         /// <summary>
@@ -34,7 +44,7 @@ namespace ODDGames.UITest
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Debug.Log($"[ActionExecutor] Click({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
+                    Log($"Click({search}) -> '{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
                     await InputInjector.InjectPointerTap(screenPos);
                     return true;
                 }
@@ -54,7 +64,7 @@ namespace ODDGames.UITest
                 throw new System.ArgumentNullException(nameof(target), "Click target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
-            Debug.Log($"[ActionExecutor] Click at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
+            Log($"Click '{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
             await InputInjector.InjectPointerTap(screenPos);
         }
 
@@ -64,7 +74,7 @@ namespace ODDGames.UITest
         /// <param name="screenPosition">Screen coordinates to click</param>
         public static async UniTask ClickAtAsync(Vector2 screenPosition)
         {
-            Debug.Log($"[ActionExecutor] Click at ({screenPosition.x:F0}, {screenPosition.y:F0})");
+            Log($"Click at ({screenPosition.x:F0}, {screenPosition.y:F0})");
             await InputInjector.InjectPointerTap(screenPosition);
         }
 
@@ -86,7 +96,7 @@ namespace ODDGames.UITest
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Debug.Log($"[ActionExecutor] DoubleClick({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
+                    Log($"DoubleClick({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
                     await InputInjector.InjectPointerDoubleTap(screenPos);
                     return true;
                 }
@@ -106,7 +116,7 @@ namespace ODDGames.UITest
                 throw new System.ArgumentNullException(nameof(target), "DoubleClick target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
-            Debug.Log($"[ActionExecutor] DoubleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
+            Log($"DoubleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
             await InputInjector.InjectPointerDoubleTap(screenPos);
         }
 
@@ -116,7 +126,7 @@ namespace ODDGames.UITest
         /// <param name="screenPosition">Screen coordinates to double-click</param>
         public static async UniTask DoubleClickAtAsync(Vector2 screenPosition)
         {
-            Debug.Log($"[ActionExecutor] DoubleClick at ({screenPosition.x:F0}, {screenPosition.y:F0})");
+            Log($"DoubleClick at ({screenPosition.x:F0}, {screenPosition.y:F0})");
             await InputInjector.InjectPointerDoubleTap(screenPosition);
         }
 
@@ -139,7 +149,7 @@ namespace ODDGames.UITest
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Debug.Log($"[ActionExecutor] TripleClick({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
+                    Log($"TripleClick({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
                     await InputInjector.InjectPointerTripleTap(screenPos);
                     return true;
                 }
@@ -160,7 +170,7 @@ namespace ODDGames.UITest
                 throw new System.ArgumentNullException(nameof(target), "TripleClick target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
-            Debug.Log($"[ActionExecutor] TripleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
+            Log($"TripleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
             await InputInjector.InjectPointerTripleTap(screenPos);
         }
 
@@ -171,7 +181,7 @@ namespace ODDGames.UITest
         /// <param name="screenPosition">Screen coordinates to triple-click</param>
         public static async UniTask TripleClickAtAsync(Vector2 screenPosition)
         {
-            Debug.Log($"[ActionExecutor] TripleClick at ({screenPosition.x:F0}, {screenPosition.y:F0})");
+            Log($"TripleClick at ({screenPosition.x:F0}, {screenPosition.y:F0})");
             await InputInjector.InjectPointerTripleTap(screenPosition);
         }
 
@@ -194,7 +204,7 @@ namespace ODDGames.UITest
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Debug.Log($"[ActionExecutor] Hold({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) for {seconds}s");
+                    Log($"Hold({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) for {seconds}s");
                     await InputInjector.InjectPointerHold(screenPos, seconds);
                     return true;
                 }
@@ -215,7 +225,7 @@ namespace ODDGames.UITest
                 throw new System.ArgumentNullException(nameof(target), "Hold target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
-            Debug.Log($"[ActionExecutor] Hold at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}' for {seconds}s");
+            Log($"Hold at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}' for {seconds}s");
             await InputInjector.InjectPointerHold(screenPos, seconds);
         }
 
@@ -226,7 +236,7 @@ namespace ODDGames.UITest
         /// <param name="seconds">Duration of the hold in seconds</param>
         public static async UniTask HoldAtAsync(Vector2 screenPosition, float seconds)
         {
-            Debug.Log($"[ActionExecutor] Hold at ({screenPosition.x:F0}, {screenPosition.y:F0}) for {seconds}s");
+            Log($"Hold at ({screenPosition.x:F0}, {screenPosition.y:F0}) for {seconds}s");
             await InputInjector.InjectPointerHold(screenPosition, seconds);
         }
 
@@ -254,7 +264,7 @@ namespace ODDGames.UITest
                 if (results.Count > index)
                 {
                     var target = results[index];
-                    Debug.Log($"[ActionExecutor] Type({search}) -> '{target.name}' text=\"{text}\" (clear={clearFirst}, enter={pressEnter})");
+                    Log($"Type({search}) -> '{target.name}' text=\"{text}\" (clear={clearFirst}, enter={pressEnter})");
                     await InputInjector.TypeIntoField(target, text, clearFirst, pressEnter);
                     return true;
                 }
@@ -276,7 +286,7 @@ namespace ODDGames.UITest
             if (inputField == null)
                 throw new System.ArgumentNullException(nameof(inputField), "Type target cannot be null");
 
-            Debug.Log($"[ActionExecutor] Type \"{text}\" into '{inputField.name}' (clear={clearFirst}, enter={pressEnter})");
+            Log($"Type \"{text}\" into '{inputField.name}' (clear={clearFirst}, enter={pressEnter})");
             await InputInjector.TypeIntoField(inputField, text, clearFirst, pressEnter);
         }
 
@@ -286,7 +296,7 @@ namespace ODDGames.UITest
         /// <param name="text">The text to type</param>
         public static async UniTask TypeTextAsync(string text)
         {
-            Debug.Log($"[ActionExecutor] TypeText \"{text}\"");
+            Log($"TypeText \"{text}\"");
             await InputInjector.TypeText(text);
         }
 
@@ -315,7 +325,7 @@ namespace ODDGames.UITest
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
                     var endPos = screenPos + direction;
-                    Debug.Log($"[ActionExecutor] Drag({search}) -> '{target.name}' from ({screenPos.x:F0}, {screenPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s");
+                    Log($"Drag({search}) -> '{target.name}' from ({screenPos.x:F0}, {screenPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s");
                     await InputInjector.InjectPointerDrag(screenPos, endPos, duration);
                     return true;
                 }
@@ -347,7 +357,7 @@ namespace ODDGames.UITest
                     var toTarget = toResults[0];
                     var fromPos = InputInjector.GetScreenPosition(fromTarget);
                     var toPos = InputInjector.GetScreenPosition(toTarget);
-                    Debug.Log($"[ActionExecutor] DragTo({fromSearch}) -> '{fromTarget.name}' to ({toSearch}) -> '{toTarget.name}' over {duration}s");
+                    Log($"DragTo({fromSearch}) -> '{fromTarget.name}' to ({toSearch}) -> '{toTarget.name}' over {duration}s");
                     await InputInjector.InjectPointerDrag(fromPos, toPos, duration);
                     return true;
                 }
@@ -370,7 +380,7 @@ namespace ODDGames.UITest
 
             var startPos = InputInjector.GetScreenPosition(source);
             var endPos = startPos + direction;
-            Debug.Log($"[ActionExecutor] Drag from ({startPos.x:F0}, {startPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s");
+            Log($"Drag from ({startPos.x:F0}, {startPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s");
             await InputInjector.InjectPointerDrag(startPos, endPos, duration);
         }
 
@@ -405,7 +415,7 @@ namespace ODDGames.UITest
 
             var startPos = InputInjector.GetScreenPosition(source);
             var endPos = InputInjector.GetScreenPosition(target);
-            Debug.Log($"[ActionExecutor] Drag from '{source.name}' to '{target.name}' over {duration}s");
+            Log($"Drag from '{source.name}' to '{target.name}' over {duration}s");
             await InputInjector.InjectPointerDrag(startPos, endPos, duration);
         }
 
@@ -421,7 +431,7 @@ namespace ODDGames.UITest
                 throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
 
             var startPos = InputInjector.GetScreenPosition(source);
-            Debug.Log($"[ActionExecutor] Drag from '{source.name}' to ({targetPosition.x:F0}, {targetPosition.y:F0}) over {duration}s");
+            Log($"Drag from '{source.name}' to ({targetPosition.x:F0}, {targetPosition.y:F0}) over {duration}s");
             await InputInjector.InjectPointerDrag(startPos, targetPosition, duration);
         }
 
@@ -433,7 +443,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the drag in seconds</param>
         public static async UniTask DragFromToAsync(Vector2 startPosition, Vector2 endPosition, float duration = 0.5f)
         {
-            Debug.Log($"[ActionExecutor] Drag from ({startPosition.x:F0}, {startPosition.y:F0}) to ({endPosition.x:F0}, {endPosition.y:F0}) over {duration}s");
+            Log($"Drag from ({startPosition.x:F0}, {startPosition.y:F0}) to ({endPosition.x:F0}, {endPosition.y:F0}) over {duration}s");
             await InputInjector.InjectPointerDrag(startPosition, endPosition, duration);
         }
 
@@ -452,7 +462,7 @@ namespace ODDGames.UITest
                 throw new System.ArgumentNullException(nameof(target), "Scroll target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
-            Debug.Log($"[ActionExecutor] Scroll on '{target.name}' delta={delta}");
+            Log($"Scroll on '{target.name}' delta={delta}");
             await InputInjector.InjectScroll(screenPos, delta);
         }
 
@@ -467,7 +477,7 @@ namespace ODDGames.UITest
             if (target == null)
                 throw new System.ArgumentNullException(nameof(target), "Scroll target cannot be null");
 
-            Debug.Log($"[ActionExecutor] Scroll '{target.name}' {direction} amount={amount}");
+            Log($"Scroll '{target.name}' {direction} amount={amount}");
             await InputInjector.ScrollElement(target, direction, amount);
         }
 
@@ -478,7 +488,7 @@ namespace ODDGames.UITest
         /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
         public static async UniTask ScrollAtAsync(Vector2 position, float delta)
         {
-            Debug.Log($"[ActionExecutor] Scroll at ({position.x:F0}, {position.y:F0}) delta={delta}");
+            Log($"Scroll at ({position.x:F0}, {position.y:F0}) delta={delta}");
             await InputInjector.InjectScroll(position, delta);
         }
 
@@ -501,7 +511,7 @@ namespace ODDGames.UITest
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Debug.Log($"[ActionExecutor] Scroll({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) delta={delta}");
+                    Log($"Scroll({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) delta={delta}");
                     await InputInjector.InjectScroll(screenPos, delta);
                     return true;
                 }
@@ -530,7 +540,7 @@ namespace ODDGames.UITest
                 if (results.Count > index)
                 {
                     var target = results[index];
-                    Debug.Log($"[ActionExecutor] Scroll({search}) -> '{target.name}' {direction} amount={amount}");
+                    Log($"Scroll({search}) -> '{target.name}' {direction} amount={amount}");
                     await InputInjector.ScrollElement(target, direction, amount);
                     return true;
                 }
@@ -554,7 +564,7 @@ namespace ODDGames.UITest
             if (slider == null)
                 throw new System.ArgumentNullException(nameof(slider), "Slider cannot be null");
 
-            Debug.Log($"[ActionExecutor] SetSlider '{slider.name}' to {normalizedValue:F2}");
+            Log($"SetSlider '{slider.name}' to {normalizedValue:F2}");
             await InputInjector.SetSlider(slider, normalizedValue);
         }
 
@@ -585,7 +595,7 @@ namespace ODDGames.UITest
             if (scrollbar == null)
                 throw new System.ArgumentNullException(nameof(scrollbar), "Scrollbar cannot be null");
 
-            Debug.Log($"[ActionExecutor] SetScrollbar '{scrollbar.name}' to {normalizedValue:F2}");
+            Log($"SetScrollbar '{scrollbar.name}' to {normalizedValue:F2}");
             await InputInjector.SetScrollbar(scrollbar, normalizedValue);
         }
 
@@ -617,7 +627,7 @@ namespace ODDGames.UITest
                 throw new System.ArgumentNullException(nameof(slider), "Slider cannot be null");
 
             var clickPos = InputInjector.GetSliderClickPosition(slider, normalizedValue);
-            Debug.Log($"[ActionExecutor] ClickSlider '{slider.name}' at {normalizedValue:F2} position ({clickPos.x:F0}, {clickPos.y:F0})");
+            Log($"ClickSlider '{slider.name}' at {normalizedValue:F2} position ({clickPos.x:F0}, {clickPos.y:F0})");
             await InputInjector.InjectPointerTap(clickPos);
         }
 
@@ -635,7 +645,7 @@ namespace ODDGames.UITest
 
             var startPos = InputInjector.GetSliderClickPosition(slider, fromValue);
             var endPos = InputInjector.GetSliderClickPosition(slider, toValue);
-            Debug.Log($"[ActionExecutor] DragSlider '{slider.name}' from {fromValue:F2} to {toValue:F2}");
+            Log($"DragSlider '{slider.name}' from {fromValue:F2} to {toValue:F2}");
             await InputInjector.InjectPointerDrag(startPos, endPos, duration);
         }
 
@@ -658,7 +668,7 @@ namespace ODDGames.UITest
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
-                        Debug.Log($"[ActionExecutor] ClickSlider({search}) -> '{go.name}' value={normalizedValue:F2}");
+                        Log($"ClickSlider({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await ClickSliderAsync(slider, normalizedValue);
                         return true;
                     }
@@ -690,7 +700,7 @@ namespace ODDGames.UITest
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
-                        Debug.Log($"[ActionExecutor] DragSlider({search}) -> '{go.name}' from {fromValue:F2} to {toValue:F2}");
+                        Log($"DragSlider({search}) -> '{go.name}' from {fromValue:F2} to {toValue:F2}");
                         await DragSliderAsync(slider, fromValue, toValue, duration);
                         return true;
                     }
@@ -720,7 +730,7 @@ namespace ODDGames.UITest
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
-                        Debug.Log($"[ActionExecutor] SetSlider({search}) -> '{go.name}' value={normalizedValue:F2}");
+                        Log($"SetSlider({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await SetSliderAsync(slider, normalizedValue);
                         return true;
                     }
@@ -750,7 +760,7 @@ namespace ODDGames.UITest
                     var scrollbar = go.GetComponent<Scrollbar>();
                     if (scrollbar != null)
                     {
-                        Debug.Log($"[ActionExecutor] SetScrollbar({search}) -> '{go.name}' value={normalizedValue:F2}");
+                        Log($"SetScrollbar({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await SetScrollbarAsync(scrollbar, normalizedValue);
                         return true;
                     }
@@ -777,7 +787,7 @@ namespace ODDGames.UITest
             if (target == null)
                 throw new System.ArgumentNullException(nameof(target), "Swipe target cannot be null");
 
-            Debug.Log($"[ActionExecutor] Swipe on '{target.name}' {direction} distance={normalizedDistance} duration={duration}s");
+            Log($"Swipe on '{target.name}' {direction} distance={normalizedDistance} duration={duration}s");
             await InputInjector.Swipe(target, direction, normalizedDistance, duration);
         }
 
@@ -792,7 +802,7 @@ namespace ODDGames.UITest
         {
             var offset = InputInjector.GetDirectionOffset(direction, normalizedDistance);
             var endPos = position + offset;
-            Debug.Log($"[ActionExecutor] Swipe at ({position.x:F0}, {position.y:F0}) {direction}");
+            Log($"Swipe at ({position.x:F0}, {position.y:F0}) {direction}");
             await InputInjector.InjectMouseDrag(position, endPos, duration);
         }
 
@@ -804,7 +814,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the pinch</param>
         public static async UniTask PinchAsync(GameObject target, float scale, float duration = 0.5f)
         {
-            Debug.Log($"[ActionExecutor] Pinch on '{target?.name ?? "screen center"}' scale={scale} duration={duration}s");
+            Log($"Pinch on '{target?.name ?? "screen center"}' scale={scale} duration={duration}s");
             await InputInjector.Pinch(target, scale, duration);
         }
 
@@ -816,7 +826,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the pinch</param>
         public static async UniTask PinchAtAsync(Vector2 position, float scale, float duration = 0.5f)
         {
-            Debug.Log($"[ActionExecutor] Pinch at ({position.x:F0}, {position.y:F0}) scale={scale} duration={duration}s");
+            Log($"Pinch at ({position.x:F0}, {position.y:F0}) scale={scale} duration={duration}s");
             await InputInjector.InjectPinch(position, scale, duration);
         }
 
@@ -829,7 +839,7 @@ namespace ODDGames.UITest
         /// <param name="fingerDistancePixels">Initial distance of each finger from center in pixels</param>
         public static async UniTask PinchAtAsync(Vector2 position, float scale, float duration, float fingerDistancePixels)
         {
-            Debug.Log($"[ActionExecutor] Pinch at ({position.x:F0}, {position.y:F0}) scale={scale} duration={duration}s fingerDistance={fingerDistancePixels}px");
+            Log($"Pinch at ({position.x:F0}, {position.y:F0}) scale={scale} duration={duration}s fingerDistance={fingerDistancePixels}px");
             await InputInjector.InjectPinch(position, scale, duration, fingerDistancePixels);
         }
 
@@ -843,7 +853,7 @@ namespace ODDGames.UITest
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
         public static async UniTask TwoFingerSwipeAsync(GameObject target, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
-            Debug.Log($"[ActionExecutor] TwoFingerSwipe on '{target?.name ?? "screen center"}' {direction}");
+            Log($"TwoFingerSwipe on '{target?.name ?? "screen center"}' {direction}");
             await InputInjector.TwoFingerSwipe(target, direction, normalizedDistance, duration, fingerSpacing);
         }
 
@@ -857,7 +867,7 @@ namespace ODDGames.UITest
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
         public static async UniTask TwoFingerSwipeAtAsync(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
-            Debug.Log($"[ActionExecutor] TwoFingerSwipe at ({position.x:F0}, {position.y:F0}) {direction}");
+            Log($"TwoFingerSwipe at ({position.x:F0}, {position.y:F0}) {direction}");
             await InputInjector.InjectTwoFingerSwipe(position, direction, normalizedDistance, duration, fingerSpacing);
         }
 
@@ -870,7 +880,7 @@ namespace ODDGames.UITest
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
         public static async UniTask RotateAsync(GameObject target, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
         {
-            Debug.Log($"[ActionExecutor] Rotate on '{target?.name ?? "screen center"}' degrees={degrees} duration={duration}s");
+            Log($"Rotate on '{target?.name ?? "screen center"}' degrees={degrees} duration={duration}s");
             await InputInjector.Rotate(target, degrees, duration, fingerDistance);
         }
 
@@ -883,7 +893,7 @@ namespace ODDGames.UITest
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
         public static async UniTask RotateAtAsync(Vector2 position, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
         {
-            Debug.Log($"[ActionExecutor] Rotate at ({position.x:F0}, {position.y:F0}) degrees={degrees} duration={duration}s");
+            Log($"Rotate at ({position.x:F0}, {position.y:F0}) degrees={degrees} duration={duration}s");
             await InputInjector.InjectRotate(position, degrees, duration, fingerDistance);
         }
 
@@ -896,7 +906,7 @@ namespace ODDGames.UITest
         /// <param name="radiusPixels">Distance from center in pixels for finger positions</param>
         public static async UniTask RotateAtPixelsAsync(Vector2 position, float degrees, float duration, float radiusPixels)
         {
-            Debug.Log($"[ActionExecutor] Rotate at ({position.x:F0}, {position.y:F0}) degrees={degrees} duration={duration}s radius={radiusPixels}px");
+            Log($"Rotate at ({position.x:F0}, {position.y:F0}) degrees={degrees} duration={duration}s radius={radiusPixels}px");
             await InputInjector.InjectRotatePixels(position, degrees, duration, radiusPixels);
         }
 
@@ -910,7 +920,7 @@ namespace ODDGames.UITest
         /// <param name="key">The key to press</param>
         public static async UniTask PressKeyAsync(Key key)
         {
-            Debug.Log($"[ActionExecutor] PressKey {key}");
+            Log($"PressKey {key}");
             await InputInjector.PressKey(key);
         }
 
@@ -921,7 +931,7 @@ namespace ODDGames.UITest
         /// <param name="duration">How long to hold in seconds</param>
         public static async UniTask HoldKeyAsync(Key key, float duration)
         {
-            Debug.Log($"[ActionExecutor] HoldKey {key} for {duration}s");
+            Log($"HoldKey {key} for {duration}s");
             await InputInjector.HoldKey(key, duration);
         }
 
@@ -932,7 +942,7 @@ namespace ODDGames.UITest
         /// <param name="duration">How long to hold in seconds</param>
         public static async UniTask HoldKeysAsync(Key[] keys, float duration)
         {
-            Debug.Log($"[ActionExecutor] HoldKeys [{string.Join(", ", keys)}] for {duration}s");
+            Log($"HoldKeys [{string.Join(", ", keys)}] for {duration}s");
             await InputInjector.HoldKeys(keys, duration);
         }
 
@@ -960,7 +970,7 @@ namespace ODDGames.UITest
                     var legacyDropdown = go.GetComponent<Dropdown>();
                     if (legacyDropdown != null)
                     {
-                        Debug.Log($"[ActionExecutor] ClickDropdown({search}) -> '{go.name}' index={optionIndex}");
+                        Log($"ClickDropdown({search}) -> '{go.name}' index={optionIndex}");
                         await ClickDropdownItemAsync(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
                         return true;
                     }
@@ -969,7 +979,7 @@ namespace ODDGames.UITest
                     var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
                     if (tmpDropdown != null)
                     {
-                        Debug.Log($"[ActionExecutor] ClickDropdown({search}) -> '{go.name}' index={optionIndex}");
+                        Log($"ClickDropdown({search}) -> '{go.name}' index={optionIndex}");
                         await ClickDropdownItemAsync(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
                         return true;
                     }
@@ -1003,7 +1013,7 @@ namespace ODDGames.UITest
                         int optionIndex = legacyDropdown.options.FindIndex(o => o.text == optionLabel);
                         if (optionIndex >= 0)
                         {
-                            Debug.Log($"[ActionExecutor] ClickDropdown({search}) -> '{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
+                            Log($"ClickDropdown({search}) -> '{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
                             await ClickDropdownItemAsync(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
                             return true;
                         }
@@ -1016,7 +1026,7 @@ namespace ODDGames.UITest
                         int optionIndex = tmpDropdown.options.FindIndex(o => o.text == optionLabel);
                         if (optionIndex >= 0)
                         {
-                            Debug.Log($"[ActionExecutor] ClickDropdown({search}) -> '{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
+                            Log($"ClickDropdown({search}) -> '{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
                             await ClickDropdownItemAsync(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
                             return true;
                         }
@@ -1062,7 +1072,7 @@ namespace ODDGames.UITest
                 if (newToggles.Length > optionIndex)
                 {
                     var targetToggle = newToggles[optionIndex];
-                    Debug.Log($"[ActionExecutor] ClickDropdown selecting option {optionIndex}: '{targetToggle.name}'");
+                    Log($"ClickDropdown selecting option {optionIndex}: '{targetToggle.name}'");
                     await ClickAsync(targetToggle.gameObject);
                     return;
                 }
@@ -1097,7 +1107,7 @@ namespace ODDGames.UITest
                     // Randomly select one
                     var target = results.OrderBy(_ => rnd.Next()).First();
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Debug.Log($"[ActionExecutor] ClickAny({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) (from {results.Count} matches)");
+                    Log($"ClickAny({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) (from {results.Count} matches)");
                     await ClickAsync(target);
                     return true;
                 }
@@ -1105,6 +1115,570 @@ namespace ODDGames.UITest
             }
 
             return false;
+        }
+
+        #endregion
+
+        #region Search-Based Assertions
+
+        /// <summary>
+        /// Asserts that an element matching the search exists.
+        /// </summary>
+        /// <param name="search">The search query</param>
+        /// <param name="message">Optional custom failure message</param>
+        /// <exception cref="InvalidOperationException">If element not found</exception>
+        public static void AssertExists(Search search, string message = null)
+        {
+            var result = search.FindFirst();
+            if (result == null)
+            {
+                var msg = message ?? $"Assert failed: element not found";
+                throw new InvalidOperationException($"{msg} - Search: {search}");
+            }
+            Log($"Assert passed: {search} exists (found '{result.name}')");
+        }
+
+        /// <summary>
+        /// Asserts that no element matching the search exists.
+        /// </summary>
+        /// <param name="search">The search query</param>
+        /// <param name="message">Optional custom failure message</param>
+        /// <exception cref="InvalidOperationException">If element is found</exception>
+        public static void AssertNotExists(Search search, string message = null)
+        {
+            var result = search.FindFirst();
+            if (result != null)
+            {
+                var msg = message ?? $"Assert failed: element should not exist";
+                throw new InvalidOperationException($"{msg} - Search: {search}, Found: '{result.name}'");
+            }
+            Log($"Assert passed: {search} does not exist");
+        }
+
+        /// <summary>
+        /// Asserts that the text content of an element matches expected value.
+        /// Works with TMP_Text and legacy Text components.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="expected">Expected text content</param>
+        /// <param name="message">Optional custom failure message</param>
+        public static void AssertText(Search search, string expected, string message = null)
+        {
+            var go = search.FindFirst();
+            if (go == null)
+                throw new InvalidOperationException($"Assert failed: element not found - Search: {search}");
+
+            string actual = null;
+            var tmp = go.GetComponent<TMPro.TMP_Text>();
+            if (tmp != null)
+                actual = tmp.text;
+            else
+            {
+                var legacy = go.GetComponent<UnityEngine.UI.Text>();
+                if (legacy != null)
+                    actual = legacy.text;
+            }
+
+            if (actual == null)
+                throw new InvalidOperationException($"Assert failed: '{go.name}' has no text component");
+
+            if (actual != expected)
+            {
+                var msg = message ?? $"Assert failed: text mismatch";
+                throw new InvalidOperationException($"{msg} - Expected: \"{expected}\", Actual: \"{actual}\"");
+            }
+            Log($"Assert passed: {search} text == \"{expected}\"");
+        }
+
+        /// <summary>
+        /// Asserts that a toggle is in the expected state.
+        /// </summary>
+        /// <param name="search">The search query to find the toggle</param>
+        /// <param name="expectedOn">Expected isOn state</param>
+        /// <param name="message">Optional custom failure message</param>
+        public static void AssertToggle(Search search, bool expectedOn, string message = null)
+        {
+            var go = search.FindFirst();
+            if (go == null)
+                throw new InvalidOperationException($"Assert failed: element not found - Search: {search}");
+
+            var toggle = go.GetComponent<UnityEngine.UI.Toggle>();
+            if (toggle == null)
+                throw new InvalidOperationException($"Assert failed: '{go.name}' is not a Toggle");
+
+            if (toggle.isOn != expectedOn)
+            {
+                var msg = message ?? $"Assert failed: toggle state mismatch";
+                throw new InvalidOperationException($"{msg} - Expected: {expectedOn}, Actual: {toggle.isOn}");
+            }
+            Log($"Assert passed: {search} isOn == {expectedOn}");
+        }
+
+        /// <summary>
+        /// Asserts that a slider value is within expected range.
+        /// </summary>
+        /// <param name="search">The search query to find the slider</param>
+        /// <param name="expected">Expected value</param>
+        /// <param name="tolerance">Allowed tolerance (default 0.01)</param>
+        /// <param name="message">Optional custom failure message</param>
+        public static void AssertSlider(Search search, float expected, float tolerance = 0.01f, string message = null)
+        {
+            var go = search.FindFirst();
+            if (go == null)
+                throw new InvalidOperationException($"Assert failed: element not found - Search: {search}");
+
+            var slider = go.GetComponent<Slider>();
+            if (slider == null)
+                throw new InvalidOperationException($"Assert failed: '{go.name}' is not a Slider");
+
+            if (Mathf.Abs(slider.value - expected) > tolerance)
+            {
+                var msg = message ?? $"Assert failed: slider value mismatch";
+                throw new InvalidOperationException($"{msg} - Expected: {expected} (±{tolerance}), Actual: {slider.value}");
+            }
+            Log($"Assert passed: {search} value ≈ {expected}");
+        }
+
+        /// <summary>
+        /// Asserts that an element is interactable.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="expectedInteractable">Expected interactable state</param>
+        /// <param name="message">Optional custom failure message</param>
+        public static void AssertInteractable(Search search, bool expectedInteractable = true, string message = null)
+        {
+            var go = search.FindFirst();
+            if (go == null)
+                throw new InvalidOperationException($"Assert failed: element not found - Search: {search}");
+
+            var selectable = go.GetComponent<UnityEngine.UI.Selectable>();
+            if (selectable == null)
+                throw new InvalidOperationException($"Assert failed: '{go.name}' is not a Selectable");
+
+            if (selectable.interactable != expectedInteractable)
+            {
+                var msg = message ?? $"Assert failed: interactable state mismatch";
+                throw new InvalidOperationException($"{msg} - Expected: {expectedInteractable}, Actual: {selectable.interactable}");
+            }
+            Log($"Assert passed: {search} interactable == {expectedInteractable}");
+        }
+
+        /// <summary>
+        /// Asserts that a static path resolves to a truthy value.
+        /// </summary>
+        /// <param name="path">Dot-separated path to the value (e.g., "GameManager.Instance.IsReady")</param>
+        /// <param name="message">Optional custom failure message</param>
+        public static void Assert(string path, string message = null)
+        {
+            var value = ResolveStaticPath(path);
+            if (!IsTruthy(value))
+            {
+                var msg = message ?? $"Assert failed: {path}";
+                throw new InvalidOperationException($"{msg} - Expected truthy value but got: {value ?? "null"}");
+            }
+            Log($"Assert passed: {path} is truthy ({value})");
+        }
+
+        /// <summary>
+        /// Asserts that a static path equals an expected value.
+        /// </summary>
+        /// <typeparam name="T">Type of the value</typeparam>
+        /// <param name="path">Dot-separated path to the value</param>
+        /// <param name="expected">Expected value</param>
+        /// <param name="message">Optional custom failure message</param>
+        public static void Assert<T>(string path, T expected, string message = null)
+        {
+            var value = ResolveStaticPath(path);
+            T actual;
+
+            if (value is T typedValue)
+                actual = typedValue;
+            else if (value != null)
+            {
+                try { actual = (T)Convert.ChangeType(value, typeof(T)); }
+                catch { throw new InvalidOperationException($"Assert failed: {path} - Cannot convert {value.GetType().Name} to {typeof(T).Name}"); }
+            }
+            else if (typeof(T).IsValueType && Nullable.GetUnderlyingType(typeof(T)) == null)
+                throw new InvalidOperationException($"Assert failed: {path} - Path resolved to null but expected {typeof(T).Name}");
+            else
+                actual = default;
+
+            if (!Equals(actual, expected))
+            {
+                var msg = message ?? $"Assert failed: {path}";
+                throw new InvalidOperationException($"{msg} - Expected: {expected}, Actual: {actual}");
+            }
+            Log($"Assert passed: {path} == {expected}");
+        }
+
+        /// <summary>
+        /// Asserts that a numeric value at a static path is greater than expected.
+        /// </summary>
+        /// <param name="path">Dot-separated path to the value</param>
+        /// <param name="greaterThan">Value that the path must be greater than</param>
+        /// <param name="message">Optional custom failure message</param>
+        public static void AssertGreater(string path, double greaterThan, string message = null)
+        {
+            var value = ResolveStaticPath(path);
+            double actual;
+            try { actual = Convert.ToDouble(value); }
+            catch { throw new InvalidOperationException($"Assert failed: {path} - Cannot convert {value?.GetType().Name ?? "null"} to number"); }
+
+            if (actual <= greaterThan)
+            {
+                var msg = message ?? $"Assert failed: {path}";
+                throw new InvalidOperationException($"{msg} - Expected > {greaterThan}, Actual: {actual}");
+            }
+            Log($"Assert passed: {path} ({actual}) > {greaterThan}");
+        }
+
+        /// <summary>
+        /// Asserts that a numeric value at a static path is less than expected.
+        /// </summary>
+        /// <param name="path">Dot-separated path to the value</param>
+        /// <param name="lessThan">Value that the path must be less than</param>
+        /// <param name="message">Optional custom failure message</param>
+        public static void AssertLess(string path, double lessThan, string message = null)
+        {
+            var value = ResolveStaticPath(path);
+            double actual;
+            try { actual = Convert.ToDouble(value); }
+            catch { throw new InvalidOperationException($"Assert failed: {path} - Cannot convert {value?.GetType().Name ?? "null"} to number"); }
+
+            if (actual >= lessThan)
+            {
+                var msg = message ?? $"Assert failed: {path}";
+                throw new InvalidOperationException($"{msg} - Expected < {lessThan}, Actual: {actual}");
+            }
+            Log($"Assert passed: {path} ({actual}) < {lessThan}");
+        }
+
+        /// <summary>
+        /// Waits until an element matching the search exists.
+        /// </summary>
+        /// <param name="search">The search query</param>
+        /// <param name="timeout">Maximum time to wait in seconds</param>
+        /// <returns>True if element found, false if timeout</returns>
+        public static async UniTask<bool> WaitFor(Search search, float timeout = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                var result = search.FindFirst();
+                if (result != null)
+                {
+                    Log($"WaitFor({search}) found '{result.name}'");
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            LogDebug($"WaitFor({search}) timed out after {timeout}s");
+            return false;
+        }
+
+        /// <summary>
+        /// Waits until an element's text matches the expected value.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="expectedText">Expected text content</param>
+        /// <param name="timeout">Maximum time to wait in seconds</param>
+        /// <returns>True if text matched, false if timeout</returns>
+        public static async UniTask<bool> WaitFor(Search search, string expectedText, float timeout = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                var go = search.FindFirst();
+                if (go != null)
+                {
+                    string actual = null;
+                    var tmp = go.GetComponent<TMPro.TMP_Text>();
+                    if (tmp != null)
+                        actual = tmp.text;
+                    else
+                    {
+                        var legacy = go.GetComponent<UnityEngine.UI.Text>();
+                        if (legacy != null)
+                            actual = legacy.text;
+                    }
+
+                    if (actual == expectedText)
+                    {
+                        Log($"WaitFor({search}, \"{expectedText}\") satisfied");
+                        return true;
+                    }
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Waits until a toggle is in the expected state.
+        /// </summary>
+        /// <param name="search">The search query to find the toggle</param>
+        /// <param name="expectedOn">Expected isOn state</param>
+        /// <param name="timeout">Maximum time to wait in seconds</param>
+        /// <returns>True if state matched, false if timeout</returns>
+        public static async UniTask<bool> WaitFor(Search search, bool expectedOn, float timeout = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                var go = search.FindFirst();
+                if (go != null)
+                {
+                    var toggle = go.GetComponent<UnityEngine.UI.Toggle>();
+                    if (toggle != null && toggle.isOn == expectedOn)
+                    {
+                        Log($"WaitFor({search}, {expectedOn}) satisfied");
+                        return true;
+                    }
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Waits until no element matching the search exists.
+        /// </summary>
+        /// <param name="search">The search query</param>
+        /// <param name="timeout">Maximum time to wait in seconds</param>
+        /// <returns>True if element gone, false if timeout</returns>
+        public static async UniTask<bool> WaitForNot(Search search, float timeout = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                var result = search.FindFirst();
+                if (result == null)
+                {
+                    Log($"WaitForNot({search}) satisfied");
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            LogDebug($"WaitForNot({search}) timed out after {timeout}s");
+            return false;
+        }
+
+        /// <summary>
+        /// Waits until a static path resolves to a truthy value.
+        /// </summary>
+        /// <param name="path">Dot-separated path to the value (e.g., "GameManager.Instance.IsReady")</param>
+        /// <param name="timeout">Maximum time to wait in seconds</param>
+        /// <returns>True if truthy, false if timeout</returns>
+        public static async UniTask<bool> WaitFor(string path, float timeout = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                try
+                {
+                    var value = ResolveStaticPath(path);
+                    if (IsTruthy(value))
+                    {
+                        Log($"WaitFor({path}) satisfied");
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // Path might not be resolvable yet, keep trying
+                }
+
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Waits until a static path equals an expected value.
+        /// </summary>
+        /// <typeparam name="T">Type of the value</typeparam>
+        /// <param name="path">Dot-separated path to the value</param>
+        /// <param name="expected">Expected value to wait for</param>
+        /// <param name="timeout">Maximum time to wait in seconds</param>
+        /// <returns>True if value matched, false if timeout</returns>
+        public static async UniTask<bool> WaitFor<T>(string path, T expected, float timeout = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                try
+                {
+                    var value = ResolveStaticPath(path);
+                    if (value is T typedValue && Equals(typedValue, expected))
+                    {
+                        Log($"WaitFor({path}, {expected}) satisfied");
+                        return true;
+                    }
+                    // Try conversion
+                    if (value != null)
+                    {
+                        try
+                        {
+                            var converted = (T)Convert.ChangeType(value, typeof(T));
+                            if (Equals(converted, expected))
+                            {
+                                Log($"WaitFor({path}, {expected}) satisfied");
+                                return true;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch
+                {
+                    // Path might not be resolvable yet, keep trying
+                }
+
+                await UniTask.Delay(100, true);
+            }
+
+            LogDebug($"WaitFor({path}, {expected}) timed out after {timeout}s");
+            return false;
+        }
+
+        /// <summary>
+        /// Resolves a dot-separated path to a value using reflection.
+        /// Searches all loaded assemblies for matching types.
+        /// </summary>
+        private static object ResolveStaticPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Path cannot be null or empty", nameof(path));
+
+            var parts = path.Split('.');
+            if (parts.Length < 2)
+                throw new ArgumentException($"Path must have at least type and member: {path}", nameof(path));
+
+            // Try progressively longer type names to find the base type
+            Type type = null;
+            int memberStartIndex = 0;
+
+            for (int i = 1; i <= parts.Length; i++)
+            {
+                var typeName = string.Join(".", parts, 0, i);
+                type = FindTypeInAllAssemblies(typeName);
+                if (type != null)
+                {
+                    memberStartIndex = i;
+                    break;
+                }
+            }
+
+            if (type == null)
+                throw new InvalidOperationException($"Could not find type in path: {path}");
+
+            if (memberStartIndex >= parts.Length)
+                throw new InvalidOperationException($"Path '{path}' resolves to a type with no members specified");
+
+            // Navigate through members
+            object current = null;
+            Type currentType = type;
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+
+            for (int i = memberStartIndex; i < parts.Length; i++)
+            {
+                var memberName = parts[i];
+
+                // Try property first
+                var prop = currentType.GetProperty(memberName, flags);
+                if (prop != null)
+                {
+                    current = prop.GetValue(current);
+                    if (current == null && i < parts.Length - 1)
+                        throw new InvalidOperationException($"Null reference at '{memberName}' in path: {path}");
+                    currentType = current?.GetType() ?? prop.PropertyType;
+                    continue;
+                }
+
+                // Try field
+                var field = currentType.GetField(memberName, flags);
+                if (field != null)
+                {
+                    current = field.GetValue(current);
+                    if (current == null && i < parts.Length - 1)
+                        throw new InvalidOperationException($"Null reference at '{memberName}' in path: {path}");
+                    currentType = current?.GetType() ?? field.FieldType;
+                    continue;
+                }
+
+                throw new InvalidOperationException($"Member '{memberName}' not found on type '{currentType.Name}' in path: {path}");
+            }
+
+            return current;
+        }
+
+        /// <summary>
+        /// Searches all loaded assemblies for a type by name.
+        /// </summary>
+        private static Type FindTypeInAllAssemblies(string typeName)
+        {
+            // Check common Unity types first for performance
+            switch (typeName)
+            {
+                case "GameObject": return typeof(GameObject);
+                case "Debug": return typeof(Debug);
+                case "PlayerPrefs": return typeof(PlayerPrefs);
+                case "Time": return typeof(Time);
+                case "Application": return typeof(Application);
+                case "Screen": return typeof(Screen);
+                case "Input": return typeof(Input);
+                case "Resources": return typeof(Resources);
+            }
+
+            // Search all loaded assemblies
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var type = assembly.GetType(typeName);
+                    if (type != null)
+                        return type;
+                }
+                catch
+                {
+                    // Some assemblies may throw on GetType, skip them
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Determines if a value is "truthy" (not null, not zero, not false, not empty string).
+        /// </summary>
+        private static bool IsTruthy(object value)
+        {
+            if (value == null)
+                return false;
+            if (value is bool b)
+                return b;
+            if (value is int i)
+                return i != 0;
+            if (value is float f)
+                return f != 0f;
+            if (value is double d)
+                return d != 0.0;
+            if (value is string s)
+                return !string.IsNullOrEmpty(s);
+            if (value is long l)
+                return l != 0;
+            return true; // Non-null object is truthy
         }
 
         #endregion
