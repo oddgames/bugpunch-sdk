@@ -28,6 +28,7 @@ namespace ODDGames.UITest.AI
             {
                 "click" => ParseClickAction(call, screen),
                 "double_click" => ParseDoubleClickAction(call, screen),
+                "triple_click" => ParseTripleClickAction(call, screen),
                 "hold" => ParseHoldAction(call, screen),
                 "type" => ParseTypeAction(call, screen),
                 "drag" => ParseDragAction(call, screen),
@@ -38,6 +39,7 @@ namespace ODDGames.UITest.AI
                 "rotate" => ParseRotateAction(call, screen),
                 "set_slider" => ParseSetSliderAction(call, screen),
                 "set_scrollbar" => ParseSetScrollbarAction(call, screen),
+                "click_dropdown" => ParseClickDropdownAction(call, screen),
                 "key_press" => ParseKeyPressAction(call),
                 "key_hold" => ParseKeyHoldAction(call),
                 "wait" => ParseWaitAction(call),
@@ -269,6 +271,29 @@ namespace ODDGames.UITest.AI
             return action;
         }
 
+        private static TripleClickAction ParseTripleClickAction(ToolCall call, ScreenState screen)
+        {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
+            var action = new TripleClickAction
+            {
+                SearchQuery = searchQuery?.ToJson()
+            };
+
+            var x = call.GetFloat("x", -1f);
+            var y = call.GetFloat("y", -1f);
+
+            if (searchQuery != null)
+            {
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
+            }
+            else if (x >= 0 && y >= 0)
+            {
+                action.ScreenPosition = new Vector2(x, y);
+            }
+
+            return action;
+        }
+
         private static HoldAction ParseHoldAction(ToolCall call, ScreenState screen)
         {
             var searchQuery = GetSearchQueryOrThrow(call, "search");
@@ -404,6 +429,24 @@ namespace ODDGames.UITest.AI
             return action;
         }
 
+        private static ClickDropdownAction ParseClickDropdownAction(ToolCall call, ScreenState screen)
+        {
+            var searchQuery = GetSearchQueryOrThrow(call, "search");
+            var action = new ClickDropdownAction
+            {
+                SearchQuery = searchQuery?.ToJson(),
+                OptionIndex = call.GetInt("index", -1),
+                OptionLabel = call.GetString("label", null)
+            };
+
+            if (searchQuery != null)
+            {
+                action.TargetElement = FindElementBySearchQuery(searchQuery, screen);
+            }
+
+            return action;
+        }
+
         private static KeyPressAction ParseKeyPressAction(ToolCall call)
         {
             return new KeyPressAction
@@ -488,6 +531,10 @@ namespace ODDGames.UITest.AI
                         await ExecuteDoubleClickAsync(doubleClick, ct);
                         break;
 
+                    case TripleClickAction tripleClick:
+                        await ExecuteTripleClickAsync(tripleClick, ct);
+                        break;
+
                     case HoldAction hold:
                         await ExecuteHoldAsync(hold, ct);
                         break;
@@ -514,6 +561,10 @@ namespace ODDGames.UITest.AI
 
                     case SetScrollbarAction setScrollbar:
                         await ExecuteSetScrollbarAsync(setScrollbar, ct);
+                        break;
+
+                    case ClickDropdownAction clickDropdown:
+                        await ExecuteClickDropdownAsync(clickDropdown, ct);
                         break;
 
                     case KeyPressAction keyPress:
@@ -658,6 +709,26 @@ namespace ODDGames.UITest.AI
             }
         }
 
+        private static async UniTask ExecuteTripleClickAsync(TripleClickAction action, CancellationToken ct)
+        {
+            if (action.ScreenPosition.HasValue)
+            {
+                var screenPos = new Vector2(
+                    action.ScreenPosition.Value.x * Screen.width,
+                    action.ScreenPosition.Value.y * Screen.height
+                );
+                await ActionExecutor.TripleClickAtAsync(screenPos);
+            }
+            else if (action.TargetElement?.gameObject != null)
+            {
+                await ActionExecutor.TripleClickAsync(action.TargetElement.gameObject);
+            }
+            else
+            {
+                throw new InvalidOperationException("Triple-click action has no target");
+            }
+        }
+
         private static async UniTask ExecuteHoldAsync(HoldAction action, CancellationToken ct)
         {
             if (action.TargetElement?.gameObject == null)
@@ -734,6 +805,36 @@ namespace ODDGames.UITest.AI
 
             // AI sends value as 0-1 normalized
             await ActionExecutor.SetScrollbarAsync(scrollbar, action.Value);
+        }
+
+        private static async UniTask ExecuteClickDropdownAsync(ClickDropdownAction action, CancellationToken ct)
+        {
+            if (action.TargetElement?.gameObject == null)
+            {
+                throw new InvalidOperationException("ClickDropdown action has no target element");
+            }
+
+            // Build a search from the target element's name
+            var search = new Search().Name(action.TargetElement.name);
+
+            bool found;
+            if (action.OptionIndex >= 0)
+            {
+                found = await ActionExecutor.ClickDropdownAsync(search, action.OptionIndex);
+            }
+            else if (!string.IsNullOrEmpty(action.OptionLabel))
+            {
+                found = await ActionExecutor.ClickDropdownAsync(search, action.OptionLabel);
+            }
+            else
+            {
+                throw new InvalidOperationException("ClickDropdown requires either index or label");
+            }
+
+            if (!found)
+            {
+                throw new InvalidOperationException($"Dropdown option not found in '{action.SearchQuery}'");
+            }
         }
 
         private static async UniTask ExecuteKeyPressAsync(KeyPressAction action, CancellationToken ct)

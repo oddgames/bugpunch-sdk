@@ -1,0 +1,10 @@
+{
+  "ActionType": "type",
+  "Description": "Type \"TestUser\" into UsernameInput",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"UsernameInput\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": false,
+  "ScreenHashAfter": "963797B6",
+  "Timestamp": "08:03:23.817"
+}

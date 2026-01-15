@@ -1,0 +1,11 @@
+{
+  "TestName": "",
+  "Prompt": "change volume to 25%",
+  "Model": "Gemini (gemini-2.5-flash-lite)",
+  "MaxActions": 50,
+  "TimeoutSeconds": 180.0,
+  "ActionDelaySeconds": 0.3,
+  "SendScreenshots": false,
+  "EnableHistoryReplay": false,
+  "StartedAt": "2026-01-13 16:05:10"
+}

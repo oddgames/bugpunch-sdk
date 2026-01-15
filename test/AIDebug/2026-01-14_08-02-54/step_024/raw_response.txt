@@ -1,0 +1,10 @@
+```json
+{
+  "reasoning": "I am back to the main menu. I have tested 'SettingsButton', 'ButtonsButton', and 'FormsButton'. Now I will click on 'DragButton'.",
+  "action": "click",
+  "search": {
+    "base": "name",
+    "value": "DragButton"
+  }
+}
+```

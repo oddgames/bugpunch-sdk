@@ -1,0 +1,72 @@
+[
+  {
+    "name": "SoundToggle",
+    "text": "Sound Effects",
+    "type": "toggle (off)",
+    "bounds": {
+      "x": 403.6875,
+      "y": 417.3781,
+      "width": 269.125,
+      "height": 40.3687744
+    },
+    "isEnabled": true,
+    "path": "Canvas/SettingsPanel/SoundToggle",
+    "searchPattern": "Name(\"SoundToggle\")"
+  },
+  {
+    "name": "MusicToggle",
+    "text": "Music",
+    "type": "toggle (off)",
+    "bounds": {
+      "x": 403.6875,
+      "y": 350.096863,
+      "width": 269.125,
+      "height": 40.3687744
+    },
+    "isEnabled": true,
+    "path": "Canvas/SettingsPanel/MusicToggle",
+    "searchPattern": "Name(\"MusicToggle\")"
+  },
+  {
+    "name": "SettingsVolumeSlider",
+    "text": null,
+    "type": "slider",
+    "bounds": {
+      "x": 403.6875,
+      "y": 289.543762,
+      "width": 269.125,
+      "height": 26.9124756
+    },
+    "isEnabled": true,
+    "path": "Canvas/SettingsPanel/SettingsVolumeSlider",
+    "searchPattern": "Name(\"SettingsVolumeSlider\")"
+  },
+  {
+    "name": "GraphicsOption",
+    "text": "Graphics: High",
+    "type": "button",
+    "bounds": {
+      "x": 430.6,
+      "y": 198.714066,
+      "width": 215.300018,
+      "height": 47.0968628
+    },
+    "isEnabled": true,
+    "path": "Canvas/SettingsPanel/GraphicsOption",
+    "searchPattern": "Name(\"GraphicsOption\")"
+  },
+  {
+    "name": "BackButton",
+    "text": "Back",
+    "type": "button",
+    "bounds": {
+      "x": 430.6,
+      "y": 91.06405,
+      "width": 215.300018,
+      "height": 47.09687
+    },
+    "isEnabled": true,
+    "path": "Canvas/SettingsPanel/BackButton",
+    "searchPattern": "Name(\"BackButton\")"
+  }
+]

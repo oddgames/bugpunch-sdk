@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "e6547ecd-708d-4a23-aaeb-e32197d5e783",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "I have set the slider value. The slider's actual value is 78%, which is close to my target of 75%. Now I will click the 'GraphicsOption' button to explore that menu.",
+      "search": {
+        "base": "name",
+        "value": "GraphicsOption"
+      }
+    }
+  }
+]

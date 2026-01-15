@@ -1,0 +1,7 @@
+Available UI elements (5 total):
+
+Adjacent("Settings", above).Near("SettingsPanel") [toggle (off)] [unchecked]
+Adjacent("Settings", above).Near("SettingsPanel") [toggle (off)] [unchecked]
+Name("SettingsVolumeSlider") [slider] [value: 50%]
+Text("Graphics: High") [button]
+Text("Back") [button]

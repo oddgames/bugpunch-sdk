@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Option 1'",
+  "SearchQuery": "{\"base\":\"adjacent\",\"value\":\"Volume:\",\"direction\":\"above\",\"chain\":[{\"method\":\"interactable\",\"count\":0,\"index\":0,\"offset\":0,\"xMin\":0.0,\"yMin\":0.0,\"xMax\":0.0,\"yMax\":0.0}]}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "6460EAAD",
+  "Timestamp": "16:36:02.107"
+}

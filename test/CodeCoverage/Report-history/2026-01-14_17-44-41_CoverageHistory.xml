@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<coverage version="1.0" date="2026-01-14_17-44-41" tag="">
+  <assembly name="Assembly-CSharp-Editor">
+    <class name="ReadmeEditor" coveredlines="3" coverablelines="140" totallines="242" coveredbranches="0" totalbranches="0" />
+  </assembly>
+  <assembly name="ODDGames.UITest">
+    <class name="ODDGames.UITest.ActionExecutor" coveredlines="20" coverablelines="471" totallines="1034" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AutoExplorer" coveredlines="5" coverablelines="488" totallines="925" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.ElementFinder" coveredlines="0" coverablelines="243" totallines="444" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.ExploreResult" coveredlines="0" coverablelines="6" totallines="925" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.ExploreSettings" coveredlines="0" coverablelines="13" totallines="925" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.InputInjector" coveredlines="335" coverablelines="873" totallines="1567" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Keys" coveredlines="38" coverablelines="39" totallines="1567" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Search" coveredlines="505" coverablelines="689" totallines="1824" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.UITestAttribute" coveredlines="0" coverablelines="9" totallines="42" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.UITestBehaviour" coveredlines="317" coverablelines="1481" totallines="3747" coveredbranches="0" totalbranches="0" />
+  </assembly>
+  <assembly name="ODDGames.UITest.AI">
+    <class name="ODDGames.UITest.AI.ActionResult" coveredlines="0" coverablelines="8" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ActionSequence" coveredlines="0" coverablelines="3" totallines="56" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AIAction" coveredlines="0" coverablelines="1" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AIActionExecutor" coveredlines="0" coverablelines="466" totallines="847" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AIDebugLogger" coveredlines="0" coverablelines="215" totallines="441" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AIScreenCapture" coveredlines="0" coverablelines="261" totallines="516" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AITest" coveredlines="0" coverablelines="69" totallines="178" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AITestGroup" coveredlines="0" coverablelines="16" totallines="74" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AITestResult" coveredlines="0" coverablelines="11" totallines="738" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AITestResultStore" coveredlines="0" coverablelines="169" totallines="369" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AITestRun" coveredlines="0" coverablelines="23" totallines="172" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AITestRunner" coveredlines="14" coverablelines="322" totallines="738" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.AITestRunnerConfig" coveredlines="0" coverablelines="5" totallines="738" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ClickAction" coveredlines="0" coverablelines="4" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ClickDropdownAction" coveredlines="0" coverablelines="5" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ConversationManager" coveredlines="0" coverablelines="77" totallines="202" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ConversationStats" coveredlines="0" coverablelines="4" totallines="202" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.DoubleClickAction" coveredlines="0" coverablelines="4" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.DragAction" coveredlines="0" coverablelines="15" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ElementDiscovery" coveredlines="0" coverablelines="283" totallines="511" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ElementInfo" coveredlines="0" coverablelines="77" totallines="212" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.FailAction" coveredlines="0" coverablelines="3" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.FailurePattern" coveredlines="0" coverablelines="12" totallines="278" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.FailurePatternAnalyzer" coveredlines="0" coverablelines="121" totallines="278" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.GeminiModelInfo" coveredlines="0" coverablelines="25" totallines="293" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.GeminiModels" coveredlines="0" coverablelines="103" totallines="293" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.GeminiProvider" coveredlines="0" coverablelines="366" totallines="857" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.GlobalKnowledge" coveredlines="0" coverablelines="7" totallines="58" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.HistoryReplayer" coveredlines="0" coverablelines="133" totallines="338" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.HistoryReplayerConfig" coveredlines="0" coverablelines="5" totallines="338" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.HoldAction" coveredlines="0" coverablelines="4" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.KeyHoldAction" coveredlines="0" coverablelines="4" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.KeyPressAction" coveredlines="0" coverablelines="3" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.KnowledgeBuilder" coveredlines="0" coverablelines="320" totallines="389" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Message" coveredlines="0" coverablelines="9" totallines="253" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ModelRequest" coveredlines="0" coverablelines="7" totallines="253" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ModelResponse" coveredlines="0" coverablelines="9" totallines="253" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.PassAction" coveredlines="0" coverablelines="3" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.PinchAction" coveredlines="0" coverablelines="5" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.RecordedAction" coveredlines="0" coverablelines="1" totallines="56" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ReplayResult" coveredlines="0" coverablelines="6" totallines="338" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ResultIndex" coveredlines="0" coverablelines="1" totallines="369" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ResultQuery" coveredlines="0" coverablelines="2" totallines="369" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.RotateAction" coveredlines="0" coverablelines="6" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.RunSummary" coveredlines="0" coverablelines="1" totallines="172" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ScreenHash" coveredlines="0" coverablelines="115" totallines="229" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ScreenshotAction" coveredlines="0" coverablelines="3" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ScreenState" coveredlines="0" coverablelines="11" totallines="516" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ScrollAction" coveredlines="0" coverablelines="5" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.SearchChainItem" coveredlines="0" coverablelines="21" totallines="424" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.SearchQuery" coveredlines="0" coverablelines="125" totallines="424" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.SearchQueryParser" coveredlines="0" coverablelines="254" totallines="505" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.SetScrollbarAction" coveredlines="0" coverablelines="4" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.SetSliderAction" coveredlines="0" coverablelines="4" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.SimpleJsonParser" coveredlines="0" coverablelines="172" totallines="857" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.StuckDetector" coveredlines="0" coverablelines="159" totallines="345" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.StuckDetectorConfig" coveredlines="0" coverablelines="8" totallines="345" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.SwipeAction" coveredlines="0" coverablelines="6" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ToolCall" coveredlines="0" coverablelines="60" totallines="253" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ToolDefinition" coveredlines="0" coverablelines="3" totallines="253" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ToolParameters" coveredlines="0" coverablelines="3" totallines="253" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ToolProperty" coveredlines="0" coverablelines="6" totallines="253" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.ToolSchema" coveredlines="0" coverablelines="63" totallines="625" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.TwoFingerSwipeAction" coveredlines="0" coverablelines="7" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.TypeAction" coveredlines="0" coverablelines="6" totallines="356" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.WaitAction" coveredlines="0" coverablelines="3" totallines="356" coveredbranches="0" totalbranches="0" />
+  </assembly>
+  <assembly name="ODDGames.UITest.AI.Editor">
+    <class name="ODDGames.UITest.AI.Editor.AIDebugPanel" coveredlines="0" coverablelines="182" totallines="308" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AIResultsWindow" coveredlines="0" coverablelines="212" totallines="460" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AIScreenshotTimeline" coveredlines="0" coverablelines="77" totallines="460" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AITestExplorerIntegration" coveredlines="0" coverablelines="120" totallines="267" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AITestGroupInspector" coveredlines="0" coverablelines="110" totallines="200" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AITestInfo" coveredlines="0" coverablelines="5" totallines="267" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AITestInspector" coveredlines="0" coverablelines="101" totallines="184" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AITestRunStatus" coveredlines="0" coverablelines="4" totallines="267" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AITestSettings" coveredlines="0" coverablelines="68" totallines="397" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.AITestSettingsProvider" coveredlines="0" coverablelines="133" totallines="397" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.RunDiffComparison" coveredlines="0" coverablelines="369" totallines="545" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.AI.Editor.ScreenshotTimelineView" coveredlines="0" coverablelines="303" totallines="476" coveredbranches="0" totalbranches="0" />
+  </assembly>
+  <assembly name="ODDGames.UITest.Editor">
+    <class name="ODDGames.UITest.Editor.TestResult" coveredlines="0" coverablelines="1" totallines="1736" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Editor.TestResultsData" coveredlines="0" coverablelines="1" totallines="1736" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Editor.UITestExplorerWindow" coveredlines="0" coverablelines="840" totallines="1736" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Editor.UITestItem" coveredlines="0" coverablelines="10" totallines="1736" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Editor.UITestLiveRecorder" coveredlines="0" coverablelines="361" totallines="645" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Editor.UITestTreeView" coveredlines="0" coverablelines="251" totallines="1736" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Editor.UITestTreeViewItem" coveredlines="0" coverablelines="5" totallines="1736" coveredbranches="0" totalbranches="0" />
+    <class name="UITestRunner" coveredlines="0" coverablelines="382" totallines="614" coveredbranches="0" totalbranches="0" />
+  </assembly>
+  <assembly name="ODDGames.UITest.Tests.PlayMode">
+    <class name="ODDGames.UITest.Tests.CameraGestureTests" coveredlines="292" coverablelines="292" totallines="824" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.DragInputDebugger" coveredlines="0" coverablelines="43" totallines="3145" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.KeyHoldTests" coveredlines="184" coverablelines="187" totallines="277" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.SearchPlayModeTests" coveredlines="2049" coverablelines="2055" totallines="3145" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.TestCameraController" coveredlines="138" coverablelines="138" totallines="824" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.TestComponentHelper" coveredlines="8" coverablelines="9" totallines="3145" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.TestFindAllHelper" coveredlines="1" coverablelines="2" totallines="3145" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.TestFindHelper" coveredlines="1" coverablelines="2" totallines="3145" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.TestFindItemsHelper" coveredlines="4" coverablelines="8" totallines="3145" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.TestGestureHelper" coveredlines="25" coverablelines="32" totallines="824" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.Tests.TestScrollHelper" coveredlines="4" coverablelines="8" totallines="3145" coveredbranches="0" totalbranches="0" />
+  </assembly>
+  <assembly name="ODDGames.UITest.VisualBuilder">
+    <class name="ODDGames.UITest.VisualBuilder.ElementSelector" coveredlines="3" coverablelines="107" totallines="265" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.RecordedInputSequence" coveredlines="0" coverablelines="1" totallines="595" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.RuntimeCodeCompiler" coveredlines="0" coverablelines="299" totallines="492" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.VisualBlock" coveredlines="4" coverablelines="138" totallines="595" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.VisualBlockResult" coveredlines="0" coverablelines="11" totallines="1255" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.VisualTest" coveredlines="0" coverablelines="29" totallines="101" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.VisualTestProgress" coveredlines="0" coverablelines="4" totallines="1255" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.VisualTestResult" coveredlines="0" coverablelines="8" totallines="1255" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.VisualTestRunner" coveredlines="0" coverablelines="679" totallines="1255" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.VisualTestSerializer" coveredlines="0" coverablelines="288" totallines="502" coveredbranches="0" totalbranches="0" />
+  </assembly>
+  <assembly name="ODDGames.UITest.VisualBuilder.Editor">
+    <class name="ODDGames.UITest.VisualBuilder.Editor.AIAssistant" coveredlines="0" coverablelines="281" totallines="438" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.Editor.AIPromptPopup" coveredlines="0" coverablelines="27" totallines="2344" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.Editor.TestBuilder" coveredlines="428" coverablelines="1643" totallines="2344" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.Editor.TextInputPopup" coveredlines="0" coverablelines="27" totallines="54" coveredbranches="0" totalbranches="0" />
+    <class name="ODDGames.UITest.VisualBuilder.Editor.VisualTestInspector" coveredlines="0" coverablelines="278" totallines="489" coveredbranches="0" totalbranches="0" />
+  </assembly>
+</coverage>

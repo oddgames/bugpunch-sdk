@@ -1,0 +1,15 @@
+[
+  {
+    "Id": "9b6111a1-9d54-4330-a558-74c1a4a99ddf",
+    "Name": "drag",
+    "Arguments": {
+      "reasoning": "I have re-entered the settings menu. The volume slider is still at 50% and the goal is to set it to 34%. Since the `set_slider` action has failed twice, I will try a different approach. I will use the `drag` action to simulate a manual adjustment of the slider. I will drag the slider from its current position to the left, aiming to decrease its value. I will start by dragging it a small distance to the left.",
+      "from": {
+        "base": "name",
+        "value": "SettingsVolumeSlider"
+      },
+      "direction": "left",
+      "distance": 0.1
+    }
+  }
+]

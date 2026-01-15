@@ -1,0 +1,44 @@
+[
+  {
+    "name": "DoubleClickButton",
+    "text": "Double-Click Me",
+    "type": "button",
+    "bounds": {
+      "x": 897.7,
+      "y": 721.149963,
+      "width": 305.600037,
+      "height": 66.8499756
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleAdvancedPanel/DoubleClickButton",
+    "searchPattern": "Name(\"DoubleClickButton\")"
+  },
+  {
+    "name": "ScrollArea",
+    "text": "Item 1",
+    "type": "draggable",
+    "bounds": {
+      "x": 974.1,
+      "y": 468.074951,
+      "width": 343.800049,
+      "height": 191.0
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleAdvancedPanel/ScrollArea",
+    "searchPattern": "Name(\"ScrollArea\")"
+  },
+  {
+    "name": "BackButton",
+    "text": "Back",
+    "type": "button",
+    "bounds": {
+      "x": 897.7,
+      "y": 14.44994,
+      "width": 305.600037,
+      "height": 66.8500061
+    },
+    "isEnabled": true,
+    "path": "Canvas/SampleAdvancedPanel/BackButton",
+    "searchPattern": "Name(\"BackButton\")"
+  }
+]

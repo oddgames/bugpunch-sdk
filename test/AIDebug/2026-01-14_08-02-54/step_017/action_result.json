@@ -1,0 +1,10 @@
+{
+  "ActionType": "type",
+  "Description": "Type \"password123\" into PasswordInput",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"PasswordInput\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": false,
+  "ScreenHashAfter": "963797B6",
+  "Timestamp": "08:03:27.197"
+}

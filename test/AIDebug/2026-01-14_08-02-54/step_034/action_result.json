@@ -1,0 +1,10 @@
+{
+  "ActionType": "double_click",
+  "Description": "Double-click 'Double-Click Me'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"DoubleClickButton\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": false,
+  "ScreenHashAfter": "19970CEA",
+  "Timestamp": "08:03:59.102"
+}

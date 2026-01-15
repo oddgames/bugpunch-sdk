@@ -1,0 +1,11 @@
+```json
+{
+  "reasoning": "Double-clicking the button did not change the screen state. I will now interact with the 'ScrollArea'. I will scroll down.",
+  "action": "scroll",
+  "search": {
+    "base": "name",
+    "value": "ScrollArea"
+  },
+  "direction": "down"
+}
+```

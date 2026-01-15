@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "1df8db73-38e5-463d-add0-f1940be6dc0a",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "Scrolling the 'ScrollArea' did not change the screen state. I will now click the 'BackButton' to return to the main menu.",
+      "search": {
+        "base": "name",
+        "value": "BackButton"
+      }
+    }
+  }
+]

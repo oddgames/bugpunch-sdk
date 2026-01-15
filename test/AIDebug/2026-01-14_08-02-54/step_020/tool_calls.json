@@ -1,0 +1,14 @@
+[
+  {
+    "Id": "39f439b0-153d-47c4-909c-5c10f3a40842",
+    "Name": "set_slider",
+    "Arguments": {
+      "reasoning": "I have selected 'Option 2' from the dropdown. Now I will interact with the 'VolumeSlider'. I will set its value to 25%.",
+      "search": {
+        "base": "name",
+        "value": "VolumeSlider"
+      },
+      "value": 0.25
+    }
+  }
+]

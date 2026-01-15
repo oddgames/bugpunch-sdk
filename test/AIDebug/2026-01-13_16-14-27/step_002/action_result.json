@@ -1,0 +1,10 @@
+{
+  "ActionType": "set_slider",
+  "Description": "Set slider 'SettingsVolumeSlider' to 25%",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"SettingsVolumeSlider\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "1275A31F",
+  "Timestamp": "16:14:32.403"
+}

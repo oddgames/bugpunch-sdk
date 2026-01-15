@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "420801a6-bd47-473b-ad1b-45c679edc116",
+    "Name": "hold",
+    "Arguments": {
+      "reasoning": "I have toggled 'SampleToggle' on. Now I will interact with the 'HoldButton'.",
+      "search": {
+        "base": "name",
+        "value": "HoldButton"
+      }
+    }
+  }
+]

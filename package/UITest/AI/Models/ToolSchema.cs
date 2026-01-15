@@ -16,6 +16,7 @@ namespace ODDGames.UITest.AI
             {
                 CreateClickTool(),
                 CreateDoubleClickTool(),
+                CreateTripleClickTool(),
                 CreateHoldTool(),
                 CreateTypeTool(),
                 CreateDragTool(),
@@ -26,6 +27,7 @@ namespace ODDGames.UITest.AI
                 CreateRotateTool(),
                 CreateSetSliderTool(),
                 CreateSetScrollbarTool(),
+                CreateClickDropdownTool(),
                 CreateKeyPressTool(),
                 CreateKeyHoldTool(),
                 CreateWaitTool(),
@@ -141,6 +143,33 @@ namespace ODDGames.UITest.AI
                     Properties = new Dictionary<string, ToolProperty>
                     {
                         ["search"] = CreateSearchProperty("Search query to find the element to double-click"),
+                        ["x"] = new ToolProperty
+                        {
+                            Type = "number",
+                            Description = "Screen X coordinate (0.0-1.0 normalized)"
+                        },
+                        ["y"] = new ToolProperty
+                        {
+                            Type = "number",
+                            Description = "Screen Y coordinate (0.0-1.0 normalized)"
+                        }
+                    }
+                }
+            };
+        }
+
+        private static ToolDefinition CreateTripleClickTool()
+        {
+            return new ToolDefinition
+            {
+                Name = "triple_click",
+                Description = "Triple-click on a UI element. Performs three rapid clicks in succession. Note: For selecting all text in input fields, use the 'type' tool with clear_first=true instead.",
+                Parameters = new ToolParameters
+                {
+                    Type = "object",
+                    Properties = new Dictionary<string, ToolProperty>
+                    {
+                        ["search"] = CreateSearchProperty("Search query to find the element to triple-click"),
                         ["x"] = new ToolProperty
                         {
                             Type = "number",
@@ -452,6 +481,34 @@ namespace ODDGames.UITest.AI
                         }
                     },
                     Required = new List<string> { "search", "value" }
+                }
+            };
+        }
+
+        private static ToolDefinition CreateClickDropdownTool()
+        {
+            return new ToolDefinition
+            {
+                Name = "click_dropdown",
+                Description = "Select an option from a dropdown by index or label text",
+                Parameters = new ToolParameters
+                {
+                    Type = "object",
+                    Properties = new Dictionary<string, ToolProperty>
+                    {
+                        ["search"] = CreateSearchProperty("Search query to find the dropdown"),
+                        ["index"] = new ToolProperty
+                        {
+                            Type = "integer",
+                            Description = "Index of option to select (0-based). Use either index or label, not both."
+                        },
+                        ["label"] = new ToolProperty
+                        {
+                            Type = "string",
+                            Description = "Text label of option to select. Use either index or label, not both."
+                        }
+                    },
+                    Required = new List<string> { "search" }
                 }
             };
         }

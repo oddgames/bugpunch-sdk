@@ -1,0 +1,10 @@
+```json
+{
+  "reasoning": "The 'HoldButton' was held, but the screen state did not change. I will now click the 'IncrementButton'.",
+  "action": "click",
+  "search": {
+    "base": "name",
+    "value": "IncrementButton"
+  }
+}
+```

@@ -15,6 +15,105 @@ MonoBehaviour:
   testName: New Test
   description: 
   startScene: Sample
-  blocks: []
+  blocks:
+  - id: e4d64178-7cb7-4eaa-ba3f-4fe64477b2c5
+    type: 0
+    isCollapsed: 0
+    comment: 
+    target:
+      query:
+        searchBase: text
+        value: Keyboard
+        direction: 
+        chain:
+        - method: type
+          value: TMP_Dropdown
+          search:
+            searchBase: 
+            value: 
+            direction: 
+            chain: []
+          direction: 
+          count: 0
+          index: 0
+          offset: 0
+          xMin: 0
+          yMin: 0
+          xMax: 0
+          yMax: 0
+      displayName: Keyboard
+    text: 
+    clearFirst: 1
+    pressEnter: 0
+    dragTarget:
+      query:
+        searchBase: 
+        value: 
+        direction: 
+        chain: []
+      displayName: 
+    dragDirection: 
+    dragDistance: 0
+    dragDuration: 0.3
+    scrollDirection: down
+    scrollAmount: 0
+    waitSeconds: 0
+    holdSeconds: 1
+    sliderValue: 50
+    scrollbarValue: 50
+    keyName: Escape
+    keyHoldKeys: W
+    keyHoldDuration: 1
+    waitTimeout: 10
+    scrollContainer:
+      query:
+        searchBase: 
+        value: 
+        direction: 
+        chain: []
+      displayName: 
+    scrollMaxAttempts: 20
+    screenshotName: 
+    logMessage: 
+    assertCondition: 0
+    assertExpected: 
+    assertFloatValue: 0
+    assertVariance: 0.01
+    assertIntValue: 0
+    assertExpression: 
+    recordedInput:
+      events: []
+      duration: 0
+      description: 
+      targetElement:
+        query:
+          searchBase: 
+          value: 
+          direction: 
+          chain: []
+        displayName: 
+    persistentDataMode: 0
+    filePattern: 
+    dataSourceName: 
+    sceneName: 
+    additiveLoad: 0
+    customActionName: 
+    customActionParams: 
+    codeBody: 
+    codeIsAsync: 0
+    visualScriptTarget: 
+    visualScriptEvent: 
+    visualScriptArg: 
+    swipeDirection: up
+    swipeDistance: 0.3
+    swipeDuration: 0.3
+    pinchScale: 0.5
+    pinchDuration: 0.5
+    twoFingerSpacing: 0.03
+    rotateDegrees: 90
+    rotateDuration: 0.5
+    rotateFingerDistance: 0.05
+    forEachVariable: item
+    forEachMaxIterations: 100
   testDataFiles: []
   originalPrompt: 

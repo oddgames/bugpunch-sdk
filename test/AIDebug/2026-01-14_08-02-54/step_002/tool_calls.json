@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "5266c210-3ec2-4dcb-82d1-28944f0a759f",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "The current screen has toggles, a slider, and a button. I should interact with these elements to test them. I'll start by toggling 'SoundToggle'.",
+      "search": {
+        "base": "name",
+        "value": "SoundToggle"
+      }
+    }
+  }
+]

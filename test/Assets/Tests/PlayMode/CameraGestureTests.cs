@@ -638,6 +638,12 @@ namespace ODDGames.UITest.Tests
                     var panDelta = new Vector2(-delta.x, -delta.y);
                     TotalPanDelta += panDelta;
 
+                    // Debug: Log significant movements
+                    if (delta.sqrMagnitude > 1f)
+                    {
+                        Debug.Log($"[CameraController] Mouse: last={_lastMousePosition.Value} curr={currentPos} delta={delta} panDelta={panDelta} total={TotalPanDelta}");
+                    }
+
                     // Actually move the camera so it's visible
                     if (_camera != null)
                     {
@@ -654,20 +660,41 @@ namespace ODDGames.UITest.Tests
 
         private void ProcessTouchInput()
         {
-            if (_touch0PressAction == null || _touch1PressAction == null) return;
+            // Read directly from Touchscreen device instead of InputActions
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null) return;
 
-            var touch0Active = _touch0PressAction.IsPressed();
-            var touch1Active = _touch1PressAction.IsPressed();
+            // Find active touches by checking phase
+            var touches = touchscreen.touches;
+            Vector2? touch0Pos = null;
+            Vector2? touch1Pos = null;
 
-            if (touch0Active && touch1Active)
+            foreach (var touch in touches)
             {
-                var touch0Pos = _touch0PositionAction.ReadValue<Vector2>();
-                var touch1Pos = _touch1PositionAction.ReadValue<Vector2>();
+                var phase = touch.phase.ReadValue();
+                if (phase == UnityEngine.InputSystem.TouchPhase.Began ||
+                    phase == UnityEngine.InputSystem.TouchPhase.Moved ||
+                    phase == UnityEngine.InputSystem.TouchPhase.Stationary)
+                {
+                    if (!touch0Pos.HasValue)
+                        touch0Pos = touch.position.ReadValue();
+                    else if (!touch1Pos.HasValue)
+                        touch1Pos = touch.position.ReadValue();
+                }
+            }
 
+            if (touch0Pos.HasValue && touch1Pos.HasValue)
+            {
                 // Two-finger gestures
-                var currentDistance = Vector2.Distance(touch0Pos, touch1Pos);
-                var currentCenter = (touch0Pos + touch1Pos) / 2f;
-                var currentAngle = Mathf.Atan2(touch1Pos.y - touch0Pos.y, touch1Pos.x - touch0Pos.x) * Mathf.Rad2Deg;
+                var currentDistance = Vector2.Distance(touch0Pos.Value, touch1Pos.Value);
+                var currentCenter = (touch0Pos.Value + touch1Pos.Value) / 2f;
+                var currentAngle = Mathf.Atan2(touch1Pos.Value.y - touch0Pos.Value.y, touch1Pos.Value.x - touch0Pos.Value.x) * Mathf.Rad2Deg;
+
+                // Debug: log when we first detect both touches
+                if (!_lastTouchDistance.HasValue)
+                {
+                    Debug.Log($"[CameraController] Two touches started: t0={touch0Pos.Value} t1={touch1Pos.Value} angle={currentAngle:F1}");
+                }
 
                 if (_lastTouchDistance.HasValue && _lastTouch0Position.HasValue && _lastTouch1Position.HasValue)
                 {
@@ -678,6 +705,8 @@ namespace ODDGames.UITest.Tests
                     // Rotation
                     var angleDelta = Mathf.DeltaAngle(_lastTouchAngle.Value, currentAngle);
                     TotalRotationDelta += angleDelta;
+
+                    Debug.Log($"[CameraController] Rotation: lastAngle={_lastTouchAngle.Value:F1} currentAngle={currentAngle:F1} delta={angleDelta:F1} total={TotalRotationDelta:F1}");
 
                     // Two-finger pan
                     var lastCenter = (_lastTouch0Position.Value + _lastTouch1Position.Value) / 2f;
@@ -700,8 +729,8 @@ namespace ODDGames.UITest.Tests
                     }
                 }
 
-                _lastTouch0Position = touch0Pos;
-                _lastTouch1Position = touch1Pos;
+                _lastTouch0Position = touch0Pos.Value;
+                _lastTouch1Position = touch1Pos.Value;
                 _lastTouchDistance = currentDistance;
                 _lastTouchAngle = currentAngle;
             }

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.36] - 2026-01-15
+
+### Fixed
+- **`Adjacent()` no longer matches label itself** - Excludes source text and its parent hierarchy from matching
+- **`Adjacent()` uses alignment-aware scoring** - Prefers elements aligned with the label in the perpendicular axis
+- **Flaky drag tests** - Added extra frame yield after drag operations for UI to process events
+- **Unity serialization depth error** - Added `[SerializeReference]` to `SearchQuery.chain` and `SearchChainItem.search` to fix recursive serialization
+
+### Changed
+- **`Adjacent()` finds single nearest element** - Matches only the best-scoring adjacent element based on distance and alignment
+  - Combined with other filters like `.Name()` or `.Type()`, requires both the adjacent match AND the filter to be true
+  - Use `Near()` for filtering multiple elements in a direction
+
 ## [1.0.35] - 2026-01-14
 
 ### Fixed

@@ -164,6 +164,24 @@ namespace ODDGames.UITest.AI
     }
 
     /// <summary>
+    /// Triple-click action - performs three rapid clicks on an element.
+    /// </summary>
+    public class TripleClickAction : AIAction
+    {
+        public override string ActionType => "triple_click";
+
+        public string SearchQuery { get; set; }
+        public Vector2? ScreenPosition { get; set; }
+
+        public override string Description =>
+            TargetElement != null
+                ? $"Triple-click '{TargetElement.text ?? TargetElement.name}'"
+                : ScreenPosition.HasValue
+                    ? $"Triple-click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
+                    : $"Triple-click {SearchQuery}";
+    }
+
+    /// <summary>
     /// Hold action - long press on an element.
     /// </summary>
     public class HoldAction : AIAction
@@ -262,6 +280,23 @@ namespace ODDGames.UITest.AI
 
         public override string Description =>
             $"Set scrollbar '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}' to {Value:P0}";
+    }
+
+    /// <summary>
+    /// Click dropdown action - selects an option from a dropdown by index or label.
+    /// </summary>
+    public class ClickDropdownAction : AIAction
+    {
+        public override string ActionType => "click_dropdown";
+
+        public string SearchQuery { get; set; }
+        public int OptionIndex { get; set; } = -1; // -1 means use label instead
+        public string OptionLabel { get; set; }
+
+        public override string Description =>
+            OptionIndex >= 0
+                ? $"Select option {OptionIndex} in dropdown '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'"
+                : $"Select '{OptionLabel}' in dropdown '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
     }
 
     /// <summary>

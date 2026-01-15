@@ -1,3 +1,4 @@
+using System.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -13,6 +14,33 @@ namespace ODDGames.UITest
     public static class ActionExecutor
     {
         #region Click Actions
+
+        /// <summary>
+        /// Clicks on a UI element matching the search query.
+        /// Searches for a matching element and clicks on its screen position.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <param name="index">Index of the element to click when multiple match (0-based)</param>
+        /// <returns>True if element was found and clicked, false otherwise</returns>
+        public static async UniTask<bool> ClickAsync(Search search, float searchTime = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var screenPos = search.GetScreenPosition(index);
+                if (screenPos.HasValue)
+                {
+                    Debug.Log($"[ActionExecutor] Click at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0})");
+                    await InputInjector.InjectPointerTap(screenPos.Value);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Clicks on a target GameObject.
@@ -39,6 +67,32 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Double-clicks on a UI element matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <returns>True if element was found and double-clicked, false otherwise</returns>
+        public static async UniTask<bool> DoubleClickAsync(Search search, float searchTime = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var screenPos = search.GetScreenPosition(index);
+                if (screenPos.HasValue)
+                {
+                    Debug.Log($"[ActionExecutor] DoubleClick at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0})");
+                    await InputInjector.InjectPointerDoubleTap(screenPos.Value);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Double-clicks on a target GameObject.
         /// </summary>
         /// <param name="target">The GameObject to double-click on</param>
@@ -60,6 +114,86 @@ namespace ODDGames.UITest
         {
             Debug.Log($"[ActionExecutor] DoubleClick at ({screenPosition.x:F0}, {screenPosition.y:F0})");
             await InputInjector.InjectPointerDoubleTap(screenPosition);
+        }
+
+        /// <summary>
+        /// Triple-clicks on a UI element matching the search query.
+        /// Performs three rapid clicks in succession.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <returns>True if element was found and triple-clicked, false otherwise</returns>
+        public static async UniTask<bool> TripleClickAsync(Search search, float searchTime = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var screenPos = search.GetScreenPosition(index);
+                if (screenPos.HasValue)
+                {
+                    Debug.Log($"[ActionExecutor] TripleClick at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0})");
+                    await InputInjector.InjectPointerTripleTap(screenPos.Value);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Triple-clicks on a target GameObject.
+        /// Performs three rapid clicks in succession.
+        /// </summary>
+        /// <param name="target">The GameObject to triple-click on</param>
+        public static async UniTask TripleClickAsync(GameObject target)
+        {
+            if (target == null)
+                throw new System.ArgumentNullException(nameof(target), "TripleClick target cannot be null");
+
+            var screenPos = InputInjector.GetScreenPosition(target);
+            Debug.Log($"[ActionExecutor] TripleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
+            await InputInjector.InjectPointerTripleTap(screenPos);
+        }
+
+        /// <summary>
+        /// Triple-clicks at a specific screen position.
+        /// Performs three rapid clicks in succession.
+        /// </summary>
+        /// <param name="screenPosition">Screen coordinates to triple-click</param>
+        public static async UniTask TripleClickAtAsync(Vector2 screenPosition)
+        {
+            Debug.Log($"[ActionExecutor] TripleClick at ({screenPosition.x:F0}, {screenPosition.y:F0})");
+            await InputInjector.InjectPointerTripleTap(screenPosition);
+        }
+
+        /// <summary>
+        /// Holds/long-presses on a UI element matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="seconds">Duration of the hold in seconds</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <returns>True if element was found and held, false otherwise</returns>
+        public static async UniTask<bool> HoldAsync(Search search, float seconds, float searchTime = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var screenPos = search.GetScreenPosition(index);
+                if (screenPos.HasValue)
+                {
+                    Debug.Log($"[ActionExecutor] Hold at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0}) for {seconds}s");
+                    await InputInjector.InjectPointerHold(screenPos.Value, seconds);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -93,6 +227,36 @@ namespace ODDGames.UITest
         #region Text Input
 
         /// <summary>
+        /// Types text into an input field matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find the input field</param>
+        /// <param name="text">The text to type</param>
+        /// <param name="clearFirst">Whether to clear existing text first</param>
+        /// <param name="pressEnter">Whether to press Enter after typing</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <returns>True if input field was found and text was typed, false otherwise</returns>
+        public static async UniTask<bool> TypeAsync(Search search, string text, bool clearFirst = true, bool pressEnter = false, float searchTime = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                if (results.Count > index)
+                {
+                    var target = results[index];
+                    Debug.Log($"[ActionExecutor] Type \"{text}\" into '{target.name}' (clear={clearFirst}, enter={pressEnter})");
+                    await InputInjector.TypeIntoField(target, text, clearFirst, pressEnter);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Types text into an input field.
         /// </summary>
         /// <param name="inputField">The input field GameObject (TMP_InputField or InputField)</param>
@@ -121,6 +285,63 @@ namespace ODDGames.UITest
         #endregion
 
         #region Drag Actions
+
+        /// <summary>
+        /// Drags from a source element matching search query in a direction.
+        /// </summary>
+        /// <param name="search">The search query to find the source element</param>
+        /// <param name="direction">The direction to drag (pixel offset)</param>
+        /// <param name="duration">Duration of the drag in seconds</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <returns>True if element was found and dragged, false otherwise</returns>
+        public static async UniTask<bool> DragAsync(Search search, Vector2 direction, float duration = 0.5f, float searchTime = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var screenPos = search.GetScreenPosition(index);
+                if (screenPos.HasValue)
+                {
+                    var endPos = screenPos.Value + direction;
+                    Debug.Log($"[ActionExecutor] Drag from ({screenPos.Value.x:F0}, {screenPos.Value.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s");
+                    await InputInjector.InjectPointerDrag(screenPos.Value, endPos, duration);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Drags from a source element matching search query to a target element matching another search query.
+        /// </summary>
+        /// <param name="fromSearch">The search query to find the source element</param>
+        /// <param name="toSearch">The search query to find the target element</param>
+        /// <param name="duration">Duration of the drag in seconds</param>
+        /// <param name="searchTime">Maximum time to search for elements</param>
+        /// <returns>True if both elements were found and drag completed, false otherwise</returns>
+        public static async UniTask<bool> DragToAsync(Search fromSearch, Search toSearch, float duration = 0.5f, float searchTime = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var fromPos = fromSearch.GetScreenPosition();
+                var toPos = toSearch.GetScreenPosition();
+                if (fromPos.HasValue && toPos.HasValue)
+                {
+                    Debug.Log($"[ActionExecutor] Drag from ({fromPos.Value.x:F0}, {fromPos.Value.y:F0}) to ({toPos.Value.x:F0}, {toPos.Value.y:F0}) over {duration}s");
+                    await InputInjector.InjectPointerDrag(fromPos.Value, toPos.Value, duration);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Drags from a source GameObject in a direction.
@@ -247,6 +468,62 @@ namespace ODDGames.UITest
             await InputInjector.InjectScroll(position, delta);
         }
 
+        /// <summary>
+        /// Scrolls on a UI element matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <returns>True if element was found and scrolled, false otherwise</returns>
+        public static async UniTask<bool> ScrollAsync(Search search, float delta, float searchTime = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var screenPos = search.GetScreenPosition(index);
+                if (screenPos.HasValue)
+                {
+                    Debug.Log($"[ActionExecutor] Scroll at ({screenPos.Value.x:F0}, {screenPos.Value.y:F0}) delta={delta}");
+                    await InputInjector.InjectScroll(screenPos.Value, delta);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Scrolls on a UI element matching the search query in a named direction.
+        /// </summary>
+        /// <param name="search">The search query to find the element</param>
+        /// <param name="direction">Direction: "up", "down", "left", "right"</param>
+        /// <param name="amount">Scroll amount (0-1 normalized)</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <returns>True if element was found and scrolled, false otherwise</returns>
+        public static async UniTask<bool> ScrollAsync(Search search, string direction, float amount = 0.3f, float searchTime = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                if (results.Count > index)
+                {
+                    var target = results[index];
+                    Debug.Log($"[ActionExecutor] Scroll '{target.name}' {direction} amount={amount}");
+                    await InputInjector.ScrollElement(target, direction, amount);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
         #endregion
 
         #region Slider/Scrollbar Actions
@@ -344,6 +621,124 @@ namespace ODDGames.UITest
             var endPos = InputInjector.GetSliderClickPosition(slider, toValue);
             Debug.Log($"[ActionExecutor] DragSlider '{slider.name}' from {fromValue:F2} to {toValue:F2}");
             await InputInjector.InjectPointerDrag(startPos, endPos, duration);
+        }
+
+        /// <summary>
+        /// Clicks on a slider at a specific position matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find the Slider</param>
+        /// <param name="normalizedValue">Target value (0-1)</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <returns>True if slider was found and clicked, false otherwise</returns>
+        public static async UniTask<bool> ClickSliderAsync(Search search, float normalizedValue, float searchTime = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                foreach (var go in results)
+                {
+                    var slider = go.GetComponent<Slider>();
+                    if (slider != null)
+                    {
+                        await ClickSliderAsync(slider, normalizedValue);
+                        return true;
+                    }
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Drags a slider from one value to another matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find the Slider</param>
+        /// <param name="fromValue">Starting value (0-1)</param>
+        /// <param name="toValue">Ending value (0-1)</param>
+        /// <param name="duration">Duration of the drag</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <returns>True if slider was found and dragged, false otherwise</returns>
+        public static async UniTask<bool> DragSliderAsync(Search search, float fromValue, float toValue, float duration = 0.3f, float searchTime = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                foreach (var go in results)
+                {
+                    var slider = go.GetComponent<Slider>();
+                    if (slider != null)
+                    {
+                        await DragSliderAsync(slider, fromValue, toValue, duration);
+                        return true;
+                    }
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Sets a slider to a specific value matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find the Slider</param>
+        /// <param name="normalizedValue">Target value (0-1)</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <returns>True if slider was found and set, false otherwise</returns>
+        public static async UniTask<bool> SetSliderAsync(Search search, float normalizedValue, float searchTime = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                foreach (var go in results)
+                {
+                    var slider = go.GetComponent<Slider>();
+                    if (slider != null)
+                    {
+                        await SetSliderAsync(slider, normalizedValue);
+                        return true;
+                    }
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Sets a scrollbar to a specific value matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find the Scrollbar</param>
+        /// <param name="normalizedValue">Target value (0-1)</param>
+        /// <param name="searchTime">Maximum time to search for the element</param>
+        /// <returns>True if scrollbar was found and set, false otherwise</returns>
+        public static async UniTask<bool> SetScrollbarAsync(Search search, float normalizedValue, float searchTime = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                foreach (var go in results)
+                {
+                    var scrollbar = go.GetComponent<Scrollbar>();
+                    if (scrollbar != null)
+                    {
+                        await SetScrollbarAsync(scrollbar, normalizedValue);
+                        return true;
+                    }
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
         }
 
         #endregion
@@ -519,6 +914,172 @@ namespace ODDGames.UITest
         {
             Debug.Log($"[ActionExecutor] HoldKeys [{string.Join(", ", keys)}] for {duration}s");
             await InputInjector.HoldKeys(keys, duration);
+        }
+
+        #endregion
+
+        #region Dropdown Actions
+
+        /// <summary>
+        /// Selects a dropdown option by index using realistic click interactions.
+        /// </summary>
+        /// <param name="search">The search query to find the Dropdown or TMP_Dropdown</param>
+        /// <param name="optionIndex">Index of the option to select (0-based)</param>
+        /// <param name="searchTime">Maximum time to search for the dropdown</param>
+        /// <returns>True if dropdown was found and option selected, false otherwise</returns>
+        public static async UniTask<bool> ClickDropdownAsync(Search search, int optionIndex, float searchTime = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                foreach (var go in results)
+                {
+                    // Try legacy Dropdown
+                    var legacyDropdown = go.GetComponent<Dropdown>();
+                    if (legacyDropdown != null)
+                    {
+                        await ClickDropdownItemAsync(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
+                        return true;
+                    }
+
+                    // Try TMP_Dropdown
+                    var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
+                    if (tmpDropdown != null)
+                    {
+                        await ClickDropdownItemAsync(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
+                        return true;
+                    }
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Selects a dropdown option by label text using realistic click interactions.
+        /// </summary>
+        /// <param name="search">The search query to find the Dropdown or TMP_Dropdown</param>
+        /// <param name="optionLabel">The text label of the option to select</param>
+        /// <param name="searchTime">Maximum time to search for the dropdown</param>
+        /// <returns>True if dropdown was found and option selected, false otherwise</returns>
+        public static async UniTask<bool> ClickDropdownAsync(Search search, string optionLabel, float searchTime = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                foreach (var go in results)
+                {
+                    // Try legacy Dropdown
+                    var legacyDropdown = go.GetComponent<Dropdown>();
+                    if (legacyDropdown != null)
+                    {
+                        int optionIndex = legacyDropdown.options.FindIndex(o => o.text == optionLabel);
+                        if (optionIndex >= 0)
+                        {
+                            await ClickDropdownItemAsync(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
+                            return true;
+                        }
+                    }
+
+                    // Try TMP_Dropdown
+                    var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
+                    if (tmpDropdown != null)
+                    {
+                        int optionIndex = tmpDropdown.options.FindIndex(o => o.text == optionLabel);
+                        if (optionIndex >= 0)
+                        {
+                            await ClickDropdownItemAsync(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
+                            return true;
+                        }
+                    }
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Internal method to click a dropdown item after the dropdown has been found.
+        /// </summary>
+        private static async UniTask ClickDropdownItemAsync(GameObject dropdownGO, RectTransform template, int optionIndex)
+        {
+            // Capture existing toggles before opening dropdown
+            var existingToggles = new System.Collections.Generic.HashSet<Toggle>(
+                UnityEngine.Object.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+
+            // Click the dropdown to open it
+            await ClickAsync(dropdownGO);
+
+            // Wait for new toggles to appear (the dropdown items)
+            Toggle[] newToggles = null;
+            float waitTime = 0f;
+            const float maxWaitTime = 0.5f;
+
+            while (waitTime < maxWaitTime)
+            {
+                await UniTask.DelayFrame(1);
+
+                var allToggles = UnityEngine.Object.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+                // Find toggles that are new (created by opening the dropdown) and not part of the template
+                newToggles = allToggles
+                    .Where(t => !existingToggles.Contains(t))
+                    .Where(t => t.gameObject.activeInHierarchy)
+                    .Where(t => template == null || (!t.transform.IsChildOf(template) && t.transform != template))
+                    .OrderBy(t => t.transform.GetSiblingIndex())
+                    .ToArray();
+
+                if (newToggles.Length > optionIndex)
+                {
+                    var targetToggle = newToggles[optionIndex];
+                    Debug.Log($"[ActionExecutor] ClickDropdown selecting option {optionIndex}: '{targetToggle.name}'");
+                    await ClickAsync(targetToggle.gameObject);
+                    return;
+                }
+
+                await UniTask.Delay(50, true);
+                waitTime += 0.05f;
+            }
+
+            Debug.LogWarning($"[ActionExecutor] ClickDropdown - Item at index {optionIndex} not found (found {newToggles?.Length ?? 0} new toggles)");
+        }
+
+        #endregion
+
+        #region Utility Actions
+
+        /// <summary>
+        /// Clicks any one of the elements matching the search query.
+        /// </summary>
+        /// <param name="search">The search query to find elements</param>
+        /// <param name="searchTime">Maximum time to search for elements</param>
+        /// <returns>True if any element was found and clicked, false otherwise</returns>
+        public static async UniTask<bool> ClickAnyAsync(Search search, float searchTime = 10f)
+        {
+            float startTime = Time.realtimeSinceStartup;
+            var rnd = new System.Random((int)System.DateTime.Now.Millisecond);
+
+            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                if (results.Count > 0)
+                {
+                    // Randomly select one
+                    var target = results.OrderBy(_ => rnd.Next()).First();
+                    Debug.Log($"[ActionExecutor] ClickAny selecting '{target.name}' from {results.Count} matches");
+                    await ClickAsync(target);
+                    return true;
+                }
+                await UniTask.Delay(100, true);
+            }
+
+            return false;
         }
 
         #endregion

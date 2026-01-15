@@ -1,0 +1,10 @@
+```json
+{
+  "reasoning": "I have toggled the 'AgreeToggle' on. Now I will click the 'SubmitButton'.",
+  "action": "click",
+  "search": {
+    "base": "name",
+    "value": "SubmitButton"
+  }
+}
+```

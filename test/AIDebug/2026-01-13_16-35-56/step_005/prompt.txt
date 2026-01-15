@@ -1,0 +1,21 @@
+[Step 5/50]
+
+Current screen elements:
+Available UI elements (13 total):
+
+Adjacent("Form Input", above).Near("SampleFormPanel") [input]
+Adjacent("Form Input", above).Near("SampleFormPanel") [input]
+Adjacent("Email:", above) [input]
+Adjacent("Password:", above).Near("SampleFormPanel") [dropdown] [selected: Option 1]
+Adjacent("Password:", above).Near("Content") [toggle (on)] [checked]
+Adjacent("Category:", above).Near("SampleFormPanel") [slider] [value: 50%]
+Adjacent("Category:", above).Near("Content") [toggle (off)] [unchecked]
+Adjacent("Volume:", above).Near("Content") [toggle (off)] [unchecked]
+Text("✓") [draggable] [can be dragged]
+Adjacent("Volume:", above).Near("SampleFormPanel") [toggle (off)] [unchecked]
+Text("Submit") [button]
+Name("Blocker") [button]
+Text("Back") [button]
+
+
+What action should I take next? Use a tool to interact with the UI, or call pass/fail if the test is complete.

@@ -1,0 +1,10 @@
+Available UI elements (8 total):
+
+Name("UsernameInput") [input]
+Name("EmailInput") [input]
+Name("PasswordInput") [input]
+Name("CategoryDropdown") [dropdown] [selected: Option 2]
+Name("VolumeSlider") [slider] [value: 50%]
+Name("AgreeToggle") [toggle (off)] [unchecked]
+Name("SubmitButton") [button]
+Name("BackButton") [button]

@@ -2182,6 +2182,36 @@ namespace ODDGames.UITest.Tests
             Assert.IsFalse(search.Matches(rightTextureBtn.gameObject), "Text.Adjacent should NOT match RightFlagTextureBtn");
         }
 
+        [UnityTest]
+        public IEnumerator Adjacent_WithName_FindsNearestMatchingName()
+        {
+            // Create label with two buttons to the right at different distances
+            var label = CreateLabel("Settings:", new Vector2(-150, 0));
+            var closeButton = CreateButton("CloseButton", "Edit", _canvas.transform, new Vector2(0, 0));
+            var farButton = CreateButton("FarButton", "Save", _canvas.transform, new Vector2(150, 0));
+            yield return null;
+
+            // Adjacent finds the single nearest element - Name doesn't change that
+            var search = new Search().Adjacent("Settings:", Direction.Right).Name("*Button*");
+            Assert.IsTrue(search.Matches(closeButton.gameObject), "Adjacent.Name should find CloseButton (nearest)");
+            Assert.IsFalse(search.Matches(farButton.gameObject), "Adjacent.Name should NOT match FarButton (not nearest)");
+        }
+
+        [UnityTest]
+        public IEnumerator Adjacent_WithType_FindsNearestMatchingType()
+        {
+            // Create label with two buttons to the right at different distances
+            var label = CreateLabel("Account:", new Vector2(-150, 0));
+            var closeButton = CreateButton("CloseButton", "Save", _canvas.transform, new Vector2(0, 0));
+            var farButton = CreateButton("FarButton", "Delete", _canvas.transform, new Vector2(150, 0));
+            yield return null;
+
+            // Adjacent finds the single nearest element - Type doesn't change that
+            var search = new Search().Adjacent("Account:", Direction.Right).Type<Button>();
+            Assert.IsTrue(search.Matches(closeButton.gameObject), "Adjacent.Type<Button> should find CloseButton (nearest)");
+            Assert.IsFalse(search.Matches(farButton.gameObject), "Adjacent.Type<Button> should NOT match FarButton (not nearest)");
+        }
+
         /// <summary>
         /// Tests Near() with vertically stacked sections like the Garage UI.
         /// Center Flag section is above Right Flag section, each with identical child labels.
@@ -2256,20 +2286,20 @@ namespace ODDGames.UITest.Tests
         {
             return UniTask.ToCoroutine(async () =>
             {
-                // Top section (y=200)
-                var topSection = CreatePanel("TopSection", _canvas.transform, new Vector2(0, 200), new Vector2(200, 100));
-                CreateLabelInParent("Top Header", topSection.transform, new Vector2(0, 30));
-                var topBtn = CreateButton("TopBtn", "Action", topSection.transform, new Vector2(0, -20));
+                // Top section (y=300) - label at top, button well below with realistic 100px spacing
+                var topSection = CreatePanel("TopSection", _canvas.transform, new Vector2(0, 300), new Vector2(200, 200));
+                CreateLabelInParent("Top Header", topSection.transform, new Vector2(0, 70));
+                var topBtn = CreateButton("TopBtn", "Action", topSection.transform, new Vector2(0, -70));
 
                 // Middle section (y=0)
-                var midSection = CreatePanel("MiddleSection", _canvas.transform, new Vector2(0, 0), new Vector2(200, 100));
-                CreateLabelInParent("Middle Header", midSection.transform, new Vector2(0, 30));
-                var midBtn = CreateButton("MiddleBtn", "Action", midSection.transform, new Vector2(0, -20));
+                var midSection = CreatePanel("MiddleSection", _canvas.transform, new Vector2(0, 0), new Vector2(200, 200));
+                CreateLabelInParent("Middle Header", midSection.transform, new Vector2(0, 70));
+                var midBtn = CreateButton("MiddleBtn", "Action", midSection.transform, new Vector2(0, -70));
 
-                // Bottom section (y=-200)
-                var bottomSection = CreatePanel("BottomSection", _canvas.transform, new Vector2(0, -200), new Vector2(200, 100));
-                CreateLabelInParent("Bottom Header", bottomSection.transform, new Vector2(0, 30));
-                var bottomBtn = CreateButton("BottomBtn", "Action", bottomSection.transform, new Vector2(0, -20));
+                // Bottom section (y=-300)
+                var bottomSection = CreatePanel("BottomSection", _canvas.transform, new Vector2(0, -300), new Vector2(200, 200));
+                CreateLabelInParent("Bottom Header", bottomSection.transform, new Vector2(0, 70));
+                var bottomBtn = CreateButton("BottomBtn", "Action", bottomSection.transform, new Vector2(0, -70));
 
                 await UniTask.Yield();
                 Canvas.ForceUpdateCanvases();
@@ -2331,6 +2361,138 @@ namespace ODDGames.UITest.Tests
                 var searchUsername = new Search().Near("Username", Direction.Right);
                 Assert.IsTrue(searchUsername.Matches(usernameInput.gameObject), "Username input is right of Username label");
                 Assert.IsTrue(searchUsername.Matches(passwordInput.gameObject), "Password input is also right of Username label (same x)");
+            });
+        }
+
+        /// <summary>
+        /// Tests Near() with realistic vertical spacing - labels and buttons clearly separated.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Near_RealisticVerticalSpacing_FindsCorrectButton()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create sections with realistic 150px spacing between rows
+                // Label at top of each section, button well below it
+
+                // Top section
+                CreateLabelInParent("Section A", _canvas.transform, new Vector2(0, 300));
+                var btnA = CreateButton("BtnA", "Action A", _canvas.transform, new Vector2(0, 200));
+
+                // Middle section
+                CreateLabelInParent("Section B", _canvas.transform, new Vector2(0, 50));
+                var btnB = CreateButton("BtnB", "Action B", _canvas.transform, new Vector2(0, -50));
+
+                // Bottom section
+                CreateLabelInParent("Section C", _canvas.transform, new Vector2(0, -200));
+                var btnC = CreateButton("BtnC", "Action C", _canvas.transform, new Vector2(0, -300));
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+
+                // Each button should be found when searching below its label
+                var resultA = await test.TestFind<Button>(new Search().Near("Section A", Direction.Below));
+                Assert.AreEqual("BtnA", resultA.name, "Should find BtnA below Section A");
+
+                var resultB = await test.TestFind<Button>(new Search().Near("Section B", Direction.Below));
+                Assert.AreEqual("BtnB", resultB.name, "Should find BtnB below Section B");
+
+                var resultC = await test.TestFind<Button>(new Search().Near("Section C", Direction.Below));
+                Assert.AreEqual("BtnC", resultC.name, "Should find BtnC below Section C");
+            });
+        }
+
+        /// <summary>
+        /// Tests Near() with realistic horizontal form layout - label left, control right with gap.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Near_RealisticHorizontalForm_FindsCorrectInput()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Form with 200px horizontal gap between labels and inputs
+
+                // Row 1
+                CreateLabelInParent("Email:", _canvas.transform, new Vector2(-200, 100));
+                var emailInput = CreateButton("EmailInput", "[email]", _canvas.transform, new Vector2(100, 100));
+
+                // Row 2
+                CreateLabelInParent("Phone:", _canvas.transform, new Vector2(-200, 0));
+                var phoneInput = CreateButton("PhoneInput", "[phone]", _canvas.transform, new Vector2(100, 0));
+
+                // Row 3
+                CreateLabelInParent("Address:", _canvas.transform, new Vector2(-200, -100));
+                var addressInput = CreateButton("AddressInput", "[address]", _canvas.transform, new Vector2(100, -100));
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+
+                // Each input should be found when searching right of its label
+                var resultEmail = await test.TestFind<Button>(new Search().Near("Email:", Direction.Right));
+                Assert.AreEqual("EmailInput", resultEmail.name, "Should find EmailInput right of Email:");
+
+                var resultPhone = await test.TestFind<Button>(new Search().Near("Phone:", Direction.Right));
+                Assert.AreEqual("PhoneInput", resultPhone.name, "Should find PhoneInput right of Phone:");
+
+                var resultAddress = await test.TestFind<Button>(new Search().Near("Address:", Direction.Right));
+                Assert.AreEqual("AddressInput", resultAddress.name, "Should find AddressInput right of Address:");
+            });
+        }
+
+        /// <summary>
+        /// Tests Near() with grid layout - multiple items in each direction.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Near_GridLayout_FindsClosestInDirection()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Center label with buttons in all 4 directions at varying distances
+                CreateLabelInParent("Center", _canvas.transform, new Vector2(0, 0));
+
+                // Right side - closest and further
+                var rightClose = CreateButton("RightClose", "R1", _canvas.transform, new Vector2(150, 0));
+                var rightFar = CreateButton("RightFar", "R2", _canvas.transform, new Vector2(300, 0));
+
+                // Left side
+                var leftClose = CreateButton("LeftClose", "L1", _canvas.transform, new Vector2(-150, 0));
+                var leftFar = CreateButton("LeftFar", "L2", _canvas.transform, new Vector2(-300, 0));
+
+                // Below
+                var belowClose = CreateButton("BelowClose", "B1", _canvas.transform, new Vector2(0, -150));
+                var belowFar = CreateButton("BelowFar", "B2", _canvas.transform, new Vector2(0, -300));
+
+                // Above
+                var aboveClose = CreateButton("AboveClose", "A1", _canvas.transform, new Vector2(0, 150));
+                var aboveFar = CreateButton("AboveFar", "A2", _canvas.transform, new Vector2(0, 300));
+
+                await UniTask.Yield();
+                Canvas.ForceUpdateCanvases();
+
+                var testGO = new GameObject("TestBehaviour");
+                _createdObjects.Add(testGO);
+                var test = testGO.AddComponent<TestFindHelper>();
+
+                // Should find closest in each direction
+                var resultRight = await test.TestFind<Button>(new Search().Near("Center", Direction.Right));
+                Assert.AreEqual("RightClose", resultRight.name, "Should find closest button to the right");
+
+                var resultLeft = await test.TestFind<Button>(new Search().Near("Center", Direction.Left));
+                Assert.AreEqual("LeftClose", resultLeft.name, "Should find closest button to the left");
+
+                var resultBelow = await test.TestFind<Button>(new Search().Near("Center", Direction.Below));
+                Assert.AreEqual("BelowClose", resultBelow.name, "Should find closest button below");
+
+                var resultAbove = await test.TestFind<Button>(new Search().Near("Center", Direction.Above));
+                Assert.AreEqual("AboveClose", resultAbove.name, "Should find closest button above");
             });
         }
 

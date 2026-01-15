@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "78e53c16-401b-43c3-bd00-f094d0d178d1",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "The 'HoldButton' was held, but the screen state did not change. I will now click the 'IncrementButton'.",
+      "search": {
+        "base": "name",
+        "value": "IncrementButton"
+      }
+    }
+  }
+]

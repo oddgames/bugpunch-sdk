@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 09783df770baee741ad7277d6ba46eae, type: 3}
   m_Name: AITestSettings
   m_EditorClassIdentifier: 
-  geminiApiKey:
+  geminiApiKey: AIzaSyBv97-qJ5P38ZxE3Qr33rCYV87GDUXgTZ8
   defaultModel: gemini-2.5-flash-lite
   defaultTimeout: 180
   defaultMaxActions: 50
@@ -24,3 +24,4 @@ MonoBehaviour:
   showDebugPanel: 1
   saveScreenshots: 1
   verboseLogging: 0
+  enableDebugLogging: 1

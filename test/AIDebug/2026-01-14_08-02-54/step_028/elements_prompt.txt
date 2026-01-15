@@ -1,0 +1,8 @@
+Available UI elements (6 total):
+
+Name("SettingsButton") [button]
+Name("ButtonsButton") [button]
+Name("FormsButton") [button]
+Name("DragButton") [button]
+Name("KeyboardButton") [button]
+Name("AdvancedButton") [button]

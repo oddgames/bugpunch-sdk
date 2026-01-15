@@ -1,0 +1,10 @@
+```json
+{
+  "reasoning": "This screen has several buttons, a toggle, and a disabled button. I will start by clicking 'SimpleButton'.",
+  "action": "click",
+  "search": {
+    "base": "name",
+    "value": "SimpleButton"
+  }
+}
+```

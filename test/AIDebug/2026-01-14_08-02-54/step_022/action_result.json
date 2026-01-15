@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Submit'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"SubmitButton\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": false,
+  "ScreenHashAfter": "5EA2BB27",
+  "Timestamp": "08:03:35.659"
+}

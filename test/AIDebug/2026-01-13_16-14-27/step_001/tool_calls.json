@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "4143a2f8-ee1a-417a-9120-7bda6953e51d",
+    "Name": "click",
+    "Arguments": {
+      "reasoning": "The goal is to change the volume to 25%. The current screen displays a list of categories. None of these categories directly relate to volume control. The 'Settings' option is the most logical choice to navigate to, as it is a common place to find audio or volume adjustments.",
+      "search": {
+        "base": "text",
+        "value": "Settings"
+      }
+    }
+  }
+]

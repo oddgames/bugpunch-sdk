@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Graphics: High'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"GraphicsOption\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": false,
+  "ScreenHashAfter": "3F920F26",
+  "Timestamp": "08:03:06.198"
+}

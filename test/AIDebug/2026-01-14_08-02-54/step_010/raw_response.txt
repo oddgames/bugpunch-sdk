@@ -1,0 +1,10 @@
+```json
+{
+  "reasoning": "I have toggled 'SampleToggle' on. Now I will interact with the 'HoldButton'.",
+  "action": "hold",
+  "search": {
+    "base": "name",
+    "value": "HoldButton"
+  }
+}
+```

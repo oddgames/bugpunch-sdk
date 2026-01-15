@@ -1,0 +1,10 @@
+{
+  "ActionType": "drag",
+  "Description": "Drag from DraggableItem to DropZone",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"DraggableItem\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": false,
+  "ScreenHashAfter": "237F753D",
+  "Timestamp": "08:03:45.938"
+}

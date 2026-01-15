@@ -42,6 +42,7 @@ namespace ODDGames.UITest.AI
         /// <summary>
         /// Chain of filter methods to apply after base search
         /// </summary>
+        [SerializeReference]
         public List<SearchChainItem> chain;
 
         /// <summary>
@@ -338,6 +339,7 @@ namespace ODDGames.UITest.AI
         /// Nested search query for recursive filtering (alternative to value).
         /// Use for complex hierarchy filters like hasParent with its own filters.
         /// </summary>
+        [SerializeReference]
         public SearchQuery search;
 
         /// <summary>

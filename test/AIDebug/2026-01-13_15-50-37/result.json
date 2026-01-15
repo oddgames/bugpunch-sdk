@@ -1,0 +1,8 @@
+{
+  "Status": "TimedOut",
+  "Message": "Timeout after 180s",
+  "ActionCount": 2,
+  "DurationSeconds": 259.792816,
+  "FinalModel": "gemini-2.5-flash-lite",
+  "CompletedAt": "2026-01-13 15:54:56"
+}

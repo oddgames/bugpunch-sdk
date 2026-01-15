@@ -71,6 +71,7 @@ namespace ODDGames.UITest
     public class Search
     {
         readonly List<Func<GameObject, bool>> _conditions = new();
+        readonly List<string> _descriptionParts = new();
         bool _nextNegate;
         bool _includeInactive;
         bool _includeDisabled;
@@ -112,6 +113,30 @@ namespace ODDGames.UITest
         /// </code>
         /// </example>
         public bool ShouldIncludeDisabled => _includeDisabled;
+
+        /// <summary>
+        /// Returns a human-readable description of the search query.
+        /// </summary>
+        public override string ToString()
+        {
+            if (_descriptionParts.Count == 0)
+                return "Search()";
+
+            var result = string.Join(".", _descriptionParts);
+            if (_includeInactive)
+                result += ".IncludeInactive()";
+            if (_includeDisabled)
+                result += ".IncludeDisabled()";
+            return result;
+        }
+
+        void AddDescription(string part)
+        {
+            if (_nextNegate)
+                _descriptionParts.Add($"Not.{part}");
+            else
+                _descriptionParts.Add(part);
+        }
 
         /// <summary>
         /// Include inactive (SetActive(false)) GameObjects in the search.
@@ -165,6 +190,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Name(string pattern)
         {
+            AddDescription($"Name(\"{pattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go => negate != WildcardMatch(go.name, pattern));
@@ -190,6 +216,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Text(string pattern)
         {
+            AddDescription($"Text(\"{pattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go => negate != MatchText(go, pattern));
@@ -215,6 +242,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Type<T>() where T : Component
         {
+            AddDescription($"Type<{typeof(T).Name}>()");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go => negate != (go.GetComponent<T>() != null));
@@ -237,6 +265,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Type(string typeName)
         {
+            AddDescription($"Type(\"{typeName}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -267,6 +296,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Sprite(string pattern)
         {
+            AddDescription($"Sprite(\"{pattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go => negate != MatchSprite(go, pattern));
@@ -293,6 +323,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Path(string pattern)
         {
+            AddDescription($"Path(\"{pattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go => negate != WildcardMatch(GetHierarchyPath(go.transform), pattern));
@@ -315,6 +346,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Tag(string tag)
         {
+            AddDescription($"Tag(\"{tag}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -344,6 +376,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Any(string pattern)
         {
+            AddDescription($"Any(\"{pattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -366,6 +399,7 @@ namespace ODDGames.UITest
         /// <example>Search.Type&lt;Slider&gt;().With&lt;Slider&gt;(s => s.value > 0.5f)</example>
         public Search With<T>(Func<T, bool> predicate) where T : Component
         {
+            AddDescription($"With<{typeof(T).Name}>(...)");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -386,6 +420,7 @@ namespace ODDGames.UITest
         /// <example>new Search().Name("Item*").Where(go => go.activeInHierarchy)</example>
         public Search Where(Func<GameObject, bool> predicate)
         {
+            AddDescription("Where(...)");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go => negate ? !predicate(go) : predicate(go));
@@ -408,6 +443,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search HasParent(Search parentSearch)
         {
+            AddDescription($"HasParent({parentSearch})");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -456,6 +492,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search HasAncestor(Search ancestorSearch)
         {
+            AddDescription($"HasAncestor({ancestorSearch})");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -509,6 +546,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search HasChild(Search childSearch)
         {
+            AddDescription($"HasChild({childSearch})");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -843,8 +881,8 @@ namespace ODDGames.UITest
         Func<GameObject, GameObject> _targetTransform;
 
         /// <summary>
-        /// Returns true if any post-processing (ordering, skip, take) is applied to this search.
-        /// Post-processing methods include First(), Last(), Skip(), OrderBy(), and OrderByDescending().
+        /// Returns true if any post-processing (ordering, skip, take, target transform) is applied to this search.
+        /// Post-processing methods include First(), Last(), Skip(), OrderBy(), OrderByDescending(), GetParent(), GetChild(), GetSibling().
         /// </summary>
         /// <value>True if post-processing will be applied to results; otherwise, false.</value>
         /// <example>
@@ -853,7 +891,7 @@ namespace ODDGames.UITest
         /// bool hasProcessing = search.HasPostProcessing; // true
         /// </code>
         /// </example>
-        public bool HasPostProcessing => _orderBy != null || _skipCount > 0 || _takeCount > 0;
+        public bool HasPostProcessing => _orderBy != null || _skipCount > 0 || _takeCount > 0 || _targetTransform != null;
 
         /// <summary>
         /// Returns true if a target transform (GetParent(), GetChild(index), GetSibling(offset)) is applied.
@@ -1233,11 +1271,12 @@ namespace ODDGames.UITest
         /// </example>
         public Search Adjacent(string textPattern, Direction direction = Direction.Right)
         {
+            AddDescription($"Adjacent(\"{textPattern}\", {direction})");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
             {
-                bool match = IsNearestInteractableToText(go, textPattern, direction);
+                bool match = IsAdjacentToText(go, textPattern, direction);
                 return negate != match;
             });
             return this;
@@ -1262,6 +1301,7 @@ namespace ODDGames.UITest
         /// </example>
         public Search Near(string textPattern, Direction? direction = null)
         {
+            AddDescription(direction.HasValue ? $"Near(\"{textPattern}\", {direction.Value})" : $"Near(\"{textPattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -1339,6 +1379,53 @@ namespace ODDGames.UITest
                 processed = processed.Select(_targetTransform).Where(go => go != null);
 
             return processed;
+        }
+
+        /// <summary>
+        /// Finds all GameObjects in the scene matching this search query.
+        /// </summary>
+        /// <param name="includeInactive">Whether to include inactive GameObjects. If null, uses IncludeInactive() setting.</param>
+        /// <returns>List of matching GameObjects with post-processing applied.</returns>
+        public List<GameObject> FindAll(bool? includeInactive = null)
+        {
+            bool searchInactive = includeInactive ?? ShouldIncludeInactive;
+            var findMode = searchInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
+
+            var allMatching = UnityEngine.Object.FindObjectsByType<RectTransform>(findMode, FindObjectsSortMode.None)
+                .Where(rt => rt != null && Matches(rt.gameObject))
+                .Select(rt => rt.gameObject)
+                .ToList();
+
+            if (HasPostProcessing)
+            {
+                allMatching = ApplyPostProcessing(allMatching).ToList();
+            }
+
+            return allMatching;
+        }
+
+        /// <summary>
+        /// Finds the first GameObject matching this search query.
+        /// </summary>
+        /// <param name="includeInactive">Whether to include inactive GameObjects. If null, uses IncludeInactive() setting.</param>
+        /// <returns>The first matching GameObject, or null if none found.</returns>
+        public GameObject FindFirst(bool? includeInactive = null)
+        {
+            var results = FindAll(includeInactive);
+            return results.Count > 0 ? results[0] : null;
+        }
+
+        /// <summary>
+        /// Gets the screen position of the first matching element.
+        /// </summary>
+        /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <returns>Screen position of the element center, or null if not found.</returns>
+        public Vector2? GetScreenPosition(int index = 0)
+        {
+            var results = FindAll();
+            if (results.Count <= index) return null;
+
+            return GetScreenPosition(results[index]);
         }
 
         /// <summary>Implicit conversion from string to Search.Text().</summary>
@@ -1574,147 +1661,204 @@ namespace ODDGames.UITest
                           .ThenBy(go => GetScreenPosition(go).x);
         }
 
-        static bool HasInteractableComponent(GameObject go)
-        {
-            return go.GetComponent<TMP_InputField>() != null
-                || go.GetComponent<InputField>() != null
-                || go.GetComponent<TMP_Dropdown>() != null
-                || go.GetComponent<Dropdown>() != null
-                || go.GetComponent<Slider>() != null
-                || go.GetComponent<Toggle>() != null
-                || go.GetComponent<Button>() != null
-                || go.GetComponent<Selectable>() != null;
-        }
-
         static List<(GameObject go, Rect bounds)> FindTextsMatchingPattern(string pattern)
         {
             var results = new List<(GameObject, Rect)>();
 
-            foreach (var tmp in UnityEngine.Object.FindObjectsOfType<TMP_Text>())
+            var allTmpTexts = UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None);
+            Debug.Log($"[Adjacent] FindTextsMatchingPattern('{pattern}') - checking {allTmpTexts.Length} TMP_Text objects");
+
+            foreach (var tmp in allTmpTexts)
             {
                 if (WildcardMatch(tmp.text, pattern))
                 {
                     var rect = tmp.GetComponent<RectTransform>();
                     if (rect != null)
                     {
-                        Vector3[] corners = new Vector3[4];
-                        rect.GetWorldCorners(corners);
-                        var bounds = new Rect(corners[0].x, corners[0].y, corners[2].x - corners[0].x, corners[2].y - corners[0].y);
+                        // Use actual text bounds, not RectTransform bounds
+                        // textBounds is in local space, need to convert to world space
+                        var textBounds = tmp.textBounds;
+                        Vector3 worldCenter = tmp.transform.TransformPoint(textBounds.center);
+                        Vector3 worldSize = tmp.transform.TransformVector(textBounds.size);
+                        var bounds = new Rect(
+                            worldCenter.x - Mathf.Abs(worldSize.x) / 2,
+                            worldCenter.y - Mathf.Abs(worldSize.y) / 2,
+                            Mathf.Abs(worldSize.x),
+                            Mathf.Abs(worldSize.y));
                         results.Add((tmp.gameObject, bounds));
+                        Debug.Log($"[Adjacent]   MATCH: '{tmp.name}' text='{tmp.text}' at bounds={bounds}");
                     }
                 }
             }
 
-            foreach (var text in UnityEngine.Object.FindObjectsOfType<Text>())
+            var allLegacyTexts = UnityEngine.Object.FindObjectsByType<Text>(FindObjectsSortMode.None);
+            foreach (var text in allLegacyTexts)
             {
                 if (WildcardMatch(text.text, pattern))
                 {
                     var rect = text.GetComponent<RectTransform>();
                     if (rect != null)
                     {
+                        // For legacy Text, use preferred width/height for actual text size
+                        var generator = text.cachedTextGenerator;
+                        float width = generator.GetPreferredWidth(text.text, text.GetGenerationSettings(rect.rect.size));
+                        float height = generator.GetPreferredHeight(text.text, text.GetGenerationSettings(rect.rect.size));
+
+                        // Get position based on alignment and pivot
                         Vector3[] corners = new Vector3[4];
                         rect.GetWorldCorners(corners);
-                        var bounds = new Rect(corners[0].x, corners[0].y, corners[2].x - corners[0].x, corners[2].y - corners[0].y);
+                        Vector2 rectCenter = new Vector2(
+                            (corners[0].x + corners[2].x) / 2,
+                            (corners[0].y + corners[2].y) / 2);
+
+                        // Adjust center based on text alignment
+                        float xOffset = 0;
+                        if (text.alignment == TextAnchor.UpperLeft || text.alignment == TextAnchor.MiddleLeft || text.alignment == TextAnchor.LowerLeft)
+                            xOffset = (rect.rect.width - width) / 2 * rect.lossyScale.x;
+                        else if (text.alignment == TextAnchor.UpperRight || text.alignment == TextAnchor.MiddleRight || text.alignment == TextAnchor.LowerRight)
+                            xOffset = -(rect.rect.width - width) / 2 * rect.lossyScale.x;
+
+                        var bounds = new Rect(
+                            rectCenter.x - width * rect.lossyScale.x / 2 - xOffset,
+                            rectCenter.y - height * rect.lossyScale.y / 2,
+                            width * rect.lossyScale.x,
+                            height * rect.lossyScale.y);
                         results.Add((text.gameObject, bounds));
+                        Debug.Log($"[Adjacent]   MATCH (legacy): '{text.name}' text='{text.text}' at bounds={bounds}");
                     }
                 }
             }
 
+            Debug.Log($"[Adjacent] FindTextsMatchingPattern('{pattern}') - found {results.Count} matches");
             return results;
         }
 
-        static bool IsNearestInteractableToText(GameObject interactable, string textPattern, Direction direction)
+        static bool IsAdjacentToText(GameObject element, string textPattern, Direction direction)
         {
-            if (!HasInteractableComponent(interactable)) return false;
-
-            var interactableRect = interactable.GetComponent<RectTransform>();
-            if (interactableRect == null) return false;
-
             var matchingTexts = FindTextsMatchingPattern(textPattern);
-            if (matchingTexts.Count == 0) return false;
+            if (matchingTexts.Count == 0)
+            {
+                Debug.Log($"[Adjacent] No texts matching pattern '{textPattern}'");
+                return false;
+            }
 
-            Vector3[] interactableCorners = new Vector3[4];
-            interactableRect.GetWorldCorners(interactableCorners);
-            Vector2 interactableCenter = new Vector2(
-                (interactableCorners[0].x + interactableCorners[2].x) / 2,
-                (interactableCorners[0].y + interactableCorners[2].y) / 2);
-
-            // Find the closest matching text to this interactable
-            (GameObject textGo, Rect textBounds)? closestText = null;
-            float closestDistance = float.MaxValue;
+            // Find the best adjacent element for each matching text
             foreach (var (textGo, textBounds) in matchingTexts)
             {
-                float distance = Vector2.Distance(interactableCenter, textBounds.center);
-                if (distance < closestDistance)
+                var bestElement = FindBestAdjacentElement(textGo, textBounds, direction);
+                if (bestElement == element)
                 {
-                    closestDistance = distance;
-                    closestText = (textGo, textBounds);
+                    Debug.Log($"[Adjacent] MATCH: '{element.name}' is best adjacent to '{textPattern}' in direction {direction}");
+                    return true;
                 }
             }
 
-            if (!closestText.HasValue) return false;
-
-            // Check if this interactable is the nearest to the closest matching text
-            var nearestInDirection = FindNearestInteractableInDirection(closestText.Value.textBounds, direction);
-            return nearestInDirection == interactable;
+            return false;
         }
 
-        static GameObject FindNearestInteractableInDirection(Rect textBounds, Direction direction)
+        static GameObject FindBestAdjacentElement(GameObject sourceTextGo, Rect textBounds, Direction direction)
         {
-            GameObject nearest = null;
+            GameObject bestElement = null;
             float bestScore = float.MaxValue;
 
-            var allInteractables = new List<GameObject>();
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<TMP_InputField>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<InputField>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<TMP_Dropdown>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<Dropdown>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<Slider>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<Toggle>().Select(c => c.gameObject));
-            allInteractables.AddRange(UnityEngine.Object.FindObjectsOfType<Button>().Select(c => c.gameObject));
-
+            var allRects = UnityEngine.Object.FindObjectsByType<RectTransform>(FindObjectsSortMode.None);
             Vector2 textCenter = textBounds.center;
 
-            foreach (var go in allInteractables.Distinct())
+            foreach (var rect in allRects)
             {
-                var rect = go.GetComponent<RectTransform>();
                 if (rect == null) continue;
+
+                // Skip the source text and its parent hierarchy
+                if (rect.gameObject == sourceTextGo || sourceTextGo.transform.IsChildOf(rect.transform))
+                    continue;
 
                 Vector3[] corners = new Vector3[4];
                 rect.GetWorldCorners(corners);
-                var bounds = new Rect(corners[0].x, corners[0].y, corners[2].x - corners[0].x, corners[2].y - corners[0].y);
-                Vector2 center = bounds.center;
+                var elementBounds = new Rect(corners[0].x, corners[0].y,
+                    corners[2].x - corners[0].x, corners[2].y - corners[0].y);
+                Vector2 elementCenter = elementBounds.center;
 
+                // Check if element center is in the correct direction from text center
                 bool isInDirection = direction switch
                 {
-                    Direction.Right => center.x > textBounds.xMax,
-                    Direction.Left => center.x < textBounds.xMin,
-                    Direction.Below => center.y < textBounds.yMin,
-                    Direction.Above => center.y > textBounds.yMax,
+                    Direction.Right => elementCenter.x >= textCenter.x,
+                    Direction.Left => elementCenter.x <= textCenter.x,
+                    Direction.Below => elementCenter.y <= textCenter.y,
+                    Direction.Above => elementCenter.y >= textCenter.y,
                     _ => false
                 };
 
                 if (!isInDirection) continue;
 
-                float distance = Vector2.Distance(textCenter, center);
-                float verticalDiff = Mathf.Abs(center.y - textCenter.y);
-                float horizontalDiff = Mathf.Abs(center.x - textCenter.x);
-
-                float score = direction switch
+                // Calculate edge-center to edge-center distance based on direction
+                Vector2 elementEdgeCenter;
+                Vector2 textEdgeCenter;
+                switch (direction)
                 {
-                    Direction.Right or Direction.Left => distance + verticalDiff * 2,
-                    Direction.Above or Direction.Below => distance + horizontalDiff * 2,
-                    _ => distance
+                    case Direction.Below:
+                        elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMax); // top edge center
+                        textEdgeCenter = new Vector2(textCenter.x, textBounds.yMin);          // bottom edge center
+                        break;
+                    case Direction.Above:
+                        elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMin); // bottom edge center
+                        textEdgeCenter = new Vector2(textCenter.x, textBounds.yMax);          // top edge center
+                        break;
+                    case Direction.Right:
+                        elementEdgeCenter = new Vector2(elementBounds.xMin, elementCenter.y); // left edge center
+                        textEdgeCenter = new Vector2(textBounds.xMax, textCenter.y);          // right edge center
+                        break;
+                    case Direction.Left:
+                        elementEdgeCenter = new Vector2(elementBounds.xMax, elementCenter.y); // right edge center
+                        textEdgeCenter = new Vector2(textBounds.xMin, textCenter.y);          // left edge center
+                        break;
+                    default:
+                        elementEdgeCenter = elementCenter;
+                        textEdgeCenter = textCenter;
+                        break;
+                }
+                float distance = Vector2.Distance(elementEdgeCenter, textEdgeCenter);
+
+                // Calculate alignment penalty (misalignment in perpendicular axis)
+                float alignmentPenalty = direction switch
+                {
+                    Direction.Right or Direction.Left => Mathf.Abs(elementCenter.y - textCenter.y),
+                    Direction.Above or Direction.Below => Mathf.Abs(elementCenter.x - textCenter.x),
+                    _ => 0
                 };
+
+                // Score: lower is better. Distance + alignment penalty weighted heavily
+                float score = distance + alignmentPenalty * 3;
 
                 if (score < bestScore)
                 {
                     bestScore = score;
-                    nearest = go;
+                    bestElement = rect.gameObject;
                 }
             }
 
-            return nearest;
+            // Walk up hierarchy to find interactable parent if needed
+            if (bestElement != null)
+            {
+                var current = bestElement.transform;
+                while (current != null)
+                {
+                    var go = current.gameObject;
+                    if (go.GetComponent<TMP_InputField>() != null ||
+                        go.GetComponent<InputField>() != null ||
+                        go.GetComponent<Button>() != null ||
+                        go.GetComponent<Toggle>() != null ||
+                        go.GetComponent<Slider>() != null ||
+                        go.GetComponent<TMP_Dropdown>() != null ||
+                        go.GetComponent<Dropdown>() != null ||
+                        go.GetComponent<Selectable>() != null)
+                    {
+                        return go;
+                    }
+                    current = current.parent;
+                }
+            }
+
+            return bestElement;
         }
 
         static bool IsNearElement(GameObject element, string textPattern, Direction? direction)
@@ -1727,54 +1871,91 @@ namespace ODDGames.UITest
         {
             var elementRect = element.GetComponent<RectTransform>();
             if (elementRect == null)
-            {
-                Debug.Log($"[Near] Element '{element.name}' has no RectTransform");
                 return float.MaxValue;
-            }
 
             var matchingTexts = FindTextsMatchingPattern(textPattern);
             if (matchingTexts.Count == 0)
-            {
-                Debug.Log($"[Near] No texts found matching pattern '{textPattern}'");
                 return float.MaxValue;
-            }
 
             Vector3[] elementCorners = new Vector3[4];
             elementRect.GetWorldCorners(elementCorners);
             Vector2 elementCenter = new Vector2(
                 (elementCorners[0].x + elementCorners[2].x) / 2,
                 (elementCorners[0].y + elementCorners[2].y) / 2);
+            Rect elementBounds = new Rect(
+                elementCorners[0].x,
+                elementCorners[0].y,
+                elementCorners[2].x - elementCorners[0].x,
+                elementCorners[2].y - elementCorners[0].y);
 
-            Debug.Log($"[Near] Element '{element.name}' center: {elementCenter}, checking {matchingTexts.Count} texts matching '{textPattern}'");
+            Debug.Log($"[Near] GetDistanceToNearestText - element='{element.name}' at center=({elementCenter.x:F1}, {elementCenter.y:F1}), bounds=({elementBounds.xMin:F1}-{elementBounds.xMax:F1}, {elementBounds.yMin:F1}-{elementBounds.yMax:F1}), pattern='{textPattern}', direction={direction}");
 
             // Find the closest matching anchor text to this element that satisfies direction constraint
             float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
             {
-                // If direction specified, check element is in that direction from the anchor text
+                // Calculate distance from element's edge center to text's edge center based on direction
+                // For Below: element top edge center to text bottom edge center
+                // For Above: element bottom edge center to text top edge center
+                // For Right: element left edge center to text right edge center
+                // For Left: element right edge center to text left edge center
+                float distance;
                 if (direction.HasValue)
                 {
+                    Vector2 elementEdgeCenter;
+                    Vector2 textEdgeCenter;
+                    switch (direction.Value)
+                    {
+                        case Direction.Below:
+                            elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMax); // top edge center
+                            textEdgeCenter = new Vector2(textBounds.center.x, textBounds.yMin);   // bottom edge center
+                            break;
+                        case Direction.Above:
+                            elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMin); // bottom edge center
+                            textEdgeCenter = new Vector2(textBounds.center.x, textBounds.yMax);   // top edge center
+                            break;
+                        case Direction.Right:
+                            elementEdgeCenter = new Vector2(elementBounds.xMin, elementCenter.y); // left edge center
+                            textEdgeCenter = new Vector2(textBounds.xMax, textBounds.center.y);   // right edge center
+                            break;
+                        case Direction.Left:
+                            elementEdgeCenter = new Vector2(elementBounds.xMax, elementCenter.y); // right edge center
+                            textEdgeCenter = new Vector2(textBounds.xMin, textBounds.center.y);   // left edge center
+                            break;
+                        default:
+                            elementEdgeCenter = elementCenter;
+                            textEdgeCenter = textBounds.center;
+                            break;
+                    }
+                    distance = Vector2.Distance(elementEdgeCenter, textEdgeCenter);
+
+                    // Check element center is in the correct direction from text center
                     bool isInDirection = direction.Value switch
                     {
-                        Direction.Right => elementCenter.x > textBounds.xMax,
-                        Direction.Left => elementCenter.x < textBounds.xMin,
-                        Direction.Below => elementCenter.y < textBounds.yMin,
-                        Direction.Above => elementCenter.y > textBounds.yMax,
+                        Direction.Right => elementCenter.x >= textBounds.center.x,
+                        Direction.Left => elementCenter.x <= textBounds.center.x,
+                        Direction.Below => elementCenter.y <= textBounds.center.y,
+                        Direction.Above => elementCenter.y >= textBounds.center.y,
                         _ => true
                     };
-                    Debug.Log($"[Near] Text '{textGo.name}' bounds: yMin={textBounds.yMin}, yMax={textBounds.yMax}, elementY={elementCenter.y}, isInDirection({direction.Value})={isInDirection}");
+                    Debug.Log($"[Near]   textBounds.center=({textBounds.center.x:F1}, {textBounds.center.y:F1}), elementEdge=({elementEdgeCenter.x:F1}, {elementEdgeCenter.y:F1}), textEdge=({textEdgeCenter.x:F1}, {textEdgeCenter.y:F1}), distance={distance:F1}, isInDirection={isInDirection}");
                     if (!isInDirection) continue;
                 }
+                else
+                {
+                    // No direction - use center to center distance
+                    distance = Vector2.Distance(elementCenter, textBounds.center);
+                }
 
-                float distance = Vector2.Distance(elementCenter, textBounds.center);
-                Debug.Log($"[Near] Text '{textGo.name}' distance: {distance}");
+                Debug.Log($"[Near]   distance to '{textGo.name}'={distance:F1}");
                 if (distance < closestDistance)
                 {
                     closestDistance = distance;
+                    Debug.Log($"[Near]   NEW CLOSEST: {distance:F1}");
                 }
             }
 
-            Debug.Log($"[Near] Final distance for '{element.name}': {closestDistance}");
+            Debug.Log($"[Near] GetDistanceToNearestText result for '{element.name}': {closestDistance:F1}");
             return closestDistance;
         }
 

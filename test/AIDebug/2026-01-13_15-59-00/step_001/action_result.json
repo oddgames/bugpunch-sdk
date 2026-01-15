@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Text'",
+  "SearchQuery": "{\"base\":\"text\",\"value\":\"Advanced Input\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "19970CEA",
+  "Timestamp": "15:59:02.433"
+}

@@ -1,0 +1,11 @@
+```json
+{
+  "reasoning": "This screen has input fields and a button related to keyboard input. I will first type into the 'KeyboardInput' field.",
+  "action": "type",
+  "search": {
+    "base": "name",
+    "value": "KeyboardInput"
+  },
+  "text": "Hello"
+}
+```

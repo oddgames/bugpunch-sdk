@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Option 1'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"CategoryDropdown\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "6460EAAD",
+  "Timestamp": "08:03:28.847"
+}

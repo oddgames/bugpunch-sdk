@@ -1,0 +1,18 @@
+```json
+{
+  "reasoning": "The goal is to set the volume to 60%. I can see a slider with the label 'Category:' and its value is 50%. There is also a toggle for 'Volume' which is currently off. To set the volume, I need to interact with the slider. The slider is currently at 50%, and I need to set it to 60%.",
+  "action": "set_slider",
+  "search": {
+    "base": "adjacent",
+    "value": "Category:",
+    "direction": "above",
+    "chain": [
+      {
+        "method": "near",
+        "value": "SampleFormPanel"
+      }
+    ]
+  },
+  "value": 0.6
+}
+```

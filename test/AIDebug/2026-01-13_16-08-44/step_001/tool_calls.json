@@ -1,0 +1,18 @@
+[
+  {
+    "Id": "a6ec600e-ef1d-4b43-85e4-445b5c5cc0ec",
+    "Name": "set_slider",
+    "Arguments": {
+      "search": {
+        "chain": [
+          {
+            "method": "first"
+          }
+        ],
+        "value": "Slider",
+        "base": "type"
+      },
+      "value": 0.25
+    }
+  }
+]

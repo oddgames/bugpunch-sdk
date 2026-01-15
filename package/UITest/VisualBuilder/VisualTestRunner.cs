@@ -235,6 +235,10 @@ namespace ODDGames.UITest.VisualBuilder
                         await ExecuteDoubleClickAsync(block, ct);
                         break;
 
+                    case BlockType.TripleClick:
+                        await ExecuteTripleClickAsync(block, ct);
+                        break;
+
                     case BlockType.Hold:
                         await ExecuteHoldAsync(block, ct);
                         break;
@@ -299,6 +303,10 @@ namespace ODDGames.UITest.VisualBuilder
                         await ExecuteSetScrollbarAsync(block, ct);
                         break;
 
+                    case BlockType.ClickDropdown:
+                        await ExecuteClickDropdownAsync(block, ct);
+                        break;
+
                     case BlockType.Swipe:
                         await ExecuteSwipeAsync(block, ct);
                         break;
@@ -360,6 +368,15 @@ namespace ODDGames.UITest.VisualBuilder
                 throw new InvalidOperationException($"DoubleClick target not found: {GetSelectorDisplay(block.target)}");
 
             await ActionExecutor.DoubleClickAsync(element.gameObject);
+        }
+
+        private static async UniTask ExecuteTripleClickAsync(VisualBlock block, CancellationToken ct)
+        {
+            var element = await ResolveElementAsync(block.target, ct);
+            if (element?.gameObject == null)
+                throw new InvalidOperationException($"TripleClick target not found: {GetSelectorDisplay(block.target)}");
+
+            await ActionExecutor.TripleClickAsync(element.gameObject);
         }
 
         private static async UniTask ExecuteHoldAsync(VisualBlock block, CancellationToken ct)
@@ -713,6 +730,31 @@ namespace ODDGames.UITest.VisualBuilder
             // Convert percentage (0-100) to normalized (0-1)
             var normalizedValue = block.scrollbarValue / 100f;
             await ActionExecutor.SetScrollbarAsync(scrollbar, normalizedValue);
+        }
+
+        private static async UniTask ExecuteClickDropdownAsync(VisualBlock block, CancellationToken ct)
+        {
+            if (block.target == null || !block.target.IsValid())
+                throw new InvalidOperationException("ClickDropdown requires a target element selector");
+
+            var search = block.target.ToSearch();
+
+            bool found;
+            if (block.dropdownIndex >= 0)
+            {
+                found = await ActionExecutor.ClickDropdownAsync(search, block.dropdownIndex);
+            }
+            else if (!string.IsNullOrEmpty(block.dropdownLabel))
+            {
+                found = await ActionExecutor.ClickDropdownAsync(search, block.dropdownLabel);
+            }
+            else
+            {
+                throw new InvalidOperationException("ClickDropdown requires either dropdownIndex or dropdownLabel");
+            }
+
+            if (!found)
+                throw new InvalidOperationException($"Dropdown not found: {GetSelectorDisplay(block.target)}");
         }
 
         private static async UniTask ExecuteSwipeAsync(VisualBlock block, CancellationToken ct)

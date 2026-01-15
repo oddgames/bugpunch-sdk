@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Sound Effects'",
+  "SearchQuery": "{\"base\":\"name\",\"value\":\"SoundToggle\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": true,
+  "ScreenHashAfter": "54E7F2EB",
+  "Timestamp": "08:03:01.398"
+}

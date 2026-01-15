@@ -1,0 +1,10 @@
+{
+  "ActionType": "click",
+  "Description": "Click 'Canvas'",
+  "SearchQuery": "{\"base\":\"text\",\"value\":\"Back\"}",
+  "Success": true,
+  "Error": null,
+  "ScreenChanged": false,
+  "ScreenHashAfter": "19970CEA",
+  "Timestamp": "15:59:07.451"
+}

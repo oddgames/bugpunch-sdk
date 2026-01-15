@@ -19,10 +19,14 @@ namespace ODDGames.UITest.VisualBuilder
         Hold,
         /// <summary>Double click on an element</summary>
         DoubleClick,
+        /// <summary>Triple click on an element (three rapid clicks)</summary>
+        TripleClick,
         /// <summary>Set a slider to a specific percentage value</summary>
         SetSlider,
         /// <summary>Set a scrollbar to a specific position</summary>
         SetScrollbar,
+        /// <summary>Select an option from a dropdown by index or label</summary>
+        ClickDropdown,
         /// <summary>Press a keyboard key</summary>
         KeyPress,
         /// <summary>Hold a keyboard key for a duration (for movement controls)</summary>
@@ -230,6 +234,13 @@ namespace ODDGames.UITest.VisualBuilder
         /// <summary>Target scroll position as percentage (0-100)</summary>
         public float scrollbarValue = 50f;
 
+        // === ClickDropdown Block ===
+        /// <summary>Index of the dropdown option to select (-1 if using label)</summary>
+        public int dropdownIndex = -1;
+
+        /// <summary>Label text of the dropdown option to select (null if using index)</summary>
+        public string dropdownLabel;
+
         // === KeyPress Block ===
         /// <summary>Key to press (e.g., "Escape", "Enter", "Space")</summary>
         public string keyName = "Escape";
@@ -391,6 +402,10 @@ namespace ODDGames.UITest.VisualBuilder
                 scrollAmount = scrollAmount,
                 waitSeconds = waitSeconds,
                 holdSeconds = holdSeconds,
+                sliderValue = sliderValue,
+                scrollbarValue = scrollbarValue,
+                dropdownIndex = dropdownIndex,
+                dropdownLabel = dropdownLabel,
                 keyName = keyName,
                 keyHoldKeys = keyHoldKeys,
                 keyHoldDuration = keyHoldDuration,
@@ -451,10 +466,14 @@ namespace ODDGames.UITest.VisualBuilder
             {
                 BlockType.Click => $"Click {GetSelectorDisplay(target)}",
                 BlockType.DoubleClick => $"Double-click {GetSelectorDisplay(target)}",
+                BlockType.TripleClick => $"Triple-click {GetSelectorDisplay(target)}",
                 BlockType.Hold => $"Hold {GetSelectorDisplay(target)} {holdSeconds}s",
                 BlockType.Type => $"Type \"{TruncateText(text, 20)}\" into {GetSelectorDisplay(target)}",
                 BlockType.SetSlider => $"Set {GetSelectorDisplay(target)} to {sliderValue:F0}%",
                 BlockType.SetScrollbar => $"Scroll {GetSelectorDisplay(target)} to {scrollbarValue:F0}%",
+                BlockType.ClickDropdown => dropdownIndex >= 0
+                    ? $"Select option {dropdownIndex} in {GetSelectorDisplay(target)}"
+                    : $"Select \"{TruncateText(dropdownLabel, 15)}\" in {GetSelectorDisplay(target)}",
                 BlockType.Drag => dragTarget != null && dragTarget.IsValid()
                     ? $"Drag {GetSelectorDisplay(target, "?")} to {dragTarget.GetDisplayText()}"
                     : $"Drag {GetSelectorDisplay(target, "?")} {dragDirection} {dragDistance:P0}",
@@ -543,10 +562,12 @@ namespace ODDGames.UITest.VisualBuilder
             {
                 BlockType.Click => new Color32(0x4C, 0x97, 0xFF, 0xFF),  // Blue
                 BlockType.DoubleClick => new Color32(0x3C, 0x87, 0xEF, 0xFF),  // Darker Blue
+                BlockType.TripleClick => new Color32(0x2C, 0x77, 0xDF, 0xFF),  // Even Darker Blue
                 BlockType.Hold => new Color32(0x6C, 0xA7, 0xFF, 0xFF),   // Lighter Blue
                 BlockType.Type => new Color32(0x99, 0x66, 0xFF, 0xFF),   // Purple
                 BlockType.SetSlider => new Color32(0xFF, 0x99, 0x33, 0xFF),   // Orange (slider)
                 BlockType.SetScrollbar => new Color32(0x33, 0xCC, 0x99, 0xFF), // Teal (scrollbar)
+                BlockType.ClickDropdown => new Color32(0x66, 0xAA, 0xDD, 0xFF), // Sky Blue (dropdown)
                 BlockType.Drag => new Color32(0xFF, 0x8C, 0x1A, 0xFF),   // Orange
                 BlockType.Scroll => new Color32(0x59, 0xC0, 0x59, 0xFF), // Green
                 BlockType.Wait => new Color32(0xFF, 0xBF, 0x00, 0xFF),   // Yellow
