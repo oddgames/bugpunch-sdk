@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.39] - 2026-01-15
+
+### Changed
+- **InputInjector verbose logs now gated behind DebugMode** - Reduces console noise during normal test execution
+  - Logs like "InjectPointerTap at (x,y)", "Using mouse input", "MouseDrag start/end" now only appear when `UITestBehaviour.DebugMode = true`
+  - Warning logs for missing devices remain visible at all times
+
 ## [1.0.38] - 2026-01-15
 
 ### Changed
