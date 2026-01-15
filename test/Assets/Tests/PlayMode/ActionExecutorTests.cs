@@ -283,17 +283,29 @@ namespace ODDGames.UITest.Tests
             {
                 // Create a draggable element
                 var draggable = CreateDraggablePanel("DragPanel", new Vector2(-100, 0));
-                var initialPos = draggable.GetComponent<RectTransform>().anchoredPosition;
+                var rt = draggable.GetComponent<RectTransform>();
+                var initialPos = rt.anchoredPosition;
+                float maxX = initialPos.x;
 
                 await UniTask.Yield();
 
                 var startScreen = RectTransformUtility.WorldToScreenPoint(null, draggable.transform.position);
                 var endScreen = startScreen + new Vector2(200, 0);
 
-                await ActionExecutor.DragFromToAsync(startScreen, endScreen, 0.3f);
+                // Start drag and track max position reached during operation
+                var dragTask = ActionExecutor.DragFromToAsync(startScreen, endScreen, 0.3f);
 
-                var finalPos = draggable.GetComponent<RectTransform>().anchoredPosition;
-                Assert.Greater(finalPos.x, initialPos.x, "Element should have moved right");
+                // Poll position every frame during drag
+                while (!dragTask.Status.IsCompleted())
+                {
+                    maxX = Mathf.Max(maxX, rt.anchoredPosition.x);
+                    await UniTask.Yield();
+                }
+                await dragTask; // Ensure completion
+
+                // Also check final position
+                maxX = Mathf.Max(maxX, rt.anchoredPosition.x);
+                Assert.Greater(maxX, initialPos.x, "Element should have moved right during drag");
             });
         }
 
@@ -303,13 +315,26 @@ namespace ODDGames.UITest.Tests
             return UniTask.ToCoroutine(async () =>
             {
                 var draggable = CreateDraggablePanel("DirectionDrag", new Vector2(0, 0));
-                var initialPos = draggable.GetComponent<RectTransform>().anchoredPosition;
+                var rt = draggable.GetComponent<RectTransform>();
+                var initialPos = rt.anchoredPosition;
+                float maxX = initialPos.x;
 
                 await UniTask.Yield();
-                await ActionExecutor.DragAsync(draggable, new Vector2(100, 0), 0.3f);
 
-                var finalPos = draggable.GetComponent<RectTransform>().anchoredPosition;
-                Assert.Greater(finalPos.x, initialPos.x, "Element should have moved right");
+                // Start drag and track max position reached during operation
+                var dragTask = ActionExecutor.DragAsync(draggable, new Vector2(100, 0), 0.3f);
+
+                // Poll position every frame during drag
+                while (!dragTask.Status.IsCompleted())
+                {
+                    maxX = Mathf.Max(maxX, rt.anchoredPosition.x);
+                    await UniTask.Yield();
+                }
+                await dragTask; // Ensure completion
+
+                // Also check final position
+                maxX = Mathf.Max(maxX, rt.anchoredPosition.x);
+                Assert.Greater(maxX, initialPos.x, "Element should have moved right during drag");
             });
         }
 

@@ -198,20 +198,22 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Match elements by visible text content (TMP_Text or legacy Text). Supports wildcards (*).
+        /// Match elements by visible text content (TMP_Text or legacy Text) directly on the element. Supports wildcards (*).
+        /// Only matches elements that have a text component directly attached - does not check children.
+        /// Use HasChild(Text(...)) or HasDescendant(Text(...)) to find parents containing text.
         /// </summary>
         /// <param name="pattern">The text pattern to match. Use * for wildcards.</param>
         /// <returns>This Search instance for chaining.</returns>
         /// <example>
         /// <code>
-        /// // Exact text match
+        /// // Exact text match on text element
         /// new Search().Text("Play")
+        ///
+        /// // Find button that has text child
+        /// new Search().Type&lt;Button&gt;().HasChild(new Search().Text("Submit"))
         ///
         /// // Wildcard suffix match
         /// new Search().Text("Level *")
-        ///
-        /// // Combined with type filter
-        /// new Search().Text("Submit").Type&lt;Button&gt;()
         /// </code>
         /// </example>
         public Search Text(string pattern)

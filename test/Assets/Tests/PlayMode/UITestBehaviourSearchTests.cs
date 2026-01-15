@@ -178,11 +178,9 @@ namespace ODDGames.UITest.Tests
 
                 await UniTask.Yield();
 
-                // Find elements with matching text - filter to only those with Text component directly
+                // Text() now only matches elements with text directly on them (not ancestors)
                 var results = new Search().Text("Level*").FindAll();
-                // Count only elements that have the Text component directly (not ancestors)
-                var directTextElements = results.Where(go => go.GetComponent<Text>() != null || go.GetComponent<TMP_Text>() != null).ToList();
-                Assert.AreEqual(2, directTextElements.Count, "Should find both text elements with wildcard");
+                Assert.AreEqual(2, results.Count, "Should find both text elements with wildcard");
             });
         }
 
@@ -528,11 +526,12 @@ namespace ODDGames.UITest.Tests
         {
             return UniTask.ToCoroutine(async () =>
             {
+                // Use HasChild(Text()) to match button by child text
                 var btn = CreateButtonWithText("PlayBtn", "Start Game", Vector2.zero);
 
                 await UniTask.Yield();
 
-                var result = new Search().Text("*Game*").Type<Button>().FindFirst();
+                var result = new Search().HasChild(new Search().Text("*Game*")).Type<Button>().FindFirst();
                 Assert.IsNotNull(result, "Should find button with text and type search");
             });
         }
