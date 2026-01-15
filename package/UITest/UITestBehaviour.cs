@@ -230,12 +230,12 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Gets or sets the delay in milliseconds after a successful action.
-        /// Default is 500ms. Increase for slower, more visible test playback.
+        /// Default is 200ms. Increase for slower, more visible test playback.
         /// </summary>
         /// <example>
-        /// UITestBehaviour.Interval = 200; // Faster playback
+        /// UITestBehaviour.Interval = 500; // Slower playback
         /// </example>
-        public static int Interval { get; set; } = 500;
+        public static int Interval { get; set; } = 200;
 
         /// <summary>
         /// Gets or sets the polling interval in milliseconds during search/wait operations.

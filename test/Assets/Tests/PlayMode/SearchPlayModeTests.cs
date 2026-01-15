@@ -303,28 +303,33 @@ namespace ODDGames.UITest.Tests
         [UnityTest]
         public IEnumerator ByText_ExactMatch_ReturnsTrue()
         {
+            // Text() matches only the actual text element, not the parent button
             var go = CreateButtonWithText("Btn", "Click Me");
+            var textElement = go.transform.GetChild(0).gameObject;
             yield return null;
             var search = new Search().Text("Click Me");
-            Assert.IsTrue(search.Matches(go));
+            Assert.IsTrue(search.Matches(textElement), "Text() should match the text element");
+            Assert.IsFalse(search.Matches(go), "Text() should NOT match the parent button");
         }
 
         [UnityTest]
         public IEnumerator ByText_WildcardPrefix_ReturnsTrue()
         {
             var go = CreateButtonWithText("Btn", "Click Me");
+            var textElement = go.transform.GetChild(0).gameObject;
             yield return null;
             var search = new Search().Text("Click*");
-            Assert.IsTrue(search.Matches(go));
+            Assert.IsTrue(search.Matches(textElement));
         }
 
         [UnityTest]
         public IEnumerator ByText_WildcardSuffix_ReturnsTrue()
         {
             var go = CreateButtonWithText("Btn", "Click Me");
+            var textElement = go.transform.GetChild(0).gameObject;
             yield return null;
             var search = new Search().Text("*Me");
-            Assert.IsTrue(search.Matches(go));
+            Assert.IsTrue(search.Matches(textElement));
         }
 
         [UnityTest]
@@ -337,8 +342,10 @@ namespace ODDGames.UITest.Tests
         }
 
         [UnityTest]
-        public IEnumerator ByText_NestedTextComponents_FindsInChildren()
+        public IEnumerator ByText_NestedTextComponents_UseHasChild()
         {
+            // Text() only matches the actual text element
+            // Use HasChild(Text()) to match parent that contains text
             var parent = CreateTestObject("Parent");
             var child = new GameObject("Child");
             child.transform.SetParent(parent.transform);
@@ -346,12 +353,17 @@ namespace ODDGames.UITest.Tests
             tmp.text = "Nested Text";
             _createdObjects.Add(child);
             yield return null;
-            Assert.IsTrue(new Search().Text("Nested Text").Matches(parent));
+            // Text() matches the child, not the parent
+            Assert.IsTrue(new Search().Text("Nested Text").Matches(child));
+            Assert.IsFalse(new Search().Text("Nested Text").Matches(parent));
+            // Use HasChild(Text()) to match parent
+            Assert.IsTrue(new Search().HasChild(new Search().Text("Nested Text")).Matches(parent));
         }
 
         [UnityTest]
-        public IEnumerator ByText_MultipleTextComponents_MatchesAny()
+        public IEnumerator ByText_MultipleTextComponents_MatchesDirectOnly()
         {
+            // Text() only matches the actual text elements, not the parent
             var go = CreateTestObject("MultiText");
             var child1 = new GameObject("Text1");
             child1.transform.SetParent(go.transform);
@@ -364,9 +376,15 @@ namespace ODDGames.UITest.Tests
             tmp2.text = "Second";
             _createdObjects.Add(child2);
             yield return null;
-            Assert.IsTrue(new Search().Text("First").Matches(go));
-            Assert.IsTrue(new Search().Text("Second").Matches(go));
-            Assert.IsFalse(new Search().Text("Third").Matches(go));
+            // Text() matches the children directly
+            Assert.IsTrue(new Search().Text("First").Matches(child1));
+            Assert.IsTrue(new Search().Text("Second").Matches(child2));
+            // Text() does NOT match the parent
+            Assert.IsFalse(new Search().Text("First").Matches(go));
+            // Use HasChild to match parent with text children
+            Assert.IsTrue(new Search().HasChild(new Search().Text("First")).Matches(go));
+            Assert.IsTrue(new Search().HasChild(new Search().Text("Second")).Matches(go));
+            Assert.IsFalse(new Search().HasChild(new Search().Text("Third")).Matches(go));
         }
 
         #endregion
@@ -492,10 +510,12 @@ namespace ODDGames.UITest.Tests
         [UnityTest]
         public IEnumerator ByAny_MatchesText_ReturnsTrue()
         {
+            // Any() only matches text on the element itself (like Text()), not in children
             var go = CreateButtonWithText("SomeButton", "TargetText");
+            var textElement = go.transform.GetChild(0).gameObject;
             yield return null;
             var search = new Search().Any("TargetText");
-            Assert.IsTrue(search.Matches(go));
+            Assert.IsTrue(search.Matches(textElement), "Any() should match the text element");
         }
 
         [UnityTest]
@@ -544,19 +564,21 @@ namespace ODDGames.UITest.Tests
         [UnityTest]
         public IEnumerator Chain_NameAndText_BothMatch_ReturnsTrue()
         {
+            // Use HasChild(Text()) to match parent by child's text
             var go = CreateButtonWithText("SubmitBtn", "Submit");
             yield return null;
-            var search = new Search().Name("*Btn").Text("Submit");
+            var search = new Search().Name("*Btn").HasChild(new Search().Text("Submit"));
             Assert.IsTrue(search.Matches(go));
         }
 
         [UnityTest]
         public IEnumerator Chain_TypeTextName_AllMatch_ReturnsTrue()
         {
+            // Use HasChild(Text()) to match parent by child's text
             var go = CreateButtonWithText("ConfirmButton", "OK");
             go.AddComponent<Button>();
             yield return null;
-            var search = new Search().Type<Button>().Text("OK").Name("*Confirm*");
+            var search = new Search().Type<Button>().HasChild(new Search().Text("OK")).Name("*Confirm*");
             Assert.IsTrue(search.Matches(go));
         }
 
@@ -579,6 +601,7 @@ namespace ODDGames.UITest.Tests
         [UnityTest]
         public IEnumerator Chain_FiveConditions_AllMustMatch()
         {
+            // Use HasChild(Text()) to match parent by child's text
             var go = CreateTestObject("SubmitButton");
             go.AddComponent<RectTransform>();
             go.AddComponent<Image>();
@@ -594,7 +617,7 @@ namespace ODDGames.UITest.Tests
             var search = new Search()
                 .Type<Button>()
                 .Name("*Button")
-                .Text("Submit")
+                .HasChild(new Search().Text("Submit"))
                 .Tag("Untagged")
                 .With<Button>(b => b.interactable);
             Assert.IsTrue(search.Matches(go));
@@ -603,12 +626,13 @@ namespace ODDGames.UITest.Tests
         [UnityTest]
         public IEnumerator Chain_OrderIndependence()
         {
+            // Use HasChild(Text()) to match parent by child's text
             var go = CreateButtonWithText("TestButton", "Click");
             go.AddComponent<Button>();
             yield return null;
-            var search1 = new Search().Name("TestButton").Text("Click").Type<Button>();
-            var search2 = new Search().Type<Button>().Name("TestButton").Text("Click");
-            var search3 = new Search().Text("Click").Type<Button>().Name("TestButton");
+            var search1 = new Search().Name("TestButton").HasChild(new Search().Text("Click")).Type<Button>();
+            var search2 = new Search().Type<Button>().Name("TestButton").HasChild(new Search().Text("Click"));
+            var search3 = new Search().HasChild(new Search().Text("Click")).Type<Button>().Name("TestButton");
             Assert.IsTrue(search1.Matches(go));
             Assert.IsTrue(search2.Matches(go));
             Assert.IsTrue(search3.Matches(go));
@@ -1190,10 +1214,12 @@ namespace ODDGames.UITest.Tests
         [UnityTest]
         public IEnumerator ImplicitConversion_String_ToSearch_Works()
         {
+            // Implicit conversion creates Text() search, which only matches text elements directly
             var go = CreateButtonWithText("Btn", "Target Text");
+            var textElement = go.transform.GetChild(0).gameObject;
             yield return null;
             Search search = "Target Text";
-            Assert.IsTrue(search.Matches(go));
+            Assert.IsTrue(search.Matches(textElement), "Implicit search should match text element");
         }
 
         #endregion
@@ -1230,18 +1256,19 @@ namespace ODDGames.UITest.Tests
         [UnityTest]
         public IEnumerator Chain_MultipleConditions_AllMustMatch()
         {
+            // Use HasChild(Text()) to match parent by child's text
             var go = CreateButtonWithText("SubmitButton", "Submit");
             go.AddComponent<Button>();
             yield return null;
             var searchAllMatch = new Search()
                 .Type<Button>()
                 .Name("*Button")
-                .Text("Submit");
+                .HasChild(new Search().Text("Submit"));
             Assert.IsTrue(searchAllMatch.Matches(go));
             var searchOneFails = new Search()
                 .Type<Button>()
                 .Name("*Button")
-                .Text("Cancel");
+                .HasChild(new Search().Text("Cancel"));
             Assert.IsFalse(searchOneFails.Matches(go));
         }
 
@@ -2025,7 +2052,8 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Near matches all elements below, ordered by distance
-                var search = new Search().Near("Center Flag", Direction.Below).Text("Mask");
+                // Use HasChild(Text()) to match buttons by their child text
+                var search = new Search().Near("Center Flag", Direction.Below).HasChild(new Search().Text("Mask"));
 
                 // Both buttons are below "Center Flag" so both match
                 Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "centerMaskBtn should match (closest)");
@@ -2058,8 +2086,8 @@ namespace ODDGames.UITest.Tests
 
                 await UniTask.Yield();
 
-                // Text first, then Near - same result since Near sets ordering
-                var search = new Search().Text("Mask").Near("Center Flag", Direction.Below);
+                // HasChild(Text()) first, then Near - same result since Near sets ordering
+                var search = new Search().HasChild(new Search().Text("Mask")).Near("Center Flag", Direction.Below);
 
                 // Both buttons are below "Center Flag" so both match
                 Assert.IsTrue(search.Matches(centerMaskBtn.gameObject), "centerMaskBtn should match (closest)");
@@ -2092,7 +2120,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Near matches all elements below "Right Flag", ordered by distance
-                var search = new Search().Near("Right Flag", Direction.Below).Text("Mask");
+                var search = new Search().Near("Right Flag", Direction.Below).HasChild(new Search().Text("Mask"));
 
                 // Both buttons are below "Right Flag" so both match
                 Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "rightMaskBtn should match (closest)");
@@ -2125,8 +2153,8 @@ namespace ODDGames.UITest.Tests
 
                 await UniTask.Yield();
 
-                // Text first, then Near - same result since Near sets ordering
-                var search = new Search().Text("Mask").Near("Right Flag", Direction.Below);
+                // HasChild(Text()) first, then Near - same result since Near sets ordering
+                var search = new Search().HasChild(new Search().Text("Mask")).Near("Right Flag", Direction.Below);
 
                 // Both buttons are below "Right Flag" so both match
                 Assert.IsTrue(search.Matches(rightMaskBtn.gameObject), "rightMaskBtn should match (closest)");
@@ -2156,10 +2184,11 @@ namespace ODDGames.UITest.Tests
 
             yield return null;
 
-            // Test: Adjacent first, then Text - should find Center Flag's Texture
-            var search = new Search().Adjacent("Center Flag", Direction.Below).Text("Texture");
-            Assert.IsTrue(search.Matches(centerTextureBtn.gameObject), "Adjacent.Text should find CenterFlagTextureBtn");
-            Assert.IsFalse(search.Matches(rightTextureBtn.gameObject), "Adjacent.Text should NOT match RightFlagTextureBtn");
+            // Test: Adjacent first, then HasChild(Text()) - should find Center Flag's Texture button
+            // HasChild(Text()) matches elements that have a child with the text
+            var search = new Search().Adjacent("Center Flag", Direction.Below).HasChild(new Search().Text("Texture"));
+            Assert.IsTrue(search.Matches(centerTextureBtn.gameObject), "Adjacent.HasChild(Text) should find CenterFlagTextureBtn");
+            Assert.IsFalse(search.Matches(rightTextureBtn.gameObject), "Adjacent.HasChild(Text) should NOT match RightFlagTextureBtn");
         }
 
         [UnityTest]
@@ -2176,10 +2205,11 @@ namespace ODDGames.UITest.Tests
 
             yield return null;
 
-            // Test: Text first, then Adjacent - should find Center Flag's Texture
-            var search = new Search().Text("Texture").Adjacent("Center Flag", Direction.Below);
-            Assert.IsTrue(search.Matches(centerTextureBtn.gameObject), "Text.Adjacent should find CenterFlagTextureBtn");
-            Assert.IsFalse(search.Matches(rightTextureBtn.gameObject), "Text.Adjacent should NOT match RightFlagTextureBtn");
+            // Test: HasChild(Text()) first, then Adjacent - should find Center Flag's Texture button
+            // HasChild(Text()) matches elements that have a child with the text
+            var search = new Search().HasChild(new Search().Text("Texture")).Adjacent("Center Flag", Direction.Below);
+            Assert.IsTrue(search.Matches(centerTextureBtn.gameObject), "HasChild(Text).Adjacent should find CenterFlagTextureBtn");
+            Assert.IsFalse(search.Matches(rightTextureBtn.gameObject), "HasChild(Text).Adjacent should NOT match RightFlagTextureBtn");
         }
 
         [UnityTest]
@@ -2258,20 +2288,21 @@ namespace ODDGames.UITest.Tests
             Debug.Log($"[Near Test] rightNone matches Near('Right Flag', Below): {searchNearRightFlag.Matches(rightNone.gameObject)}");
 
             // Near() matches ALL elements in the direction, but orders by distance
+            // Use HasChild(Text()) to match buttons by their child text
             // Both Textures are below "Center Flag" (since rightTexture is also below Center Flag at y=230)
-            var searchCenterTexture = new Search().Text("Texture").Near("Center Flag", Direction.Below);
+            var searchCenterTexture = new Search().HasChild(new Search().Text("Texture")).Near("Center Flag", Direction.Below);
             Assert.IsTrue(searchCenterTexture.Matches(centerTexture.gameObject), "Center Texture should match (below Center Flag)");
             // rightTexture is also below Center Flag, so it matches too
             Assert.IsTrue(searchCenterTexture.Matches(rightTexture.gameObject), "Right Texture also matches (below Center Flag)");
 
             // Near("Right Flag", Below) - both Masks are below Right Flag
-            var searchRightMask = new Search().Text("Mask").Near("Right Flag", Direction.Below);
+            var searchRightMask = new Search().HasChild(new Search().Text("Mask")).Near("Right Flag", Direction.Below);
             Assert.IsTrue(searchRightMask.Matches(rightMask.gameObject), "Right Mask should match");
             // centerMask is ABOVE Right Flag (y=150 vs y=-20), so it should NOT match
             Assert.IsFalse(searchRightMask.Matches(centerMask.gameObject), "Center Mask should NOT match (above Right Flag)");
 
-            // Near first, then Text - Right Flag's None is below Right Flag
-            var searchNearFirst = new Search().Near("Right Flag", Direction.Below).Text("None");
+            // Near first, then HasChild(Text()) - Right Flag's None is below Right Flag
+            var searchNearFirst = new Search().Near("Right Flag", Direction.Below).HasChild(new Search().Text("None"));
             Assert.IsTrue(searchNearFirst.Matches(rightNone.gameObject), "Right None should match (below Right Flag)");
             // centerNone is ABOVE Right Flag, so it should NOT match
             Assert.IsFalse(searchNearFirst.Matches(centerNone.gameObject), "Center None should NOT match (above Right Flag)");
@@ -2309,17 +2340,18 @@ namespace ODDGames.UITest.Tests
                 var test = testGO.AddComponent<TestFindHelper>();
 
                 // Find() with Near() returns closest element first
-                var topResult = await test.TestFind<Button>(new Search().Text("Action").Near("Top Header", Direction.Below));
+                // Use HasChild(Text()) to match buttons by their child text
+                var topResult = await test.TestFind<Button>(new Search().HasChild(new Search().Text("Action")).Near("Top Header", Direction.Below));
                 Assert.AreEqual("TopBtn", topResult.name, "Should find Top section's Action (closest to Top Header)");
 
-                var midResult = await test.TestFind<Button>(new Search().Text("Action").Near("Middle Header", Direction.Below));
+                var midResult = await test.TestFind<Button>(new Search().HasChild(new Search().Text("Action")).Near("Middle Header", Direction.Below));
                 Assert.AreEqual("MiddleBtn", midResult.name, "Should find Middle section's Action (closest to Middle Header)");
 
-                var bottomResult = await test.TestFind<Button>(new Search().Text("Action").Near("Bottom Header", Direction.Below));
+                var bottomResult = await test.TestFind<Button>(new Search().HasChild(new Search().Text("Action")).Near("Bottom Header", Direction.Below));
                 Assert.AreEqual("BottomBtn", bottomResult.name, "Should find Bottom section's Action (closest to Bottom Header)");
 
                 // Verify direction filtering works - topBtn is ABOVE Middle Header, so shouldn't match
-                var searchMid = new Search().Text("Action").Near("Middle Header", Direction.Below);
+                var searchMid = new Search().HasChild(new Search().Text("Action")).Near("Middle Header", Direction.Below);
                 Assert.IsFalse(searchMid.Matches(topBtn.gameObject), "Top button is above Middle Header");
             });
         }

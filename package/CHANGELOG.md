@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.38] - 2026-01-15
+
+### Changed
+- **`Text()` now matches only the element with the text component** - Breaking change from v1.0.37
+  - Previously `Text("Play")` would match a Button that had a child TMP_Text with "Play"
+  - Now `Text("Play")` only matches the actual TMP_Text/Text element itself
+  - Use `HasChild(Text("Play"))` or `HasDescendant(Text("Play"))` to match parent containers
+  - Example migration: `new Search().Text("Submit").Type<Button>()` → `new Search().HasChild(new Search().Text("Submit")).Type<Button>()`
+- **Action `Interval` reverted to 200ms** - Was 500ms in v1.0.37, now back to 200ms for faster test execution
+
 ## [1.0.37] - 2026-01-15
 
 ### Fixed
@@ -13,7 +23,7 @@ All notable changes to this project will be documented in this file.
 - **ActionExecutor logging now shows search query and element name** - Better debugging output
   - Format: `[ActionExecutor] Click(Text("Button")) -> 'ButtonText' at (450, 300)`
   - Shows what was searched for, what was found, and where the action occurred
-- **Separated action delay from search polling** - `Interval` (500ms) for action delay, `PollInterval` (100ms) for search loops
+- **Separated action delay from search polling** - `Interval` (200ms) for action delay, `PollInterval` (100ms) for search loops
   - Prevents flaky tests from actions being too fast while keeping searches responsive
 - **Removed verbose debug logging from Adjacent search** - Cleaner console output
 
