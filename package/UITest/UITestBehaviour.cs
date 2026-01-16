@@ -4012,5 +4012,39 @@ namespace ODDGames.UITest
             => ActionExecutor.WaitFor(path, expected, timeout);
 
         #endregion
+
+        #region GameObject Manipulation
+
+        /// <summary>
+        /// Disables a GameObject. Returns restoration token.
+        /// </summary>
+        protected static Search.ActiveState Disable(Search search) => search.Disable();
+
+        /// <summary>
+        /// Enables a GameObject. Returns restoration token.
+        /// </summary>
+        protected static Search.ActiveState Enable(Search search) => search.Enable();
+
+        /// <summary>
+        /// Freezes rigidbodies (zero velocity + kinematic). Returns restoration token.
+        /// </summary>
+        protected static Search.FreezeState Freeze(Search search, bool includeChildren = true) => search.Freeze(includeChildren);
+
+        /// <summary>
+        /// Teleports a GameObject to world position. Returns restoration token.
+        /// </summary>
+        protected static Search.PositionState Teleport(Search search, Vector3 worldPosition) => search.Teleport(worldPosition);
+
+        /// <summary>
+        /// Disables all colliders (noclip). Returns restoration token.
+        /// </summary>
+        protected static Search.ColliderState NoClip(Search search, bool includeChildren = true) => search.NoClip(includeChildren);
+
+        /// <summary>
+        /// Enables all colliders. Returns restoration token.
+        /// </summary>
+        protected static Search.ColliderState Clip(Search search, bool includeChildren = true) => search.Clip(includeChildren);
+
+        #endregion
     }
 }

@@ -2625,6 +2625,86 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Gets a component of the specified type from the matched GameObject and returns it as a Search.
+        /// This allows chaining Property() and SetValue() on the component.
+        /// </summary>
+        /// <typeparam name="T">The component type to get</typeparam>
+        /// <returns>A new Search wrapping the component</returns>
+        /// <example>
+        /// <code>
+        /// // Get Rigidbody and set isKinematic
+        /// Search("CarController").Component&lt;Rigidbody&gt;().Property("isKinematic").SetValue(true);
+        ///
+        /// // Get from static path result
+        /// Static("GameModeDrag.Instance.competitorControllers[1]")
+        ///     .Component&lt;Rigidbody&gt;().Property("isKinematic").SetValue(true);
+        /// </code>
+        /// </example>
+        public Search Component<T>() where T : Component
+        {
+            return Component(typeof(T).Name);
+        }
+
+        /// <summary>
+        /// Gets a component by type name from the matched GameObject and returns it as a Search.
+        /// This allows chaining Property() and SetValue() on the component.
+        /// </summary>
+        /// <param name="typeName">The component type name (e.g., "Rigidbody", "BoxCollider")</param>
+        /// <returns>A new Search wrapping the component</returns>
+        /// <example>
+        /// <code>
+        /// // Get Rigidbody by name and set isKinematic
+        /// Search("CarController").Component("Rigidbody").Property("isKinematic").SetValue(true);
+        ///
+        /// // Works with custom component types
+        /// Search("Player").Component("PlayerStats").Property("health").SetValue(100f);
+        /// </code>
+        /// </example>
+        public Search Component(string typeName)
+        {
+            string context = _staticPath ?? ToString();
+            GameObject go = null;
+
+            // If this is a static path, try to get GameObject from the resolved value
+            if (_isStaticPath)
+            {
+                if (_staticValue == null)
+                    throw new InvalidOperationException($"Component failed: Static path '{_staticPath}' resolved to null, cannot get component '{typeName}'");
+
+                // If _staticValue is already a Component, get its GameObject
+                if (_staticValue is Component comp)
+                    go = comp.gameObject;
+                else if (_staticValue is GameObject gameObj)
+                    go = gameObj;
+                else
+                    throw new InvalidOperationException($"Component failed: Static path '{_staticPath}' resolved to '{_staticValue.GetType().Name}', not a Component or GameObject. Cannot get component '{typeName}'");
+            }
+            else
+            {
+                // For UI element searches, find the first match
+                go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"Component failed: No UI element found matching '{context}', cannot get component '{typeName}'");
+            }
+
+            // Find the component by type name
+            foreach (var c in go.GetComponents<Component>())
+            {
+                if (c == null) continue;
+                var cType = c.GetType();
+                // Match by exact name or by full name ending with the type name
+                if (cType.Name == typeName || cType.FullName == typeName || cType.Name.EndsWith(typeName))
+                {
+                    var newPath = _isStaticPath ? $"{_staticPath}.GetComponent<{typeName}>()" : $"{context}.Component(\"{typeName}\")";
+                    return new Search(c, newPath);
+                }
+            }
+
+            var componentNames = string.Join(", ", go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name));
+            throw new InvalidOperationException($"Component failed: Component '{typeName}' not found on '{go.name}'. Available components: [{componentNames}]");
+        }
+
+        /// <summary>
         /// Accesses an element by index (for arrays, lists, dictionaries, or types with indexers).
         /// Works for static paths and values obtained via Property() from UI elements.
         /// </summary>
@@ -2896,6 +2976,418 @@ namespace ODDGames.UITest
                 throw new InvalidOperationException(
                     $"SetValue failed: Cannot set '{_memberName}' to value of type '{value?.GetType().Name ?? "null"}'. " +
                     $"Expected type: {expectedType?.Name ?? "unknown"}", ex);
+            }
+        }
+
+        #endregion
+
+        #region GameObject Manipulation
+
+        /// <summary>
+        /// Restoration token for Disable/Enable operations. Implements IDisposable for using() pattern.
+        /// </summary>
+        public class ActiveState : IDisposable
+        {
+            private readonly GameObject _go;
+            private readonly bool _wasActive;
+            private bool _disposed;
+
+            internal ActiveState(GameObject go, bool wasActive)
+            {
+                _go = go;
+                _wasActive = wasActive;
+            }
+
+            /// <summary>Number of GameObjects affected (always 1).</summary>
+            public int Count => 1;
+
+            /// <summary>Restores the GameObject to its original active state.</summary>
+            public void Restore()
+            {
+                if (!_disposed && _go != null)
+                {
+                    _go.SetActive(_wasActive);
+                    Debug.Log($"[UITEST] Restored '{_go.name}' active={_wasActive}");
+                }
+                _disposed = true;
+            }
+
+            public void Dispose() => Restore();
+        }
+
+        /// <summary>
+        /// Restoration token for Freeze operations. Implements IDisposable for using() pattern.
+        /// </summary>
+        public class FreezeState : IDisposable
+        {
+            private readonly List<(Rigidbody rb, bool wasKinematic, Vector3 velocity, Vector3 angularVelocity)> _rigidbodies;
+            private readonly List<(Rigidbody2D rb, RigidbodyType2D bodyType, Vector2 velocity, float angularVelocity)> _rigidbodies2D;
+            private bool _disposed;
+
+            internal FreezeState()
+            {
+                _rigidbodies = new List<(Rigidbody, bool, Vector3, Vector3)>();
+                _rigidbodies2D = new List<(Rigidbody2D, RigidbodyType2D, Vector2, float)>();
+            }
+
+            internal void Add(Rigidbody rb)
+            {
+                _rigidbodies.Add((rb, rb.isKinematic, rb.linearVelocity, rb.angularVelocity));
+            }
+
+            internal void Add(Rigidbody2D rb)
+            {
+                _rigidbodies2D.Add((rb, rb.bodyType, rb.linearVelocity, rb.angularVelocity));
+            }
+
+            /// <summary>Number of rigidbodies affected.</summary>
+            public int Count => _rigidbodies.Count + _rigidbodies2D.Count;
+
+            /// <summary>Restores all rigidbodies to their original state.</summary>
+            public void Restore()
+            {
+                if (_disposed) return;
+                foreach (var (rb, wasKinematic, velocity, angularVelocity) in _rigidbodies)
+                {
+                    if (rb != null)
+                    {
+                        rb.isKinematic = wasKinematic;
+                        if (!wasKinematic)
+                        {
+                            rb.linearVelocity = velocity;
+                            rb.angularVelocity = angularVelocity;
+                        }
+                    }
+                }
+                foreach (var (rb, bodyType, velocity, angularVelocity) in _rigidbodies2D)
+                {
+                    if (rb != null)
+                    {
+                        rb.bodyType = bodyType;
+                        if (bodyType == RigidbodyType2D.Dynamic)
+                        {
+                            rb.linearVelocity = velocity;
+                            rb.angularVelocity = angularVelocity;
+                        }
+                    }
+                }
+                Debug.Log($"[UITEST] Restored {Count} rigidbodies");
+                _disposed = true;
+            }
+
+            public void Dispose() => Restore();
+        }
+
+        /// <summary>
+        /// Restoration token for NoClip/Clip operations. Implements IDisposable for using() pattern.
+        /// </summary>
+        public class ColliderState : IDisposable
+        {
+            private readonly List<(Collider col, bool wasEnabled)> _colliders;
+            private readonly List<(Collider2D col, bool wasEnabled)> _colliders2D;
+            private bool _disposed;
+
+            internal ColliderState()
+            {
+                _colliders = new List<(Collider, bool)>();
+                _colliders2D = new List<(Collider2D, bool)>();
+            }
+
+            internal void Add(Collider col)
+            {
+                _colliders.Add((col, col.enabled));
+            }
+
+            internal void Add(Collider2D col)
+            {
+                _colliders2D.Add((col, col.enabled));
+            }
+
+            /// <summary>Number of colliders affected.</summary>
+            public int Count => _colliders.Count + _colliders2D.Count;
+
+            /// <summary>Restores all colliders to their original enabled state.</summary>
+            public void Restore()
+            {
+                if (_disposed) return;
+                foreach (var (col, wasEnabled) in _colliders)
+                {
+                    if (col != null)
+                        col.enabled = wasEnabled;
+                }
+                foreach (var (col, wasEnabled) in _colliders2D)
+                {
+                    if (col != null)
+                        col.enabled = wasEnabled;
+                }
+                Debug.Log($"[UITEST] Restored {Count} colliders");
+                _disposed = true;
+            }
+
+            public void Dispose() => Restore();
+        }
+
+        /// <summary>
+        /// Restoration token for Teleport operations. Implements IDisposable for using() pattern.
+        /// </summary>
+        public class PositionState : IDisposable
+        {
+            private readonly Transform _transform;
+            private readonly Vector3 _originalPosition;
+            private bool _disposed;
+
+            internal PositionState(Transform t)
+            {
+                _transform = t;
+                _originalPosition = t.position;
+            }
+
+            /// <summary>Restores the GameObject to its original position.</summary>
+            public void Restore()
+            {
+                if (!_disposed && _transform != null)
+                {
+                    _transform.position = _originalPosition;
+                    Debug.Log($"[UITEST] Restored '{_transform.name}' to {_originalPosition}");
+                }
+                _disposed = true;
+            }
+
+            public void Dispose() => Restore();
+        }
+
+        /// <summary>
+        /// Disables the found GameObject (sets active to false).
+        /// </summary>
+        /// <returns>Restoration token - call .Restore() to re-enable</returns>
+        /// <example>
+        /// var state = Name("TutorialPanel").Disable();
+        /// // ... test code ...
+        /// state.Restore(); // Re-enables the panel
+        /// </example>
+        public ActiveState Disable()
+        {
+            var go = FindGameObjectFromSearchOrStatic();
+            var state = new ActiveState(go, go.activeSelf);
+            go.SetActive(false);
+            Debug.Log($"[UITEST] Disable '{go.name}'");
+            return state;
+        }
+
+        /// <summary>
+        /// Enables the found GameObject (sets active to true).
+        /// </summary>
+        /// <returns>Restoration token - call .Restore() to return to original state</returns>
+        /// <example>
+        /// var state = Name("SecretDoor").Enable();
+        /// // ... test code ...
+        /// state.Restore(); // Disables it again if it was originally disabled
+        /// </example>
+        public ActiveState Enable()
+        {
+            var go = FindGameObjectFromSearchOrStatic(includeInactive: true);
+            var state = new ActiveState(go, go.activeSelf);
+            go.SetActive(true);
+            Debug.Log($"[UITEST] Enable '{go.name}'");
+            return state;
+        }
+
+        /// <summary>
+        /// Freezes all rigidbodies by setting isKinematic=true and velocity to zero.
+        /// </summary>
+        /// <param name="includeChildren">Whether to also freeze children (default true)</param>
+        /// <returns>Restoration token - call .Restore() to unfreeze with original velocities</returns>
+        /// <example>
+        /// var state = Name("AITruck").Freeze();
+        /// // ... test code ...
+        /// state.Restore(); // Restores original isKinematic and velocities
+        /// </example>
+        public FreezeState Freeze(bool includeChildren = true)
+        {
+            var go = FindGameObjectFromSearchOrStatic();
+            var state = new FreezeState();
+
+            if (includeChildren)
+            {
+                foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true))
+                {
+                    state.Add(rb);
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    rb.isKinematic = true;
+                }
+                foreach (var rb2d in go.GetComponentsInChildren<Rigidbody2D>(true))
+                {
+                    state.Add(rb2d);
+                    rb2d.linearVelocity = Vector2.zero;
+                    rb2d.angularVelocity = 0f;
+                    rb2d.bodyType = RigidbodyType2D.Kinematic;
+                }
+            }
+            else
+            {
+                var rb = go.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    state.Add(rb);
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    rb.isKinematic = true;
+                }
+                var rb2d = go.GetComponent<Rigidbody2D>();
+                if (rb2d != null)
+                {
+                    state.Add(rb2d);
+                    rb2d.linearVelocity = Vector2.zero;
+                    rb2d.angularVelocity = 0f;
+                    rb2d.bodyType = RigidbodyType2D.Kinematic;
+                }
+            }
+
+            Debug.Log($"[UITEST] Freeze '{go.name}' - affected {state.Count} rigidbodies");
+            return state;
+        }
+
+        /// <summary>
+        /// Teleports the found GameObject to a world position instantly.
+        /// </summary>
+        /// <param name="worldPosition">Target world position</param>
+        /// <returns>Restoration token - call .Restore() to return to original position</returns>
+        /// <example>
+        /// var state = Name("Player").Teleport(new Vector3(100, 0, 50));
+        /// // ... test code ...
+        /// state.Restore(); // Returns player to original position
+        /// </example>
+        public PositionState Teleport(Vector3 worldPosition)
+        {
+            var go = FindGameObjectFromSearchOrStatic();
+            var state = new PositionState(go.transform);
+            go.transform.position = worldPosition;
+            Debug.Log($"[UITEST] Teleport '{go.name}' to {worldPosition}");
+            return state;
+        }
+
+        /// <summary>
+        /// Disables all colliders (noclip mode - objects pass through other colliders).
+        /// </summary>
+        /// <param name="includeChildren">Whether to also disable children's colliders (default true)</param>
+        /// <returns>Restoration token - call .Restore() to re-enable colliders</returns>
+        /// <example>
+        /// var state = Name("Player").NoClip();
+        /// // ... test code ...
+        /// state.Restore(); // Re-enables colliders that were originally enabled
+        /// </example>
+        public ColliderState NoClip(bool includeChildren = true)
+        {
+            var go = FindGameObjectFromSearchOrStatic();
+            var state = new ColliderState();
+
+            if (includeChildren)
+            {
+                foreach (var col in go.GetComponentsInChildren<Collider>(true))
+                {
+                    state.Add(col);
+                    col.enabled = false;
+                }
+                foreach (var col2d in go.GetComponentsInChildren<Collider2D>(true))
+                {
+                    state.Add(col2d);
+                    col2d.enabled = false;
+                }
+            }
+            else
+            {
+                foreach (var col in go.GetComponents<Collider>())
+                {
+                    state.Add(col);
+                    col.enabled = false;
+                }
+                foreach (var col2d in go.GetComponents<Collider2D>())
+                {
+                    state.Add(col2d);
+                    col2d.enabled = false;
+                }
+            }
+
+            Debug.Log($"[UITEST] NoClip '{go.name}' - disabled {state.Count} colliders");
+            return state;
+        }
+
+        /// <summary>
+        /// Enables all colliders (restore from noclip mode).
+        /// </summary>
+        /// <param name="includeChildren">Whether to also enable children's colliders (default true)</param>
+        /// <returns>Restoration token - call .Restore() to return to original state</returns>
+        /// <example>
+        /// var state = Name("Player").Clip();
+        /// // ... test code ...
+        /// state.Restore(); // Disables colliders that were originally disabled
+        /// </example>
+        public ColliderState Clip(bool includeChildren = true)
+        {
+            var go = FindGameObjectFromSearchOrStatic();
+            var state = new ColliderState();
+
+            if (includeChildren)
+            {
+                foreach (var col in go.GetComponentsInChildren<Collider>(true))
+                {
+                    state.Add(col);
+                    col.enabled = true;
+                }
+                foreach (var col2d in go.GetComponentsInChildren<Collider2D>(true))
+                {
+                    state.Add(col2d);
+                    col2d.enabled = true;
+                }
+            }
+            else
+            {
+                foreach (var col in go.GetComponents<Collider>())
+                {
+                    state.Add(col);
+                    col.enabled = true;
+                }
+                foreach (var col2d in go.GetComponents<Collider2D>())
+                {
+                    state.Add(col2d);
+                    col2d.enabled = true;
+                }
+            }
+
+            Debug.Log($"[UITEST] Clip '{go.name}' - enabled {state.Count} colliders");
+            return state;
+        }
+
+        /// <summary>
+        /// Helper to get a GameObject from either a static path or UI search.
+        /// </summary>
+        private GameObject FindGameObjectFromSearchOrStatic(bool includeInactive = false)
+        {
+            if (_isStaticPath)
+            {
+                // Static path - the value should be or contain a GameObject
+                if (_staticValue is GameObject go)
+                    return go;
+                if (_staticValue is Component comp)
+                    return comp.gameObject;
+                if (_staticValue is Transform t)
+                    return t.gameObject;
+
+                throw new InvalidOperationException(
+                    $"Cannot manipulate GameObject: Static path '{_staticPath}' resolved to '{_staticValue?.GetType().Name ?? "null"}', " +
+                    "expected GameObject, Component, or Transform");
+            }
+            else
+            {
+                // UI search
+                if (includeInactive)
+                    IncludeInactive();
+
+                var result = FindFirst();
+                if (result == null)
+                    throw new InvalidOperationException($"No GameObject found matching '{this}'");
+                return result;
             }
         }
 

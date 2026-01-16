@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.50] - 2026-01-16
+
+### Added
+- **GameObject manipulation methods on Search** - Direct methods on Search class for game object control:
+  - `.Disable()` - Deactivate a GameObject (returns `ActiveState`)
+  - `.Enable()` - Activate a GameObject, can find inactive objects (returns `ActiveState`)
+  - `.Freeze(includeChildren)` - Zero velocity and set kinematic on Rigidbodies (returns `FreezeState`)
+  - `.Teleport(Vector3)` - Move transform to world position (returns `PositionState`)
+  - `.NoClip(includeChildren)` - Disable all colliders (returns `ColliderState`)
+  - `.Clip(includeChildren)` - Enable all colliders (returns `ColliderState`)
+- **Restoration tokens** - All manipulation methods return state objects that can restore original state:
+  - `state.Restore()` - Manually restore to original state
+  - `state.Count` - Number of affected components
+  - Implements `IDisposable` for automatic restoration with `using()` pattern
+  - Example: `using (Name("Player").NoClip()) { /* colliders disabled */ } // auto-restored`
+- **Works on both UI searches and static paths**:
+  - `new Search().Name("Player").Freeze()`
+  - `Search.Static("GameManager.Instance.player").NoClip()`
+
 ## [1.0.49] - 2026-01-16
 
 ### Added
