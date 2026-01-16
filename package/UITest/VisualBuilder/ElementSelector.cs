@@ -83,6 +83,66 @@ namespace ODDGames.UITest.VisualBuilder
         }
 
         /// <summary>
+        /// Creates a selector by hierarchy path.
+        /// </summary>
+        public static ElementSelector ByPath(string path, string displayName = null)
+        {
+            return new ElementSelector
+            {
+                query = SearchQuery.Path(path),
+                displayName = displayName ?? path
+            };
+        }
+
+        /// <summary>
+        /// Creates a selector by sprite name.
+        /// </summary>
+        public static ElementSelector BySprite(string spriteName, string displayName = null)
+        {
+            return new ElementSelector
+            {
+                query = SearchQuery.Sprite(spriteName),
+                displayName = displayName ?? $"Sprite:{spriteName}"
+            };
+        }
+
+        /// <summary>
+        /// Creates a selector by Unity tag.
+        /// </summary>
+        public static ElementSelector ByTag(string tag, string displayName = null)
+        {
+            return new ElementSelector
+            {
+                query = SearchQuery.Tag(tag),
+                displayName = displayName ?? $"Tag:{tag}"
+            };
+        }
+
+        /// <summary>
+        /// Creates a selector that matches text, name, or path.
+        /// </summary>
+        public static ElementSelector ByAny(string pattern, string displayName = null)
+        {
+            return new ElementSelector
+            {
+                query = SearchQuery.Any(pattern),
+                displayName = displayName ?? pattern
+            };
+        }
+
+        /// <summary>
+        /// Creates a selector for elements near another element.
+        /// </summary>
+        public static ElementSelector NearTo(string targetText, string direction = null, string displayName = null)
+        {
+            return new ElementSelector
+            {
+                query = SearchQuery.Near(targetText, direction),
+                displayName = displayName ?? $"Near:{targetText}"
+            };
+        }
+
+        /// <summary>
         /// Adds a chain filter to the selector.
         /// </summary>
         public ElementSelector Near(string target, string direction = null)

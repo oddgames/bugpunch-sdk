@@ -16,32 +16,17 @@ MonoBehaviour:
   description: 
   startScene: Sample
   blocks:
-  - id: e4d64178-7cb7-4eaa-ba3f-4fe64477b2c5
+  - id: ba0efd02-3a95-4f3c-8d5d-60770ff1dc07
     type: 0
     isCollapsed: 0
     comment: 
     target:
       query:
         searchBase: text
-        value: Keyboard
+        value: Sett*
         direction: 
-        chain:
-        - method: type
-          value: TMP_Dropdown
-          search:
-            searchBase: 
-            value: 
-            direction: 
-            chain: []
-          direction: 
-          count: 0
-          index: 0
-          offset: 0
-          xMin: 0
-          yMin: 0
-          xMax: 0
-          yMax: 0
-      displayName: Keyboard
+        chain: []
+      displayName: '"Sett*"'
     text: 
     clearFirst: 1
     pressEnter: 0
@@ -61,6 +46,95 @@ MonoBehaviour:
     holdSeconds: 1
     sliderValue: 50
     scrollbarValue: 50
+    dropdownIndex: -1
+    dropdownLabel: 
+    keyName: Escape
+    keyHoldKeys: W
+    keyHoldDuration: 1
+    waitTimeout: 10
+    scrollContainer:
+      query:
+        searchBase: 
+        value: 
+        direction: 
+        chain: []
+      displayName: 
+    scrollMaxAttempts: 20
+    screenshotName: 
+    logMessage: 
+    assertCondition: 0
+    assertExpected: 
+    assertFloatValue: 0
+    assertVariance: 0.01
+    assertIntValue: 0
+    assertExpression: 
+    recordedInput:
+      events: []
+      duration: 0
+      description: 
+      targetElement:
+        query:
+          searchBase: 
+          value: 
+          direction: 
+          chain: []
+        displayName: 
+    persistentDataMode: 0
+    filePattern: 
+    dataSourceName: 
+    sceneName: 
+    additiveLoad: 0
+    customActionName: 
+    customActionParams: 
+    codeBody: 
+    codeIsAsync: 0
+    visualScriptTarget: 
+    visualScriptEvent: 
+    visualScriptArg: 
+    swipeDirection: up
+    swipeDistance: 0.3
+    swipeDuration: 0.3
+    pinchScale: 0.5
+    pinchDuration: 0.5
+    twoFingerSpacing: 0.03
+    rotateDegrees: 90
+    rotateDuration: 0.5
+    rotateFingerDistance: 0.05
+    forEachVariable: item
+    forEachMaxIterations: 100
+  - id: 23e82b5c-f0b0-4fd4-b509-3321ce896785
+    type: 9
+    isCollapsed: 0
+    comment: 
+    target:
+      query:
+        searchBase: adjacent
+        value: Music
+        direction: below
+        chain:
+        - rid: 6684657209645203519
+      displayName: near "Music"
+    text: 
+    clearFirst: 1
+    pressEnter: 0
+    dragTarget:
+      query:
+        searchBase: 
+        value: 
+        direction: 
+        chain: []
+      displayName: 
+    dragDirection: 
+    dragDistance: 0
+    dragDuration: 0.3
+    scrollDirection: down
+    scrollAmount: 0
+    waitSeconds: 0
+    holdSeconds: 1
+    sliderValue: 23
+    scrollbarValue: 50
+    dropdownIndex: -1
+    dropdownLabel: 
     keyName: Escape
     keyHoldKeys: W
     keyHoldDuration: 1
@@ -117,3 +191,23 @@ MonoBehaviour:
     forEachMaxIterations: 100
   testDataFiles: []
   originalPrompt: 
+  references:
+    version: 2
+    RefIds:
+    - rid: -2
+      type: {class: , ns: , asm: }
+    - rid: 6684657209645203519
+      type: {class: SearchChainItem, ns: ODDGames.UITest.AI, asm: ODDGames.UITest.AI}
+      data:
+        method: type
+        value: Slider
+        search:
+          rid: -2
+        direction: 
+        count: 0
+        index: 0
+        offset: 0
+        xMin: 0
+        yMin: 0
+        xMax: 0
+        yMax: 0

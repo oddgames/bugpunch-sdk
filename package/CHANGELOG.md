@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.41] - 2026-01-16
+
+### Added
+- **TestBuilder redesigned target editor** - Inline dropdown + text field instead of element picker popup
+  - Search type dropdown: Text, Name, Type, Path, Adjacent, Near, Sprite, Tag, Any
+  - Direction dropdown appears for Adjacent/Near search types
+  - Suggestions dropdown (▼) shows available elements from scene filtered by search type
+  - Target updates live as you type with visual indicator showing match location
+- **TargetOverlay** - Visual indicator showing where clicks will occur while editing blocks
+  - Crosshair with bounding box rendered via GL in Game view
+  - Updates in real-time as target selector changes
+- **SearchQuery factory methods**: `Path()`, `Sprite()`, `Tag()`, `Any()`, `Near()`
+- **ElementSelector factory methods**: `ByPath()`, `BySprite()`, `ByTag()`, `ByAny()`, `NearTo()`
+
+### Fixed
+- **VisualTestRunner block execution** for non-Selectable elements - Now creates ElementInfo on-the-fly
+- **Focus stealing in TestBuilder** - Editing fields no longer loses focus on value changes
+
 ## [1.0.40] - 2026-01-15
 
 ### Added

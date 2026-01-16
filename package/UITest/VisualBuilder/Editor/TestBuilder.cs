@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using Cysharp.Threading.Tasks;
 using ODDGames.UITest.AI;
+using UIImage = UnityEngine.UI.Image;
 
 namespace ODDGames.UITest.VisualBuilder.Editor
 {
@@ -74,6 +75,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             Undo.undoRedoPerformed += OnUndoRedo;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             SceneView.duringSceneGui += OnSceneGUI;
+            EditorApplication.update += OnEditorUpdate;
 
             // Restore state from session if we're recovering from domain reload
             RestoreSessionState();
@@ -84,8 +86,10 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             Undo.undoRedoPerformed -= OnUndoRedo;
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
             SceneView.duringSceneGui -= OnSceneGUI;
+            EditorApplication.update -= OnEditorUpdate;
             aiAssistant?.Dispose();
             CancelPicking();
+            TargetOverlay.Hide();
 
             // Save state to session for domain reload recovery
             SaveSessionState();
@@ -136,6 +140,72 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 if (selectedBlockIndex >= currentTest.blocks.Count)
                     selectedBlockIndex = currentTest.blocks.Count - 1;
                 RefreshBlockList();
+            }
+        }
+
+        private void OnEditorUpdate()
+        {
+            // Update target overlay when editing a block in play mode
+            if (EditorApplication.isPlaying && editingBlockIndex >= 0 && currentTest != null)
+            {
+                UpdateTargetOverlay();
+            }
+            else
+            {
+                TargetOverlay.Hide();
+            }
+        }
+
+        private void UpdateTargetOverlay()
+        {
+            if (currentTest == null || editingBlockIndex < 0 || editingBlockIndex >= currentTest.blocks.Count)
+            {
+                TargetOverlay.Hide();
+                return;
+            }
+
+            var block = currentTest.blocks[editingBlockIndex];
+            if (block.target?.query == null)
+            {
+                TargetOverlay.Hide();
+                return;
+            }
+
+            // Evaluate the Search to find the target element
+            try
+            {
+                var search = block.target.ToSearch();
+                if (search == null)
+                {
+                    TargetOverlay.Hide();
+                    return;
+                }
+
+                var target = search.FindFirst();
+                if (target == null)
+                {
+                    TargetOverlay.Hide();
+                    return;
+                }
+
+                // Get screen bounds of the target
+                var bounds = InputInjector.GetScreenBounds(target);
+                if (bounds.width <= 0 || bounds.height <= 0)
+                {
+                    TargetOverlay.Hide();
+                    return;
+                }
+
+                // Calculate center position
+                var centerX = bounds.x + bounds.width / 2f;
+                var centerY = bounds.y + bounds.height / 2f;
+
+                var label = block.target.GetDisplayText() ?? target.name;
+                TargetOverlay.Show(new Vector2(centerX, centerY), label, bounds);
+            }
+            catch
+            {
+                TargetOverlay.Hide();
             }
         }
 
@@ -1217,39 +1287,134 @@ namespace ODDGames.UITest.VisualBuilder.Editor
         private void AddTargetButton(VisualElement row, VisualBlock block, int index, bool canEdit, int maxWidth, bool canEditChain = false)
         {
             var hasValidTarget = block.target != null && block.target.IsValid();
-            // Allow chain editing if canEdit is true OR if canEditChain is explicitly true
             var chainEditable = canEdit || canEditChain;
-
-            // Build full display text including chain
-            var displayText = hasValidTarget ? GetFullTargetDisplay(block.target) : "[target]";
-
-            // Target label - shows full chain inline (clickable when editing)
-            var targetLabel = new Label(displayText);
-            targetLabel.style.fontSize = 10;
-            targetLabel.style.color = hasValidTarget ? Color.white : new Color(0.5f, 0.5f, 0.5f);
-            targetLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
-            targetLabel.style.overflow = Overflow.Hidden;
-            targetLabel.style.textOverflow = TextOverflow.Ellipsis;
-            targetLabel.style.maxWidth = maxWidth;
-            targetLabel.style.paddingLeft = 4;
-            targetLabel.style.paddingRight = 4;
-            targetLabel.style.marginRight = 2;
 
             if (canEdit)
             {
-                // Make it look clickable when editing
-                targetLabel.style.backgroundColor = new Color(0.25f, 0.25f, 0.3f);
-                targetLabel.style.borderTopLeftRadius = 3;
-                targetLabel.style.borderTopRightRadius = 3;
-                targetLabel.style.borderBottomLeftRadius = 3;
-                targetLabel.style.borderBottomRightRadius = 3;
-                targetLabel.RegisterCallback<ClickEvent>(evt => ShowTargetPicker(block, index));
+                // Editing mode: show dropdown + text field inline
+                AddTargetEditor(row, block, index, maxWidth, chainEditable && hasValidTarget);
+            }
+            else
+            {
+                // Display mode: show readonly label
+                var displayText = hasValidTarget ? GetFullTargetDisplay(block.target) : "[target]";
+                var targetLabel = new Label(displayText);
+                targetLabel.style.fontSize = 10;
+                targetLabel.style.color = hasValidTarget ? Color.white : new Color(0.5f, 0.5f, 0.5f);
+                targetLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+                targetLabel.style.overflow = Overflow.Hidden;
+                targetLabel.style.textOverflow = TextOverflow.Ellipsis;
+                targetLabel.style.maxWidth = maxWidth;
+                targetLabel.style.paddingLeft = 4;
+                targetLabel.style.paddingRight = 4;
+                row.Add(targetLabel);
+            }
+        }
+
+        private void AddTargetEditor(VisualElement row, VisualBlock block, int index, int maxWidth, bool showChainButton)
+        {
+            var searchTypes = new List<string> { "Text", "Name", "Type", "Path", "Adjacent", "Near", "Sprite", "Tag", "Any" };
+
+            // Get current search type
+            var currentType = block.target?.query?.searchBase ?? "text";
+            var typeIndex = searchTypes.FindIndex(t => t.ToLower() == currentType.ToLower());
+            if (typeIndex < 0) typeIndex = 0;
+
+            // Search type dropdown
+            var typeDropdown = new DropdownField(searchTypes, typeIndex);
+            typeDropdown.style.width = 65;
+            typeDropdown.style.height = 16;
+            typeDropdown.style.fontSize = 10;
+            typeDropdown.style.marginRight = 2;
+            row.Add(typeDropdown);
+
+            // Value text field with suggestions dropdown button
+            var valueContainer = new VisualElement();
+            valueContainer.style.flexDirection = FlexDirection.Row;
+            valueContainer.style.marginRight = 2;
+
+            var valueField = new TextField { value = block.target?.query?.value ?? "" };
+            valueField.style.width = maxWidth - 120;
+            valueField.style.minWidth = 50;
+            valueField.style.height = 16;
+            valueField.style.fontSize = 10;
+            valueField.style.marginRight = 0;
+            valueContainer.Add(valueField);
+
+            row.Add(valueContainer);
+
+            // Direction dropdown (only for Adjacent/Near)
+            var directions = new List<string> { "Right", "Left", "Above", "Below" };
+            var currentDir = block.target?.query?.direction ?? "right";
+            var dirIndex = directions.FindIndex(d => d.ToLower() == currentDir.ToLower());
+            if (dirIndex < 0) dirIndex = 0;
+
+            var dirDropdown = new DropdownField(directions, dirIndex);
+            dirDropdown.style.width = 55;
+            dirDropdown.style.height = 16;
+            dirDropdown.style.fontSize = 10;
+            dirDropdown.style.marginRight = 2;
+            dirDropdown.style.display = (currentType == "adjacent" || currentType == "near") ? DisplayStyle.Flex : DisplayStyle.None;
+            row.Add(dirDropdown);
+
+            // Suggestions dropdown button (added after dirDropdown so we can reference it)
+            var suggestBtn = new Button(() => ShowValueSuggestions(valueField, typeDropdown, dirDropdown, block, index))
+            {
+                text = "▼",
+                tooltip = "Show suggestions from scene"
+            };
+            suggestBtn.style.width = 16;
+            suggestBtn.style.height = 16;
+            suggestBtn.style.fontSize = 8;
+            suggestBtn.style.paddingLeft = 0;
+            suggestBtn.style.paddingRight = 0;
+            suggestBtn.style.marginLeft = 0;
+            suggestBtn.style.backgroundColor = new Color(0.35f, 0.35f, 0.35f);
+            suggestBtn.style.borderTopLeftRadius = 0;
+            suggestBtn.style.borderBottomLeftRadius = 0;
+            suggestBtn.style.borderTopRightRadius = 3;
+            suggestBtn.style.borderBottomRightRadius = 3;
+            valueContainer.Add(suggestBtn);
+
+            // Update visibility when type changes - use SetValueWithoutNotify to avoid focus stealing
+            typeDropdown.RegisterValueChangedCallback(e =>
+            {
+                var newType = e.newValue.ToLower();
+                dirDropdown.style.display = (newType == "adjacent" || newType == "near") ? DisplayStyle.Flex : DisplayStyle.None;
+                UpdateTargetFromEditor(block, index, newType, valueField.value, dirDropdown.value.ToLower());
+            });
+
+            // Update target when value changes
+            valueField.RegisterValueChangedCallback(e =>
+            {
+                var type = typeDropdown.value.ToLower();
+                UpdateTargetFromEditor(block, index, type, e.newValue, dirDropdown.value.ToLower());
+            });
+
+            // Update target when direction changes
+            dirDropdown.RegisterValueChangedCallback(e =>
+            {
+                var type = typeDropdown.value.ToLower();
+                UpdateTargetFromEditor(block, index, type, valueField.value, e.newValue.ToLower());
+            });
+
+            // Chain display and add button
+            var hasChain = block.target?.query?.chain != null && block.target.query.chain.Count > 0;
+            if (hasChain)
+            {
+                var chainLabel = new Label(GetChainInlineDisplay(block.target.query.chain));
+                chainLabel.style.fontSize = 9;
+                chainLabel.style.color = new Color(0.6f, 0.8f, 0.6f);
+                chainLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+                chainLabel.style.overflow = Overflow.Hidden;
+                chainLabel.style.textOverflow = TextOverflow.Ellipsis;
+                chainLabel.style.maxWidth = 100;
+                chainLabel.RegisterCallback<ClickEvent>(evt => ShowChainPicker(block, index));
+                row.Add(chainLabel);
             }
 
-            row.Add(targetLabel);
-
-            // Always show "+" button when editing and have a valid target
-            if (chainEditable && hasValidTarget)
+            // Show "+" button when we have a valid target value
+            if (showChainButton || !string.IsNullOrEmpty(valueField.value))
             {
                 var chainBtn = new Button(() => ShowChainPicker(block, index))
                 {
@@ -1269,6 +1434,133 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 chainBtn.style.borderBottomRightRadius = 3;
                 row.Add(chainBtn);
             }
+        }
+
+        private void UpdateTargetFromEditor(VisualBlock block, int index, string searchType, string value, string direction)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                // Clear target if value is empty
+                if (block.target != null)
+                {
+                    Undo.RecordObject(currentTest, "Clear target");
+                    block.target = null;
+                    OnBlockChanged(index);
+                }
+                return;
+            }
+
+            Undo.RecordObject(currentTest, "Set target");
+
+            // Preserve existing chain
+            var existingChain = block.target?.query?.chain;
+
+            // Create new selector based on type
+            block.target = searchType switch
+            {
+                "text" => ElementSelector.ByText(value),
+                "name" => ElementSelector.ByName(value),
+                "type" => ElementSelector.ByType(value),
+                "path" => ElementSelector.ByPath(value),
+                "adjacent" => ElementSelector.Adjacent(value, direction),
+                "near" => ElementSelector.NearTo(value, direction),
+                "sprite" => ElementSelector.BySprite(value),
+                "tag" => ElementSelector.ByTag(value),
+                "any" => ElementSelector.ByAny(value),
+                _ => ElementSelector.ByText(value)
+            };
+
+            // Restore chain
+            if (existingChain != null && existingChain.Count > 0)
+            {
+                block.target.query.chain = existingChain;
+            }
+
+            OnBlockChanged(index);
+        }
+
+        private void ShowValueSuggestions(TextField valueField, DropdownField typeDropdown, DropdownField dirDropdown, VisualBlock block, int index)
+        {
+            var searchType = typeDropdown.value.ToLower();
+            var suggestions = GetSuggestionsForType(searchType);
+
+            if (suggestions.Count == 0)
+            {
+                statusLabel.text = "No suggestions available - enter play mode to discover elements";
+                return;
+            }
+
+            // Create popup menu with suggestions
+            var menu = new GenericMenu();
+
+            foreach (var suggestion in suggestions.Take(20)) // Limit to 20 items
+            {
+                var value = suggestion;
+                menu.AddItem(new GUIContent(TruncateText(value, 40)), false, () =>
+                {
+                    valueField.SetValueWithoutNotify(value);
+                    UpdateTargetFromEditor(block, index, searchType, value, dirDropdown.value.ToLower());
+                });
+            }
+
+            if (suggestions.Count > 20)
+            {
+                menu.AddDisabledItem(new GUIContent($"... and {suggestions.Count - 20} more"));
+            }
+
+            menu.ShowAsContext();
+        }
+
+        private List<string> GetSuggestionsForType(string searchType)
+        {
+            var suggestions = new HashSet<string>();
+
+            // Always refresh elements when in play mode to get latest scene state
+            if (EditorApplication.isPlaying)
+            {
+                currentElements = ElementDiscovery.DiscoverElements();
+            }
+
+            if (currentElements == null || currentElements.Count == 0)
+                return suggestions.ToList();
+
+            // Only show enabled Selectables (buttons, toggles, sliders, dropdowns, etc.)
+            foreach (var elem in currentElements)
+            {
+                if (!elem.isEnabled) continue;
+
+                switch (searchType)
+                {
+                    case "text":
+                        if (!string.IsNullOrEmpty(elem.text) && !elem.text.StartsWith("(placeholder"))
+                            suggestions.Add(elem.text);
+                        break;
+
+                    case "name":
+                        if (!string.IsNullOrEmpty(elem.name))
+                            suggestions.Add(elem.name);
+                        break;
+
+                    case "type":
+                        // Show element types: button, slider, toggle, dropdown, etc.
+                        if (!string.IsNullOrEmpty(elem.type))
+                            suggestions.Add(elem.type);
+                        break;
+
+                    case "adjacent":
+                    case "near":
+                    case "any":
+                    default:
+                        // Show text and names for everything else
+                        if (!string.IsNullOrEmpty(elem.text) && !elem.text.StartsWith("(placeholder"))
+                            suggestions.Add(elem.text);
+                        if (!string.IsNullOrEmpty(elem.name))
+                            suggestions.Add(elem.name);
+                        break;
+                }
+            }
+
+            return suggestions.OrderBy(s => s).ToList();
         }
 
         private string GetFullTargetDisplay(ElementSelector selector)
@@ -1773,12 +2065,13 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 foreach (var elem in currentElements)
                 {
                     var e = elem;
-                    // Show: Name/Text (type) @ position
+                    // Show: Name/Text (type) @ position - this is the default quick-pick option
                     var label = !string.IsNullOrEmpty(e.text) ? e.text : e.name;
                     var centerX = (int)(e.bounds.x + e.bounds.width / 2);
                     var centerY = (int)(e.bounds.y + e.bounds.height / 2);
                     var display = $"{label} ({e.type}) @ ({centerX},{centerY})";
 
+                    // Default: quick pick using best identifier (text or name)
                     menu.AddItem(new GUIContent(display), false, () =>
                     {
                         Undo.RecordObject(currentTest, "Set target");
@@ -1788,6 +2081,88 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                         OnBlockChanged(index);
                         RefreshBlockList();
                     });
+
+                    // Add submenu with search options for this element
+                    var submenuPath = $"{display}/";
+
+                    // Search by Text (if element has text)
+                    if (!string.IsNullOrEmpty(e.text))
+                    {
+                        var text = e.text;
+                        menu.AddItem(new GUIContent($"{submenuPath}Text: \"{TruncateDisplay(text)}\""), false, () =>
+                        {
+                            Undo.RecordObject(currentTest, "Set target");
+                            block.target = ElementSelector.ByText(text, $"Text(\"{TruncateDisplay(text)}\")");
+                            OnBlockChanged(index);
+                            RefreshBlockList();
+                        });
+                    }
+
+                    // Search by Name
+                    if (!string.IsNullOrEmpty(e.name))
+                    {
+                        var name = e.name;
+                        menu.AddItem(new GUIContent($"{submenuPath}Name: \"{TruncateDisplay(name)}\""), false, () =>
+                        {
+                            Undo.RecordObject(currentTest, "Set target");
+                            block.target = ElementSelector.ByName(name, $"Name(\"{TruncateDisplay(name)}\")");
+                            OnBlockChanged(index);
+                            RefreshBlockList();
+                        });
+                    }
+
+                    // Search by Type
+                    var typeName = GetSearchTypeName(e.type, e.componentType);
+                    if (!string.IsNullOrEmpty(typeName))
+                    {
+                        menu.AddItem(new GUIContent($"{submenuPath}Type: {typeName}"), false, () =>
+                        {
+                            Undo.RecordObject(currentTest, "Set target");
+                            block.target = ElementSelector.ByType(typeName, $"Type<{typeName}>");
+                            OnBlockChanged(index);
+                            RefreshBlockList();
+                        });
+                    }
+
+                    // Search by Path
+                    if (!string.IsNullOrEmpty(e.path))
+                    {
+                        var path = e.path;
+                        menu.AddItem(new GUIContent($"{submenuPath}Path: {TruncateDisplay(path, 40)}"), false, () =>
+                        {
+                            Undo.RecordObject(currentTest, "Set target");
+                            block.target = ElementSelector.ByPath(path, $"Path(\"{TruncateDisplay(path, 30)}\")");
+                            OnBlockChanged(index);
+                            RefreshBlockList();
+                        });
+                    }
+
+                    // Search by Sprite (if element has an Image with sprite)
+                    var spriteName = GetSpriteName(e.gameObject);
+                    if (!string.IsNullOrEmpty(spriteName))
+                    {
+                        menu.AddItem(new GUIContent($"{submenuPath}Sprite: \"{spriteName}\""), false, () =>
+                        {
+                            Undo.RecordObject(currentTest, "Set target");
+                            block.target = ElementSelector.BySprite(spriteName, $"Sprite(\"{spriteName}\")");
+                            OnBlockChanged(index);
+                            RefreshBlockList();
+                        });
+                    }
+
+                    // Search by Adjacent label (if element has adjacent label)
+                    if (!string.IsNullOrEmpty(e.adjacentLabel) && !string.IsNullOrEmpty(e.adjacentDirection))
+                    {
+                        var adjLabel = e.adjacentLabel;
+                        var adjDir = e.adjacentDirection;
+                        menu.AddItem(new GUIContent($"{submenuPath}Adjacent: \"{TruncateDisplay(adjLabel)}\" ({adjDir})"), false, () =>
+                        {
+                            Undo.RecordObject(currentTest, "Set target");
+                            block.target = ElementSelector.Adjacent(adjLabel, adjDir, $"Adjacent(\"{TruncateDisplay(adjLabel)}\", {adjDir})");
+                            OnBlockChanged(index);
+                            RefreshBlockList();
+                        });
+                    }
                 }
             }
 
@@ -1806,6 +2181,65 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             });
 
             menu.ShowAsContext();
+        }
+
+        /// <summary>
+        /// Truncates a string for display in menus.
+        /// </summary>
+        private static string TruncateDisplay(string text, int maxLength = 25)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            if (text.Length <= maxLength) return text;
+            return text.Substring(0, maxLength - 3) + "...";
+        }
+
+        /// <summary>
+        /// Gets the Search API type name from element type and component type.
+        /// </summary>
+        private static string GetSearchTypeName(string elementType, string componentType)
+        {
+            // Map common element types to their Search API type names
+            return elementType?.ToLower() switch
+            {
+                "button" => "Button",
+                "toggle (on)" or "toggle (off)" => "Toggle",
+                "slider" => "Slider",
+                "input" => "InputField",
+                "dropdown" => "Dropdown",
+                "scrollview" => "ScrollRect",
+                "selectable" => "Selectable",
+                _ => !string.IsNullOrEmpty(componentType) ? GetShortTypeName(componentType) : null
+            };
+        }
+
+        /// <summary>
+        /// Gets the short type name from a full component type name.
+        /// </summary>
+        private static string GetShortTypeName(string fullTypeName)
+        {
+            if (string.IsNullOrEmpty(fullTypeName)) return null;
+            var lastDot = fullTypeName.LastIndexOf('.');
+            return lastDot >= 0 ? fullTypeName.Substring(lastDot + 1) : fullTypeName;
+        }
+
+        /// <summary>
+        /// Gets the sprite name from a GameObject if it has an Image component with a sprite.
+        /// </summary>
+        private static string GetSpriteName(GameObject go)
+        {
+            if (go == null) return null;
+
+            // Check for UI Image
+            var image = go.GetComponentInChildren<UIImage>();
+            if (image != null && image.sprite != null)
+                return image.sprite.name;
+
+            // Check for SpriteRenderer
+            var sr = go.GetComponentInChildren<SpriteRenderer>();
+            if (sr != null && sr.sprite != null)
+                return sr.sprite.name;
+
+            return null;
         }
 
         // === Block Operations ===
@@ -1860,12 +2294,14 @@ namespace ODDGames.UITest.VisualBuilder.Editor
             RefreshBlockList();
         }
 
-        private void OnBlockChanged(int index)
+        private void OnBlockChanged(int index, bool refreshList = false)
         {
             if (index == editingBlockIndex)
             {
                 blockHasUnsavedChanges = true;
-                RefreshBlockList();
+                // Only refresh if explicitly requested, to avoid focus stealing during typing
+                if (refreshList)
+                    RefreshBlockList();
             }
         }
 
