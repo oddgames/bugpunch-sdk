@@ -462,7 +462,7 @@ namespace ODDGames.UITest.Tests
             sprite.name = "btn_play_icon";
             image.sprite = sprite;
             yield return null;
-            var search = new Search().Sprite("btn_*_icon");
+            var search = new Search().Texture("btn_*_icon");
             Assert.IsTrue(search.Matches(go));
             Object.Destroy(sprite);
             Object.Destroy(texture);
@@ -474,7 +474,7 @@ namespace ODDGames.UITest.Tests
             var go = CreateTestObject("NoSpriteObj");
             go.AddComponent<Image>();
             yield return null;
-            var search = new Search().Sprite("any_sprite");
+            var search = new Search().Texture("any_sprite");
             Assert.IsFalse(search.Matches(go));
         }
 
@@ -488,7 +488,7 @@ namespace ODDGames.UITest.Tests
             sprite.name = "other_sprite";
             image.sprite = sprite;
             yield return null;
-            var search = new Search().Sprite("btn_*_icon");
+            var search = new Search().Texture("btn_*_icon");
             Assert.IsFalse(search.Matches(go));
             Object.Destroy(sprite);
             Object.Destroy(texture);
@@ -592,7 +592,7 @@ namespace ODDGames.UITest.Tests
             sprite.name = "icon_settings";
             image.sprite = sprite;
             yield return null;
-            var search = new Search().Type<Image>().Sprite("icon_*");
+            var search = new Search().Type<Image>().Texture("icon_*");
             Assert.IsTrue(search.Matches(go));
             Object.Destroy(sprite);
             Object.Destroy(texture);

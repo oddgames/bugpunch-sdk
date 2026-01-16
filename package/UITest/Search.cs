@@ -295,28 +295,33 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Match elements by sprite name (Image or SpriteRenderer). Supports wildcards (*).
+        /// Match elements by their texture or sprite name. Supports wildcards (*) and OR (|).
+        /// Searches all visual components: Image.sprite, RawImage.texture, SpriteRenderer.sprite,
+        /// Renderer material textures (main texture, normal map, emission), and UI Toolkit backgrounds.
         /// </summary>
-        /// <param name="pattern">The sprite name pattern to match. Use * for wildcards.</param>
+        /// <param name="pattern">The texture/sprite name pattern to match. Use * for wildcards.</param>
         /// <returns>This Search instance for chaining.</returns>
         /// <example>
         /// <code>
-        /// // Find elements with specific icon
-        /// new Search().Sprite("icon_settings")
+        /// // Find UI elements with specific icon
+        /// new Search().Texture("icon_settings")
         ///
-        /// // Find elements with icon prefix
-        /// new Search().Sprite("icon_*")
+        /// // Find RawImage with texture
+        /// new Search().Texture("avatar_*")
         ///
-        /// // Find button with specific sprite
-        /// new Search().Type&lt;Button&gt;().Sprite("btn_primary")
+        /// // Find 3D object with material texture
+        /// new Search().Texture("wood_diffuse")
+        ///
+        /// // Find any visual with texture pattern
+        /// new Search().Texture("*player*|*avatar*")
         /// </code>
         /// </example>
-        public Search Sprite(string pattern)
+        public Search Texture(string pattern)
         {
-            AddDescription($"Sprite(\"{pattern}\")");
+            AddDescription($"Texture(\"{pattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
-            _conditions.Add(go => negate != MatchSprite(go, pattern));
+            _conditions.Add(go => negate != MatchTexture(go, pattern));
             return this;
         }
 
@@ -400,7 +405,7 @@ namespace ODDGames.UITest
             {
                 bool match = WildcardMatch(go.name, pattern)
                           || MatchText(go, pattern)
-                          || MatchSprite(go, pattern)
+                          || MatchTexture(go, pattern)
                           || WildcardMatch(GetHierarchyPath(go.transform), pattern);
                 return negate != match;
             });
@@ -558,7 +563,7 @@ namespace ODDGames.UITest
         /// new Search().Name("*Panel*").HasChild(new Search().Type&lt;Button&gt;())
         ///
         /// // Find containers with a specific icon child
-        /// new Search().HasChild(new Search().Sprite("icon_star"))
+        /// new Search().HasChild(new Search().Texture("icon_star"))
         /// </code>
         /// </example>
         public Search HasChild(Search childSearch)
@@ -656,7 +661,7 @@ namespace ODDGames.UITest
         /// new Search().Type&lt;TMP_InputField&gt;().HasSibling(new Search().Type&lt;TMP_Text&gt;())
         ///
         /// // Find buttons that have a sibling icon
-        /// new Search().Type&lt;Button&gt;().HasSibling(new Search().Sprite("icon_*"))
+        /// new Search().Type&lt;Button&gt;().HasSibling(new Search().Texture("icon_*"))
         /// </code>
         /// </example>
         public Search HasSibling(Search siblingSearch)
@@ -1408,9 +1413,10 @@ namespace ODDGames.UITest
             bool searchInactive = includeInactive ?? ShouldIncludeInactive;
             var findMode = searchInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
 
-            var allMatching = UnityEngine.Object.FindObjectsByType<RectTransform>(findMode, FindObjectsSortMode.None)
-                .Where(rt => rt != null && Matches(rt.gameObject))
-                .Select(rt => rt.gameObject)
+            // Search all Transform objects (includes RectTransform) to support both UI and non-UI objects
+            var allMatching = UnityEngine.Object.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None)
+                .Where(t => t != null && Matches(t.gameObject))
+                .Select(t => t.gameObject)
                 .ToList();
 
             if (HasPostProcessing)
@@ -2042,15 +2048,71 @@ namespace ODDGames.UITest
             return false;
         }
 
-        static bool MatchSprite(GameObject go, string pattern)
+        // Cached shader property IDs for texture lookups (initialized once)
+        static readonly int[] TexturePropertyIds = new[]
         {
+            Shader.PropertyToID("_MainTex"),
+            Shader.PropertyToID("_BaseMap"),
+            Shader.PropertyToID("_BaseColorMap"),
+            Shader.PropertyToID("_BumpMap"),
+            Shader.PropertyToID("_NormalMap"),
+            Shader.PropertyToID("_DetailNormalMap"),
+            Shader.PropertyToID("_EmissionMap"),
+            Shader.PropertyToID("_EmissiveColorMap"),
+            Shader.PropertyToID("_MetallicGlossMap"),
+            Shader.PropertyToID("_MaskMap"),
+            Shader.PropertyToID("_OcclusionMap"),
+            Shader.PropertyToID("_ParallaxMap"),
+            Shader.PropertyToID("_HeightMap"),
+            Shader.PropertyToID("_DetailAlbedoMap"),
+            Shader.PropertyToID("_DetailMask"),
+            Shader.PropertyToID("_SpecGlossMap"),
+        };
+
+        static bool MatchTexture(GameObject go, string pattern)
+        {
+            // Unity UI Image (uses Sprite)
             var image = go.GetComponentInChildren<Image>();
             if (image != null && image.sprite != null && WildcardMatch(image.sprite.name, pattern))
                 return true;
 
+            // Unity UI RawImage (uses Texture)
+            var rawImage = go.GetComponentInChildren<RawImage>();
+            if (rawImage != null && rawImage.texture != null && WildcardMatch(rawImage.texture.name, pattern))
+                return true;
+
+            // 2D SpriteRenderer (uses Sprite) - check sprite name directly
             var sr = go.GetComponentInChildren<SpriteRenderer>();
             if (sr != null && sr.sprite != null && WildcardMatch(sr.sprite.name, pattern))
                 return true;
+
+            // All Renderer types (MeshRenderer, SkinnedMeshRenderer, ParticleSystemRenderer,
+            // LineRenderer, TrailRenderer, SpriteRenderer, BillboardRenderer, etc.)
+            var renderers = go.GetComponentsInChildren<Renderer>();
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null) continue;
+
+                foreach (var mat in renderer.sharedMaterials)
+                {
+                    if (mat == null) continue;
+
+                    // Check main texture (uses cached property internally)
+                    if (mat.mainTexture != null && WildcardMatch(mat.mainTexture.name, pattern))
+                        return true;
+
+                    // Check common texture properties using cached property IDs
+                    foreach (var propId in TexturePropertyIds)
+                    {
+                        if (mat.HasProperty(propId))
+                        {
+                            var tex = mat.GetTexture(propId);
+                            if (tex != null && WildcardMatch(tex.name, pattern))
+                                return true;
+                        }
+                    }
+                }
+            }
 
             return false;
         }
@@ -2266,6 +2328,7 @@ namespace ODDGames.UITest
             GameObject bestElement = null;
             float bestScore = float.MaxValue;
 
+            // Adjacent() is for UI form fields, so we search RectTransform (uses GetWorldCorners)
             var allRects = UnityEngine.Object.FindObjectsByType<RectTransform>(FindObjectsSortMode.None);
             Vector2 textCenter = textBounds.center;
 

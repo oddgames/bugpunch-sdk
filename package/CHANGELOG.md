@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.46] - 2026-01-16
+
+### Changed
+- **`Sprite()` replaced with `Texture()`** - More comprehensive texture matching across all visual components:
+  - Matches `Image.sprite.name`, `RawImage.texture.name`, `SpriteRenderer.sprite.name`
+  - Matches all Renderer types: MeshRenderer, SkinnedMeshRenderer, ParticleSystemRenderer, LineRenderer, TrailRenderer, etc.
+  - Searches material textures: `mainTexture`, `_BaseMap`, `_NormalMap`, `_EmissionMap`, and other common shader properties
+  - Uses cached Shader property IDs for efficient texture property lookups
+- **`Search.FindAll()` now searches all GameObjects** - Changed from RectTransform-only to Transform-based search, enabling search of non-UI objects like SpriteRenderers and MeshRenderers
+
+### Removed
+- **`Sprite()` search method** - Use `Texture()` instead, which provides the same functionality plus support for all renderer types
+
 ## [1.0.45] - 2026-01-16
 
 ### Added

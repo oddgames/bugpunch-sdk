@@ -120,7 +120,7 @@ await Click(new Search("Play"));  // Constructor shorthand for text search
 | `Text(pattern)` | Match by visible text (TMP_Text or Text) | `Text("Submit")`, `Text("Level *")` |
 | `Type<T>()` | Match by component type | `Type<Button>()`, `Type<Slider>()` |
 | `Type(name)` | Match by type name string | `Type("*Button*")` |
-| `Sprite(pattern)` | Match by sprite name | `Sprite("icon_*")` |
+| `Texture(pattern)` | Match by texture/sprite name (Image, RawImage, SpriteRenderer, Renderer materials) | `Texture("icon_*")` |
 | `Path(pattern)` | Match by hierarchy path | `Path("*/Panel/Button*")` |
 | `Tag(tag)` | Match by Unity tag | `Tag("Player")` |
 | `Any(pattern)` | Match name, text, sprite, or path | `Any("*Settings*")` |

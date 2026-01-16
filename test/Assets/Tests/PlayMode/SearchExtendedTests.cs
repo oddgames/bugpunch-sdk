@@ -501,6 +501,201 @@ namespace ODDGames.UITest.Tests
 
         #endregion
 
+        #region Texture Tests
+
+        [UnityTest]
+        public IEnumerator Texture_MatchesImageSpriteName()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("SpriteBtn", Vector2.zero);
+                // Create and assign a sprite with a known name
+                var texture = new Texture2D(32, 32);
+                var sprite = Sprite.Create(texture, new Rect(0, 0, 32, 32), Vector2.one * 0.5f);
+                sprite.name = "TestIconSprite_Unique123";
+                button.GetComponent<Image>().sprite = sprite;
+
+                await UniTask.Yield();
+
+                // Use Name filter to get exact element, verify texture matches
+                var results = new Search().Name("SpriteBtn").Texture("TestIconSprite_Unique123").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find element by sprite name");
+                Assert.AreEqual("SpriteBtn", results[0].name);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Texture_MatchesImageSpriteNameWithWildcard()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("IconBtnWildcard", Vector2.zero);
+                var texture = new Texture2D(32, 32);
+                var sprite = Sprite.Create(texture, new Rect(0, 0, 32, 32), Vector2.one * 0.5f);
+                sprite.name = "uniqueicon_settings_gear_xyz";
+                button.GetComponent<Image>().sprite = sprite;
+
+                await UniTask.Yield();
+
+                // Verify the specific button is found with wildcard patterns
+                var results = new Search().Name("IconBtnWildcard").Texture("uniqueicon_*").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find element by sprite wildcard pattern");
+
+                results = new Search().Name("IconBtnWildcard").Texture("*settings*").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find element by middle wildcard");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Texture_MatchesRawImageTextureName()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create RawImage with texture
+                var go = new GameObject("RawImageObj");
+                go.transform.SetParent(_canvas.transform, false);
+                var rect = go.AddComponent<RectTransform>();
+                rect.sizeDelta = new Vector2(100, 100);
+                var rawImage = go.AddComponent<RawImage>();
+                var texture = new Texture2D(64, 64);
+                texture.name = "unique_avatar_texture_01_xyz";
+                rawImage.texture = texture;
+                _createdObjects.Add(go);
+
+                await UniTask.Yield();
+
+                // Verify exact match by name + texture
+                var results = new Search().Name("RawImageObj").Texture("unique_avatar_texture_01_xyz").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find RawImage by texture name");
+
+                results = new Search().Name("RawImageObj").Texture("unique_avatar_*").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find RawImage by texture wildcard");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Texture_MatchesSpriteRenderer()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create 2D SpriteRenderer
+                var go = new GameObject("SpriteRendererObj");
+                var sr = go.AddComponent<SpriteRenderer>();
+                var texture = new Texture2D(32, 32);
+                var sprite = Sprite.Create(texture, new Rect(0, 0, 32, 32), Vector2.one * 0.5f);
+                sprite.name = "unique_player_idle_anim_xyz";
+                sr.sprite = sprite;
+                _createdObjects.Add(go);
+
+                await UniTask.Yield();
+
+                // Verify exact match
+                var results = new Search().Name("SpriteRendererObj").Texture("unique_player_idle_anim_xyz").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find SpriteRenderer by sprite name");
+
+                results = new Search().Name("SpriteRendererObj").Texture("*idle*").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find SpriteRenderer by wildcard");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Texture_MatchesMeshRendererMaterial()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Create 3D object with mesh and material
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                go.name = "TexturedCubeUnique";
+                var renderer = go.GetComponent<MeshRenderer>();
+                var material = new Material(Shader.Find("Standard"));
+                var texture = new Texture2D(64, 64);
+                texture.name = "unique_wood_diffuse_01_xyz";
+                material.mainTexture = texture;
+                renderer.sharedMaterial = material;
+                _createdObjects.Add(go);
+
+                await UniTask.Yield();
+
+                // Verify the specific cube is found
+                var results = new Search().Name("TexturedCubeUnique").Texture("unique_wood_diffuse_01_xyz").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find MeshRenderer by material texture name");
+
+                results = new Search().Name("TexturedCubeUnique").Texture("unique_wood_*").FindAll();
+                Assert.AreEqual(1, results.Count, "Should find MeshRenderer by texture wildcard");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Texture_MatchesOrPattern()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("OrPatternBtn1", new Vector2(-50, 0));
+                var tex1 = new Texture2D(32, 32);
+                var sprite1 = Sprite.Create(tex1, new Rect(0, 0, 32, 32), Vector2.one * 0.5f);
+                sprite1.name = "unique_play_icon_xyz";
+                btn1.GetComponent<Image>().sprite = sprite1;
+
+                var btn2 = CreateButton("OrPatternBtn2", new Vector2(50, 0));
+                var tex2 = new Texture2D(32, 32);
+                var sprite2 = Sprite.Create(tex2, new Rect(0, 0, 32, 32), Vector2.one * 0.5f);
+                sprite2.name = "unique_pause_icon_xyz";
+                btn2.GetComponent<Image>().sprite = sprite2;
+
+                await UniTask.Yield();
+
+                // Filter by name pattern to get only our buttons, then verify texture OR works
+                var results = new Search().Name("OrPatternBtn*").Texture("unique_play_icon_xyz|unique_pause_icon_xyz").FindAll();
+                Assert.AreEqual(2, results.Count, "Should find both buttons with OR pattern");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Texture_ChainsWithOtherFilters()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var btn1 = CreateButton("ChainIconBtn1", new Vector2(-50, 0));
+                var tex1 = new Texture2D(32, 32);
+                var sprite1 = Sprite.Create(tex1, new Rect(0, 0, 32, 32), Vector2.one * 0.5f);
+                sprite1.name = "unique_icon_star_xyz";
+                btn1.GetComponent<Image>().sprite = sprite1;
+
+                var btn2 = CreateButton("ChainIconBtn2", new Vector2(50, 0));
+                btn2.interactable = false;
+                var tex2 = new Texture2D(32, 32);
+                var sprite2 = Sprite.Create(tex2, new Rect(0, 0, 32, 32), Vector2.one * 0.5f);
+                sprite2.name = "unique_icon_star_xyz";
+                btn2.GetComponent<Image>().sprite = sprite2;
+
+                await UniTask.Yield();
+
+                // Find only interactable buttons with icon_star among our specific buttons
+                var results = new Search().Name("ChainIconBtn*").Texture("unique_icon_star_xyz").Interactable().FindAll();
+                Assert.AreEqual(1, results.Count, "Should find only interactable button");
+                Assert.AreEqual("ChainIconBtn1", results[0].name);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Texture_DoesNotMatchWhenNoTexture()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Button with no sprite assigned
+                var button = CreateButton("NoTextureBtnUnique", Vector2.zero);
+                button.GetComponent<Image>().sprite = null;
+
+                await UniTask.Yield();
+
+                // Search for our specific button and verify it doesn't match any texture pattern
+                var results = new Search().Name("NoTextureBtnUnique").Texture("*anytexture*").FindAll();
+                Assert.AreEqual(0, results.Count, "Should not match element with no texture");
+            });
+        }
+
+        #endregion
+
         #region Combined Chain Tests
 
         [UnityTest]

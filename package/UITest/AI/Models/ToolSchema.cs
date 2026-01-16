@@ -52,7 +52,7 @@ namespace ODDGames.UITest.AI
                     {
                         Type = "string",
                         Description = "Base search method",
-                        Enum = new List<string> { "text", "name", "type", "adjacent", "path", "any", "sprite", "tag" }
+                        Enum = new List<string> { "text", "name", "type", "adjacent", "path", "any", "texture", "tag" }
                     },
                     ["value"] = new ToolProperty
                     {

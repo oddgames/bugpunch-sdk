@@ -95,14 +95,14 @@ namespace ODDGames.UITest.VisualBuilder
         }
 
         /// <summary>
-        /// Creates a selector by sprite name.
+        /// Creates a selector by texture/sprite name.
         /// </summary>
-        public static ElementSelector BySprite(string spriteName, string displayName = null)
+        public static ElementSelector ByTexture(string textureName, string displayName = null)
         {
             return new ElementSelector
             {
-                query = SearchQuery.Sprite(spriteName),
-                displayName = displayName ?? $"Sprite:{spriteName}"
+                query = SearchQuery.Texture(textureName),
+                displayName = displayName ?? $"Texture:{textureName}"
             };
         }
 
@@ -220,7 +220,7 @@ namespace ODDGames.UITest.VisualBuilder
                 "adjacent" => $"Adjacent(\"{query.value}\", {query.direction ?? "?"})",
                 "near" => $"Near(\"{query.value}\")",
                 "path" => $"Path(\"{query.value}\")",
-                "sprite" => $"Sprite(\"{query.value}\")",
+                "texture" => $"Texture(\"{query.value}\")",
                 "tag" => $"Tag(\"{query.value}\")",
                 "any" => $"Any(\"{query.value}\")",
                 _ => query.value ?? "(unknown)"
