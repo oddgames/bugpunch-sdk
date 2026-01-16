@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.45] - 2026-01-16
+
+### Added
+- **Unity type value shortcuts** - New properties for common Unity structs:
+  - `Vector3Value` - get Vector3 from static path or element transform
+  - `Vector2Value` - get Vector2 from static path or RectTransform
+  - `ColorValue` - get Color from static path or Image/Text color
+  - `QuaternionValue` - get Quaternion from static path or transform rotation
+
+- **Spatial positioning helpers** - Methods for checking element positions:
+  - Screen-space: `ScreenCenter`, `ScreenBounds`, `IsAbove()`, `IsBelow()`, `IsLeftOf()`, `IsRightOf()`, `DistanceTo()`, `Overlaps()`, `Contains()`, `IsHorizontallyAligned()`, `IsVerticallyAligned()`
+  - World-space: `WorldPosition`, `WorldBounds`, `WorldDistanceTo()`, `WorldIntersects()`, `WorldContains()`, `IsInFrontOf()`, `IsBehind()`
+
+### Changed
+- **`GetValue<T>()` now supports Unity types** - Direct cast for Vector3, Color, Quaternion, etc. before falling back to Convert.ChangeType
+
 ## [1.0.44] - 2026-01-16
 
 ### Added

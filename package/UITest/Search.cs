@@ -1587,6 +1587,127 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Gets a Vector3 value from the current search.
+        /// For static paths, returns the value cast to Vector3.
+        /// For UI elements, gets RectTransform position.
+        /// </summary>
+        public Vector3 Vector3Value
+        {
+            get
+            {
+                if (_isStaticPath)
+                {
+                    if (_staticValue == null)
+                        throw new InvalidOperationException($"Vector3Value failed: Static path '{_staticPath}' resolved to null");
+                    if (_staticValue is Vector3 v3) return v3;
+                    if (_staticValue is Vector2 v2) return v2;
+                    throw new InvalidOperationException($"Vector3Value failed: Static path '{_staticPath}' is not a Vector3 (type: {_staticValue.GetType().Name})");
+                }
+
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"Vector3Value failed: No UI element found matching '{ToString()}'");
+
+                var rt = go.GetComponent<RectTransform>();
+                if (rt != null) return rt.anchoredPosition3D;
+
+                return go.transform.position;
+            }
+        }
+
+        /// <summary>
+        /// Gets a Vector2 value from the current search.
+        /// For static paths, returns the value cast to Vector2.
+        /// For UI elements, gets RectTransform anchoredPosition.
+        /// </summary>
+        public Vector2 Vector2Value
+        {
+            get
+            {
+                if (_isStaticPath)
+                {
+                    if (_staticValue == null)
+                        throw new InvalidOperationException($"Vector2Value failed: Static path '{_staticPath}' resolved to null");
+                    if (_staticValue is Vector2 v2) return v2;
+                    if (_staticValue is Vector3 v3) return new Vector2(v3.x, v3.y);
+                    throw new InvalidOperationException($"Vector2Value failed: Static path '{_staticPath}' is not a Vector2 (type: {_staticValue.GetType().Name})");
+                }
+
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"Vector2Value failed: No UI element found matching '{ToString()}'");
+
+                var rt = go.GetComponent<RectTransform>();
+                if (rt != null) return rt.anchoredPosition;
+
+                return go.transform.position;
+            }
+        }
+
+        /// <summary>
+        /// Gets a Color value from the current search.
+        /// For static paths, returns the value cast to Color.
+        /// For UI elements, gets Image or Text color.
+        /// </summary>
+        public Color ColorValue
+        {
+            get
+            {
+                if (_isStaticPath)
+                {
+                    if (_staticValue == null)
+                        throw new InvalidOperationException($"ColorValue failed: Static path '{_staticPath}' resolved to null");
+                    if (_staticValue is Color c) return c;
+                    if (_staticValue is Color32 c32) return c32;
+                    throw new InvalidOperationException($"ColorValue failed: Static path '{_staticPath}' is not a Color (type: {_staticValue.GetType().Name})");
+                }
+
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"ColorValue failed: No UI element found matching '{ToString()}'");
+
+                var image = go.GetComponent<Image>();
+                if (image != null) return image.color;
+
+                var rawImage = go.GetComponent<RawImage>();
+                if (rawImage != null) return rawImage.color;
+
+                var tmp = go.GetComponent<TMP_Text>();
+                if (tmp != null) return tmp.color;
+
+                var text = go.GetComponent<Text>();
+                if (text != null) return text.color;
+
+                throw new InvalidOperationException($"ColorValue failed: Element '{go.name}' has no Image, RawImage, or Text component");
+            }
+        }
+
+        /// <summary>
+        /// Gets a Quaternion value from the current search.
+        /// For static paths, returns the value cast to Quaternion.
+        /// For UI elements, gets Transform rotation.
+        /// </summary>
+        public Quaternion QuaternionValue
+        {
+            get
+            {
+                if (_isStaticPath)
+                {
+                    if (_staticValue == null)
+                        throw new InvalidOperationException($"QuaternionValue failed: Static path '{_staticPath}' resolved to null");
+                    if (_staticValue is Quaternion q) return q;
+                    throw new InvalidOperationException($"QuaternionValue failed: Static path '{_staticPath}' is not a Quaternion (type: {_staticValue.GetType().Name})");
+                }
+
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"QuaternionValue failed: No UI element found matching '{ToString()}'");
+
+                return go.transform.rotation;
+            }
+        }
+
+        /// <summary>
         /// Gets the dropdown options as a string array.
         /// For static paths, returns the array if it's a string[].
         /// </summary>
@@ -1610,6 +1731,225 @@ namespace ODDGames.UITest
 
                 return Array.Empty<string>();
             }
+        }
+
+        #endregion
+
+        #region Spatial Helpers
+
+        /// <summary>
+        /// Gets the screen-space center position of the UI element.
+        /// </summary>
+        public Vector2 ScreenCenter
+        {
+            get
+            {
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"ScreenCenter failed: No UI element found matching '{ToString()}'");
+
+                var rt = go.GetComponent<RectTransform>();
+                if (rt != null)
+                {
+                    var corners = new Vector3[4];
+                    rt.GetWorldCorners(corners);
+                    var center = (corners[0] + corners[2]) / 2f;
+                    var canvas = rt.GetComponentInParent<Canvas>();
+                    if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay && canvas.worldCamera != null)
+                        return RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, center);
+                    return center;
+                }
+
+                // For 3D objects, project to screen
+                var cam = Camera.main;
+                if (cam != null)
+                    return cam.WorldToScreenPoint(go.transform.position);
+
+                return go.transform.position;
+            }
+        }
+
+        /// <summary>
+        /// Gets the screen-space bounds of the UI element as a Rect.
+        /// </summary>
+        public Rect ScreenBounds
+        {
+            get
+            {
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"ScreenBounds failed: No UI element found matching '{ToString()}'");
+
+                var rt = go.GetComponent<RectTransform>();
+                if (rt != null)
+                {
+                    var corners = new Vector3[4];
+                    rt.GetWorldCorners(corners);
+                    var canvas = rt.GetComponentInParent<Canvas>();
+                    if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay && canvas.worldCamera != null)
+                    {
+                        for (int i = 0; i < 4; i++)
+                            corners[i] = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, corners[i]);
+                    }
+                    float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+                    float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+                    float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+                    float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+                    return new Rect(minX, minY, maxX - minX, maxY - minY);
+                }
+
+                // For 3D objects, use renderer bounds projected to screen
+                var renderer = go.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    var cam = Camera.main;
+                    if (cam != null)
+                    {
+                        var bounds = renderer.bounds;
+                        var min = cam.WorldToScreenPoint(bounds.min);
+                        var max = cam.WorldToScreenPoint(bounds.max);
+                        return new Rect(min.x, min.y, max.x - min.x, max.y - min.y);
+                    }
+                }
+
+                return new Rect(go.transform.position.x, go.transform.position.y, 0, 0);
+            }
+        }
+
+        /// <summary>
+        /// Gets the world-space position (3D).
+        /// </summary>
+        public Vector3 WorldPosition
+        {
+            get
+            {
+                if (_isStaticPath)
+                {
+                    if (_staticValue is Vector3 v3) return v3;
+                    throw new InvalidOperationException($"WorldPosition failed: Static path '{_staticPath}' is not a Vector3");
+                }
+
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"WorldPosition failed: No element found matching '{ToString()}'");
+
+                return go.transform.position;
+            }
+        }
+
+        /// <summary>
+        /// Gets the world-space bounds (3D) from Renderer or Collider.
+        /// </summary>
+        public Bounds WorldBounds
+        {
+            get
+            {
+                if (_isStaticPath && _staticValue is Bounds b)
+                    return b;
+
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"WorldBounds failed: No element found matching '{ToString()}'");
+
+                var renderer = go.GetComponent<Renderer>();
+                if (renderer != null) return renderer.bounds;
+
+                var collider = go.GetComponent<Collider>();
+                if (collider != null) return collider.bounds;
+
+                // Fall back to position with zero size
+                return new Bounds(go.transform.position, Vector3.zero);
+            }
+        }
+
+        /// <summary>
+        /// Returns true if this element is above another element in screen space.
+        /// </summary>
+        public bool IsAbove(Search other) => ScreenCenter.y > other.ScreenCenter.y;
+
+        /// <summary>
+        /// Returns true if this element is below another element in screen space.
+        /// </summary>
+        public bool IsBelow(Search other) => ScreenCenter.y < other.ScreenCenter.y;
+
+        /// <summary>
+        /// Returns true if this element is to the left of another element in screen space.
+        /// </summary>
+        public bool IsLeftOf(Search other) => ScreenCenter.x < other.ScreenCenter.x;
+
+        /// <summary>
+        /// Returns true if this element is to the right of another element in screen space.
+        /// </summary>
+        public bool IsRightOf(Search other) => ScreenCenter.x > other.ScreenCenter.x;
+
+        /// <summary>
+        /// Returns the screen-space distance between the centers of two elements.
+        /// </summary>
+        public float DistanceTo(Search other) => Vector2.Distance(ScreenCenter, other.ScreenCenter);
+
+        /// <summary>
+        /// Returns the world-space distance between two elements.
+        /// </summary>
+        public float WorldDistanceTo(Search other) => Vector3.Distance(WorldPosition, other.WorldPosition);
+
+        /// <summary>
+        /// Returns true if this element's screen bounds overlap with another element's bounds.
+        /// </summary>
+        public bool Overlaps(Search other) => ScreenBounds.Overlaps(other.ScreenBounds);
+
+        /// <summary>
+        /// Returns true if this element's screen bounds fully contain another element's bounds.
+        /// </summary>
+        public bool Contains(Search other)
+        {
+            var thisBounds = ScreenBounds;
+            var otherBounds = other.ScreenBounds;
+            return thisBounds.Contains(new Vector2(otherBounds.xMin, otherBounds.yMin)) &&
+                   thisBounds.Contains(new Vector2(otherBounds.xMax, otherBounds.yMax));
+        }
+
+        /// <summary>
+        /// Returns true if two elements are horizontally aligned (same Y center within tolerance).
+        /// </summary>
+        public bool IsHorizontallyAligned(Search other, float tolerance = 10f)
+            => Mathf.Abs(ScreenCenter.y - other.ScreenCenter.y) <= tolerance;
+
+        /// <summary>
+        /// Returns true if two elements are vertically aligned (same X center within tolerance).
+        /// </summary>
+        public bool IsVerticallyAligned(Search other, float tolerance = 10f)
+            => Mathf.Abs(ScreenCenter.x - other.ScreenCenter.x) <= tolerance;
+
+        /// <summary>
+        /// Returns true if this element is in front of another in world space (closer to camera).
+        /// </summary>
+        public bool IsInFrontOf(Search other)
+        {
+            var cam = Camera.main;
+            if (cam == null) return false;
+            var thisDistance = Vector3.Distance(cam.transform.position, WorldPosition);
+            var otherDistance = Vector3.Distance(cam.transform.position, other.WorldPosition);
+            return thisDistance < otherDistance;
+        }
+
+        /// <summary>
+        /// Returns true if this element is behind another in world space (further from camera).
+        /// </summary>
+        public bool IsBehind(Search other) => !IsInFrontOf(other);
+
+        /// <summary>
+        /// Returns true if this element's world bounds intersect with another element's bounds.
+        /// </summary>
+        public bool WorldIntersects(Search other) => WorldBounds.Intersects(other.WorldBounds);
+
+        /// <summary>
+        /// Returns true if this element's world bounds fully contain another element's bounds.
+        /// </summary>
+        public bool WorldContains(Search other)
+        {
+            var thisBounds = WorldBounds;
+            var otherBounds = other.WorldBounds;
+            return thisBounds.Contains(otherBounds.min) && thisBounds.Contains(otherBounds.max);
         }
 
         #endregion
@@ -2350,10 +2690,16 @@ namespace ODDGames.UITest
 
             if (value is T typedValue) return typedValue;
 
-            try { return (T)Convert.ChangeType(value, typeof(T)); }
-            catch (Exception ex)
+            // For Unity types and other non-convertible types, try direct cast
+            try { return (T)value; }
+            catch (InvalidCastException)
             {
-                throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Cannot convert value '{value}' (type: {value.GetType().Name}) to {typeof(T).Name}. {ex.Message}", ex);
+                // Fall back to Convert.ChangeType for primitive conversions
+                try { return (T)Convert.ChangeType(value, typeof(T)); }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Cannot convert value '{value}' (type: {value.GetType().Name}) to {typeof(T).Name}. {ex.Message}", ex);
+                }
             }
         }
 
