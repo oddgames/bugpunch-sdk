@@ -58,6 +58,10 @@ namespace ODDGames.UITest.Tests
                     UnityEngine.Object.Destroy(obj);
             }
             _createdObjects.Clear();
+
+            // Clean up static test data
+            TestTrucks.PlayerTruck = null;
+            TestTrucks.PlayerTrucks = null;
         }
 
         #region Click Tests
@@ -299,7 +303,7 @@ namespace ODDGames.UITest.Tests
                 var endScreen = startScreen + new Vector2(200, 0);
 
                 // Start drag and track max position reached during operation
-                var dragTask = ActionExecutor.DragFromToAsync(startScreen, endScreen, 0.3f);
+                var dragTask = ActionExecutor.DragFromToAsync(startScreen, endScreen, 1.0f, 0f); // Skip hold for faster test
 
                 // Poll position every frame during drag
                 while (!dragTask.Status.IsCompleted())
@@ -328,7 +332,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Start drag and track max position reached during operation
-                var dragTask = ActionExecutor.DragAsync(draggable, new Vector2(100, 0), 0.3f);
+                var dragTask = ActionExecutor.DragAsync(draggable, new Vector2(100, 0), 1.0f, 0f); // Skip hold for faster test
 
                 // Poll position every frame during drag
                 while (!dragTask.Status.IsCompleted())
@@ -427,7 +431,7 @@ namespace ODDGames.UITest.Tests
                 slider.value = 0.2f;
 
                 await UniTask.Yield();
-                await ActionExecutor.DragSliderAsync(slider, 0.2f, 0.9f, 0.3f);
+                await ActionExecutor.DragSliderAsync(slider, 0.2f, 0.9f, 1.0f, 0f); // Skip hold for faster test
 
                 Assert.Greater(slider.value, 0.5f, "Slider should have moved toward 90%");
             });
@@ -548,10 +552,23 @@ namespace ODDGames.UITest.Tests
                 for (int i = 0; i < buttons.Length; i++)
                 {
                     int idx = i;
-                    buttons[i].onClick.AddListener(() => clickCounts[idx]++);
+                    buttons[i].onClick.AddListener(() =>
+                    {
+                        clickCounts[idx]++;
+                        Debug.Log($"[TEST] Button {idx} clicked, count={clickCounts[idx]}");
+                    });
                 }
 
-                await UniTask.Yield();
+                // Force layout rebuild and wait for it to settle
+                Canvas.ForceUpdateCanvases();
+                await UniTask.DelayFrame(5);
+
+                // Log button positions for debugging
+                foreach (var btn in buttons)
+                {
+                    var pos = InputInjector.GetScreenPosition(btn.gameObject);
+                    Debug.Log($"[TEST] Button '{btn.name}' at screen pos ({pos.x:F0}, {pos.y:F0})");
+                }
 
                 // Create helper to access protected method
                 var helperGO = new GameObject("ClickScrollHelper");
@@ -560,6 +577,12 @@ namespace ODDGames.UITest.Tests
                 _createdObjects.Add(helperGO);
 
                 await helper.TestClickScrollItems(new Search().Name("TestScrollView"));
+
+                // Wait for any pending events
+                await UniTask.DelayFrame(2);
+
+                // Log final counts
+                Debug.Log($"[TEST] Final counts: {clickCounts[0]}, {clickCounts[1]}, {clickCounts[2]}");
 
                 // Each button should have been clicked once
                 Assert.AreEqual(1, clickCounts[0], "Button 0 should be clicked once");
@@ -1072,8 +1095,10 @@ namespace ODDGames.UITest.Tests
                 btnRect.sizeDelta = new Vector2(-20, 35);
                 btnRect.anchoredPosition = new Vector2(0, -i * 40 - 2);
 
-                btnGO.AddComponent<Image>().color = new Color(0.4f, 0.4f, 0.4f);
-                btnGO.AddComponent<Button>();
+                var image = btnGO.AddComponent<Image>();
+                image.color = new Color(0.4f, 0.4f, 0.4f);
+                var button = btnGO.AddComponent<Button>();
+                button.targetGraphic = image;
             }
 
             scrollRect.content = contentRect;
@@ -1508,6 +1533,210 @@ namespace ODDGames.UITest.Tests
 
         #endregion
 
+        #region StaticPath - Basic Resolution
+
+        [UnityTest]
+        public IEnumerator StaticPath_ResolvesObject()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTruck = new TruckController { Name = "MainTruck", Health = 100f };
+                await UniTask.Yield();
+
+                var path = Search.Static("TestTrucks.PlayerTruck");
+                Assert.IsNotNull(path.Value);
+                Assert.AreEqual("MainTruck", path.GetValue<string>("Name"));
+                Assert.AreEqual(100f, path.GetValue<float>("Health"));
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator StaticPath_ResolvesNestedProperty()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTruck = new TruckController
+                {
+                    Name = "MainTruck",
+                    DamageController = new DamageController { MaxHealth = 150f, IsDamaged = true }
+                };
+                await UniTask.Yield();
+
+                var damage = Search.Static("TestTrucks.PlayerTruck").Property("DamageController");
+                Assert.AreEqual(150f, damage.GetValue<float>("MaxHealth"));
+                Assert.IsTrue(damage.GetValue<bool>("IsDamaged"));
+            });
+        }
+
+        #endregion
+
+        #region StaticPath - Value Properties
+
+        [UnityTest]
+        public IEnumerator StaticPath_AllBasicTypes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTruck = new TruckController
+                {
+                    Name = "TestTruck",
+                    IsActive = true,
+                    Count = 42,
+                    Health = 85.5f,
+                    Precision = 3.14159265359,
+                    BigNumber = 9876543210L
+                };
+                await UniTask.Yield();
+
+                var truck = Search.Static("TestTrucks.PlayerTruck");
+
+                // String
+                Assert.AreEqual("TestTruck", truck.Property("Name").StringValue);
+
+                // Bool
+                Assert.IsTrue(truck.Property("IsActive").BoolValue);
+
+                // Int
+                Assert.AreEqual(42, truck.Property("Count").IntValue);
+
+                // Float
+                Assert.AreEqual(85.5f, truck.Property("Health").FloatValue, 0.01f);
+
+                // Double via FloatValue
+                Assert.AreEqual(3.14f, truck.Property("Precision").FloatValue, 0.01f);
+
+                // Long via IntValue (truncates)
+                Assert.AreEqual(9876543210L, truck.Property("BigNumber").GetValue<long>());
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator StaticPath_ArrayProperties()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTruck = new TruckController
+                {
+                    Tags = new[] { "fast", "red", "turbo" },
+                    Scores = new[] { 100, 200, 300 },
+                    Multipliers = new[] { 1.5f, 2.0f, 2.5f }
+                };
+                await UniTask.Yield();
+
+                var truck = Search.Static("TestTrucks.PlayerTruck");
+
+                // String array
+                var tags = truck.Property("Tags").GetValue<string[]>();
+                Assert.AreEqual(3, tags.Length);
+                Assert.AreEqual("fast", tags[0]);
+
+                // Int array
+                var scores = truck.Property("Scores").GetValue<int[]>();
+                Assert.AreEqual(300, scores[2]);
+
+                // Float array
+                var multipliers = truck.Property("Multipliers").GetValue<float[]>();
+                Assert.AreEqual(2.0f, multipliers[1], 0.01f);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator StaticPath_BoolValue_OnNonBool_ReturnsFalse()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTruck = new TruckController { Name = "TestTruck" };
+                await UniTask.Yield();
+
+                // BoolValue on a string should return false
+                Assert.IsFalse(Search.Static("TestTrucks.PlayerTruck").Property("Name").BoolValue);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator StaticPath_AccessesPrivateField()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTruck = new TruckController();
+                TestTrucks.PlayerTruck.SetSecretCode("SECRET");
+                await UniTask.Yield();
+
+                Assert.AreEqual("SECRET", Search.Static("TestTrucks.PlayerTruck").Property("_secretCode").StringValue);
+            });
+        }
+
+        #endregion
+
+        #region StaticPath - Array Iteration
+
+        [UnityTest]
+        public IEnumerator StaticPath_IteratesArray()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTrucks = new[]
+                {
+                    new TruckController { Name = "Truck1" },
+                    new TruckController { Name = "Truck2" },
+                    new TruckController { Name = "Truck3" }
+                };
+                await UniTask.Yield();
+
+                var names = new List<string>();
+                foreach (var truck in Search.Static("TestTrucks.PlayerTrucks"))
+                {
+                    names.Add(truck.GetValue<string>("Name"));
+                }
+
+                Assert.AreEqual(3, names.Count);
+                Assert.Contains("Truck1", names);
+                Assert.Contains("Truck2", names);
+                Assert.Contains("Truck3", names);
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator StaticPath_IteratesWithNestedAccess()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTrucks = new[]
+                {
+                    new TruckController { DamageController = new DamageController { MaxHealth = 100f } },
+                    new TruckController { DamageController = new DamageController { MaxHealth = 200f } }
+                };
+                await UniTask.Yield();
+
+                float total = 0f;
+                foreach (var truck in Search.Static("TestTrucks.PlayerTrucks"))
+                {
+                    total += truck.Property("DamageController").GetValue<float>("MaxHealth");
+                }
+
+                Assert.AreEqual(300f, total, 0.01f);
+            });
+        }
+
+        #endregion
+
+        #region GetValue - Static Paths
+
+        [UnityTest]
+        public IEnumerator GetValue_ResolvesStaticPath()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                TestTrucks.PlayerTruck = new TruckController { Name = "GetValueTruck", Health = 42f };
+                await UniTask.Yield();
+
+                Assert.AreEqual("GetValueTruck", ActionExecutor.GetValue<string>("TestTrucks.PlayerTruck.Name"));
+                Assert.AreEqual(42f, ActionExecutor.GetValue<float>("TestTrucks.PlayerTruck.Health"), 0.01f);
+            });
+        }
+
+        #endregion
+
         #region Static Path WaitFor Tests
 
         [UnityTest]
@@ -1648,4 +1877,56 @@ namespace ODDGames.UITest.Tests
 
         public void OnEndDrag(PointerEventData eventData) { }
     }
+
+    #region Mock Classes for StaticPath Tests
+
+    /// <summary>
+    /// Mock static class simulating Generator.Trucks hierarchy.
+    /// Used for testing StaticPath resolution with static classes.
+    /// </summary>
+    public static class TestTrucks
+    {
+        /// <summary>Single truck instance for testing</summary>
+        public static TruckController PlayerTruck { get; set; }
+
+        /// <summary>Array of trucks for testing iteration</summary>
+        public static TruckController[] PlayerTrucks { get; set; }
+    }
+
+    /// <summary>
+    /// Mock truck controller for testing StaticPath property access.
+    /// </summary>
+    public class TruckController
+    {
+        // Basic C# types
+        public string Name { get; set; }
+        public bool IsActive { get; set; }
+        public int Count { get; set; }
+        public float Health { get; set; }
+        public double Precision { get; set; }
+        public long BigNumber { get; set; }
+
+        // Array types
+        public string[] Tags { get; set; }
+        public int[] Scores { get; set; }
+        public float[] Multipliers { get; set; }
+
+        // Nested object
+        public DamageController DamageController { get; set; }
+
+        // Private field for testing private access
+        private string _secretCode = "ABC123";
+        public void SetSecretCode(string code) => _secretCode = code;
+    }
+
+    /// <summary>
+    /// Mock damage controller for testing nested property access.
+    /// </summary>
+    public class DamageController
+    {
+        public float MaxHealth { get; set; }
+        public bool IsDamaged { get; set; }
+    }
+
+    #endregion
 }

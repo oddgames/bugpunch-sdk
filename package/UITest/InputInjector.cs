@@ -865,24 +865,32 @@ namespace ODDGames.UITest
         /// Injects a drag gesture using the appropriate input method for the platform.
         /// Uses touch on mobile (iOS/Android), mouse on desktop.
         /// </summary>
-        public static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration)
+        /// <param name="startPos">Start position in screen coordinates</param>
+        /// <param name="endPos">End position in screen coordinates</param>
+        /// <param name="duration">Duration of the drag movement (minimum 1 second)</param>
+        /// <param name="holdTime">Time to hold at start position before dragging (default 0.5s)</param>
+        public static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f)
         {
             await EnsureGameViewFocusAsync();
 
             if (ShouldUseTouchInput())
             {
-                await InjectTouchDrag(startPos, endPos, duration);
+                await InjectTouchDrag(startPos, endPos, duration, holdTime);
                 return;
             }
 
-            await InjectMouseDrag(startPos, endPos, duration);
+            await InjectMouseDrag(startPos, endPos, duration, holdTime);
         }
 
         /// <summary>
         /// Injects a mouse drag from start to end position using the Input System.
         /// Uses frame-based yields to ensure Unity processes events each frame (matching touch behavior).
         /// </summary>
-        public static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration)
+        /// <param name="startPos">Start position in screen coordinates</param>
+        /// <param name="endPos">End position in screen coordinates</param>
+        /// <param name="duration">Duration of the drag movement</param>
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        public static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f)
         {
             var mouse = Mouse.current;
             if (mouse == null)
@@ -891,9 +899,8 @@ namespace ODDGames.UITest
                 return;
             }
 
-            LogDebug($"MouseDrag start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s");
+            LogDebug($"MouseDrag start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s hold={holdTime}s");
 
-            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60)); // ~60fps
             Vector2 previousPos = startPos;
 
             // Move mouse to start position
@@ -919,10 +926,31 @@ namespace ODDGames.UITest
 
             LogDebug($"MouseDrag mouse down at ({startPos.x:F0},{startPos.y:F0})");
 
-            // Interpolate mouse position over duration with frame-based yields (like touch)
-            for (int i = 1; i <= totalFrames; i++)
+            // Hold at start position before dragging (real-time based)
+            if (holdTime > 0)
             {
-                float t = (float)i / totalFrames;
+                float holdEndTime = Time.realtimeSinceStartup + holdTime;
+                while (Time.realtimeSinceStartup < holdEndTime)
+                {
+                    using (StateEvent.From(mouse, out var holdPtr))
+                    {
+                        mouse.position.WriteValueIntoEvent(startPos, holdPtr);
+                        mouse.delta.WriteValueIntoEvent(Vector2.zero, holdPtr);
+                        mouse.leftButton.WriteValueIntoEvent(1f, holdPtr);
+                        InputSystem.QueueEvent(holdPtr);
+                    }
+                    InputSystem.Update();
+                    await UniTask.Yield();
+                }
+                LogDebug($"MouseDrag held for {holdTime}s");
+            }
+
+            // Interpolate mouse position over duration (real-time based)
+            float dragStartTime = Time.realtimeSinceStartup;
+            float dragEndTime = dragStartTime + duration;
+            while (Time.realtimeSinceStartup < dragEndTime)
+            {
+                float t = Mathf.Clamp01((Time.realtimeSinceStartup - dragStartTime) / duration);
                 Vector2 currentPos = Vector2.Lerp(startPos, endPos, t);
                 Vector2 delta = currentPos - previousPos;
 
@@ -938,6 +966,16 @@ namespace ODDGames.UITest
                 previousPos = currentPos;
                 await UniTask.Yield(); // Frame-based to ensure event processing
             }
+
+            // Ensure we reach the final position
+            using (StateEvent.From(mouse, out var finalPtr))
+            {
+                mouse.position.WriteValueIntoEvent(endPos, finalPtr);
+                mouse.delta.WriteValueIntoEvent(endPos - previousPos, finalPtr);
+                mouse.leftButton.WriteValueIntoEvent(1f, finalPtr);
+                InputSystem.QueueEvent(finalPtr);
+            }
+            InputSystem.Update();
 
             // Mouse button up at end
             using (StateEvent.From(mouse, out var upPtr))
@@ -960,7 +998,11 @@ namespace ODDGames.UITest
         /// Injects a single-finger touch drag gesture using the Input System.
         /// Used on mobile platforms (iOS/Android).
         /// </summary>
-        public static async UniTask InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration)
+        /// <param name="startPos">Start position in screen coordinates</param>
+        /// <param name="endPos">End position in screen coordinates</param>
+        /// <param name="duration">Duration of the drag movement</param>
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        public static async UniTask InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f)
         {
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
@@ -974,7 +1016,6 @@ namespace ODDGames.UITest
             }
 
             const int touchId = 1;
-            int totalFrames = Mathf.Max(5, Mathf.RoundToInt(duration * 60));
             Vector2 previousPos = startPos;
 
             // Touch began
@@ -990,10 +1031,32 @@ namespace ODDGames.UITest
             InputSystem.Update();
             await UniTask.Yield();
 
-            // Touch moved (interpolate)
-            for (int i = 1; i < totalFrames; i++)
+            // Hold at start position before dragging (real-time based, send Stationary events)
+            if (holdTime > 0)
             {
-                float t = (float)i / totalFrames;
+                float holdEndTime = Time.realtimeSinceStartup + holdTime;
+                while (Time.realtimeSinceStartup < holdEndTime)
+                {
+                    using (StateEvent.From(touchscreen, out var holdPtr))
+                    {
+                        touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, holdPtr);
+                        touchscreen.touches[0].position.WriteValueIntoEvent(startPos, holdPtr);
+                        touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, holdPtr);
+                        touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Stationary, holdPtr);
+                        touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, holdPtr);
+                        InputSystem.QueueEvent(holdPtr);
+                    }
+                    InputSystem.Update();
+                    await UniTask.Yield();
+                }
+            }
+
+            // Touch moved (real-time based interpolation)
+            float dragStartTime = Time.realtimeSinceStartup;
+            float dragEndTime = dragStartTime + duration;
+            while (Time.realtimeSinceStartup < dragEndTime)
+            {
+                float t = Mathf.Clamp01((Time.realtimeSinceStartup - dragStartTime) / duration);
                 Vector2 currentPos = Vector2.Lerp(startPos, endPos, t);
                 Vector2 delta = currentPos - previousPos;
 
@@ -1010,6 +1073,18 @@ namespace ODDGames.UITest
                 previousPos = currentPos;
                 await UniTask.Yield();
             }
+
+            // Ensure we reach the final position
+            using (StateEvent.From(touchscreen, out var finalPtr))
+            {
+                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, finalPtr);
+                touchscreen.touches[0].position.WriteValueIntoEvent(endPos, finalPtr);
+                touchscreen.touches[0].delta.WriteValueIntoEvent(endPos - previousPos, finalPtr);
+                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Moved, finalPtr);
+                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, finalPtr);
+                InputSystem.QueueEvent(finalPtr);
+            }
+            InputSystem.Update();
 
             // Touch ended
             using (StateEvent.From(touchscreen, out var endPtr))

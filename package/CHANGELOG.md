@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.43] - 2026-01-16
+
+### Fixed
+- **`Click(GameObject)` clicking at wrong position** - Added `Click(GameObject)`, `DoubleClick(GameObject)`, `TripleClick(GameObject)` overloads to fix incorrect click position when clicking GameObjects directly (e.g., in `ClickScrollItems`)
+
+### Changed
+- **Drag operations now hold at start position** - All drag methods hold for 0.5s before moving (configurable via `holdTime` parameter)
+- **Default drag duration increased to 1.0s** - Up from 0.3-0.5s for more reliable input processing
+- **Default gesture duration increased to 1.0s** - Swipe, Pinch, Rotate, TwoFingerSwipe now default to 1.0s duration
+
+### Added
+- **`holdTime` parameter on all drag methods** - `DragAsync`, `DragToAsync`, `DragFromToAsync`, `DragSliderAsync` now expose `holdTime` parameter (default 0.5s)
+
 ## [1.0.42] - 2026-01-16
 
 ### Added
