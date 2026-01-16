@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.44] - 2026-01-16
+
+### Added
+- **`Invoke()` and `Invoke<T>()` methods** - Call methods via reflection on static instances or UI element components
+  - `Search.Static("GameManager.Instance").Invoke("StartGame")` - void method
+  - `Search.Static("Player.Instance").Invoke("TakeDamage", 10f)` - with arguments
+  - `Search.Static("Validator").Invoke<bool>("Validate", data)` - typed return value
+  - Works on UI elements: `new Search().Name("Dialog").Invoke("Close")`
+
+### Changed
+- **Reflection methods now throw exceptions on failure** - `Property()`, `Invoke()`, `GetValue<T>()`, `StringValue`, `BoolValue`, `FloatValue`, `IntValue` now throw `InvalidOperationException` with informative error messages instead of silently returning null/default values. This ensures tests fail immediately with clear diagnostics when reflection operations fail.
+
 ## [1.0.43] - 2026-01-16
 
 ### Fixed

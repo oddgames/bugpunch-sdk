@@ -1461,10 +1461,15 @@ namespace ODDGames.UITest
             get
             {
                 if (_isStaticPath)
-                    return _staticValue as string ?? _staticValue?.ToString();
+                {
+                    if (_staticValue == null)
+                        throw new InvalidOperationException($"StringValue failed: Static path '{_staticPath}' resolved to null");
+                    return _staticValue as string ?? _staticValue.ToString();
+                }
 
                 var go = FindFirst();
-                if (go == null) return null;
+                if (go == null)
+                    throw new InvalidOperationException($"StringValue failed: No UI element found matching '{ToString()}'");
 
                 var tmp = go.GetComponent<TMP_Text>();
                 if (tmp != null) return tmp.text;
@@ -1478,26 +1483,34 @@ namespace ODDGames.UITest
                 var legacyInput = go.GetComponent<InputField>();
                 if (legacyInput != null) return legacyInput.text;
 
-                return null;
+                throw new InvalidOperationException($"StringValue failed: Element '{go.name}' has no text component (TMP_Text, Text, TMP_InputField, InputField)");
             }
         }
 
         /// <summary>
         /// Gets the toggle state of the first matching element.
-        /// For static paths, returns the bool value or false.
+        /// For static paths, returns the bool value.
         /// </summary>
         public bool BoolValue
         {
             get
             {
                 if (_isStaticPath)
-                    return _staticValue is bool b && b;
+                {
+                    if (_staticValue == null)
+                        throw new InvalidOperationException($"BoolValue failed: Static path '{_staticPath}' resolved to null");
+                    if (_staticValue is bool b) return b;
+                    throw new InvalidOperationException($"BoolValue failed: Static path '{_staticPath}' is not a bool (type: {_staticValue.GetType().Name})");
+                }
 
                 var go = FindFirst();
-                if (go == null) return false;
+                if (go == null)
+                    throw new InvalidOperationException($"BoolValue failed: No UI element found matching '{ToString()}'");
 
                 var toggle = go.GetComponent<Toggle>();
-                return toggle != null && toggle.isOn;
+                if (toggle != null) return toggle.isOn;
+
+                throw new InvalidOperationException($"BoolValue failed: Element '{go.name}' has no Toggle component");
             }
         }
 
@@ -1511,13 +1524,15 @@ namespace ODDGames.UITest
             {
                 if (_isStaticPath)
                 {
-                    if (_staticValue == null) return 0f;
+                    if (_staticValue == null)
+                        throw new InvalidOperationException($"FloatValue failed: Static path '{_staticPath}' resolved to null");
                     try { return Convert.ToSingle(_staticValue); }
-                    catch { return 0f; }
+                    catch (Exception ex) { throw new InvalidOperationException($"FloatValue failed: Cannot convert '{_staticValue}' (type: {_staticValue.GetType().Name}) to float. {ex.Message}"); }
                 }
 
                 var go = FindFirst();
-                if (go == null) return 0f;
+                if (go == null)
+                    throw new InvalidOperationException($"FloatValue failed: No UI element found matching '{ToString()}'");
 
                 var slider = go.GetComponent<Slider>();
                 if (slider != null) return slider.value;
@@ -1525,7 +1540,7 @@ namespace ODDGames.UITest
                 var scrollbar = go.GetComponent<Scrollbar>();
                 if (scrollbar != null) return scrollbar.value;
 
-                return 0f;
+                throw new InvalidOperationException($"FloatValue failed: Element '{go.name}' has no Slider or Scrollbar component");
             }
         }
 
@@ -1539,13 +1554,15 @@ namespace ODDGames.UITest
             {
                 if (_isStaticPath)
                 {
-                    if (_staticValue == null) return 0;
+                    if (_staticValue == null)
+                        throw new InvalidOperationException($"IntValue failed: Static path '{_staticPath}' resolved to null");
                     try { return Convert.ToInt32(_staticValue); }
-                    catch { return 0; }
+                    catch (Exception ex) { throw new InvalidOperationException($"IntValue failed: Cannot convert '{_staticValue}' (type: {_staticValue.GetType().Name}) to int. {ex.Message}"); }
                 }
 
                 var go = FindFirst();
-                if (go == null) return 0;
+                if (go == null)
+                    throw new InvalidOperationException($"IntValue failed: No UI element found matching '{ToString()}'");
 
                 var slider = go.GetComponent<Slider>();
                 if (slider != null) return (int)slider.value;
@@ -1565,7 +1582,7 @@ namespace ODDGames.UITest
                 if (legacy != null && int.TryParse(legacy.text, out intVal))
                     return intVal;
 
-                return 0;
+                throw new InvalidOperationException($"IntValue failed: Element '{go.name}' has no Slider, Dropdown, or parseable text component");
             }
         }
 
@@ -2136,15 +2153,24 @@ namespace ODDGames.UITest
         /// <returns>A new Search representing the property value</returns>
         public Search Property(string name)
         {
+            string context = _staticPath ?? ToString();
+
             if (_isStaticPath)
             {
+                if (_staticValue == null)
+                    throw new InvalidOperationException($"Property failed: Static path '{_staticPath}' resolved to null, cannot access property '{name}'");
+
                 var value = NavigateProperty(_staticValue, name);
+                if (value == null)
+                    throw new InvalidOperationException($"Property failed: Property '{name}' not found on '{_staticPath}' (type: {_staticValue.GetType().Name})");
+
                 return new Search(value, $"{_staticPath}.{name}");
             }
 
             // For UI elements, get the first match and navigate its component properties
             var go = FindFirst();
-            if (go == null) return new Search(null, name);
+            if (go == null)
+                throw new InvalidOperationException($"Property failed: No UI element found matching '{context}', cannot access property '{name}'");
 
             // Try to get property from any component
             foreach (var comp in go.GetComponents<Component>())
@@ -2160,7 +2186,124 @@ namespace ODDGames.UITest
                     return new Search(field.GetValue(comp), name);
             }
 
-            return new Search(null, name);
+            var componentNames = string.Join(", ", go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name));
+            throw new InvalidOperationException($"Property failed: Property/field '{name}' not found on any component of '{go.name}'. Components: [{componentNames}]");
+        }
+
+        /// <summary>
+        /// Invokes a method on the current object and returns the result as a new Search.
+        /// Works for both static paths and UI element components.
+        /// </summary>
+        /// <param name="methodName">The name of the method to invoke</param>
+        /// <param name="args">Optional arguments to pass to the method</param>
+        /// <returns>A new Search representing the method's return value</returns>
+        /// <example>
+        /// <code>
+        /// // Call a parameterless method
+        /// var result = Search.Static("GameManager.Instance").Invoke("GetScore").IntValue;
+        ///
+        /// // Call a method with arguments
+        /// var player = Search.Static("GameManager.Instance").Invoke("GetPlayer", "Player1");
+        ///
+        /// // Call method on UI element component
+        /// new Search().Name("MyButton").Invoke("IsInteractable").BoolValue;
+        /// </code>
+        /// </example>
+        public Search Invoke(string methodName, params object[] args)
+        {
+            object target = null;
+            Type targetType = null;
+            string context = _staticPath ?? ToString();
+
+            if (_isStaticPath)
+            {
+                if (_staticValue == null)
+                    throw new InvalidOperationException($"Invoke failed: Static path '{_staticPath}' resolved to null, cannot invoke '{methodName}'");
+
+                target = _staticValue;
+                targetType = target.GetType();
+            }
+            else
+            {
+                // For UI elements, get the first match and try to find method on any component
+                var go = FindFirst();
+                if (go == null)
+                    throw new InvalidOperationException($"Invoke failed: No UI element found matching '{context}', cannot invoke '{methodName}'");
+
+                foreach (var comp in go.GetComponents<Component>())
+                {
+                    if (comp == null) continue;
+                    var type = comp.GetType();
+                    var method = type.GetMethod(methodName,
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (method != null)
+                    {
+                        target = comp;
+                        targetType = type;
+                        break;
+                    }
+                }
+
+                if (target == null)
+                {
+                    var componentNames = string.Join(", ", go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name));
+                    throw new InvalidOperationException($"Invoke failed: Method '{methodName}' not found on any component of '{go.name}'. Components: [{componentNames}]");
+                }
+            }
+
+            // Find and invoke the method
+            var argTypes = args?.Select(a => a?.GetType() ?? typeof(object)).ToArray() ?? System.Type.EmptyTypes;
+            var methodInfo = targetType.GetMethod(methodName,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                null, argTypes, null);
+
+            // Try without specific arg types if exact match not found
+            methodInfo ??= targetType.GetMethod(methodName,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            if (methodInfo == null)
+            {
+                var argTypesStr = args?.Length > 0 ? string.Join(", ", argTypes.Select(t => t.Name)) : "none";
+                throw new InvalidOperationException($"Invoke failed: Method '{methodName}' not found on type '{targetType.Name}'. Arg types: [{argTypesStr}]");
+            }
+
+            try
+            {
+                var result = methodInfo.Invoke(target, args);
+                return new Search(result, $"{_staticPath ?? "element"}.{methodName}()");
+            }
+            catch (Exception ex)
+            {
+                var innerMsg = ex.InnerException?.Message ?? ex.Message;
+                throw new InvalidOperationException($"Invoke failed: Method '{targetType.Name}.{methodName}' threw exception: {innerMsg}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Invokes a method and returns the result as a typed value.
+        /// </summary>
+        /// <typeparam name="T">The expected return type</typeparam>
+        /// <param name="methodName">The name of the method to invoke</param>
+        /// <param name="args">Optional arguments to pass to the method</param>
+        /// <returns>The method's return value cast to type T</returns>
+        /// <example>
+        /// <code>
+        /// // Call method and get typed result
+        /// int score = Search.Static("GameManager.Instance").Invoke&lt;int&gt;("GetScore");
+        /// string name = Search.Static("Player.Instance").Invoke&lt;string&gt;("GetDisplayName");
+        /// bool valid = Search.Static("Validator").Invoke&lt;bool&gt;("IsValid", inputValue);
+        /// </code>
+        /// </example>
+        public T Invoke<T>(string methodName, params object[] args)
+        {
+            var result = Invoke(methodName, args);
+            var value = result.Value;
+
+            if (value == null) return default;
+            if (value is T typedValue) return typedValue;
+
+            try { return (T)Convert.ChangeType(value, typeof(T)); }
+            catch { return default; }
         }
 
         /// <summary>
@@ -2170,16 +2313,24 @@ namespace ODDGames.UITest
         /// </summary>
         public T GetValue<T>(string subPath = null)
         {
+            string context = _staticPath ?? ToString();
             object value;
+
             if (_isStaticPath)
             {
+                if (_staticValue == null)
+                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Static path '{_staticPath}' resolved to null");
+
                 value = string.IsNullOrEmpty(subPath) ? _staticValue : NavigateProperty(_staticValue, subPath);
+                if (value == null && !string.IsNullOrEmpty(subPath))
+                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Sub-path '{subPath}' not found on '{_staticPath}' (type: {_staticValue.GetType().Name})");
             }
             else
             {
                 // For UI elements, use the appropriate value property based on type
                 var go = FindFirst();
-                if (go == null) return default;
+                if (go == null)
+                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: No UI element found matching '{context}'");
 
                 value = typeof(T) switch
                 {
@@ -2189,13 +2340,21 @@ namespace ODDGames.UITest
                     Type t when t == typeof(int) => IntValue,
                     _ => null
                 };
+
+                if (value == null)
+                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Unsupported type for UI element '{go.name}'. Supported types: string, bool, float, int");
             }
 
-            if (value == null) return default;
+            if (value == null)
+                throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Value resolved to null");
+
             if (value is T typedValue) return typedValue;
 
             try { return (T)Convert.ChangeType(value, typeof(T)); }
-            catch { return default; }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Cannot convert value '{value}' (type: {value.GetType().Name}) to {typeof(T).Name}. {ex.Message}", ex);
+            }
         }
 
         /// <summary>
