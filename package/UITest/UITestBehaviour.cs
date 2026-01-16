@@ -124,16 +124,16 @@ namespace ODDGames.UITest
         /// Creates a Search query that matches GameObjects by their sprite name (Image or SpriteRenderer).
         /// Supports * wildcards for pattern matching.
         /// </summary>
-        /// <param name="pattern">The sprite name pattern to match. Use * as wildcard (e.g., "icon_*" matches "icon_play", "icon_settings").</param>
+        /// <param name="pattern">The texture/sprite name pattern to match. Use * as wildcard (e.g., "icon_*" matches "icon_play", "icon_settings").</param>
         /// <returns>A new Search instance for chaining additional conditions.</returns>
         /// <example>
-        /// // Click an element by its sprite
-        /// await Click(Sprite("icon_settings"));
+        /// // Click an element by its texture/sprite
+        /// await Click(Texture("icon_settings"));
         ///
         /// // Find all icon images
-        /// var icons = await FindAll&lt;Image&gt;(Sprite("icon_*"));
+        /// var icons = await FindAll&lt;Image&gt;(Texture("icon_*"));
         /// </example>
-        protected static Search Sprite(string pattern) => new Search().Sprite(pattern);
+        protected static Search Texture(string pattern) => new Search().Texture(pattern);
 
         /// <summary>
         /// Creates a Search query that matches GameObjects by their hierarchy path.

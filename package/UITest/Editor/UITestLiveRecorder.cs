@@ -224,15 +224,15 @@ namespace ODDGames.UITest.Editor
                 Code = $"await Click(Search.ByName(\"{name}\"));"
             });
 
-            // 3. BySprite (if has sprite)
+            // 3. ByTexture (if has sprite/texture)
             if (image != null && image.sprite != null)
             {
                 var spriteName = image.sprite.name;
                 _hoverOptions.Add(new SearchOption
                 {
-                    Label = $"3. BySprite",
-                    SearchPart = $"Search.BySprite(\"{spriteName}\")",
-                    Code = $"await Click(Search.BySprite(\"{spriteName}\"));"
+                    Label = $"3. ByTexture",
+                    SearchPart = $"Search.ByTexture(\"{spriteName}\")",
+                    Code = $"await Click(Search.ByTexture(\"{spriteName}\"));"
                 });
             }
 

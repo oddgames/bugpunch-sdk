@@ -152,13 +152,13 @@ namespace ODDGames.UITest.AI
             sb.AppendLine("  Base: {\"base\": \"tag\", \"value\": \"Player\"}");
             sb.AppendLine("  Chain: {\"method\": \"tag\", \"value\": \"UI\"}");
             sb.AppendLine();
-            sb.AppendLine("sprite");
-            sb.AppendLine("  value: string - Match sprite name on Image/SpriteRenderer. Wildcards: * matches any chars");
-            sb.AppendLine("  Base: {\"base\": \"sprite\", \"value\": \"icon_*\"}");
-            sb.AppendLine("  Chain: {\"method\": \"sprite\", \"value\": \"btn_*\"}");
+            sb.AppendLine("texture");
+            sb.AppendLine("  value: string - Match texture/sprite name on Image, RawImage, SpriteRenderer, or Renderer materials. Wildcards: * matches any chars");
+            sb.AppendLine("  Base: {\"base\": \"texture\", \"value\": \"icon_*\"}");
+            sb.AppendLine("  Chain: {\"method\": \"texture\", \"value\": \"btn_*\"}");
             sb.AppendLine();
             sb.AppendLine("any");
-            sb.AppendLine("  value: string - Match text, name, sprite, or path. Wildcards: * matches any chars");
+            sb.AppendLine("  value: string - Match text, name, texture, or path. Wildcards: * matches any chars");
             sb.AppendLine("  Base: {\"base\": \"any\", \"value\": \"Settings\"}");
             sb.AppendLine("  Chain: {\"method\": \"any\", \"value\": \"*Menu*\"}");
             sb.AppendLine();

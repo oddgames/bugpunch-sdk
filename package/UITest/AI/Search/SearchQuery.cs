@@ -23,7 +23,7 @@ namespace ODDGames.UITest.AI
     public class SearchQuery
     {
         /// <summary>
-        /// Base search method: "text", "name", "type", "path", "adjacent", "any", "sprite", "tag"
+        /// Base search method: "text", "name", "type", "path", "adjacent", "any", "texture", "tag"
         /// Uses [JsonProperty] to map from "base" in JSON while avoiding C# keyword conflict.
         /// </summary>
         [JsonProperty("base")]
@@ -90,8 +90,8 @@ namespace ODDGames.UITest.AI
                     var dir = ParseDirection(direction);
                     return new Search().Adjacent(value, dir);
 
-                case "sprite":
-                    return string.IsNullOrEmpty(value) ? null : new Search().Sprite(value);
+                case "texture":
+                    return string.IsNullOrEmpty(value) ? null : new Search().Texture(value);
 
                 case "tag":
                     return string.IsNullOrEmpty(value) ? null : new Search().Tag(value);
@@ -210,8 +210,8 @@ namespace ODDGames.UITest.AI
                 case "tag":
                     return string.IsNullOrEmpty(item.value) ? search : search.Tag(item.value);
 
-                case "sprite":
-                    return string.IsNullOrEmpty(item.value) ? search : search.Sprite(item.value);
+                case "texture":
+                    return string.IsNullOrEmpty(item.value) ? search : search.Texture(item.value);
 
                 case "any":
                     return string.IsNullOrEmpty(item.value) ? search : search.Any(item.value);
@@ -327,11 +327,11 @@ namespace ODDGames.UITest.AI
         }
 
         /// <summary>
-        /// Creates a sprite search query.
+        /// Creates a texture search query.
         /// </summary>
-        public static SearchQuery Sprite(string spriteName)
+        public static SearchQuery Texture(string textureName)
         {
-            return new SearchQuery { searchBase = "sprite", value = spriteName };
+            return new SearchQuery { searchBase = "texture", value = textureName };
         }
 
         /// <summary>

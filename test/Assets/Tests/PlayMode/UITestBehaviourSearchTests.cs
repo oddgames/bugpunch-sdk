@@ -280,7 +280,7 @@ namespace ODDGames.UITest.Tests
 
                 await UniTask.Yield();
 
-                var result = new Search().Sprite("TestSpriteName").FindFirst();
+                var result = new Search().Texture("TestSpriteName").FindFirst();
                 Assert.IsNotNull(result, "Should find element by sprite name");
             });
         }
@@ -301,7 +301,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Find elements with matching sprite - filter to only those with Image component directly
-                var results = new Search().Sprite("icon_*").FindAll();
+                var results = new Search().Texture("icon_*").FindAll();
                 var directImageElements = results.Where(go => go.GetComponent<Image>() != null).ToList();
                 Assert.AreEqual(2, directImageElements.Count, "Should find both elements with icon_ prefix");
             });

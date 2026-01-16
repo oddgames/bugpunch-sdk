@@ -1464,7 +1464,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 "path" => ElementSelector.ByPath(value),
                 "adjacent" => ElementSelector.Adjacent(value, direction),
                 "near" => ElementSelector.NearTo(value, direction),
-                "sprite" => ElementSelector.BySprite(value),
+                "texture" => ElementSelector.ByTexture(value),
                 "tag" => ElementSelector.ByTag(value),
                 "any" => ElementSelector.ByAny(value),
                 _ => ElementSelector.ByText(value)
@@ -1628,7 +1628,7 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                 "adjacent" => $"Adjacent(\"{TruncateText(selector.query.value, 18)}\", {selector.query.direction ?? "?"})",
                 "near" => $"Near(\"{TruncateText(selector.query.value, 20)}\")",
                 "path" => $"Path(\"{TruncateText(selector.query.value, 25)}\")",
-                "sprite" => $"Sprite(\"{TruncateText(selector.query.value, 18)}\")",
+                "texture" => $"Texture(\"{TruncateText(selector.query.value, 18)}\")",
                 "tag" => $"Tag(\"{selector.query.value}\")",
                 "any" => $"Any(\"{TruncateText(selector.query.value, 20)}\")",
                 _ => selector.query.value ?? "(unknown)"
@@ -2141,10 +2141,10 @@ namespace ODDGames.UITest.VisualBuilder.Editor
                     var spriteName = GetSpriteName(e.gameObject);
                     if (!string.IsNullOrEmpty(spriteName))
                     {
-                        menu.AddItem(new GUIContent($"{submenuPath}Sprite: \"{spriteName}\""), false, () =>
+                        menu.AddItem(new GUIContent($"{submenuPath}Texture: \"{spriteName}\""), false, () =>
                         {
                             Undo.RecordObject(currentTest, "Set target");
-                            block.target = ElementSelector.BySprite(spriteName, $"Sprite(\"{spriteName}\")");
+                            block.target = ElementSelector.ByTexture(spriteName, $"Texture(\"{spriteName}\")");
                             OnBlockChanged(index);
                             RefreshBlockList();
                         });

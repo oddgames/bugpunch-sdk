@@ -295,9 +295,9 @@ namespace ODDGames.UITest.AI
                     var direction = args.Length > 1 ? ParseDirection(args[1]) : Direction.Right;
                     return new Search().Adjacent(args[0], direction);
 
-                case "sprite":
+                case "texture":
                     if (args.Length < 1) return null;
-                    return new Search().Sprite(args[0]);
+                    return new Search().Texture(args[0]);
 
                 case "tag":
                     if (args.Length < 1) return null;
