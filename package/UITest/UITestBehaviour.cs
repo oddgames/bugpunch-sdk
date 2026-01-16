@@ -1748,6 +1748,21 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Clicks on a specific GameObject. Useful when you already have a reference to the target.
+        /// </summary>
+        /// <param name="target">The GameObject to click on.</param>
+        /// <returns>A UniTask that completes when the click is performed.</returns>
+        /// <example>
+        /// // Click on a specific button reference
+        /// await Click(submitButton.gameObject);
+        /// </example>
+        protected async UniTask Click(GameObject target)
+        {
+            await ActionExecutor.ClickAsync(target);
+            await ActionComplete();
+        }
+
+        /// <summary>
         /// Performs a double-click at a screen position specified as percentages (0-1).
         /// Useful for selecting text, zooming, or triggering double-click actions.
         /// </summary>
@@ -1810,6 +1825,21 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
+        /// Double-clicks on a specific GameObject. Useful when you already have a reference to the target.
+        /// </summary>
+        /// <param name="target">The GameObject to double-click on.</param>
+        /// <returns>A UniTask that completes when the double-click is performed.</returns>
+        /// <example>
+        /// // Double-click on a specific button reference
+        /// await DoubleClick(listItem.gameObject);
+        /// </example>
+        protected async UniTask DoubleClick(GameObject target)
+        {
+            await ActionExecutor.DoubleClickAsync(target);
+            await ActionComplete();
+        }
+
+        /// <summary>
         /// Triple-clicks on an element found by search.
         /// Performs three rapid clicks in succession.
         /// Uses realistic mouse click injection via the Input System.
@@ -1867,6 +1897,21 @@ namespace ODDGames.UITest
             Debug.Log($"[UITEST] TripleClick (screen center) at ({screenCenter.x:F0}, {screenCenter.y:F0})");
 
             await ActionExecutor.TripleClickAtAsync(screenCenter);
+            await ActionComplete();
+        }
+
+        /// <summary>
+        /// Triple-clicks on a specific GameObject. Useful when you already have a reference to the target.
+        /// </summary>
+        /// <param name="target">The GameObject to triple-click on.</param>
+        /// <returns>A UniTask that completes when the triple-click is performed.</returns>
+        /// <example>
+        /// // Triple-click to select all text in a specific input field
+        /// await TripleClick(inputField.gameObject);
+        /// </example>
+        protected async UniTask TripleClick(GameObject target)
+        {
+            await ActionExecutor.TripleClickAsync(target);
             await ActionComplete();
         }
 
@@ -1948,7 +1993,7 @@ namespace ODDGames.UITest
         /// // Swipe up on a scroll view to scroll down
         /// await Swipe(Name("ScrollView"), SwipeDirection.Up, 0.3f);
         /// </example>
-        protected async UniTask Swipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Swipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10)
         {
             float distancePixels = distance * Screen.height;
             Vector2 delta = direction switch
@@ -1977,7 +2022,7 @@ namespace ODDGames.UITest
         /// // Swipe left at screen center
         /// await Swipe(SwipeDirection.Left);
         /// </example>
-        protected async UniTask Swipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        protected async UniTask Swipe(SwipeDirection direction, float distance = 0.2f, float duration = 1.0f)
         {
             await SwipeAt(0.5f, 0.5f, direction, distance, duration);
         }
@@ -1995,7 +2040,7 @@ namespace ODDGames.UITest
         /// // Swipe down from top of screen
         /// await SwipeAt(0.5f, 0.9f, SwipeDirection.Down, 0.3f);
         /// </example>
-        protected async UniTask SwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        protected async UniTask SwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 1.0f)
         {
             float distancePixels = distance * Screen.height;
             Vector2 delta = direction switch
@@ -2030,7 +2075,7 @@ namespace ODDGames.UITest
         /// // Pinch to zoom out (pinch fingers)
         /// await Pinch(Name("ImageViewer"), 0.5f);
         /// </example>
-        protected async UniTask Pinch(Search search, float scale, float duration = 0.5f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Pinch(Search search, float scale, float duration = 1.0f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
         {
             float distancePixels = fingerDistance * Screen.height;
             Debug.Log($"[UITEST] Pinch scale={scale} duration={duration}s fingerDistance={fingerDistance:P0} ({distancePixels:F0}px)");
@@ -2049,7 +2094,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the gesture in seconds. Default is 0.5 seconds.</param>
         /// <param name="fingerDistance">Starting distance of each finger from center as percentage of screen height (0.05 = 5%). Default is 0.05.</param>
         /// <returns>A UniTask that completes when the pinch gesture is finished.</returns>
-        protected async UniTask Pinch(float scale, float duration = 0.5f, float fingerDistance = 0.05f)
+        protected async UniTask Pinch(float scale, float duration = 1.0f, float fingerDistance = 0.05f)
         {
             await PinchAt(0.5f, 0.5f, scale, duration, fingerDistance);
         }
@@ -2063,7 +2108,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the gesture in seconds. Default is 0.5 seconds.</param>
         /// <param name="fingerDistance">Starting distance of each finger from center as percentage of screen height (0.05 = 5%). Default is 0.05.</param>
         /// <returns>A UniTask that completes when the pinch gesture is finished.</returns>
-        protected async UniTask PinchAt(float xPercent, float yPercent, float scale, float duration = 0.5f, float fingerDistance = 0.05f)
+        protected async UniTask PinchAt(float xPercent, float yPercent, float scale, float duration = 1.0f, float fingerDistance = 0.05f)
         {
             Vector2 center = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             float distancePixels = fingerDistance * Screen.height;
@@ -2097,7 +2142,7 @@ namespace ODDGames.UITest
         /// // Two-finger swipe to navigate back
         /// await TwoFingerSwipe(Name("BrowserView"), SwipeDirection.Left);
         /// </example>
-        protected async UniTask TwoFingerSwipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask TwoFingerSwipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 1.0f, float fingerSpacing = 0.03f, bool throwIfMissing = true, float searchTime = 10)
         {
             float distancePixels = distance * Screen.height;
             float spacingPixels = fingerSpacing * Screen.height;
@@ -2122,7 +2167,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the gesture in seconds. Default is 0.3 seconds.</param>
         /// <param name="fingerSpacing">Distance between the two fingers as percentage of screen height (0.03 = 3%). Default is 0.03.</param>
         /// <returns>A UniTask that completes when the gesture is finished.</returns>
-        protected async UniTask TwoFingerSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        protected async UniTask TwoFingerSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 1.0f, float fingerSpacing = 0.03f)
         {
             await TwoFingerSwipeAt(0.5f, 0.5f, direction, distance, duration, fingerSpacing);
         }
@@ -2137,7 +2182,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the gesture in seconds. Default is 0.3 seconds.</param>
         /// <param name="fingerSpacing">Distance between the two fingers as percentage of screen height (0.03 = 3%). Default is 0.03.</param>
         /// <returns>A UniTask that completes when the gesture is finished.</returns>
-        protected async UniTask TwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        protected async UniTask TwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 1.0f, float fingerSpacing = 0.03f)
         {
             Vector2 center = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             float distancePixels = distance * Screen.height;
@@ -2180,7 +2225,7 @@ namespace ODDGames.UITest
         /// // Rotate counter-clockwise
         /// await Rotate(Name("Dial"), -45f);
         /// </example>
-        protected async UniTask Rotate(Search search, float degrees, float duration = 0.5f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Rotate(Search search, float degrees, float duration = 1.0f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
         {
             float radiusPixels = fingerDistance * Screen.height;
             Debug.Log($"[UITEST] Rotate {degrees} degrees duration={duration}s fingerDistance={fingerDistance:P0} ({radiusPixels:F0}px)");
@@ -2203,7 +2248,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the gesture in seconds. Default is 0.5 seconds.</param>
         /// <param name="fingerDistance">Distance of each finger from center as percentage of screen height (0.05 = 5%). Default is 0.05.</param>
         /// <returns>A UniTask that completes when the rotation gesture is finished.</returns>
-        protected async UniTask Rotate(float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
+        protected async UniTask Rotate(float degrees, float duration = 1.0f, float fingerDistance = 0.05f)
         {
             await RotateAt(0.5f, 0.5f, degrees, duration, fingerDistance);
         }
@@ -2217,7 +2262,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the gesture in seconds. Default is 0.5 seconds.</param>
         /// <param name="fingerDistance">Distance of each finger from center as percentage of screen height (0.05 = 5%). Default is 0.05.</param>
         /// <returns>A UniTask that completes when the rotation gesture is finished.</returns>
-        protected async UniTask RotateAt(float xPercent, float yPercent, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
+        protected async UniTask RotateAt(float xPercent, float yPercent, float degrees, float duration = 1.0f, float fingerDistance = 0.05f)
         {
             var center = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             float radiusPixels = fingerDistance * Screen.height;
@@ -2248,7 +2293,7 @@ namespace ODDGames.UITest
         /// // Drag down 100 pixels
         /// await Drag(new Vector2(0, -100));
         /// </example>
-        protected async UniTask Drag(Vector2 direction, float duration = 0.5f)
+        protected async UniTask Drag(Vector2 direction, float duration = 1.0f)
         {
             Vector2 startPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
             await DragFromTo(startPos, startPos + direction, duration);
@@ -2266,7 +2311,7 @@ namespace ODDGames.UITest
         /// // Drag from top-center downward
         /// await DragAt(0.5f, 0.9f, new Vector2(0, -200));
         /// </example>
-        protected async UniTask DragAt(float xPercent, float yPercent, Vector2 direction, float duration = 0.5f)
+        protected async UniTask DragAt(float xPercent, float yPercent, Vector2 direction, float duration = 1.0f)
         {
             Vector2 startPos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
             Debug.Log($"[UITEST] DragAt ({xPercent:P0}, {yPercent:P0}) delta=({direction.x:F0},{direction.y:F0})");
@@ -2290,7 +2335,7 @@ namespace ODDGames.UITest
         /// // Drag an item to the right
         /// await Drag(Name("ListItem"), new Vector2(100, 0), 0.3f);
         /// </example>
-        protected async UniTask Drag(Search search, Vector2 direction, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Drag(Search search, Vector2 direction, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10)
         {
             bool found = await ActionExecutor.DragAsync(search, direction, duration, searchTime);
 
@@ -2315,7 +2360,7 @@ namespace ODDGames.UITest
         /// // Drag from top-left to bottom-right
         /// await DragFromTo(new Vector2(100, 500), new Vector2(300, 200), 0.5f);
         /// </example>
-        protected async UniTask DragFromTo(Vector2 startPos, Vector2 endPos, float duration = 0.5f)
+        protected async UniTask DragFromTo(Vector2 startPos, Vector2 endPos, float duration = 1.0f)
         {
             Debug.Log($"[UITEST] DragFromTo ({duration}s) from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
 
@@ -2330,9 +2375,10 @@ namespace ODDGames.UITest
         /// </summary>
         /// <param name="sourceSearch">Search query to find the element to drag.</param>
         /// <param name="targetSearch">Search query to find the drop target element.</param>
-        /// <param name="duration">Duration of the drag animation in seconds. Default is 0.5 seconds.</param>
+        /// <param name="duration">Duration of the drag animation in seconds. Default is 1.0 seconds.</param>
         /// <param name="throwIfMissing">If true, throws an exception when elements are not found. Default is true.</param>
         /// <param name="searchTime">Maximum time in seconds to search for each element. Default is 10 seconds.</param>
+        /// <param name="holdTime">Time to hold at start position before dragging. Useful for elements that require hold-to-drag. Default is 0.5 seconds.</param>
         /// <returns>A UniTask that completes when the drag is finished.</returns>
         /// <example>
         /// // Drag an inventory item to a slot
@@ -2340,12 +2386,15 @@ namespace ODDGames.UITest
         ///
         /// // Drag and drop with custom duration
         /// await DragTo(Name("Card"), Name("DeckArea"), 0.3f);
+        ///
+        /// // Drag with longer hold time for hold-to-drag elements (like level editor props)
+        /// await DragTo(Name("Prop"), Name("Stage"), holdTime: 1.5f);
         /// </example>
-        protected async UniTask DragTo(Search sourceSearch, Search targetSearch, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask DragTo(Search sourceSearch, Search targetSearch, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f)
         {
-            Debug.Log($"[UITEST] DragTo (Search, Search) timeout={searchTime}s duration={duration}s");
+            Debug.Log($"[UITEST] DragTo (Search, Search) timeout={searchTime}s duration={duration}s holdTime={holdTime}s");
 
-            bool found = await ActionExecutor.DragToAsync(sourceSearch, targetSearch, duration, searchTime);
+            bool found = await ActionExecutor.DragToAsync(sourceSearch, targetSearch, duration, searchTime, holdTime);
 
             if (found)
             {
@@ -2365,25 +2414,49 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the drag animation</param>
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
-        protected async UniTask DragTo(Search sourceSearch, Vector2 targetPercent, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        protected async UniTask DragTo(Search sourceSearch, Vector2 targetPercent, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f)
         {
             var source = await Find<RectTransform>(sourceSearch, throwIfMissing, searchTime);
             if (source == null) return;
 
             Vector2 targetPos = new Vector2(targetPercent.x * Screen.width, targetPercent.y * Screen.height);
 
-            Debug.Log($"[UITEST] DragTo '{source.name}' -> ({targetPercent.x:P0}, {targetPercent.y:P0})");
+            Debug.Log($"[UITEST] DragTo '{source.name}' -> ({targetPercent.x:P0}, {targetPercent.y:P0}) holdTime={holdTime}s");
 
-            await ActionExecutor.DragToAsync(source.gameObject, targetPos, duration);
+            await ActionExecutor.DragToAsync(source.gameObject, targetPos, duration, holdTime);
             await ActionComplete();
         }
 
         /// <summary>
         /// Drags an element found by name to a screen position specified as percentages (0-1).
         /// </summary>
-        protected async UniTask DragTo(string sourceName, Vector2 targetPercent, float duration = 0.5f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask DragTo(string sourceName, Vector2 targetPercent, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f)
         {
-            await DragTo(new Search().Name(sourceName), targetPercent, duration, throwIfMissing, searchTime);
+            await DragTo(new Search().Name(sourceName), targetPercent, duration, throwIfMissing, searchTime, holdTime);
+        }
+
+        /// <summary>
+        /// Drags from a screen position (percentages 0-1) to an element found by search.
+        /// </summary>
+        /// <param name="sourcePercent">Source position as screen percentage (0,0 = bottom-left, 1,1 = top-right)</param>
+        /// <param name="targetSearch">Search query for the target element</param>
+        /// <param name="duration">Duration of the drag animation</param>
+        /// <param name="throwIfMissing">Whether to throw if element not found</param>
+        /// <param name="searchTime">Timeout for finding the element</param>
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        protected async UniTask DragTo(Vector2 sourcePercent, Search targetSearch, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f)
+        {
+            var target = await Find<RectTransform>(targetSearch, throwIfMissing, searchTime);
+            if (target == null) return;
+
+            Vector2 sourcePos = new Vector2(sourcePercent.x * Screen.width, sourcePercent.y * Screen.height);
+            Vector2 targetPos = InputInjector.GetScreenPosition(target.gameObject);
+
+            Debug.Log($"[UITEST] DragTo ({sourcePercent.x:P0}, {sourcePercent.y:P0}) -> '{target.name}' holdTime={holdTime}s");
+
+            await InputInjector.InjectPointerDrag(sourcePos, targetPos, duration, holdTime);
+            await ActionComplete();
         }
 
         /// <summary>
@@ -2435,7 +2508,7 @@ namespace ODDGames.UITest
         /// // Slowly drag brightness from max to min
         /// await DragSlider(Name("BrightnessSlider"), 1f, 0f, duration: 1f);
         /// </example>
-        protected async UniTask DragSlider(Search search, float fromPercent, float toPercent, bool throwIfMissing = true, float searchTime = 10, float duration = 0.3f)
+        protected async UniTask DragSlider(Search search, float fromPercent, float toPercent, bool throwIfMissing = true, float searchTime = 10, float duration = 1.0f)
         {
             fromPercent = Mathf.Clamp01(fromPercent);
             toPercent = Mathf.Clamp01(toPercent);
@@ -2891,8 +2964,7 @@ namespace ODDGames.UITest
                 var item = selectables[i];
                 // ScrollTo handles visibility check and scrolling
                 await ScrollTo(search, Name(item.name), throwIfMissing: false);
-                await ActionExecutor.ClickAsync(item.gameObject);
-                await ActionComplete();
+                await Click(item.gameObject);
 
                 if (delayBetween > 0 && i < selectables.Count - 1)
                     await UniTask.Delay(delayBetween);

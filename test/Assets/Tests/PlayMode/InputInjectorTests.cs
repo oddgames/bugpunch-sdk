@@ -1341,6 +1341,50 @@ namespace ODDGames.UITest.Tests
             });
         }
 
+        [UnityTest]
+        public IEnumerator InjectMouseDrag_WithHoldTime_HoldsBeforeDragging()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var start = new Vector2(Screen.width / 2f, Screen.height / 2f);
+                var end = start + new Vector2(100, 0);
+
+                float startTime = Time.time;
+
+                // Use a 0.5s hold time
+                await InputInjector.InjectMouseDrag(start, end, 0.2f, 0.5f);
+
+                float elapsed = Time.time - startTime;
+
+                // Should take at least holdTime (0.5s) + duration (0.2s) = 0.7s
+                Assert.GreaterOrEqual(elapsed, 0.6f, "Drag with hold should take at least hold time + duration");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator InjectPointerDrag_WithLongHoldTime_HoldsBeforeDragging()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var start = new Vector2(Screen.width / 2f, Screen.height / 2f);
+                var end = start + new Vector2(100, 0);
+
+                float startTime = Time.time;
+
+                // Use a 1.0s hold time (for games requiring long hold before drag)
+                await InputInjector.InjectPointerDrag(start, end, 0.2f, 1.0f);
+
+                float elapsed = Time.time - startTime;
+
+                // Should take at least holdTime (1.0s) + duration (0.2s) = 1.2s
+                Assert.GreaterOrEqual(elapsed, 1.0f, "Drag with long hold should take at least 1 second");
+            });
+        }
+
         #endregion
 
         #region Two Finger Drag Tests

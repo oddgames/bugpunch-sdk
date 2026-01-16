@@ -68,13 +68,18 @@ namespace ODDGames.UITest
     ///   await Click(Name("Button").HasParent("Panel"));
     ///   await Click(Type&lt;Button&gt;().HasAncestor(Name("*Settings*")));
     /// </summary>
-    public class Search
+    public class Search : System.Collections.Generic.IEnumerable<Search>
     {
         readonly List<Func<GameObject, bool>> _conditions = new();
         readonly List<string> _descriptionParts = new();
         bool _nextNegate;
         bool _includeInactive;
         bool _includeDisabled;
+
+        // Static path support
+        string _staticPath;
+        object _staticValue;
+        bool _isStaticPath;
 
         /// <summary>
         /// Creates a new Search instance.
@@ -88,6 +93,16 @@ namespace ODDGames.UITest
             {
                 Text(textPattern);
             }
+        }
+
+        /// <summary>
+        /// Private constructor for static path searches.
+        /// </summary>
+        private Search(object staticValue, string path)
+        {
+            _isStaticPath = true;
+            _staticPath = path;
+            _staticValue = staticValue;
         }
 
         /// <summary>
@@ -1435,6 +1450,153 @@ namespace ODDGames.UITest
 
         #endregion
 
+        #region Value Properties
+
+        /// <summary>
+        /// Gets the text content of the first matching element (TMP_Text, Text, or InputField).
+        /// For static paths, returns ToString() of the value.
+        /// </summary>
+        public string StringValue
+        {
+            get
+            {
+                if (_isStaticPath)
+                    return _staticValue as string ?? _staticValue?.ToString();
+
+                var go = FindFirst();
+                if (go == null) return null;
+
+                var tmp = go.GetComponent<TMP_Text>();
+                if (tmp != null) return tmp.text;
+
+                var legacy = go.GetComponent<Text>();
+                if (legacy != null) return legacy.text;
+
+                var inputField = go.GetComponent<TMP_InputField>();
+                if (inputField != null) return inputField.text;
+
+                var legacyInput = go.GetComponent<InputField>();
+                if (legacyInput != null) return legacyInput.text;
+
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the toggle state of the first matching element.
+        /// For static paths, returns the bool value or false.
+        /// </summary>
+        public bool BoolValue
+        {
+            get
+            {
+                if (_isStaticPath)
+                    return _staticValue is bool b && b;
+
+                var go = FindFirst();
+                if (go == null) return false;
+
+                var toggle = go.GetComponent<Toggle>();
+                return toggle != null && toggle.isOn;
+            }
+        }
+
+        /// <summary>
+        /// Gets the float value of the first matching element (Slider or Scrollbar).
+        /// For static paths, converts the value to float.
+        /// </summary>
+        public float FloatValue
+        {
+            get
+            {
+                if (_isStaticPath)
+                {
+                    if (_staticValue == null) return 0f;
+                    try { return Convert.ToSingle(_staticValue); }
+                    catch { return 0f; }
+                }
+
+                var go = FindFirst();
+                if (go == null) return 0f;
+
+                var slider = go.GetComponent<Slider>();
+                if (slider != null) return slider.value;
+
+                var scrollbar = go.GetComponent<Scrollbar>();
+                if (scrollbar != null) return scrollbar.value;
+
+                return 0f;
+            }
+        }
+
+        /// <summary>
+        /// Gets the int value of the first matching element (Slider as int, Dropdown index, or text parsed as int).
+        /// For static paths, converts the value to int.
+        /// </summary>
+        public int IntValue
+        {
+            get
+            {
+                if (_isStaticPath)
+                {
+                    if (_staticValue == null) return 0;
+                    try { return Convert.ToInt32(_staticValue); }
+                    catch { return 0; }
+                }
+
+                var go = FindFirst();
+                if (go == null) return 0;
+
+                var slider = go.GetComponent<Slider>();
+                if (slider != null) return (int)slider.value;
+
+                var dropdown = go.GetComponent<Dropdown>();
+                if (dropdown != null) return dropdown.value;
+
+                var tmpDropdown = go.GetComponent<TMP_Dropdown>();
+                if (tmpDropdown != null) return tmpDropdown.value;
+
+                // Try parsing text
+                var tmp = go.GetComponent<TMP_Text>();
+                if (tmp != null && int.TryParse(tmp.text, out var intVal))
+                    return intVal;
+
+                var legacy = go.GetComponent<Text>();
+                if (legacy != null && int.TryParse(legacy.text, out intVal))
+                    return intVal;
+
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Gets the dropdown options as a string array.
+        /// For static paths, returns the array if it's a string[].
+        /// </summary>
+        public string[] ArrayValue
+        {
+            get
+            {
+                if (_isStaticPath)
+                    return _staticValue as string[] ?? Array.Empty<string>();
+
+                var go = FindFirst();
+                if (go == null) return Array.Empty<string>();
+
+                var dropdown = go.GetComponent<Dropdown>();
+                if (dropdown != null)
+                    return dropdown.options.Select(o => o.text).ToArray();
+
+                var tmpDropdown = go.GetComponent<TMP_Dropdown>();
+                if (tmpDropdown != null)
+                    return tmpDropdown.options.Select(o => o.text).ToArray();
+
+                return Array.Empty<string>();
+            }
+        }
+
+        #endregion
+
         #region Helper Methods
 
         static string GetHierarchyPath(Transform transform)
@@ -1937,6 +2099,178 @@ namespace ODDGames.UITest
             }
 
             return closestDistance;
+        }
+
+        #endregion
+
+        #region Static Path Support
+
+        /// <summary>
+        /// Creates a Search that resolves a static path instead of searching for UI elements.
+        /// Supports short type names if unique, or full namespace paths.
+        /// </summary>
+        /// <param name="path">Dot-separated path (e.g., "GameManager.Instance.Score" or "MyNamespace.GameManager.Instance.Score")</param>
+        /// <returns>A Search representing the resolved value</returns>
+        /// <example>
+        /// // Access static values
+        /// var score = Search.Static("GameManager.Instance.Score").IntValue;
+        ///
+        /// // Iterate over arrays
+        /// foreach (var player in Search.Static("GameManager.Players"))
+        ///     Debug.Log(player.Property("Name").StringValue);
+        ///
+        /// // Use with Assert
+        /// ActionExecutor.Assert(Search.Static("GameManager.IsReady").Property("Value"), true);
+        /// </example>
+        public static Search Static(string path)
+        {
+            var value = ActionExecutor.ResolveStaticPathPublic(path);
+            return new Search(value, path);
+        }
+
+        /// <summary>
+        /// Navigates to a property or field and returns a new Search.
+        /// Works for both static paths and UI element component properties.
+        /// </summary>
+        /// <param name="name">Property or field name</param>
+        /// <returns>A new Search representing the property value</returns>
+        public Search Property(string name)
+        {
+            if (_isStaticPath)
+            {
+                var value = NavigateProperty(_staticValue, name);
+                return new Search(value, $"{_staticPath}.{name}");
+            }
+
+            // For UI elements, get the first match and navigate its component properties
+            var go = FindFirst();
+            if (go == null) return new Search(null, name);
+
+            // Try to get property from any component
+            foreach (var comp in go.GetComponents<Component>())
+            {
+                if (comp == null) continue;
+                var type = comp.GetType();
+                var prop = type.GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (prop != null)
+                    return new Search(prop.GetValue(comp), name);
+
+                var field = type.GetField(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (field != null)
+                    return new Search(field.GetValue(comp), name);
+            }
+
+            return new Search(null, name);
+        }
+
+        /// <summary>
+        /// Gets a typed value from this Search.
+        /// For static paths, returns the resolved value.
+        /// For UI elements, returns component values (text, toggle state, slider value, etc.)
+        /// </summary>
+        public T GetValue<T>(string subPath = null)
+        {
+            object value;
+            if (_isStaticPath)
+            {
+                value = string.IsNullOrEmpty(subPath) ? _staticValue : NavigateProperty(_staticValue, subPath);
+            }
+            else
+            {
+                // For UI elements, use the appropriate value property based on type
+                var go = FindFirst();
+                if (go == null) return default;
+
+                value = typeof(T) switch
+                {
+                    Type t when t == typeof(string) => StringValue,
+                    Type t when t == typeof(bool) => BoolValue,
+                    Type t when t == typeof(float) => FloatValue,
+                    Type t when t == typeof(int) => IntValue,
+                    _ => null
+                };
+            }
+
+            if (value == null) return default;
+            if (value is T typedValue) return typedValue;
+
+            try { return (T)Convert.ChangeType(value, typeof(T)); }
+            catch { return default; }
+        }
+
+        /// <summary>
+        /// Gets the raw value for static path searches.
+        /// </summary>
+        public object Value => _isStaticPath ? _staticValue : FindFirst();
+
+        /// <summary>
+        /// Iterates over array/list elements for static paths, or all matching elements for UI searches.
+        /// </summary>
+        public IEnumerator<Search> GetEnumerator()
+        {
+            if (_isStaticPath)
+            {
+                if (_staticValue == null)
+                    yield break;
+
+                if (_staticValue is System.Collections.IEnumerable enumerable && !(_staticValue is string))
+                {
+                    int idx = 0;
+                    foreach (var item in enumerable)
+                    {
+                        if (item != null)
+                            yield return new Search(item, $"{_staticPath}[{idx}]");
+                        idx++;
+                    }
+                }
+                else
+                {
+                    yield return this;
+                }
+            }
+            else
+            {
+                // For UI searches, iterate over all matches
+                foreach (var go in FindAll())
+                {
+                    var search = new Search();
+                    search._conditions.Add(g => g == go);
+                    search._descriptionParts.Add($"GameObject({go.name})");
+                    yield return search;
+                }
+            }
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private static object NavigateProperty(object current, string path)
+        {
+            if (current == null || string.IsNullOrEmpty(path))
+                return current;
+
+            var parts = path.Split('.');
+            foreach (var part in parts)
+            {
+                if (current == null) return null;
+
+                var type = current.GetType();
+                var prop = type.GetProperty(part, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (prop != null)
+                {
+                    current = prop.GetValue(current);
+                    continue;
+                }
+
+                var field = type.GetField(part, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (field != null)
+                {
+                    current = field.GetValue(current);
+                    continue;
+                }
+
+                return null;
+            }
+            return current;
         }
 
         #endregion
