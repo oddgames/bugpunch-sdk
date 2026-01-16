@@ -1353,6 +1353,163 @@ namespace ODDGames.UITest
             Log($"Assert passed: {path} ({actual}) < {lessThan}");
         }
 
+        #endregion
+
+        #region GetValue Methods
+
+        /// <summary>
+        /// Gets a value from a UI element found by the search.
+        /// Supports: string (text), bool (toggle), float (slider/scrollbar), int, and arrays.
+        /// </summary>
+        /// <typeparam name="T">Type of value to get: string, bool, float, int, or T[]</typeparam>
+        /// <param name="search">The search query to find the element</param>
+        /// <returns>The value from the element</returns>
+        /// <example>
+        /// var text = GetValue&lt;string&gt;(Name("ScoreLabel"));
+        /// var isOn = GetValue&lt;bool&gt;(Name("SoundToggle"));
+        /// var volume = GetValue&lt;float&gt;(Name("VolumeSlider"));
+        /// var items = GetValue&lt;string[]&gt;(Name("Dropdown"));
+        /// </example>
+        public static T GetValue<T>(Search search)
+        {
+            var go = search.FindFirst();
+            if (go == null)
+                throw new InvalidOperationException($"GetValue failed: element not found - Search: {search}");
+
+            var type = typeof(T);
+
+            // String - get text content
+            if (type == typeof(string))
+            {
+                var tmp = go.GetComponent<TMPro.TMP_Text>();
+                if (tmp != null)
+                    return (T)(object)tmp.text;
+
+                var legacy = go.GetComponent<UnityEngine.UI.Text>();
+                if (legacy != null)
+                    return (T)(object)legacy.text;
+
+                var inputField = go.GetComponent<TMPro.TMP_InputField>();
+                if (inputField != null)
+                    return (T)(object)inputField.text;
+
+                var legacyInput = go.GetComponent<UnityEngine.UI.InputField>();
+                if (legacyInput != null)
+                    return (T)(object)legacyInput.text;
+
+                throw new InvalidOperationException($"GetValue<string> failed: '{go.name}' has no text component");
+            }
+
+            // Bool - get toggle state
+            if (type == typeof(bool))
+            {
+                var toggle = go.GetComponent<UnityEngine.UI.Toggle>();
+                if (toggle != null)
+                    return (T)(object)toggle.isOn;
+
+                throw new InvalidOperationException($"GetValue<bool> failed: '{go.name}' is not a Toggle");
+            }
+
+            // Float - get slider/scrollbar value
+            if (type == typeof(float))
+            {
+                var slider = go.GetComponent<Slider>();
+                if (slider != null)
+                    return (T)(object)slider.value;
+
+                var scrollbar = go.GetComponent<UnityEngine.UI.Scrollbar>();
+                if (scrollbar != null)
+                    return (T)(object)scrollbar.value;
+
+                throw new InvalidOperationException($"GetValue<float> failed: '{go.name}' is not a Slider or Scrollbar");
+            }
+
+            // Int - get slider value as int, dropdown index, or text as int
+            if (type == typeof(int))
+            {
+                var slider = go.GetComponent<Slider>();
+                if (slider != null)
+                    return (T)(object)(int)slider.value;
+
+                var dropdown = go.GetComponent<UnityEngine.UI.Dropdown>();
+                if (dropdown != null)
+                    return (T)(object)dropdown.value;
+
+                var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
+                if (tmpDropdown != null)
+                    return (T)(object)tmpDropdown.value;
+
+                // Try parsing text as int
+                var tmp = go.GetComponent<TMPro.TMP_Text>();
+                if (tmp != null && int.TryParse(tmp.text, out var intVal))
+                    return (T)(object)intVal;
+
+                var legacy = go.GetComponent<UnityEngine.UI.Text>();
+                if (legacy != null && int.TryParse(legacy.text, out intVal))
+                    return (T)(object)intVal;
+
+                throw new InvalidOperationException($"GetValue<int> failed: '{go.name}' is not a Slider, Dropdown, or text with int value");
+            }
+
+            // String array - get dropdown options
+            if (type == typeof(string[]))
+            {
+                var dropdown = go.GetComponent<UnityEngine.UI.Dropdown>();
+                if (dropdown != null)
+                    return (T)(object)dropdown.options.Select(o => o.text).ToArray();
+
+                var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
+                if (tmpDropdown != null)
+                    return (T)(object)tmpDropdown.options.Select(o => o.text).ToArray();
+
+                throw new InvalidOperationException($"GetValue<string[]> failed: '{go.name}' is not a Dropdown");
+            }
+
+            throw new InvalidOperationException($"GetValue<{type.Name}> failed: unsupported type. Use string, bool, float, int, or string[]");
+        }
+
+        /// <summary>
+        /// Gets a value from a static path using reflection.
+        /// Resolves dot-separated paths like "GameManager.Instance.Score" or "Player.Health".
+        /// </summary>
+        /// <typeparam name="T">Type of value to get</typeparam>
+        /// <param name="path">Dot-separated path to the value (e.g., "GameManager.Instance.Score")</param>
+        /// <returns>The value at the path</returns>
+        /// <example>
+        /// var score = GetValue&lt;int&gt;("GameManager.Instance.Score");
+        /// var name = GetValue&lt;string&gt;("Player.Instance.Name");
+        /// var isReady = GetValue&lt;bool&gt;("GameManager.Instance.IsReady");
+        /// var items = GetValue&lt;string[]&gt;("Inventory.Instance.ItemNames");
+        /// </example>
+        public static T GetValue<T>(string path)
+        {
+            var value = ResolveStaticPath(path);
+
+            if (value == null)
+            {
+                if (typeof(T).IsValueType && Nullable.GetUnderlyingType(typeof(T)) == null)
+                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: {path} resolved to null");
+                return default;
+            }
+
+            if (value is T typedValue)
+                return typedValue;
+
+            // Try conversion
+            try
+            {
+                return (T)Convert.ChangeType(value, typeof(T));
+            }
+            catch
+            {
+                throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: cannot convert {value.GetType().Name} to {typeof(T).Name}");
+            }
+        }
+
+        #endregion
+
+        #region Wait Methods
+
         /// <summary>
         /// Waits until an element matching the search exists.
         /// </summary>

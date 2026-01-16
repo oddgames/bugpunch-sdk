@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.42] - 2026-01-16
+
+### Added
+- **`GetValue<T>(search)`** - Get values from UI elements or static paths
+  - `GetValue<string>(search)` - text from TMP_Text, Text, InputField
+  - `GetValue<bool>(search)` - toggle isOn state
+  - `GetValue<float>(search)` - slider/scrollbar value
+  - `GetValue<int>(search)` - slider as int, dropdown index, or text parsed as int
+  - `GetValue<string[]>(search)` - dropdown options list
+  - Also supports static paths: `GetValue<int>("GameManager.Instance.Score")`
+
 ## [1.0.41] - 2026-01-16
 
 ### Added
