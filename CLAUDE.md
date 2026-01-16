@@ -39,13 +39,16 @@ Separate repo at `https://github.com/oddgames/ui-automation.wiki.git`. Clone to 
 
 The wiki sidebar and homepage don't auto-update when new pages are added. Before `/deploy`:
 
-1. **Update `_Sidebar.md`** - Add links to any new wiki pages
-2. **Update `Home.md`** - Add new pages to the appropriate documentation section
-3. **Push wiki changes** - `cd wiki_temp && git add -A && git commit -m "message" && git push`
+1. **Update existing wiki pages** - Document any new methods/features in the appropriate pages
+2. **Update `_Sidebar.md`** - Add links to any new wiki pages
+3. **Update `Home.md`** - Add new pages to the appropriate documentation section
+4. **Push wiki changes** - `cd wiki_temp && git add -A && git commit -m "message" && git push`
 
 Key wiki files to update:
 - `wiki_temp/_Sidebar.md` - Navigation sidebar (appears on all pages)
 - `wiki_temp/Home.md` - Main documentation landing page
+- `wiki_temp/Reflection-Access.md` - Value properties, GetValue<T>, Invoke(), Property()
+- `wiki_temp/Search.Spatial.md` - Spatial filters (InRegion, Visible) and positioning helpers
 - `wiki_temp/Test-Actions.md` - Overview of all test action categories
 
 ## Local Changelog (Uncommitted)
