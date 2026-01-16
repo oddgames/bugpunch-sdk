@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.49] - 2026-01-16
+
+### Added
+- **`SetValue(object)` method** - Set property/field values via reflection:
+  - Works with `.Property()` chain: `Static("...").Property("field").SetValue(value)`
+  - Supports chained property access: `.Property("A").Property("B").SetValue(x)`
+  - Works with indexers: `Static("...").Index(0).Property("field").SetValue(value)`
+  - Example: `Static("GameManager.Instance").Property("isKinematic").SetValue(true)`
+
 ## [1.0.48] - 2026-01-16
 
 ### Removed

@@ -427,5 +427,115 @@ namespace ODDGames.UITest.Tests
         }
 
         #endregion
+
+        #region SetValue Tests
+
+        [UnityTest]
+        public IEnumerator SetValue_SetsFieldViaProperty()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Save original value
+                var originalScore = TestData.Players[0].Score;
+
+                // Set value via Property chain
+                Search.Static("SearchIndexerTests.TestData.Players[0]")
+                    .Property("Score")
+                    .SetValue(999);
+
+                Assert.AreEqual(999, TestData.Players[0].Score);
+
+                // Restore
+                TestData.Players[0].Score = originalScore;
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator SetValue_SetsFieldViaIndexAndProperty()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Save original value
+                var originalName = TestData.Players[1].Name;
+
+                // Set value via Index() then Property()
+                Search.Static("SearchIndexerTests.TestData.Players")
+                    .Index(1)
+                    .Property("Name")
+                    .SetValue("Modified");
+
+                Assert.AreEqual("Modified", TestData.Players[1].Name);
+
+                // Restore
+                TestData.Players[1].Name = originalName;
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator SetValue_SetsFieldViaInlineIndexer()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Save original value
+                var originalScore = TestData.Players[2].Score;
+
+                // Set value via inline indexer in path
+                Search.Static("SearchIndexerTests.TestData.Players[2]")
+                    .Property("Score")
+                    .SetValue(777);
+
+                Assert.AreEqual(777, TestData.Players[2].Score);
+
+                // Restore
+                TestData.Players[2].Score = originalScore;
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator SetValue_ThrowsOnDirectStaticPath()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Attempting to set value directly on Static() result should fail
+                Assert.Throws<System.InvalidOperationException>(() =>
+                {
+                    Search.Static("SearchIndexerTests.TestData.Players[0]")
+                        .SetValue(null);
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator SetValue_ChainedPropertyAccess()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Save original
+                var originalName = TestData.PlayersByName["alice"].Name;
+
+                // Set via dictionary index and property
+                Search.Static("SearchIndexerTests.TestData.PlayersByName")
+                    .Index("alice")
+                    .Property("Name")
+                    .SetValue("Alicia");
+
+                Assert.AreEqual("Alicia", TestData.PlayersByName["alice"].Name);
+
+                // Restore
+                TestData.PlayersByName["alice"].Name = originalName;
+            });
+        }
+
+        #endregion
     }
 }

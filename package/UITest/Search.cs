@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using TMPro;
 using UnityEngine;
@@ -81,6 +82,11 @@ namespace ODDGames.UITest
         object _staticValue;
         bool _isStaticPath;
 
+        // For SetValue support - tracks the parent object and member name
+        object _parentObject;
+        string _memberName;
+        MemberInfo _memberInfo;
+
         /// <summary>
         /// Creates a new Search instance.
         /// </summary>
@@ -98,11 +104,14 @@ namespace ODDGames.UITest
         /// <summary>
         /// Private constructor for static path searches.
         /// </summary>
-        private Search(object staticValue, string path)
+        private Search(object staticValue, string path, object parentObject = null, string memberName = null, MemberInfo memberInfo = null)
         {
             _isStaticPath = true;
             _staticPath = path;
             _staticValue = staticValue;
+            _parentObject = parentObject;
+            _memberName = memberName;
+            _memberInfo = memberInfo;
         }
 
         /// <summary>
@@ -2557,6 +2566,7 @@ namespace ODDGames.UITest
         public Search Property(string name)
         {
             string context = _staticPath ?? ToString();
+            const BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
             if (_isStaticPath)
             {
@@ -2572,11 +2582,23 @@ namespace ODDGames.UITest
                     return new Search(value, $"{_staticPath}.{name}");
                 }
 
-                var propValue = NavigateProperty(_staticValue, name);
-                if (propValue == null)
-                    throw new InvalidOperationException($"Property failed: Property '{name}' not found on '{_staticPath}' (type: {_staticValue.GetType().Name})");
+                // Get the value and track parent/member for SetValue support
+                var parentType = _staticValue.GetType();
+                var propInfo = parentType.GetProperty(name, bindingFlags);
+                if (propInfo != null)
+                {
+                    var value = propInfo.GetValue(_staticValue);
+                    return new Search(value, $"{_staticPath}.{name}", _staticValue, name, propInfo);
+                }
 
-                return new Search(propValue, $"{_staticPath}.{name}");
+                var fieldInfo = parentType.GetField(name, bindingFlags);
+                if (fieldInfo != null)
+                {
+                    var value = fieldInfo.GetValue(_staticValue);
+                    return new Search(value, $"{_staticPath}.{name}", _staticValue, name, fieldInfo);
+                }
+
+                throw new InvalidOperationException($"Property failed: Property '{name}' not found on '{_staticPath}' (type: {_staticValue.GetType().Name})");
             }
 
             // For UI elements, get the first match and navigate its component properties
@@ -2589,13 +2611,13 @@ namespace ODDGames.UITest
             {
                 if (comp == null) continue;
                 var type = comp.GetType();
-                var prop = type.GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var prop = type.GetProperty(name, bindingFlags);
                 if (prop != null)
-                    return new Search(prop.GetValue(comp), name);
+                    return new Search(prop.GetValue(comp), name, comp, name, prop);
 
-                var field = type.GetField(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var field = type.GetField(name, bindingFlags);
                 if (field != null)
-                    return new Search(field.GetValue(comp), name);
+                    return new Search(field.GetValue(comp), name, comp, name, field);
             }
 
             var componentNames = string.Join(", ", go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name));
@@ -2820,6 +2842,61 @@ namespace ODDGames.UITest
 
             try { return (T)Convert.ChangeType(value, typeof(T)); }
             catch { return default; }
+        }
+
+        /// <summary>
+        /// Sets the value of the property or field accessed via Property().
+        /// </summary>
+        /// <param name="value">The value to set</param>
+        /// <example>
+        /// <code>
+        /// // Set property via reflection
+        /// Static("GameManager.Instance.competitorControllers[0]")
+        ///     .Property("Rigidbody").Property("isKinematic").SetValue(true);
+        ///
+        /// // Set field value
+        /// Static("Player.Instance").Property("health").SetValue(100f);
+        ///
+        /// // Set UI element property
+        /// new Search().Name("VolumeSlider").Property("value").SetValue(0.5f);
+        /// </code>
+        /// </example>
+        public void SetValue(object value)
+        {
+            if (_memberInfo == null || _parentObject == null)
+            {
+                throw new InvalidOperationException(
+                    $"SetValue failed: Cannot set value on '{_staticPath ?? "search"}'. " +
+                    "SetValue only works on properties accessed via .Property(). " +
+                    "Example: Static(\"Obj.Instance\").Property(\"field\").SetValue(value)");
+            }
+
+            try
+            {
+                if (_memberInfo is PropertyInfo prop)
+                {
+                    if (!prop.CanWrite)
+                        throw new InvalidOperationException($"SetValue failed: Property '{_memberName}' is read-only");
+                    prop.SetValue(_parentObject, value);
+                }
+                else if (_memberInfo is FieldInfo field)
+                {
+                    if (field.IsInitOnly)
+                        throw new InvalidOperationException($"SetValue failed: Field '{_memberName}' is read-only (init-only)");
+                    field.SetValue(_parentObject, value);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"SetValue failed: Unknown member type for '{_memberName}'");
+                }
+            }
+            catch (ArgumentException ex)
+            {
+                var expectedType = _memberInfo is PropertyInfo pi ? pi.PropertyType : (_memberInfo as FieldInfo)?.FieldType;
+                throw new InvalidOperationException(
+                    $"SetValue failed: Cannot set '{_memberName}' to value of type '{value?.GetType().Name ?? "null"}'. " +
+                    $"Expected type: {expectedType?.Name ?? "unknown"}", ex);
+            }
         }
 
         /// <summary>
