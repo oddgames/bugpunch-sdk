@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.47] - 2026-01-16
+
+### Added
+- **Indexer support for static paths and property navigation**:
+  - `Search.Index(int)` method: `.Property("Items").Index(0)`
+  - `Search.Index(string)` method: `.Property("Players").Index("Player1")`
+  - C# indexer syntax: `.Property("Items")[0]` or `.Property("Dict")["key"]`
+  - Inline indexer syntax in paths: `Search.Static("Game.Players[0].Name")` or `"Items[\"key\"]"`
+  - Supports chained indexers: `Items[0][1]` or `Players["team"]["player"]`
+- **Dot syntax for nested types** - Use `Search.Static("OuterClass.InnerClass.Property")` instead of `"OuterClass+InnerClass.Property"` for more readable paths
+- **Right/middle mouse button support for drag operations**:
+  - New `PointerButton` enum: `Left`, `Right`, `Middle`
+  - All drag methods now accept optional `button` parameter (defaults to `Left`)
+  - Example: `await Drag(new Vector2(100, 0), button: PointerButton.Right)`
+
 ## [1.0.46] - 2026-01-16
 
 ### Changed

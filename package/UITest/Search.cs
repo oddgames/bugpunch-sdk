@@ -2563,11 +2563,20 @@ namespace ODDGames.UITest
                 if (_staticValue == null)
                     throw new InvalidOperationException($"Property failed: Static path '{_staticPath}' resolved to null, cannot access property '{name}'");
 
-                var value = NavigateProperty(_staticValue, name);
-                if (value == null)
+                // If _staticValue is a Type, access static members of that type
+                if (_staticValue is Type typeRef)
+                {
+                    var value = NavigatePropertyOnType(typeRef, null, name);
+                    if (value == null)
+                        throw new InvalidOperationException($"Property failed: Static property/field '{name}' not found on type '{typeRef.Name}'");
+                    return new Search(value, $"{_staticPath}.{name}");
+                }
+
+                var propValue = NavigateProperty(_staticValue, name);
+                if (propValue == null)
                     throw new InvalidOperationException($"Property failed: Property '{name}' not found on '{_staticPath}' (type: {_staticValue.GetType().Name})");
 
-                return new Search(value, $"{_staticPath}.{name}");
+                return new Search(propValue, $"{_staticPath}.{name}");
             }
 
             // For UI elements, get the first match and navigate its component properties
@@ -2592,6 +2601,110 @@ namespace ODDGames.UITest
             var componentNames = string.Join(", ", go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name));
             throw new InvalidOperationException($"Property failed: Property/field '{name}' not found on any component of '{go.name}'. Components: [{componentNames}]");
         }
+
+        /// <summary>
+        /// Accesses an element by index (for arrays, lists, dictionaries, or types with indexers).
+        /// Works for static paths and values obtained via Property() from UI elements.
+        /// </summary>
+        /// <param name="index">The integer index to access</param>
+        /// <returns>A new Search representing the indexed value</returns>
+        /// <example>
+        /// <code>
+        /// // Access array element from static path
+        /// var item = Search.Static("GameManager.Instance").Property("Players").Index(0);
+        ///
+        /// // Access list element
+        /// var weapon = Search.Static("Inventory.Items").Index(2).Property("Name").StringValue;
+        ///
+        /// // Access array property from UI element component
+        /// var firstItem = new Search().Name("Inventory").Property("Items").Index(0).StringValue;
+        ///
+        /// // Chain with other accessors
+        /// var name = Search.Static("Config.Settings").Property("Profiles").Index(0).Property("Name").StringValue;
+        /// </code>
+        /// </example>
+        public Search Index(int index)
+        {
+            string context = _staticPath ?? ToString();
+
+            if (!_isStaticPath)
+                throw new InvalidOperationException($"Index failed: Index access is only supported for static paths, not UI element searches ('{context}')");
+
+            if (_staticValue == null)
+                throw new InvalidOperationException($"Index failed: Static path '{_staticPath}' resolved to null, cannot access index [{index}]");
+
+            var value = AccessIndexer(_staticValue, index);
+            return new Search(value, $"{_staticPath}[{index}]");
+        }
+
+        /// <summary>
+        /// Accesses an element by string key (for dictionaries or types with string indexers).
+        /// Works for static paths and values obtained via Property() from UI elements.
+        /// </summary>
+        /// <param name="key">The string key to access</param>
+        /// <returns>A new Search representing the indexed value</returns>
+        /// <example>
+        /// <code>
+        /// // Access dictionary element
+        /// var player = Search.Static("GameManager.Instance").Property("PlayersByName").Index("Player1");
+        ///
+        /// // Access dictionary property from UI element component
+        /// var value = new Search().Name("Config").Property("Settings").Index("volume").FloatValue;
+        ///
+        /// // Chain with other accessors
+        /// var score = Search.Static("Leaderboard.Scores").Index("TopPlayer").IntValue;
+        /// </code>
+        /// </example>
+        public Search Index(string key)
+        {
+            string context = _staticPath ?? ToString();
+
+            if (!_isStaticPath)
+                throw new InvalidOperationException($"Index failed: Index access is only supported for static paths, not UI element searches ('{context}')");
+
+            if (_staticValue == null)
+                throw new InvalidOperationException($"Index failed: Static path '{_staticPath}' resolved to null, cannot access index [\"{key}\"]");
+
+            var value = AccessIndexer(_staticValue, key);
+            return new Search(value, $"{_staticPath}[\"{key}\"]");
+        }
+
+        /// <summary>
+        /// Indexer for accessing elements by integer index.
+        /// Equivalent to calling Index(int).
+        /// </summary>
+        /// <param name="index">The integer index to access</param>
+        /// <returns>A new Search representing the indexed value</returns>
+        /// <example>
+        /// <code>
+        /// // Access array element using indexer syntax
+        /// var item = Search.Static("GameManager.Instance").Property("Players")[0];
+        ///
+        /// // Chain with other accessors
+        /// var name = Search.Static("Config.Settings").Property("Profiles")[0].Property("Name").StringValue;
+        ///
+        /// // From UI element property
+        /// var firstItem = new Search().Name("Inventory").Property("Items")[0].StringValue;
+        /// </code>
+        /// </example>
+        public Search this[int index] => Index(index);
+
+        /// <summary>
+        /// Indexer for accessing elements by string key.
+        /// Equivalent to calling Index(string).
+        /// </summary>
+        /// <param name="key">The string key to access</param>
+        /// <returns>A new Search representing the indexed value</returns>
+        /// <example>
+        /// <code>
+        /// // Access dictionary element using indexer syntax
+        /// var player = Search.Static("GameManager.Instance").Property("PlayersByName")["Player1"];
+        ///
+        /// // From UI element property
+        /// var value = new Search().Name("Config").Property("Settings")["volume"].FloatValue;
+        /// </code>
+        /// </example>
+        public Search this[string key] => Index(key);
 
         /// <summary>
         /// Invokes a method on the current object and returns the result as a new Search.
@@ -2821,24 +2934,239 @@ namespace ODDGames.UITest
             {
                 if (current == null) return null;
 
-                var type = current.GetType();
-                var prop = type.GetProperty(part, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (prop != null)
+                // Check for indexer syntax: PropertyName[index] or PropertyName["key"]
+                var bracketStart = part.IndexOf('[');
+                string memberName = bracketStart >= 0 ? part.Substring(0, bracketStart) : part;
+                string indexerPart = bracketStart >= 0 ? part.Substring(bracketStart) : null;
+
+                // Navigate to property/field first (if member name exists)
+                if (!string.IsNullOrEmpty(memberName))
                 {
-                    current = prop.GetValue(current);
-                    continue;
+                    var type = current.GetType();
+                    var prop = type.GetProperty(memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (prop != null)
+                    {
+                        current = prop.GetValue(current);
+                    }
+                    else
+                    {
+                        var field = type.GetField(memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (field != null)
+                        {
+                            current = field.GetValue(current);
+                        }
+                        else
+                        {
+                            return null;
+                        }
+                    }
                 }
 
-                var field = type.GetField(part, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (field != null)
+                // Apply indexer if present
+                if (indexerPart != null && current != null)
                 {
-                    current = field.GetValue(current);
-                    continue;
+                    current = ApplyIndexer(current, indexerPart);
+                    if (current == null) return null;
                 }
-
-                return null;
             }
             return current;
+        }
+
+        /// <summary>
+        /// Parses and applies an indexer expression like [0], [123], ["key"], or ['key'].
+        /// Supports chained indexers like [0][1] or [0]["key"].
+        /// </summary>
+        private static object ApplyIndexer(object target, string indexerExpr)
+        {
+            if (target == null || string.IsNullOrEmpty(indexerExpr))
+                return target;
+
+            int pos = 0;
+            while (pos < indexerExpr.Length && target != null)
+            {
+                if (indexerExpr[pos] != '[')
+                    break;
+
+                int closePos = FindMatchingBracket(indexerExpr, pos);
+                if (closePos < 0)
+                    throw new InvalidOperationException($"Index failed: Unmatched '[' in indexer expression '{indexerExpr}'");
+
+                var indexContent = indexerExpr.Substring(pos + 1, closePos - pos - 1).Trim();
+
+                // Check if it's a string key (quoted)
+                if ((indexContent.StartsWith("\"") && indexContent.EndsWith("\"")) ||
+                    (indexContent.StartsWith("'") && indexContent.EndsWith("'")))
+                {
+                    var key = indexContent.Substring(1, indexContent.Length - 2);
+                    target = AccessIndexer(target, key);
+                }
+                else if (int.TryParse(indexContent, out int index))
+                {
+                    target = AccessIndexer(target, index);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Index failed: Invalid indexer '{indexContent}' - must be an integer or quoted string");
+                }
+
+                pos = closePos + 1;
+            }
+
+            return target;
+        }
+
+        /// <summary>
+        /// Navigates to a property or field on a type, with optional instance.
+        /// If instance is null, only static members are accessed.
+        /// </summary>
+        private static object NavigatePropertyOnType(Type type, object instance, string name)
+        {
+            if (type == null || string.IsNullOrEmpty(name))
+                return null;
+
+            // Check for indexer syntax
+            var bracketStart = name.IndexOf('[');
+            string memberName = bracketStart >= 0 ? name.Substring(0, bracketStart) : name;
+            string indexerPart = bracketStart >= 0 ? name.Substring(bracketStart) : null;
+
+            object current = null;
+            var flags = instance == null
+                ? System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static
+                : System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
+            // Navigate to property/field
+            var prop = type.GetProperty(memberName, flags);
+            if (prop != null)
+            {
+                current = prop.GetValue(instance);
+            }
+            else
+            {
+                var field = type.GetField(memberName, flags);
+                if (field != null)
+                {
+                    current = field.GetValue(instance);
+                }
+                else
+                {
+                    return null;
+                }
+            }
+
+            // Apply indexer if present
+            if (indexerPart != null && current != null)
+            {
+                current = ApplyIndexer(current, indexerPart);
+            }
+
+            return current;
+        }
+
+        /// <summary>
+        /// Finds the matching closing bracket for an opening bracket at the given position.
+        /// </summary>
+        private static int FindMatchingBracket(string str, int openPos)
+        {
+            int depth = 0;
+            bool inString = false;
+            char stringChar = '\0';
+
+            for (int i = openPos; i < str.Length; i++)
+            {
+                char c = str[i];
+
+                if (inString)
+                {
+                    if (c == stringChar && (i == 0 || str[i - 1] != '\\'))
+                        inString = false;
+                    continue;
+                }
+
+                if (c == '"' || c == '\'')
+                {
+                    inString = true;
+                    stringChar = c;
+                }
+                else if (c == '[')
+                {
+                    depth++;
+                }
+                else if (c == ']')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return i;
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Accesses an indexer on the given object with an integer index.
+        /// Supports arrays, lists, and any type with an int indexer.
+        /// </summary>
+        private static object AccessIndexer(object target, int index)
+        {
+            if (target == null)
+                throw new InvalidOperationException($"Index failed: Cannot access index [{index}] on null");
+
+            var type = target.GetType();
+
+            // Handle arrays directly
+            if (type.IsArray)
+            {
+                var array = (Array)target;
+                if (index < 0 || index >= array.Length)
+                    throw new IndexOutOfRangeException($"Index [{index}] is out of range for array of length {array.Length}");
+                return array.GetValue(index);
+            }
+
+            // Handle IList (List<T>, etc.)
+            if (target is System.Collections.IList list)
+            {
+                if (index < 0 || index >= list.Count)
+                    throw new IndexOutOfRangeException($"Index [{index}] is out of range for list of count {list.Count}");
+                return list[index];
+            }
+
+            // Try to find an indexer property with int parameter
+            var indexer = type.GetProperty("Item", new[] { typeof(int) });
+            if (indexer != null)
+            {
+                return indexer.GetValue(target, new object[] { index });
+            }
+
+            throw new InvalidOperationException($"Index failed: Type '{type.Name}' does not support integer indexer access");
+        }
+
+        /// <summary>
+        /// Accesses an indexer on the given object with a string key.
+        /// Supports dictionaries and any type with a string indexer.
+        /// </summary>
+        private static object AccessIndexer(object target, string key)
+        {
+            if (target == null)
+                throw new InvalidOperationException($"Index failed: Cannot access index [\"{key}\"] on null");
+
+            var type = target.GetType();
+
+            // Handle IDictionary
+            if (target is System.Collections.IDictionary dict)
+            {
+                if (!dict.Contains(key))
+                    throw new KeyNotFoundException($"Key \"{key}\" not found in dictionary");
+                return dict[key];
+            }
+
+            // Try to find an indexer property with string parameter
+            var indexer = type.GetProperty("Item", new[] { typeof(string) });
+            if (indexer != null)
+            {
+                return indexer.GetValue(target, new object[] { key });
+            }
+
+            throw new InvalidOperationException($"Index failed: Type '{type.Name}' does not support string indexer access");
         }
 
         #endregion
