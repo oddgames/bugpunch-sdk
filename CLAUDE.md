@@ -41,4 +41,4 @@ Update this section as you work. Used to generate CHANGELOG.md during `/deploy`.
 
 ### Current Local Changes
 
-(none)
+(No uncommitted changes)

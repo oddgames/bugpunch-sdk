@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using NUnit.Framework;
@@ -54,7 +55,7 @@ namespace ODDGames.UITest.Tests
             foreach (var obj in _createdObjects)
             {
                 if (obj != null)
-                    Object.Destroy(obj);
+                    UnityEngine.Object.Destroy(obj);
             }
             _createdObjects.Clear();
         }
@@ -1082,6 +1083,512 @@ namespace ODDGames.UITest.Tests
 
             _createdObjects.Add(go);
             return scrollRect;
+        }
+
+        #endregion
+
+        #region Assertion Tests
+
+        [UnityTest]
+        public IEnumerator AssertExists_WithExistingElement_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("ExistingButton", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                ActionExecutor.AssertExists(new Search().Name("ExistingButton"));
+                Assert.Pass("AssertExists passed for existing element");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertExists_WithMissingElement_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    ActionExecutor.AssertExists(new Search().Name("NonExistentButton"));
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertNotExists_WithMissingElement_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                ActionExecutor.AssertNotExists(new Search().Name("NonExistentButton"));
+                Assert.Pass("AssertNotExists passed for missing element");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertNotExists_WithExistingElement_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("ExistingButton", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    ActionExecutor.AssertNotExists(new Search().Name("ExistingButton"));
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertText_WithMatchingText_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var go = CreateTextElement("TestText", "Hello World", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                ActionExecutor.AssertText(new Search().Name("TestText"), "Hello World");
+                Assert.Pass("AssertText passed for matching text");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertText_WithMismatchedText_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var go = CreateTextElement("TestText", "Hello World", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    ActionExecutor.AssertText(new Search().Name("TestText"), "Wrong Text");
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertToggle_WithMatchingState_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var toggle = CreateToggle("TestToggle", new Vector2(0, 0));
+                toggle.isOn = true;
+                await UniTask.Yield();
+
+                ActionExecutor.AssertToggle(new Search().Name("TestToggle"), true);
+                Assert.Pass("AssertToggle passed for matching state");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertToggle_WithMismatchedState_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var toggle = CreateToggle("TestToggle", new Vector2(0, 0));
+                toggle.isOn = false;
+                await UniTask.Yield();
+
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    ActionExecutor.AssertToggle(new Search().Name("TestToggle"), true);
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertSlider_WithMatchingValue_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var slider = CreateSlider("TestSlider", new Vector2(0, 0));
+                slider.value = 0.5f;
+                await UniTask.Yield();
+
+                ActionExecutor.AssertSlider(new Search().Name("TestSlider"), 0.5f);
+                Assert.Pass("AssertSlider passed for matching value");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertSlider_WithMismatchedValue_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var slider = CreateSlider("TestSlider", new Vector2(0, 0));
+                slider.value = 0.5f;
+                await UniTask.Yield();
+
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    ActionExecutor.AssertSlider(new Search().Name("TestSlider"), 0.9f);
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertInteractable_WithInteractableElement_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("InteractableButton", new Vector2(0, 0));
+                button.interactable = true;
+                await UniTask.Yield();
+
+                ActionExecutor.AssertInteractable(new Search().Name("InteractableButton"), true);
+                Assert.Pass("AssertInteractable passed for interactable element");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertInteractable_WithNonInteractableElement_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("NonInteractableButton", new Vector2(0, 0));
+                button.interactable = false;
+                await UniTask.Yield();
+
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    ActionExecutor.AssertInteractable(new Search().Name("NonInteractableButton"), true);
+                });
+            });
+        }
+
+        #endregion
+
+        #region Static Path Assertion Tests
+
+        [UnityTest]
+        public IEnumerator Assert_WithTruthyStaticPath_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Use Application.isPlaying which is always true in play mode tests
+                await UniTask.Yield();
+
+                ActionExecutor.Assert("Application.isPlaying");
+                Assert.Pass("Assert passed for truthy static path");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Assert_WithFalsyStaticPath_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                // Use Application.isBatchMode which should be false in editor tests
+                await UniTask.Yield();
+
+                // We need a falsy path - using Screen.fullScreen which is likely false in editor
+                // Note: This test depends on editor state, may need adjustment
+                try
+                {
+                    ActionExecutor.Assert("Screen.fullScreen");
+                    // If we get here, fullScreen was true - skip the test
+                    if (Screen.fullScreen)
+                        Assert.Pass("Screen was full screen, test skipped");
+                    else
+                        Assert.Fail("Assert should have thrown for falsy path");
+                }
+                catch (InvalidOperationException)
+                {
+                    Assert.Pass("Assert correctly threw for falsy static path");
+                }
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertGeneric_WithMatchingValue_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Use Application.platform with expected value
+                ActionExecutor.Assert("Application.isPlaying", true);
+                Assert.Pass("Assert<T> passed for matching value");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertGreater_WithValidComparison_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Screen.width should be > 0
+                ActionExecutor.AssertGreater("Screen.width", 0);
+                Assert.Pass("AssertGreater passed");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertGreater_WithInvalidComparison_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    // Screen.width should not be > 100000
+                    ActionExecutor.AssertGreater("Screen.width", 100000);
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertLess_WithValidComparison_Passes()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Screen.width should be < 100000
+                ActionExecutor.AssertLess("Screen.width", 100000);
+                Assert.Pass("AssertLess passed");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator AssertLess_WithInvalidComparison_Throws()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                Assert.Throws<InvalidOperationException>(() =>
+                {
+                    // Screen.width should not be < 0
+                    ActionExecutor.AssertLess("Screen.width", 0);
+                });
+            });
+        }
+
+        #endregion
+
+        #region WaitFor Tests
+
+        [UnityTest]
+        public IEnumerator WaitFor_WithExistingElement_ReturnsTrue()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("WaitForButton", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitFor(new Search().Name("WaitForButton"), timeout: 1f);
+                Assert.IsTrue(result, "WaitFor should return true for existing element");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitFor_WithMissingElement_ReturnsFalse()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitFor(new Search().Name("NonExistent"), timeout: 0.3f);
+                Assert.IsFalse(result, "WaitFor should return false for missing element after timeout");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitFor_WithDelayedElement_WaitsAndReturnsTrue()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Start wait and create button after a delay
+                var waitTask = ActionExecutor.WaitFor(new Search().Name("DelayedButton"), timeout: 2f);
+
+                // Create button after 200ms
+                await UniTask.Delay(200);
+                CreateButton("DelayedButton", new Vector2(0, 0));
+
+                var result = await waitTask;
+                Assert.IsTrue(result, "WaitFor should return true when element appears before timeout");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitForText_WithMatchingText_ReturnsTrue()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateTextElement("WaitText", "Expected Text", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitFor(new Search().Name("WaitText"), "Expected Text", timeout: 1f);
+                Assert.IsTrue(result, "WaitFor should return true for matching text");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitForText_WithMismatchedText_ReturnsFalse()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateTextElement("WaitText", "Actual Text", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitFor(new Search().Name("WaitText"), "Wrong Text", timeout: 0.3f);
+                Assert.IsFalse(result, "WaitFor should return false for mismatched text");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitForToggle_WithMatchingState_ReturnsTrue()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var toggle = CreateToggle("WaitToggle", new Vector2(0, 0));
+                toggle.isOn = true;
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitFor(new Search().Name("WaitToggle"), true, timeout: 1f);
+                Assert.IsTrue(result, "WaitFor should return true for matching toggle state");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitForNot_WithMissingElement_ReturnsTrue()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitForNot(new Search().Name("NonExistent"), timeout: 1f);
+                Assert.IsTrue(result, "WaitForNot should return true when element doesn't exist");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitForNot_WithExistingElement_ReturnsFalse()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                CreateButton("ExistingButton", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitForNot(new Search().Name("ExistingButton"), timeout: 0.3f);
+                Assert.IsFalse(result, "WaitForNot should return false when element exists");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitForNot_WithRemovedElement_ReturnsTrue()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("ToBeRemoved", new Vector2(0, 0));
+                await UniTask.Yield();
+
+                // Start wait and destroy button after a delay
+                var waitTask = ActionExecutor.WaitForNot(new Search().Name("ToBeRemoved"), timeout: 2f);
+
+                // Destroy after 200ms
+                await UniTask.Delay(200);
+                UnityEngine.Object.Destroy(button.gameObject);
+
+                var result = await waitTask;
+                Assert.IsTrue(result, "WaitForNot should return true when element is removed");
+            });
+        }
+
+        #endregion
+
+        #region Static Path WaitFor Tests
+
+        [UnityTest]
+        public IEnumerator WaitForStaticPath_WithTruthyValue_ReturnsTrue()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitFor("Application.isPlaying", timeout: 1f);
+                Assert.IsTrue(result, "WaitFor should return true for truthy static path");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitForStaticPathGeneric_WithMatchingValue_ReturnsTrue()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitFor("Application.isPlaying", true, timeout: 1f);
+                Assert.IsTrue(result, "WaitFor<T> should return true for matching value");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator WaitForStaticPathGeneric_WithMismatchedValue_ReturnsFalse()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var result = await ActionExecutor.WaitFor("Application.isPlaying", false, timeout: 0.3f);
+                Assert.IsFalse(result, "WaitFor<T> should return false for mismatched value");
+            });
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        private GameObject CreateTextElement(string name, string text, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(200, 40);
+            rect.anchoredPosition = position;
+
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = 14;
+            tmp.color = Color.white;
+
+            _createdObjects.Add(go);
+            return go;
+        }
+
+        private Toggle CreateToggle(string name, Vector2 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(100, 30);
+            rect.anchoredPosition = position;
+
+            var image = go.AddComponent<Image>();
+            image.color = Color.gray;
+
+            var toggle = go.AddComponent<Toggle>();
+            toggle.targetGraphic = image;
+
+            _createdObjects.Add(go);
+            return toggle;
         }
 
         #endregion

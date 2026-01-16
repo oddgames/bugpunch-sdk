@@ -1124,32 +1124,38 @@ namespace ODDGames.UITest.VisualBuilder
         /// </summary>
         private static ElementInfo FindMatchingElement(List<ElementInfo> elements, ElementSelector selector)
         {
-            if (elements == null || elements.Count == 0)
-                return null;
-
             // Convert selector to Search and execute
             var search = selector.ToSearch();
             if (search == null)
                 return null;
 
-            // Find all matching GameObjects
-            var matchingObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)
-                .Where(go => search.Matches(go))
-                .ToList();
-
-            // Apply post-processing (First, Last, Skip, Take, etc.)
-            if (search.HasPostProcessing)
-            {
-                matchingObjects = search.ApplyPostProcessing(matchingObjects).ToList();
-            }
-
-            if (matchingObjects.Count == 0)
+            // Find the first matching GameObject using the Search API
+            var go = search.FindFirst();
+            if (go == null)
                 return null;
 
-            var go = matchingObjects.First();
+            // Find the corresponding ElementInfo if it exists in discovered elements
+            var existingElement = elements?.FirstOrDefault(e => e.gameObject == go);
+            if (existingElement != null)
+                return existingElement;
 
-            // Find the corresponding ElementInfo if it exists
-            return elements.FirstOrDefault(e => e.gameObject == go);
+            // Element not in discovered list (not a Selectable) - create a minimal ElementInfo
+            var bounds = InputInjector.GetScreenBounds(go);
+            return new ElementInfo
+            {
+                id = go.name,
+                gameObject = go,
+                name = go.name,
+                type = "element",
+                bounds = bounds,
+                normalizedBounds = new Rect(
+                    bounds.x / Screen.width,
+                    bounds.y / Screen.height,
+                    bounds.width / Screen.width,
+                    bounds.height / Screen.height
+                ),
+                isEnabled = go.activeInHierarchy
+            };
         }
 
         private static ElementInfo FindByNamePattern(List<ElementInfo> elements, string pattern)

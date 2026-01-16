@@ -317,6 +317,46 @@ namespace ODDGames.UITest.AI
         {
             return new SearchQuery { searchBase = "type", value = typeName };
         }
+
+        /// <summary>
+        /// Creates a path search query.
+        /// </summary>
+        public static SearchQuery Path(string path)
+        {
+            return new SearchQuery { searchBase = "path", value = path };
+        }
+
+        /// <summary>
+        /// Creates a sprite search query.
+        /// </summary>
+        public static SearchQuery Sprite(string spriteName)
+        {
+            return new SearchQuery { searchBase = "sprite", value = spriteName };
+        }
+
+        /// <summary>
+        /// Creates a tag search query.
+        /// </summary>
+        public static SearchQuery Tag(string tag)
+        {
+            return new SearchQuery { searchBase = "tag", value = tag };
+        }
+
+        /// <summary>
+        /// Creates an any search query (matches text, name, or path).
+        /// </summary>
+        public static SearchQuery Any(string pattern)
+        {
+            return new SearchQuery { searchBase = "any", value = pattern };
+        }
+
+        /// <summary>
+        /// Creates a near search query.
+        /// </summary>
+        public static SearchQuery Near(string targetText, string direction = null)
+        {
+            return new SearchQuery { searchBase = "near", value = targetText, direction = direction };
+        }
     }
 
     /// <summary>
