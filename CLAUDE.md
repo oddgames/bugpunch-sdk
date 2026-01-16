@@ -35,6 +35,19 @@ Auto-detected via `versionDefines`:
 
 Separate repo at `https://github.com/oddgames/ui-automation.wiki.git`. Clone to `wiki_temp/` to edit.
 
+### Wiki Update Process (Pre-Deploy Step)
+
+The wiki sidebar and homepage don't auto-update when new pages are added. Before `/deploy`:
+
+1. **Update `_Sidebar.md`** - Add links to any new wiki pages
+2. **Update `Home.md`** - Add new pages to the appropriate documentation section
+3. **Push wiki changes** - `cd wiki_temp && git add -A && git commit -m "message" && git push`
+
+Key wiki files to update:
+- `wiki_temp/_Sidebar.md` - Navigation sidebar (appears on all pages)
+- `wiki_temp/Home.md` - Main documentation landing page
+- `wiki_temp/Test-Actions.md` - Overview of all test action categories
+
 ## Local Changelog (Uncommitted)
 
 Update this section as you work. Used to generate CHANGELOG.md during `/deploy`. Clear after deploy.
