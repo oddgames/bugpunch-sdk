@@ -51,19 +51,25 @@ namespace ODDGames.UITest
 
         #endregion
 
-        #region Search Helper
+        #region Search Helpers
 
         /// <summary>
-        /// Creates a new Search query, optionally matching text content.
-        /// This is a convenience method - you can also use Search.Name(), Search.Text(), etc. directly.
+        /// Creates a Search from a static path for accessing game state via reflection.
         /// </summary>
-        /// <param name="textPattern">Optional text pattern to match (searches visible text content).</param>
-        /// <returns>A new Search instance for chaining conditions.</returns>
-        /// <example>await Click(Search("Play"));  // finds element with "Play" text</example>
-        /// <example>await Click(Search().Name("Button*").Type&lt;Button&gt;());  // chain conditions</example>
-        /// <example>await Click(new Search("Play"));  // text search via constructor</example>
-        /// <example>await Click(new Search().Type&lt;Button&gt;().Text("Submit"));  // chained</example>
-        protected static Search Search(string textPattern = null) => new Search(textPattern);
+        /// <param name="path">Dot-separated path to a static field or property (e.g., "GameManager.Instance.Score").</param>
+        /// <returns>A new Search instance for accessing the static value.</returns>
+        /// <example>
+        /// // Access static properties
+        /// var health = Static("Player.Instance.Health").FloatValue;
+        /// var score = Static("GameManager.Instance.Score").IntValue;
+        ///
+        /// // Use indexers
+        /// var firstPlayer = Static("GameManager.Players")[0];
+        ///
+        /// // Invoke methods
+        /// Static("GameManager.Instance").Invoke("StartGame");
+        /// </example>
+        protected static Search Static(string path) => Search.Static(path);
 
         /// <summary>
         /// Creates a Search query that matches GameObjects by name. Supports * wildcards for pattern matching.
