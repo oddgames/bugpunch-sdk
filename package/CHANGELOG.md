@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.48] - 2026-01-16
+
+### Removed
+- **`Search()` helper method** - Removed from UITestBehaviour to allow direct access to `Search.Static()`. Use specific helpers instead: `Name()`, `Text()`, `Type()`, `Static()`, etc., or `new Search()` for advanced chaining.
+
 ## [1.0.47] - 2026-01-16
 
 ### Added
