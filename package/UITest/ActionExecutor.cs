@@ -455,8 +455,10 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <param name="index">Index of the element when multiple match (0-based)</param>
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        /// <param name="button">Which mouse button to use for dragging</param>
         /// <returns>True if element was found and dragged, false otherwise</returns>
-        public static async UniTask<bool> DragAsync(Search search, Vector2 direction, float duration = 1.0f, float searchTime = 10f, int index = 0, float holdTime = 0.5f)
+        public static async UniTask<bool> DragAsync(Search search, Vector2 direction, float duration = 1.0f, float searchTime = 10f, int index = 0, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             float startTime = Time.realtimeSinceStartup;
 
@@ -468,8 +470,8 @@ namespace ODDGames.UITest
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
                     var endPos = screenPos + direction;
-                    Log($"Drag({search}) -> '{target.name}' from ({screenPos.x:F0}, {screenPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s (hold={holdTime}s)");
-                    await InputInjector.InjectPointerDrag(screenPos, endPos, duration, holdTime);
+                    Log($"Drag({search}) -> '{target.name}' from ({screenPos.x:F0}, {screenPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
+                    await InputInjector.InjectPointerDrag(screenPos, endPos, duration, holdTime, button);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -486,8 +488,9 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="searchTime">Maximum time to search for elements</param>
         /// <param name="holdTime">Time to hold at start position before dragging (for elements requiring hold-to-drag)</param>
+        /// <param name="button">Which mouse button to use for dragging</param>
         /// <returns>True if both elements were found and drag completed, false otherwise</returns>
-        public static async UniTask<bool> DragToAsync(Search fromSearch, Search toSearch, float duration = 1.0f, float searchTime = 10f, float holdTime = 0.5f)
+        public static async UniTask<bool> DragToAsync(Search fromSearch, Search toSearch, float duration = 1.0f, float searchTime = 10f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             float startTime = Time.realtimeSinceStartup;
 
@@ -501,8 +504,8 @@ namespace ODDGames.UITest
                     var toTarget = toResults[0];
                     var fromPos = InputInjector.GetScreenPosition(fromTarget);
                     var toPos = InputInjector.GetScreenPosition(toTarget);
-                    Log($"DragTo({fromSearch}) -> '{fromTarget.name}' to ({toSearch}) -> '{toTarget.name}' over {duration}s (hold={holdTime}s)");
-                    await InputInjector.InjectPointerDrag(fromPos, toPos, duration, holdTime);
+                    Log($"DragTo({fromSearch}) -> '{fromTarget.name}' to ({toSearch}) -> '{toTarget.name}' over {duration}s (hold={holdTime}s, button={button})");
+                    await InputInjector.InjectPointerDrag(fromPos, toPos, duration, holdTime, button);
                     return true;
                 }
                 await UniTask.Delay(100, true);
@@ -517,15 +520,17 @@ namespace ODDGames.UITest
         /// <param name="source">The GameObject to drag from</param>
         /// <param name="direction">The direction to drag (pixel offset)</param>
         /// <param name="duration">Duration of the drag in seconds</param>
-        public static async UniTask DragAsync(GameObject source, Vector2 direction, float duration = 1.0f, float holdTime = 0.5f)
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        /// <param name="button">Which mouse button to use for dragging</param>
+        public static async UniTask DragAsync(GameObject source, Vector2 direction, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             if (source == null)
                 throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
 
             var startPos = InputInjector.GetScreenPosition(source);
             var endPos = startPos + direction;
-            Log($"Drag from ({startPos.x:F0}, {startPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s (hold={holdTime}s)");
-            await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime);
+            Log($"Drag from ({startPos.x:F0}, {startPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
+            await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime, button);
         }
 
         /// <summary>
@@ -535,13 +540,15 @@ namespace ODDGames.UITest
         /// <param name="direction">Direction name: "up", "down", "left", "right"</param>
         /// <param name="normalizedDistance">Distance as fraction of screen height (0-1)</param>
         /// <param name="duration">Duration of the drag in seconds</param>
-        public static async UniTask DragAsync(GameObject source, string direction, float normalizedDistance = 0.2f, float duration = 1.0f, float holdTime = 0.5f)
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        /// <param name="button">Which mouse button to use for dragging</param>
+        public static async UniTask DragAsync(GameObject source, string direction, float normalizedDistance = 0.2f, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             if (source == null)
                 throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
 
             var offset = InputInjector.GetDirectionOffset(direction, normalizedDistance);
-            await DragAsync(source, offset, duration, holdTime);
+            await DragAsync(source, offset, duration, holdTime, button);
         }
 
         /// <summary>
@@ -550,7 +557,9 @@ namespace ODDGames.UITest
         /// <param name="source">The GameObject to drag from</param>
         /// <param name="target">The GameObject to drag to</param>
         /// <param name="duration">Duration of the drag in seconds</param>
-        public static async UniTask DragToAsync(GameObject source, GameObject target, float duration = 1.0f, float holdTime = 0.5f)
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        /// <param name="button">Which mouse button to use for dragging</param>
+        public static async UniTask DragToAsync(GameObject source, GameObject target, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             if (source == null)
                 throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
@@ -559,8 +568,8 @@ namespace ODDGames.UITest
 
             var startPos = InputInjector.GetScreenPosition(source);
             var endPos = InputInjector.GetScreenPosition(target);
-            Log($"Drag from '{source.name}' to '{target.name}' over {duration}s (hold={holdTime}s)");
-            await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime);
+            Log($"Drag from '{source.name}' to '{target.name}' over {duration}s (hold={holdTime}s, button={button})");
+            await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime, button);
         }
 
         /// <summary>
@@ -570,14 +579,15 @@ namespace ODDGames.UITest
         /// <param name="targetPosition">The screen position to drag to</param>
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
-        public static async UniTask DragToAsync(GameObject source, Vector2 targetPosition, float duration = 1.0f, float holdTime = 0.5f)
+        /// <param name="button">Which mouse button to use for dragging</param>
+        public static async UniTask DragToAsync(GameObject source, Vector2 targetPosition, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             if (source == null)
                 throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
 
             var startPos = InputInjector.GetScreenPosition(source);
-            Log($"Drag from '{source.name}' to ({targetPosition.x:F0}, {targetPosition.y:F0}) over {duration}s (hold={holdTime}s)");
-            await InputInjector.InjectPointerDrag(startPos, targetPosition, duration, holdTime);
+            Log($"Drag from '{source.name}' to ({targetPosition.x:F0}, {targetPosition.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
+            await InputInjector.InjectPointerDrag(startPos, targetPosition, duration, holdTime, button);
         }
 
         /// <summary>
@@ -586,10 +596,12 @@ namespace ODDGames.UITest
         /// <param name="startPosition">Start screen position</param>
         /// <param name="endPosition">End screen position</param>
         /// <param name="duration">Duration of the drag in seconds</param>
-        public static async UniTask DragFromToAsync(Vector2 startPosition, Vector2 endPosition, float duration = 1.0f, float holdTime = 0.5f)
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
+        /// <param name="button">Which mouse button to use for dragging</param>
+        public static async UniTask DragFromToAsync(Vector2 startPosition, Vector2 endPosition, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
-            Log($"Drag from ({startPosition.x:F0}, {startPosition.y:F0}) to ({endPosition.x:F0}, {endPosition.y:F0}) over {duration}s (hold={holdTime}s)");
-            await InputInjector.InjectPointerDrag(startPosition, endPosition, duration, holdTime);
+            Log($"Drag from ({startPosition.x:F0}, {startPosition.y:F0}) to ({endPosition.x:F0}, {endPosition.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
+            await InputInjector.InjectPointerDrag(startPosition, endPosition, duration, holdTime, button);
         }
 
         #endregion
@@ -1977,8 +1989,6 @@ namespace ODDGames.UITest
                 throw new ArgumentException("Path cannot be null or empty", nameof(path));
 
             var parts = path.Split('.');
-            if (parts.Length < 2)
-                throw new ArgumentException($"Path must have at least type and member: {path}", nameof(path));
 
             // Try progressively longer type names to find the base type
             Type type = null;
@@ -2016,8 +2026,10 @@ namespace ODDGames.UITest
                 }
             }
 
+            // If path resolves to just a type with no members, return the Type object
+            // This allows subsequent Property() calls to access static members
             if (memberStartIndex >= parts.Length)
-                throw new InvalidOperationException($"Path '{path}' resolves to a type with no members specified");
+                return type;
 
             // Navigate through members
             object current = null;
@@ -2026,34 +2038,220 @@ namespace ODDGames.UITest
 
             for (int i = memberStartIndex; i < parts.Length; i++)
             {
-                var memberName = parts[i];
+                var part = parts[i];
 
-                // Try property first
-                var prop = currentType.GetProperty(memberName, flags);
-                if (prop != null)
+                // Check for indexer syntax: PropertyName[index] or PropertyName["key"]
+                var bracketStart = part.IndexOf('[');
+                string memberName = bracketStart >= 0 ? part.Substring(0, bracketStart) : part;
+                string indexerPart = bracketStart >= 0 ? part.Substring(bracketStart) : null;
+
+                // Navigate to property/field first (if member name exists)
+                if (!string.IsNullOrEmpty(memberName))
                 {
-                    current = prop.GetValue(current);
-                    if (current == null && i < parts.Length - 1)
-                        throw new InvalidOperationException($"Null reference at '{memberName}' in path: {path}");
-                    currentType = current?.GetType() ?? prop.PropertyType;
-                    continue;
+                    // Try property first
+                    var prop = currentType.GetProperty(memberName, flags);
+                    if (prop != null)
+                    {
+                        current = prop.GetValue(current);
+                        if (current == null && (indexerPart != null || i < parts.Length - 1))
+                            throw new InvalidOperationException($"Null reference at '{memberName}' in path: {path}");
+                        currentType = current?.GetType() ?? prop.PropertyType;
+                    }
+                    else
+                    {
+                        // Try field
+                        var field = currentType.GetField(memberName, flags);
+                        if (field != null)
+                        {
+                            current = field.GetValue(current);
+                            if (current == null && (indexerPart != null || i < parts.Length - 1))
+                                throw new InvalidOperationException($"Null reference at '{memberName}' in path: {path}");
+                            currentType = current?.GetType() ?? field.FieldType;
+                        }
+                        else
+                        {
+                            // Check if this is a nested type (allows OuterClass.InnerClass syntax)
+                            var nestedType = currentType.GetNestedType(memberName, BindingFlags.Public | BindingFlags.NonPublic);
+                            if (nestedType != null)
+                            {
+                                // Switch to the nested type and continue navigation
+                                currentType = nestedType;
+                                current = null; // Nested types don't have an instance
+                                // Don't apply indexer to types
+                                if (indexerPart != null)
+                                    throw new InvalidOperationException($"Cannot apply indexer to type '{nestedType.Name}' in path: {path}");
+                                continue;
+                            }
+
+                            throw new InvalidOperationException($"Member '{memberName}' not found on type '{currentType.Name}' in path: {path}");
+                        }
+                    }
                 }
 
-                // Try field
-                var field = currentType.GetField(memberName, flags);
-                if (field != null)
+                // Apply indexer if present
+                if (indexerPart != null)
                 {
-                    current = field.GetValue(current);
+                    current = ApplyIndexer(current, indexerPart, path);
                     if (current == null && i < parts.Length - 1)
-                        throw new InvalidOperationException($"Null reference at '{memberName}' in path: {path}");
-                    currentType = current?.GetType() ?? field.FieldType;
-                    continue;
+                        throw new InvalidOperationException($"Null reference at indexer '{indexerPart}' in path: {path}");
+                    currentType = current?.GetType() ?? typeof(object);
                 }
-
-                throw new InvalidOperationException($"Member '{memberName}' not found on type '{currentType.Name}' in path: {path}");
             }
 
+            // If we ended up with a type but no instance (e.g., navigated to a nested type),
+            // return the Type object to allow subsequent Property() calls
+            if (current == null && currentType != type)
+                return currentType;
+
             return current;
+        }
+
+        /// <summary>
+        /// Parses and applies an indexer expression like [0], [123], ["key"], or ['key'].
+        /// Supports chained indexers like [0][1] or [0]["key"].
+        /// </summary>
+        private static object ApplyIndexer(object target, string indexerExpr, string fullPath)
+        {
+            if (target == null || string.IsNullOrEmpty(indexerExpr))
+                return target;
+
+            int pos = 0;
+            while (pos < indexerExpr.Length && target != null)
+            {
+                if (indexerExpr[pos] != '[')
+                    break;
+
+                int closePos = FindMatchingBracket(indexerExpr, pos);
+                if (closePos < 0)
+                    throw new InvalidOperationException($"Unmatched '[' in indexer expression in path: {fullPath}");
+
+                var indexContent = indexerExpr.Substring(pos + 1, closePos - pos - 1).Trim();
+
+                // Check if it's a string key (quoted)
+                if ((indexContent.StartsWith("\"") && indexContent.EndsWith("\"")) ||
+                    (indexContent.StartsWith("'") && indexContent.EndsWith("'")))
+                {
+                    var key = indexContent.Substring(1, indexContent.Length - 2);
+                    target = AccessStringIndexer(target, key, fullPath);
+                }
+                else if (int.TryParse(indexContent, out int index))
+                {
+                    target = AccessIntIndexer(target, index, fullPath);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Invalid indexer '{indexContent}' in path: {fullPath} - must be an integer or quoted string");
+                }
+
+                pos = closePos + 1;
+            }
+
+            return target;
+        }
+
+        /// <summary>
+        /// Finds the matching closing bracket for an opening bracket at the given position.
+        /// </summary>
+        private static int FindMatchingBracket(string str, int openPos)
+        {
+            int depth = 0;
+            bool inString = false;
+            char stringChar = '\0';
+
+            for (int i = openPos; i < str.Length; i++)
+            {
+                char c = str[i];
+
+                if (inString)
+                {
+                    if (c == stringChar && (i == 0 || str[i - 1] != '\\'))
+                        inString = false;
+                    continue;
+                }
+
+                if (c == '"' || c == '\'')
+                {
+                    inString = true;
+                    stringChar = c;
+                }
+                else if (c == '[')
+                {
+                    depth++;
+                }
+                else if (c == ']')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return i;
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Accesses an integer indexer on the given object.
+        /// </summary>
+        private static object AccessIntIndexer(object target, int index, string fullPath)
+        {
+            if (target == null)
+                throw new InvalidOperationException($"Cannot access index [{index}] on null in path: {fullPath}");
+
+            var type = target.GetType();
+
+            // Handle arrays directly
+            if (type.IsArray)
+            {
+                var array = (Array)target;
+                if (index < 0 || index >= array.Length)
+                    throw new IndexOutOfRangeException($"Index [{index}] is out of range for array of length {array.Length} in path: {fullPath}");
+                return array.GetValue(index);
+            }
+
+            // Handle IList (List<T>, etc.)
+            if (target is System.Collections.IList list)
+            {
+                if (index < 0 || index >= list.Count)
+                    throw new IndexOutOfRangeException($"Index [{index}] is out of range for list of count {list.Count} in path: {fullPath}");
+                return list[index];
+            }
+
+            // Try to find an indexer property with int parameter
+            var indexer = type.GetProperty("Item", new[] { typeof(int) });
+            if (indexer != null)
+            {
+                return indexer.GetValue(target, new object[] { index });
+            }
+
+            throw new InvalidOperationException($"Type '{type.Name}' does not support integer indexer access in path: {fullPath}");
+        }
+
+        /// <summary>
+        /// Accesses a string indexer on the given object.
+        /// </summary>
+        private static object AccessStringIndexer(object target, string key, string fullPath)
+        {
+            if (target == null)
+                throw new InvalidOperationException($"Cannot access index [\"{key}\"] on null in path: {fullPath}");
+
+            var type = target.GetType();
+
+            // Handle IDictionary
+            if (target is System.Collections.IDictionary dict)
+            {
+                if (!dict.Contains(key))
+                    throw new KeyNotFoundException($"Key \"{key}\" not found in dictionary in path: {fullPath}");
+                return dict[key];
+            }
+
+            // Try to find an indexer property with string parameter
+            var indexer = type.GetProperty("Item", new[] { typeof(string) });
+            if (indexer != null)
+            {
+                return indexer.GetValue(target, new object[] { key });
+            }
+
+            throw new InvalidOperationException($"Type '{type.Name}' does not support string indexer access in path: {fullPath}");
         }
 
         // Cache for type lookups - maps short name to resolved Type
@@ -2099,6 +2297,34 @@ namespace ODDGames.UITest
                 }
             }
 
+            // If not found, try converting dots to + for nested type syntax
+            // This allows "OuterClass.InnerClass" to match "OuterClass+InnerClass"
+            if (result == null && typeName.Contains("."))
+            {
+                var parts = typeName.Split('.');
+                // Try progressively replacing dots with + from right to left
+                for (int i = parts.Length - 1; i >= 1 && result == null; i--)
+                {
+                    var prefix = string.Join(".", parts, 0, i);
+                    var suffix = string.Join("+", parts, i, parts.Length - i);
+                    var nestedTypeName = prefix + "+" + suffix;
+
+                    foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        try
+                        {
+                            result = assembly.GetType(nestedTypeName);
+                            if (result != null)
+                                break;
+                        }
+                        catch
+                        {
+                            // Some assemblies may throw on GetType, skip them
+                        }
+                    }
+                }
+            }
+
             if (result != null)
                 _typeCache[typeName] = result;
 
@@ -2107,6 +2333,7 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Finds all types whose name ends with the given suffix (e.g., "TestTrucks" finds "MyNamespace.TestTrucks").
+        /// Also handles nested type patterns like "OuterClass+InnerClass" by checking FullName.
         /// Results are cached if exactly one match is found.
         /// </summary>
         private static List<Type> FindTypesEndingWith(string typeName)
@@ -2117,13 +2344,23 @@ namespace ODDGames.UITest
 
             var matches = new List<Type>();
 
+            // Check if this looks like a nested type pattern (contains +)
+            bool isNestedPattern = typeName.Contains("+");
+
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 try
                 {
                     foreach (var type in assembly.GetTypes())
                     {
+                        // Simple name match
                         if (type.Name == typeName)
+                        {
+                            matches.Add(type);
+                        }
+                        // For nested type patterns like "OuterClass+InnerClass", check if FullName ends with it
+                        else if (isNestedPattern && type.FullName != null &&
+                                 (type.FullName.EndsWith("." + typeName) || type.FullName == typeName))
                         {
                             matches.Add(type);
                         }

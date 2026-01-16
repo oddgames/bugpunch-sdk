@@ -119,6 +119,19 @@ namespace ODDGames.UITest
     }
 
     /// <summary>
+    /// Specifies which mouse button to use for drag operations.
+    /// </summary>
+    public enum PointerButton
+    {
+        /// <summary>Left mouse button (default for most drag operations)</summary>
+        Left,
+        /// <summary>Right mouse button (for context menus, camera rotation, etc.)</summary>
+        Right,
+        /// <summary>Middle mouse button (for panning, special actions)</summary>
+        Middle
+    }
+
+    /// <summary>
     /// Public utility class for injecting input events using Unity's Input System.
     /// Used by UITestBehaviour and AI testing systems.
     /// </summary>
@@ -869,7 +882,8 @@ namespace ODDGames.UITest
         /// <param name="endPos">End position in screen coordinates</param>
         /// <param name="duration">Duration of the drag movement (minimum 1 second)</param>
         /// <param name="holdTime">Time to hold at start position before dragging (default 0.5s)</param>
-        public static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f)
+        /// <param name="button">Which mouse button to use for dragging (ignored on touch devices)</param>
+        public static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             await EnsureGameViewFocusAsync();
 
@@ -879,7 +893,7 @@ namespace ODDGames.UITest
                 return;
             }
 
-            await InjectMouseDrag(startPos, endPos, duration, holdTime);
+            await InjectMouseDrag(startPos, endPos, duration, holdTime, button);
         }
 
         /// <summary>
@@ -890,7 +904,8 @@ namespace ODDGames.UITest
         /// <param name="endPos">End position in screen coordinates</param>
         /// <param name="duration">Duration of the drag movement</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
-        public static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f)
+        /// <param name="button">Which mouse button to use for dragging</param>
+        public static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             var mouse = Mouse.current;
             if (mouse == null)
@@ -899,7 +914,15 @@ namespace ODDGames.UITest
                 return;
             }
 
-            LogDebug($"MouseDrag start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s hold={holdTime}s");
+            // Get the appropriate button control based on the enum
+            var buttonControl = button switch
+            {
+                PointerButton.Right => mouse.rightButton,
+                PointerButton.Middle => mouse.middleButton,
+                _ => mouse.leftButton
+            };
+
+            LogDebug($"MouseDrag start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s hold={holdTime}s button={button}");
 
             Vector2 previousPos = startPos;
 
@@ -918,7 +941,7 @@ namespace ODDGames.UITest
             {
                 mouse.position.WriteValueIntoEvent(startPos, downPtr);
                 mouse.delta.WriteValueIntoEvent(Vector2.zero, downPtr);
-                mouse.leftButton.WriteValueIntoEvent(1f, downPtr);
+                buttonControl.WriteValueIntoEvent(1f, downPtr);
                 InputSystem.QueueEvent(downPtr);
             }
             InputSystem.Update(); // Force event processing
@@ -936,7 +959,7 @@ namespace ODDGames.UITest
                     {
                         mouse.position.WriteValueIntoEvent(startPos, holdPtr);
                         mouse.delta.WriteValueIntoEvent(Vector2.zero, holdPtr);
-                        mouse.leftButton.WriteValueIntoEvent(1f, holdPtr);
+                        buttonControl.WriteValueIntoEvent(1f, holdPtr);
                         InputSystem.QueueEvent(holdPtr);
                     }
                     InputSystem.Update();
@@ -958,7 +981,7 @@ namespace ODDGames.UITest
                 {
                     mouse.position.WriteValueIntoEvent(currentPos, movePtr);
                     mouse.delta.WriteValueIntoEvent(delta, movePtr);
-                    mouse.leftButton.WriteValueIntoEvent(1f, movePtr);
+                    buttonControl.WriteValueIntoEvent(1f, movePtr);
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update(); // Force event processing each frame
@@ -972,7 +995,7 @@ namespace ODDGames.UITest
             {
                 mouse.position.WriteValueIntoEvent(endPos, finalPtr);
                 mouse.delta.WriteValueIntoEvent(endPos - previousPos, finalPtr);
-                mouse.leftButton.WriteValueIntoEvent(1f, finalPtr);
+                buttonControl.WriteValueIntoEvent(1f, finalPtr);
                 InputSystem.QueueEvent(finalPtr);
             }
             InputSystem.Update();
@@ -982,7 +1005,7 @@ namespace ODDGames.UITest
             {
                 mouse.position.WriteValueIntoEvent(endPos, upPtr);
                 mouse.delta.WriteValueIntoEvent(Vector2.zero, upPtr);
-                mouse.leftButton.WriteValueIntoEvent(0f, upPtr);
+                buttonControl.WriteValueIntoEvent(0f, upPtr);
                 InputSystem.QueueEvent(upPtr);
             }
             InputSystem.Update(); // Force event processing

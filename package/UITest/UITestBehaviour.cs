@@ -2285,6 +2285,7 @@ namespace ODDGames.UITest
         /// </summary>
         /// <param name="direction">The drag direction and distance in pixels.</param>
         /// <param name="duration">Duration of the drag animation in seconds. Default is 0.5 seconds.</param>
+        /// <param name="button">Which mouse button to use for dragging. Default is left button.</param>
         /// <returns>A UniTask that completes when the drag is finished.</returns>
         /// <example>
         /// // Drag right 200 pixels from center
@@ -2292,11 +2293,14 @@ namespace ODDGames.UITest
         ///
         /// // Drag down 100 pixels
         /// await Drag(new Vector2(0, -100));
+        ///
+        /// // Right-click drag for camera rotation
+        /// await Drag(new Vector2(100, 0), button: PointerButton.Right);
         /// </example>
-        protected async UniTask Drag(Vector2 direction, float duration = 1.0f)
+        protected async UniTask Drag(Vector2 direction, float duration = 1.0f, PointerButton button = PointerButton.Left)
         {
             Vector2 startPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            await DragFromTo(startPos, startPos + direction, duration);
+            await DragFromTo(startPos, startPos + direction, duration, button);
         }
 
         /// <summary>
@@ -2306,16 +2310,17 @@ namespace ODDGames.UITest
         /// <param name="yPercent">Y start position as percentage of screen height (0 = bottom, 1 = top).</param>
         /// <param name="direction">The drag direction and distance in pixels.</param>
         /// <param name="duration">Duration of the drag animation in seconds. Default is 0.5 seconds.</param>
+        /// <param name="button">Which mouse button to use for dragging. Default is left button.</param>
         /// <returns>A UniTask that completes when the drag is finished.</returns>
         /// <example>
         /// // Drag from top-center downward
         /// await DragAt(0.5f, 0.9f, new Vector2(0, -200));
         /// </example>
-        protected async UniTask DragAt(float xPercent, float yPercent, Vector2 direction, float duration = 1.0f)
+        protected async UniTask DragAt(float xPercent, float yPercent, Vector2 direction, float duration = 1.0f, PointerButton button = PointerButton.Left)
         {
             Vector2 startPos = new Vector2(xPercent * Screen.width, yPercent * Screen.height);
-            Debug.Log($"[UITEST] DragAt ({xPercent:P0}, {yPercent:P0}) delta=({direction.x:F0},{direction.y:F0})");
-            await DragFromTo(startPos, startPos + direction, duration);
+            Debug.Log($"[UITEST] DragAt ({xPercent:P0}, {yPercent:P0}) delta=({direction.x:F0},{direction.y:F0}) button={button}");
+            await DragFromTo(startPos, startPos + direction, duration, button);
         }
 
         /// <summary>
@@ -2327,6 +2332,7 @@ namespace ODDGames.UITest
         /// <param name="duration">Duration of the drag animation in seconds. Default is 0.5 seconds.</param>
         /// <param name="throwIfMissing">If true, throws an exception when element is not found. Default is true.</param>
         /// <param name="searchTime">Maximum time in seconds to search for the element. Default is 10 seconds.</param>
+        /// <param name="button">Which mouse button to use for dragging. Default is left button.</param>
         /// <returns>A UniTask that completes when the drag is finished.</returns>
         /// <example>
         /// // Scroll a list down
@@ -2334,10 +2340,13 @@ namespace ODDGames.UITest
         ///
         /// // Drag an item to the right
         /// await Drag(Name("ListItem"), new Vector2(100, 0), 0.3f);
+        ///
+        /// // Right-click drag on a 3D object for rotation
+        /// await Drag(Name("Model"), new Vector2(50, 0), button: PointerButton.Right);
         /// </example>
-        protected async UniTask Drag(Search search, Vector2 direction, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10)
+        protected async UniTask Drag(Search search, Vector2 direction, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, PointerButton button = PointerButton.Left)
         {
-            bool found = await ActionExecutor.DragAsync(search, direction, duration, searchTime);
+            bool found = await ActionExecutor.DragAsync(search, direction, duration, searchTime, button: button);
 
             if (found)
             {
@@ -2355,16 +2364,20 @@ namespace ODDGames.UITest
         /// <param name="startPos">Start position in screen coordinates (pixels).</param>
         /// <param name="endPos">End position in screen coordinates (pixels).</param>
         /// <param name="duration">Duration of the drag animation in seconds. Default is 0.5 seconds.</param>
+        /// <param name="button">Which mouse button to use for dragging. Default is left button.</param>
         /// <returns>A UniTask that completes when the drag is finished.</returns>
         /// <example>
         /// // Drag from top-left to bottom-right
         /// await DragFromTo(new Vector2(100, 500), new Vector2(300, 200), 0.5f);
+        ///
+        /// // Right-click drag for camera panning
+        /// await DragFromTo(start, end, 0.5f, PointerButton.Right);
         /// </example>
-        protected async UniTask DragFromTo(Vector2 startPos, Vector2 endPos, float duration = 1.0f)
+        protected async UniTask DragFromTo(Vector2 startPos, Vector2 endPos, float duration = 1.0f, PointerButton button = PointerButton.Left)
         {
-            Debug.Log($"[UITEST] DragFromTo ({duration}s) from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0})");
+            Debug.Log($"[UITEST] DragFromTo ({duration}s) from ({startPos.x:F0},{startPos.y:F0}) to ({endPos.x:F0},{endPos.y:F0}) button={button}");
 
-            await ActionExecutor.DragFromToAsync(startPos, endPos, duration);
+            await ActionExecutor.DragFromToAsync(startPos, endPos, duration, button: button);
 
             await ActionComplete();
         }
@@ -2379,6 +2392,7 @@ namespace ODDGames.UITest
         /// <param name="throwIfMissing">If true, throws an exception when elements are not found. Default is true.</param>
         /// <param name="searchTime">Maximum time in seconds to search for each element. Default is 10 seconds.</param>
         /// <param name="holdTime">Time to hold at start position before dragging. Useful for elements that require hold-to-drag. Default is 0.5 seconds.</param>
+        /// <param name="button">Which mouse button to use for dragging. Default is left button.</param>
         /// <returns>A UniTask that completes when the drag is finished.</returns>
         /// <example>
         /// // Drag an inventory item to a slot
@@ -2390,11 +2404,11 @@ namespace ODDGames.UITest
         /// // Drag with longer hold time for hold-to-drag elements (like level editor props)
         /// await DragTo(Name("Prop"), Name("Stage"), holdTime: 1.5f);
         /// </example>
-        protected async UniTask DragTo(Search sourceSearch, Search targetSearch, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f)
+        protected async UniTask DragTo(Search sourceSearch, Search targetSearch, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
-            Debug.Log($"[UITEST] DragTo (Search, Search) timeout={searchTime}s duration={duration}s holdTime={holdTime}s");
+            Debug.Log($"[UITEST] DragTo (Search, Search) timeout={searchTime}s duration={duration}s holdTime={holdTime}s button={button}");
 
-            bool found = await ActionExecutor.DragToAsync(sourceSearch, targetSearch, duration, searchTime, holdTime);
+            bool found = await ActionExecutor.DragToAsync(sourceSearch, targetSearch, duration, searchTime, holdTime, button);
 
             if (found)
             {
@@ -2415,25 +2429,27 @@ namespace ODDGames.UITest
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
-        protected async UniTask DragTo(Search sourceSearch, Vector2 targetPercent, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f)
+        /// <param name="button">Which mouse button to use for dragging</param>
+        protected async UniTask DragTo(Search sourceSearch, Vector2 targetPercent, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             var source = await Find<RectTransform>(sourceSearch, throwIfMissing, searchTime);
             if (source == null) return;
 
             Vector2 targetPos = new Vector2(targetPercent.x * Screen.width, targetPercent.y * Screen.height);
 
-            Debug.Log($"[UITEST] DragTo '{source.name}' -> ({targetPercent.x:P0}, {targetPercent.y:P0}) holdTime={holdTime}s");
+            Debug.Log($"[UITEST] DragTo '{source.name}' -> ({targetPercent.x:P0}, {targetPercent.y:P0}) holdTime={holdTime}s button={button}");
 
-            await ActionExecutor.DragToAsync(source.gameObject, targetPos, duration, holdTime);
+            await ActionExecutor.DragToAsync(source.gameObject, targetPos, duration, holdTime, button);
             await ActionComplete();
         }
 
         /// <summary>
         /// Drags an element found by name to a screen position specified as percentages (0-1).
         /// </summary>
-        protected async UniTask DragTo(string sourceName, Vector2 targetPercent, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f)
+        /// <param name="button">Which mouse button to use for dragging</param>
+        protected async UniTask DragTo(string sourceName, Vector2 targetPercent, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
-            await DragTo(new Search().Name(sourceName), targetPercent, duration, throwIfMissing, searchTime, holdTime);
+            await DragTo(new Search().Name(sourceName), targetPercent, duration, throwIfMissing, searchTime, holdTime, button);
         }
 
         /// <summary>
@@ -2445,7 +2461,8 @@ namespace ODDGames.UITest
         /// <param name="throwIfMissing">Whether to throw if element not found</param>
         /// <param name="searchTime">Timeout for finding the element</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
-        protected async UniTask DragTo(Vector2 sourcePercent, Search targetSearch, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f)
+        /// <param name="button">Which mouse button to use for dragging</param>
+        protected async UniTask DragTo(Vector2 sourcePercent, Search targetSearch, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
         {
             var target = await Find<RectTransform>(targetSearch, throwIfMissing, searchTime);
             if (target == null) return;
@@ -2453,9 +2470,9 @@ namespace ODDGames.UITest
             Vector2 sourcePos = new Vector2(sourcePercent.x * Screen.width, sourcePercent.y * Screen.height);
             Vector2 targetPos = InputInjector.GetScreenPosition(target.gameObject);
 
-            Debug.Log($"[UITEST] DragTo ({sourcePercent.x:P0}, {sourcePercent.y:P0}) -> '{target.name}' holdTime={holdTime}s");
+            Debug.Log($"[UITEST] DragTo ({sourcePercent.x:P0}, {sourcePercent.y:P0}) -> '{target.name}' holdTime={holdTime}s button={button}");
 
-            await InputInjector.InjectPointerDrag(sourcePos, targetPos, duration, holdTime);
+            await InputInjector.InjectPointerDrag(sourcePos, targetPos, duration, holdTime, button);
             await ActionComplete();
         }
 

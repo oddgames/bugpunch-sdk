@@ -1385,6 +1385,57 @@ namespace ODDGames.UITest.Tests
             });
         }
 
+        [UnityTest]
+        public IEnumerator InjectMouseDrag_WithRightButton_DragsWithRightMouse()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var start = new Vector2(Screen.width / 2f, Screen.height / 2f);
+                var end = start + new Vector2(100, 0);
+
+                // Right mouse button drag (commonly used for camera rotation)
+                await InputInjector.InjectMouseDrag(start, end, 0.2f, 0f, PointerButton.Right);
+
+                Assert.Pass("Right mouse button drag completed without errors");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator InjectMouseDrag_WithMiddleButton_DragsWithMiddleMouse()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var start = new Vector2(Screen.width / 2f, Screen.height / 2f);
+                var end = start + new Vector2(100, 0);
+
+                // Middle mouse button drag (commonly used for panning)
+                await InputInjector.InjectMouseDrag(start, end, 0.2f, 0f, PointerButton.Middle);
+
+                Assert.Pass("Middle mouse button drag completed without errors");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator InjectPointerDrag_WithRightButton_DragsWithRightMouse()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                var start = new Vector2(Screen.width / 2f, Screen.height / 2f);
+                var end = start + new Vector2(100, 0);
+
+                // Right mouse button drag via pointer abstraction
+                await InputInjector.InjectPointerDrag(start, end, 0.2f, 0f, PointerButton.Right);
+
+                Assert.Pass("Right mouse button pointer drag completed without errors");
+            });
+        }
+
         #endregion
 
         #region Two Finger Drag Tests
