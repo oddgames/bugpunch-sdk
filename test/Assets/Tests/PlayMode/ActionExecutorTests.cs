@@ -1641,15 +1641,18 @@ namespace ODDGames.UITest.Tests
         }
 
         [UnityTest]
-        public IEnumerator StaticPath_BoolValue_OnNonBool_ReturnsFalse()
+        public IEnumerator StaticPath_BoolValue_OnNonBool_ThrowsException()
         {
             return UniTask.ToCoroutine(async () =>
             {
                 TestTrucks.PlayerTruck = new TruckController { Name = "TestTruck" };
                 await UniTask.Yield();
 
-                // BoolValue on a string should return false
-                Assert.IsFalse(Search.Static("TestTrucks.PlayerTruck").Property("Name").BoolValue);
+                // BoolValue on a string should throw InvalidOperationException
+                Assert.Throws<System.InvalidOperationException>(() =>
+                {
+                    var _ = Search.Static("TestTrucks.PlayerTruck").Property("Name").BoolValue;
+                });
             });
         }
 

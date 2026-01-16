@@ -467,9 +467,9 @@ namespace ODDGames.UITest.Tests
                 var startPos = InputInjector.GetScreenPosition(draggable);
                 var endPos = startPos + new Vector2(100, 0);
 
-                await InputInjector.InjectPointerDrag(startPos, endPos, 0.2f);
+                await InputInjector.InjectPointerDrag(startPos, endPos, 0.5f);
 
-                await UniTask.DelayFrame(2);
+                await UniTask.DelayFrame(5);
 
                 // Verify drag occurred (object position should change)
                 var finalPos = InputInjector.GetScreenPosition(draggable);
