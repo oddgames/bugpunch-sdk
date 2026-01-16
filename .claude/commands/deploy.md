@@ -4,6 +4,7 @@ Deploy the UITest package - version bump, tag, and push.
 
 1. **Update wiki (if wiki_temp exists)**
    - Check if `wiki_temp/` directory exists
+   - Update existing wiki pages to document any new features added in this release
    - Update `_Sidebar.md` with any new pages
    - Update `Home.md` with any new pages in appropriate sections
    - Commit and push wiki changes: `cd wiki_temp && git add -A && git commit -m "..." && git push`
