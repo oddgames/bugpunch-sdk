@@ -52,7 +52,7 @@ namespace ODDGames.UITest.Tests
 
                 Assert.IsTrue(_testObject.activeSelf);
 
-                new Search().Name("TestObject").Disable();
+                await new Search().Name("TestObject").Disable();
 
                 Assert.IsFalse(_testObject.activeSelf);
             });
@@ -68,7 +68,7 @@ namespace ODDGames.UITest.Tests
                 _testObject.SetActive(false);
                 Assert.IsFalse(_testObject.activeSelf);
 
-                new Search().Name("TestObject").Enable();
+                await new Search().Name("TestObject").Enable();
 
                 Assert.IsTrue(_testObject.activeSelf);
             });
@@ -83,10 +83,10 @@ namespace ODDGames.UITest.Tests
 
                 Assert.IsTrue(_testObject.activeSelf);
 
-                new Search().Name("TestObject").Disable();
+                await new Search().Name("TestObject").Disable();
                 Assert.IsFalse(_testObject.activeSelf);
 
-                new Search().Name("TestObject").Enable();
+                await new Search().Name("TestObject").Enable();
                 Assert.IsTrue(_testObject.activeSelf);
             });
         }
@@ -107,7 +107,7 @@ namespace ODDGames.UITest.Tests
                 rb.linearVelocity = new Vector3(10, 0, 0);
                 rb.angularVelocity = new Vector3(0, 5, 0);
 
-                var state = new Search().Name("TestObject").Freeze(includeChildren: false);
+                var state = await new Search().Name("TestObject").Freeze(includeChildren: false);
 
                 Assert.AreEqual(1, state.Count);
                 Assert.IsTrue(rb.isKinematic);
@@ -128,7 +128,7 @@ namespace ODDGames.UITest.Tests
                 parentRb.isKinematic = false;
                 childRb.isKinematic = false;
 
-                var state = new Search().Name("TestObject").Freeze(includeChildren: true);
+                var state = await new Search().Name("TestObject").Freeze(includeChildren: true);
 
                 Assert.AreEqual(2, state.Count);
                 Assert.IsTrue(parentRb.isKinematic);
@@ -150,7 +150,7 @@ namespace ODDGames.UITest.Tests
                 _testObject.transform.position = Vector3.zero;
                 var targetPos = new Vector3(100, 50, 200);
 
-                new Search().Name("TestObject").Teleport(targetPos);
+                await new Search().Name("TestObject").Teleport(targetPos);
 
                 Assert.AreEqual(targetPos, _testObject.transform.position);
             });
@@ -167,7 +167,7 @@ namespace ODDGames.UITest.Tests
                 _childObject.transform.localPosition = new Vector3(1, 0, 0);
                 var targetPos = new Vector3(100, 0, 0);
 
-                new Search().Name("TestObject").Teleport(targetPos);
+                await new Search().Name("TestObject").Teleport(targetPos);
 
                 // Child should be at parent position + local offset
                 Assert.AreEqual(new Vector3(101, 0, 0), _childObject.transform.position);
@@ -190,7 +190,7 @@ namespace ODDGames.UITest.Tests
                 Assert.IsTrue(parentCol.enabled);
                 Assert.IsTrue(childCol.enabled);
 
-                var state = new Search().Name("TestObject").NoClip();
+                var state = await new Search().Name("TestObject").NoClip();
 
                 Assert.AreEqual(2, state.Count);
                 Assert.IsFalse(parentCol.enabled);
@@ -208,7 +208,7 @@ namespace ODDGames.UITest.Tests
                 var parentCol = _testObject.GetComponent<BoxCollider>();
                 var childCol = _childObject.GetComponent<SphereCollider>();
 
-                var state = new Search().Name("TestObject").NoClip(includeChildren: false);
+                var state = await new Search().Name("TestObject").NoClip(includeChildren: false);
 
                 Assert.AreEqual(1, state.Count);
                 Assert.IsFalse(parentCol.enabled);
@@ -228,7 +228,7 @@ namespace ODDGames.UITest.Tests
                 parentCol.enabled = false;
                 childCol.enabled = false;
 
-                var state = new Search().Name("TestObject").Clip();
+                var state = await new Search().Name("TestObject").Clip();
 
                 Assert.AreEqual(2, state.Count);
                 Assert.IsTrue(parentCol.enabled);
@@ -246,11 +246,11 @@ namespace ODDGames.UITest.Tests
                 var parentCol = _testObject.GetComponent<BoxCollider>();
                 var childCol = _childObject.GetComponent<SphereCollider>();
 
-                new Search().Name("TestObject").NoClip();
+                await new Search().Name("TestObject").NoClip();
                 Assert.IsFalse(parentCol.enabled);
                 Assert.IsFalse(childCol.enabled);
 
-                new Search().Name("TestObject").Clip();
+                await new Search().Name("TestObject").Clip();
                 Assert.IsTrue(parentCol.enabled);
                 Assert.IsTrue(childCol.enabled);
             });
@@ -276,7 +276,7 @@ namespace ODDGames.UITest.Tests
                 TestManager.Player = _testObject;
                 Assert.IsTrue(_testObject.activeSelf);
 
-                Search.Static("GameObjectManipulationTests.TestManager.Player").Disable();
+                await Search.Static("GameObjectManipulationTests.TestManager.Player").Disable();
 
                 Assert.IsFalse(_testObject.activeSelf);
             });
@@ -293,7 +293,7 @@ namespace ODDGames.UITest.Tests
                 var rb = _testObject.GetComponent<Rigidbody>();
                 rb.isKinematic = false;
 
-                Search.Static("GameObjectManipulationTests.TestManager.Player").Freeze();
+                await Search.Static("GameObjectManipulationTests.TestManager.Player").Freeze();
 
                 Assert.IsTrue(rb.isKinematic);
             });
@@ -310,7 +310,7 @@ namespace ODDGames.UITest.Tests
                 var col = _testObject.GetComponent<BoxCollider>();
                 Assert.IsTrue(col.enabled);
 
-                Search.Static("GameObjectManipulationTests.TestManager.Player").NoClip();
+                await Search.Static("GameObjectManipulationTests.TestManager.Player").NoClip();
 
                 Assert.IsFalse(col.enabled);
             });
@@ -329,7 +329,7 @@ namespace ODDGames.UITest.Tests
 
                 Assert.IsTrue(_testObject.activeSelf);
 
-                var state = new Search().Name("TestObject").Disable();
+                var state = await new Search().Name("TestObject").Disable();
                 Assert.IsFalse(_testObject.activeSelf);
 
                 state.Restore();
@@ -346,7 +346,7 @@ namespace ODDGames.UITest.Tests
 
                 _testObject.SetActive(false);
 
-                var state = new Search().Name("TestObject").Enable();
+                var state = await new Search().Name("TestObject").Enable();
                 Assert.IsTrue(_testObject.activeSelf);
 
                 state.Restore();
@@ -366,7 +366,7 @@ namespace ODDGames.UITest.Tests
                 var originalVelocity = new Vector3(10, 5, 0);
                 rb.linearVelocity = originalVelocity;
 
-                var state = new Search().Name("TestObject").Freeze(includeChildren: false);
+                var state = await new Search().Name("TestObject").Freeze(includeChildren: false);
                 Assert.IsTrue(rb.isKinematic);
                 Assert.AreEqual(Vector3.zero, rb.linearVelocity);
 
@@ -388,7 +388,7 @@ namespace ODDGames.UITest.Tests
                 // Child already disabled before NoClip
                 childCol.enabled = false;
 
-                var state = new Search().Name("TestObject").NoClip();
+                var state = await new Search().Name("TestObject").NoClip();
                 Assert.IsFalse(parentCol.enabled);
                 Assert.IsFalse(childCol.enabled);
 
@@ -408,7 +408,7 @@ namespace ODDGames.UITest.Tests
                 var originalPos = new Vector3(5, 10, 15);
                 _testObject.transform.position = originalPos;
 
-                var state = new Search().Name("TestObject").Teleport(new Vector3(100, 0, 0));
+                var state = await new Search().Name("TestObject").Teleport(new Vector3(100, 0, 0));
                 Assert.AreEqual(new Vector3(100, 0, 0), _testObject.transform.position);
 
                 state.Restore();
@@ -426,7 +426,7 @@ namespace ODDGames.UITest.Tests
                 var col = _testObject.GetComponent<BoxCollider>();
                 Assert.IsTrue(col.enabled);
 
-                using (new Search().Name("TestObject").NoClip())
+                using (await new Search().Name("TestObject").NoClip())
                 {
                     Assert.IsFalse(col.enabled);
                 }
@@ -443,7 +443,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var state = new Search().Name("TestObject").Disable();
+                var state = await new Search().Name("TestObject").Disable();
                 Assert.IsFalse(_testObject.activeSelf);
 
                 state.Restore();
@@ -469,10 +469,15 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                Assert.Throws<System.InvalidOperationException>(() =>
+                try
                 {
-                    new Search().Name("NonExistentObject").Disable();
-                });
+                    await new Search().Name("NonExistentObject").Disable(searchTime: 0.1f);
+                    Assert.Fail("Expected TimeoutException");
+                }
+                catch (System.TimeoutException)
+                {
+                    // Expected
+                }
             });
         }
 
@@ -488,7 +493,7 @@ namespace ODDGames.UITest.Tests
                 Object.Destroy(_childObject.GetComponent<Rigidbody>());
                 await UniTask.Yield(); // Wait for destroy
 
-                var state = new Search().Name("TestObject").Freeze();
+                var state = await new Search().Name("TestObject").Freeze();
 
                 Assert.AreEqual(0, state.Count);
             });
@@ -506,7 +511,7 @@ namespace ODDGames.UITest.Tests
                 Object.Destroy(_childObject.GetComponent<SphereCollider>());
                 await UniTask.Yield(); // Wait for destroy
 
-                var state = new Search().Name("TestObject").NoClip();
+                var state = await new Search().Name("TestObject").NoClip();
 
                 Assert.AreEqual(0, state.Count);
             });

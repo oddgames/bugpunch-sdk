@@ -4018,32 +4018,32 @@ namespace ODDGames.UITest
         /// <summary>
         /// Disables a GameObject. Returns restoration token.
         /// </summary>
-        protected static Search.ActiveState Disable(Search search) => search.Disable();
+        protected static UniTask<Search.ActiveState> Disable(Search search, float searchTime = 10f) => search.Disable(searchTime);
 
         /// <summary>
         /// Enables a GameObject. Returns restoration token.
         /// </summary>
-        protected static Search.ActiveState Enable(Search search) => search.Enable();
+        protected static UniTask<Search.ActiveState> Enable(Search search, float searchTime = 10f) => search.Enable(searchTime);
 
         /// <summary>
         /// Freezes rigidbodies (zero velocity + kinematic). Returns restoration token.
         /// </summary>
-        protected static Search.FreezeState Freeze(Search search, bool includeChildren = true) => search.Freeze(includeChildren);
+        protected static UniTask<Search.FreezeState> Freeze(Search search, bool includeChildren = true, float searchTime = 10f) => search.Freeze(includeChildren, searchTime);
 
         /// <summary>
         /// Teleports a GameObject to world position. Returns restoration token.
         /// </summary>
-        protected static Search.PositionState Teleport(Search search, Vector3 worldPosition) => search.Teleport(worldPosition);
+        protected static UniTask<Search.PositionState> Teleport(Search search, Vector3 worldPosition, float searchTime = 10f) => search.Teleport(worldPosition, searchTime);
 
         /// <summary>
         /// Disables all colliders (noclip). Returns restoration token.
         /// </summary>
-        protected static Search.ColliderState NoClip(Search search, bool includeChildren = true) => search.NoClip(includeChildren);
+        protected static UniTask<Search.ColliderState> NoClip(Search search, bool includeChildren = true, float searchTime = 10f) => search.NoClip(includeChildren, searchTime);
 
         /// <summary>
         /// Enables all colliders. Returns restoration token.
         /// </summary>
-        protected static Search.ColliderState Clip(Search search, bool includeChildren = true) => search.Clip(includeChildren);
+        protected static UniTask<Search.ColliderState> Clip(Search search, bool includeChildren = true, float searchTime = 10f) => search.Clip(includeChildren, searchTime);
 
         #endregion
     }

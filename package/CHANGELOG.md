@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.51] - 2026-01-17
+
+### Changed
+- **BREAKING**: GameObject manipulation methods are now async with timeout support
+  - `Disable()`, `Enable()`, `Freeze()`, `Teleport()`, `NoClip()`, `Clip()` now return `UniTask<T>` and require `await`
+  - All methods wait up to 10 seconds (configurable via `searchTime` parameter) for elements to appear
+  - Throws `TimeoutException` instead of `InvalidOperationException` when element not found
+  - Consistent with other action methods like `Click()`, `ClickDropdown()`, etc.
+
 ## [1.0.50] - 2026-01-16
 
 ### Added
