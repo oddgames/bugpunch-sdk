@@ -696,6 +696,161 @@ namespace ODDGames.UITest.Tests
 
         #endregion
 
+        #region Component Tests
+
+        [UnityTest]
+        public IEnumerator Component_Generic_GetsComponentFromUIElement()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("ComponentTestBtn", Vector2.zero);
+                // Add a Rigidbody2D for testing (unusual but works for test)
+                var rb = button.gameObject.AddComponent<Rigidbody2D>();
+                rb.gravityScale = 0;
+                rb.bodyType = RigidbodyType2D.Kinematic;
+
+                await UniTask.Yield();
+
+                // Get component using generic version
+                var search = new Search().Name("ComponentTestBtn").Component<Rigidbody2D>();
+                Assert.IsNotNull(search.Value, "Should get Rigidbody2D component");
+                Assert.IsTrue(search.Value is Rigidbody2D, "Value should be Rigidbody2D");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Component_String_GetsComponentByTypeName()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("ComponentStringBtn", Vector2.zero);
+                var rb = button.gameObject.AddComponent<Rigidbody2D>();
+                rb.gravityScale = 0;
+
+                await UniTask.Yield();
+
+                // Get component using string version
+                var search = new Search().Name("ComponentStringBtn").Component("Rigidbody2D");
+                Assert.IsNotNull(search.Value, "Should get Rigidbody2D component by name");
+                Assert.IsTrue(search.Value is Rigidbody2D, "Value should be Rigidbody2D");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Component_PropertyChain_AccessesComponentProperty()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("ComponentPropBtn", Vector2.zero);
+                var rb = button.gameObject.AddComponent<Rigidbody2D>();
+                rb.gravityScale = 5.5f;
+
+                await UniTask.Yield();
+
+                // Chain Component() with Property() to access component properties
+                var gravityScale = new Search().Name("ComponentPropBtn")
+                    .Component<Rigidbody2D>()
+                    .Property("gravityScale")
+                    .FloatValue;
+
+                Assert.AreEqual(5.5f, gravityScale, 0.01f, "Should read gravityScale property");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Component_SetValue_SetsComponentProperty()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("ComponentSetBtn", Vector2.zero);
+                var rb = button.gameObject.AddComponent<Rigidbody2D>();
+                rb.gravityScale = 1f;
+
+                await UniTask.Yield();
+
+                // Use Component() + Property() + SetValue() to modify property
+                new Search().Name("ComponentSetBtn")
+                    .Component<Rigidbody2D>()
+                    .Property("gravityScale")
+                    .SetValue(9.8f);
+
+                Assert.AreEqual(9.8f, rb.gravityScale, 0.01f, "gravityScale should be updated");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Component_ThrowsWhenComponentNotFound()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("NoComponentBtn", Vector2.zero);
+
+                await UniTask.Yield();
+
+                // Should throw when component doesn't exist
+                Assert.Throws<System.InvalidOperationException>(() =>
+                {
+                    new Search().Name("NoComponentBtn").Component<Rigidbody2D>();
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Component_ThrowsWhenElementNotFound()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                await UniTask.Yield();
+
+                // Should throw when no element matches
+                Assert.Throws<System.InvalidOperationException>(() =>
+                {
+                    new Search().Name("NonExistentElement").Component<Rigidbody2D>();
+                });
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Component_WorksWithImage()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("ImageComponentBtn", Vector2.zero);
+
+                await UniTask.Yield();
+
+                // Get Image component (which exists on button)
+                var colorValue = new Search().Name("ImageComponentBtn")
+                    .Component<Image>()
+                    .Property("color")
+                    .ColorValue;
+
+                Assert.AreEqual(Color.gray, colorValue, "Should read Image color property");
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Component_SetValue_ChangesImageColor()
+        {
+            return UniTask.ToCoroutine(async () =>
+            {
+                var button = CreateButton("ImageSetBtn", Vector2.zero);
+                var image = button.GetComponent<Image>();
+
+                await UniTask.Yield();
+
+                // Change color via Component + Property + SetValue
+                new Search().Name("ImageSetBtn")
+                    .Component<Image>()
+                    .Property("color")
+                    .SetValue(Color.red);
+
+                Assert.AreEqual(Color.red, image.color, "Image color should be updated to red");
+            });
+        }
+
+        #endregion
+
         #region Combined Chain Tests
 
         [UnityTest]

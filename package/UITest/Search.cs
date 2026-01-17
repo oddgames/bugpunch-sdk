@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -3158,16 +3159,18 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Disables the found GameObject (sets active to false).
+        /// Waits up to searchTime for the element to appear.
         /// </summary>
+        /// <param name="searchTime">Maximum time to wait for the element (default 10s)</param>
         /// <returns>Restoration token - call .Restore() to re-enable</returns>
         /// <example>
-        /// var state = Name("TutorialPanel").Disable();
+        /// var state = await Name("TutorialPanel").Disable();
         /// // ... test code ...
         /// state.Restore(); // Re-enables the panel
         /// </example>
-        public ActiveState Disable()
+        public async UniTask<ActiveState> Disable(float searchTime = 10f)
         {
-            var go = FindGameObjectFromSearchOrStatic();
+            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new ActiveState(go, go.activeSelf);
             go.SetActive(false);
             Debug.Log($"[UITEST] Disable '{go.name}'");
@@ -3176,16 +3179,18 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Enables the found GameObject (sets active to true).
+        /// Waits up to searchTime for the element to appear.
         /// </summary>
+        /// <param name="searchTime">Maximum time to wait for the element (default 10s)</param>
         /// <returns>Restoration token - call .Restore() to return to original state</returns>
         /// <example>
-        /// var state = Name("SecretDoor").Enable();
+        /// var state = await Name("SecretDoor").Enable();
         /// // ... test code ...
         /// state.Restore(); // Disables it again if it was originally disabled
         /// </example>
-        public ActiveState Enable()
+        public async UniTask<ActiveState> Enable(float searchTime = 10f)
         {
-            var go = FindGameObjectFromSearchOrStatic(includeInactive: true);
+            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime, includeInactive: true);
             var state = new ActiveState(go, go.activeSelf);
             go.SetActive(true);
             Debug.Log($"[UITEST] Enable '{go.name}'");
@@ -3194,17 +3199,19 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Freezes all rigidbodies by setting isKinematic=true and velocity to zero.
+        /// Waits up to searchTime for the element to appear.
         /// </summary>
         /// <param name="includeChildren">Whether to also freeze children (default true)</param>
+        /// <param name="searchTime">Maximum time to wait for the element (default 10s)</param>
         /// <returns>Restoration token - call .Restore() to unfreeze with original velocities</returns>
         /// <example>
-        /// var state = Name("AITruck").Freeze();
+        /// var state = await Name("AITruck").Freeze();
         /// // ... test code ...
         /// state.Restore(); // Restores original isKinematic and velocities
         /// </example>
-        public FreezeState Freeze(bool includeChildren = true)
+        public async UniTask<FreezeState> Freeze(bool includeChildren = true, float searchTime = 10f)
         {
-            var go = FindGameObjectFromSearchOrStatic();
+            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new FreezeState();
 
             if (includeChildren)
@@ -3250,17 +3257,19 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Teleports the found GameObject to a world position instantly.
+        /// Waits up to searchTime for the element to appear.
         /// </summary>
         /// <param name="worldPosition">Target world position</param>
+        /// <param name="searchTime">Maximum time to wait for the element (default 10s)</param>
         /// <returns>Restoration token - call .Restore() to return to original position</returns>
         /// <example>
-        /// var state = Name("Player").Teleport(new Vector3(100, 0, 50));
+        /// var state = await Name("Player").Teleport(new Vector3(100, 0, 50));
         /// // ... test code ...
         /// state.Restore(); // Returns player to original position
         /// </example>
-        public PositionState Teleport(Vector3 worldPosition)
+        public async UniTask<PositionState> Teleport(Vector3 worldPosition, float searchTime = 10f)
         {
-            var go = FindGameObjectFromSearchOrStatic();
+            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new PositionState(go.transform);
             go.transform.position = worldPosition;
             Debug.Log($"[UITEST] Teleport '{go.name}' to {worldPosition}");
@@ -3269,17 +3278,19 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Disables all colliders (noclip mode - objects pass through other colliders).
+        /// Waits up to searchTime for the element to appear.
         /// </summary>
         /// <param name="includeChildren">Whether to also disable children's colliders (default true)</param>
+        /// <param name="searchTime">Maximum time to wait for the element (default 10s)</param>
         /// <returns>Restoration token - call .Restore() to re-enable colliders</returns>
         /// <example>
-        /// var state = Name("Player").NoClip();
+        /// var state = await Name("Player").NoClip();
         /// // ... test code ...
         /// state.Restore(); // Re-enables colliders that were originally enabled
         /// </example>
-        public ColliderState NoClip(bool includeChildren = true)
+        public async UniTask<ColliderState> NoClip(bool includeChildren = true, float searchTime = 10f)
         {
-            var go = FindGameObjectFromSearchOrStatic();
+            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new ColliderState();
 
             if (includeChildren)
@@ -3315,17 +3326,19 @@ namespace ODDGames.UITest
 
         /// <summary>
         /// Enables all colliders (restore from noclip mode).
+        /// Waits up to searchTime for the element to appear.
         /// </summary>
         /// <param name="includeChildren">Whether to also enable children's colliders (default true)</param>
+        /// <param name="searchTime">Maximum time to wait for the element (default 10s)</param>
         /// <returns>Restoration token - call .Restore() to return to original state</returns>
         /// <example>
-        /// var state = Name("Player").Clip();
+        /// var state = await Name("Player").Clip();
         /// // ... test code ...
         /// state.Restore(); // Disables colliders that were originally disabled
         /// </example>
-        public ColliderState Clip(bool includeChildren = true)
+        public async UniTask<ColliderState> Clip(bool includeChildren = true, float searchTime = 10f)
         {
-            var go = FindGameObjectFromSearchOrStatic();
+            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new ColliderState();
 
             if (includeChildren)
@@ -3360,9 +3373,9 @@ namespace ODDGames.UITest
         }
 
         /// <summary>
-        /// Helper to get a GameObject from either a static path or UI search.
+        /// Helper to get a GameObject from either a static path or UI search (async with timeout).
         /// </summary>
-        private GameObject FindGameObjectFromSearchOrStatic(bool includeInactive = false)
+        private async UniTask<GameObject> FindGameObjectFromSearchOrStaticAsync(float searchTime = 10f, bool includeInactive = false)
         {
             if (_isStaticPath)
             {
@@ -3380,14 +3393,20 @@ namespace ODDGames.UITest
             }
             else
             {
-                // UI search
+                // UI search with timeout
                 if (includeInactive)
                     IncludeInactive();
 
-                var result = FindFirst();
-                if (result == null)
-                    throw new InvalidOperationException($"No GameObject found matching '{this}'");
-                return result;
+                float startTime = Time.realtimeSinceStartup;
+                while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+                {
+                    var result = FindFirst();
+                    if (result != null)
+                        return result;
+                    await UniTask.Delay(100, true);
+                }
+
+                throw new TimeoutException($"No GameObject found matching '{this}' within {searchTime}s");
             }
         }
 
