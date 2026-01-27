@@ -14,7 +14,7 @@ namespace ODDGames.UIAutomation
     /// Wrapper for navigating object properties via reflection.
     /// Supports fluent chaining and iteration over arrays/lists.
     /// </summary>
-    public class StaticPath : IEnumerable<StaticPath>
+    internal class StaticPath : IEnumerable<StaticPath>
     {
         private readonly object _value;
 
@@ -156,7 +156,7 @@ namespace ODDGames.UIAutomation
     /// All methods take resolved GameObjects (no searching) and execute the action via InputInjector.
     /// This ensures consistent behavior across all test execution paths.
     /// </summary>
-    public static class ActionExecutor
+    internal static class ActionExecutor
     {
         static void Log(string message) => Debug.Log($"[UIAUTOMATION] {message}");
 

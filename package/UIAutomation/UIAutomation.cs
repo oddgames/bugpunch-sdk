@@ -1431,6 +1431,11 @@ namespace ODDGames.UIAutomation
         public static UniTask<bool> WaitFor(Search search, string expectedText, float timeout = 10f) => ActionExecutor.WaitFor(search, expectedText, timeout);
 
         /// <summary>
+        /// Waits for a toggle to be in the expected state.
+        /// </summary>
+        public static UniTask<bool> WaitFor(Search search, bool expectedOn, float timeout = 10f) => ActionExecutor.WaitFor(search, expectedOn, timeout);
+
+        /// <summary>
         /// Waits for an element to disappear.
         /// </summary>
         public static UniTask<bool> WaitForNot(Search search, float timeout = 10f) => ActionExecutor.WaitForNot(search, timeout);
@@ -1439,6 +1444,11 @@ namespace ODDGames.UIAutomation
         /// Waits for a static path to be truthy.
         /// </summary>
         public static UniTask<bool> WaitFor(string path, float timeout = 10f) => ActionExecutor.WaitFor(path, timeout);
+
+        /// <summary>
+        /// Waits for a static path to equal an expected value.
+        /// </summary>
+        public static UniTask<bool> WaitFor<T>(string path, T expected, float timeout = 10f) => ActionExecutor.WaitFor(path, expected, timeout);
 
         #endregion
 
