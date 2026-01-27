@@ -1,7 +1,7 @@
 {
   "name": "au.com.oddgames.uiautomation",
-  "version": "1.1.1",
-  "displayName": "ODD Games UI Test Framework",
+  "version": "1.1.2",
+  "displayName": "ODD Games UI Automation",
   "description": "UI automation testing framework for Unity projects",
   "unity": "2022.3",
   "dependencies": {
