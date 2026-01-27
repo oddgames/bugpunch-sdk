@@ -4,8 +4,9 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using Cysharp.Threading.Tasks;
+using ODDGames.UIAutomation;
 
-namespace ODDGames.UITest.Tests
+namespace ODDGames.UIAutomation.Tests
 {
     /// <summary>
     /// Tests for Search indexer support - Index() method and inline [index] syntax.

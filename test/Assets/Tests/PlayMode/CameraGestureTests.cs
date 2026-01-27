@@ -7,8 +7,10 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.TestTools;
 using Cysharp.Threading.Tasks;
+using ODDGames.UIAutomation;
+using static ODDGames.UIAutomation.UIAutomation;
 
-namespace ODDGames.UITest.Tests
+namespace ODDGames.UIAutomation.Tests
 {
     /// <summary>
     /// PlayMode tests for camera control via swiping gestures.
@@ -129,7 +131,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var helper = CreateGestureHelper();
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Left, distance: 0.3f, duration: 0.3f);
+                await helper.TestSwipe(SwipeDirection.Left, distance: 0.3f, duration: 0.3f);
 
                 // Swiping left should pan camera right (opposite direction)
                 Assert.Greater(_cameraController.TotalPanDelta.x, 0,
@@ -145,7 +147,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var helper = CreateGestureHelper();
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Right, distance: 0.3f, duration: 0.3f);
+                await helper.TestSwipe(SwipeDirection.Right, distance: 0.3f, duration: 0.3f);
 
                 Assert.Less(_cameraController.TotalPanDelta.x, 0,
                     "Swiping right should result in negative pan delta (camera moves left)");
@@ -160,7 +162,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var helper = CreateGestureHelper();
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Up, distance: 0.3f, duration: 0.3f);
+                await helper.TestSwipe(SwipeDirection.Up, distance: 0.3f, duration: 0.3f);
 
                 Assert.Less(_cameraController.TotalPanDelta.y, 0,
                     "Swiping up should result in negative pan delta (camera moves down)");
@@ -175,7 +177,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var helper = CreateGestureHelper();
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Down, distance: 0.3f, duration: 0.3f);
+                await helper.TestSwipe(SwipeDirection.Down, distance: 0.3f, duration: 0.3f);
 
                 Assert.Greater(_cameraController.TotalPanDelta.y, 0,
                     "Swiping down should result in positive pan delta (camera moves up)");
@@ -192,8 +194,8 @@ namespace ODDGames.UITest.Tests
                 var helper = CreateGestureHelper();
 
                 // Swipe left then down for diagonal movement
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Left, distance: 0.2f, duration: 0.2f);
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Down, distance: 0.2f, duration: 0.2f);
+                await helper.TestSwipe(SwipeDirection.Left, distance: 0.2f, duration: 0.2f);
+                await helper.TestSwipe(SwipeDirection.Down, distance: 0.2f, duration: 0.2f);
 
                 Assert.Greater(_cameraController.TotalPanDelta.x, 0, "Should have positive X pan");
                 Assert.Greater(_cameraController.TotalPanDelta.y, 0, "Should have positive Y pan");
@@ -210,7 +212,7 @@ namespace ODDGames.UITest.Tests
                 var helper = CreateGestureHelper();
 
                 // Swipe from top-left corner
-                await helper.TestSwipeAt(0.1f, 0.9f, UITestBehaviour.SwipeDirection.Right, distance: 0.2f, duration: 0.3f);
+                await helper.TestSwipeAt(0.1f, 0.9f, SwipeDirection.Right, distance: 0.2f, duration: 0.3f);
 
                 Assert.Less(_cameraController.TotalPanDelta.x, 0,
                     "SwipeAt should work from corner positions");
@@ -227,10 +229,10 @@ namespace ODDGames.UITest.Tests
                 var helper = CreateGestureHelper();
 
                 // Multiple swipes in same direction
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Left, distance: 0.1f, duration: 0.15f);
+                await helper.TestSwipe(SwipeDirection.Left, distance: 0.1f, duration: 0.15f);
                 var firstPan = _cameraController.TotalPanDelta.x;
 
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Left, distance: 0.1f, duration: 0.15f);
+                await helper.TestSwipe(SwipeDirection.Left, distance: 0.1f, duration: 0.15f);
                 var secondPan = _cameraController.TotalPanDelta.x;
 
                 Assert.Greater(secondPan, firstPan,
@@ -388,7 +390,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var helper = CreateGestureHelper();
-                await helper.TestTwoFingerSwipe(UITestBehaviour.SwipeDirection.Left, distance: 0.25f, duration: 0.3f);
+                await helper.TestTwoFingerSwipe(SwipeDirection.Left, distance: 0.25f, duration: 0.3f);
 
                 Assert.Greater(_cameraController.TotalTwoFingerPanDelta.x, 0,
                     "Two-finger swipe left should pan camera right");
@@ -403,7 +405,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var helper = CreateGestureHelper();
-                await helper.TestTwoFingerSwipe(UITestBehaviour.SwipeDirection.Right, distance: 0.25f, duration: 0.3f);
+                await helper.TestTwoFingerSwipe(SwipeDirection.Right, distance: 0.25f, duration: 0.3f);
 
                 Assert.Less(_cameraController.TotalTwoFingerPanDelta.x, 0,
                     "Two-finger swipe right should pan camera left");
@@ -418,7 +420,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var helper = CreateGestureHelper();
-                await helper.TestTwoFingerSwipe(UITestBehaviour.SwipeDirection.Up, distance: 0.25f, duration: 0.3f);
+                await helper.TestTwoFingerSwipe(SwipeDirection.Up, distance: 0.25f, duration: 0.3f);
 
                 Assert.Less(_cameraController.TotalTwoFingerPanDelta.y, 0,
                     "Two-finger swipe up should pan camera down");
@@ -433,7 +435,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var helper = CreateGestureHelper();
-                await helper.TestTwoFingerSwipe(UITestBehaviour.SwipeDirection.Down, distance: 0.25f, duration: 0.3f);
+                await helper.TestTwoFingerSwipe(SwipeDirection.Down, distance: 0.25f, duration: 0.3f);
 
                 Assert.Greater(_cameraController.TotalTwoFingerPanDelta.y, 0,
                     "Two-finger swipe down should pan camera up");
@@ -450,7 +452,7 @@ namespace ODDGames.UITest.Tests
                 var helper = CreateGestureHelper();
 
                 // Two-finger swipe from right side of screen
-                await helper.TestTwoFingerSwipeAt(0.8f, 0.5f, UITestBehaviour.SwipeDirection.Left, distance: 0.2f, duration: 0.3f);
+                await helper.TestTwoFingerSwipeAt(0.8f, 0.5f, SwipeDirection.Left, distance: 0.2f, duration: 0.3f);
 
                 Assert.Greater(_cameraController.TotalTwoFingerPanDelta.x, 0,
                     "TwoFingerSwipeAt should work at custom positions");
@@ -471,7 +473,7 @@ namespace ODDGames.UITest.Tests
                 var helper = CreateGestureHelper();
 
                 // Pan first
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Left, distance: 0.2f, duration: 0.2f);
+                await helper.TestSwipe(SwipeDirection.Left, distance: 0.2f, duration: 0.2f);
                 var panAfterSwipe = _cameraController.TotalPanDelta.x;
 
                 // Then zoom
@@ -492,7 +494,7 @@ namespace ODDGames.UITest.Tests
                 var helper = CreateGestureHelper();
 
                 // Pan first
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Up, distance: 0.2f, duration: 0.2f);
+                await helper.TestSwipe(SwipeDirection.Up, distance: 0.2f, duration: 0.2f);
 
                 // Then rotate
                 await helper.TestRotate(30f, duration: 0.3f);
@@ -512,10 +514,10 @@ namespace ODDGames.UITest.Tests
                 var helper = CreateGestureHelper();
 
                 // Perform all gesture types
-                await helper.TestSwipe(UITestBehaviour.SwipeDirection.Right, distance: 0.15f, duration: 0.2f);
+                await helper.TestSwipe(SwipeDirection.Right, distance: 0.15f, duration: 0.2f);
                 await helper.TestPinch(1.3f, duration: 0.25f);
                 await helper.TestRotate(20f, duration: 0.25f);
-                await helper.TestTwoFingerSwipe(UITestBehaviour.SwipeDirection.Down, distance: 0.15f, duration: 0.2f);
+                await helper.TestTwoFingerSwipe(SwipeDirection.Down, distance: 0.15f, duration: 0.2f);
 
                 // All gesture types should have registered
                 Assert.AreNotEqual(0, _cameraController.TotalPanDelta.x, "Single-finger pan should register");
@@ -531,9 +533,7 @@ namespace ODDGames.UITest.Tests
 
         private TestGestureHelper CreateGestureHelper()
         {
-            var helperGO = new GameObject("GestureHelper");
-            _createdObjects.Add(helperGO);
-            return helperGO.AddComponent<TestGestureHelper>();
+            return new TestGestureHelper();
         }
 
         #endregion
@@ -767,14 +767,10 @@ namespace ODDGames.UITest.Tests
     }
 
     /// <summary>
-    /// Test helper that exposes UITestBehaviour gesture methods for testing.
+    /// Test helper that exposes UIAutomation gesture methods for testing.
     /// </summary>
-    [UITest(Scenario = 9990, Feature = "Test Helper", Story = "Gesture Helper")]
-    public class TestGestureHelper : UITestBehaviour
+    public class TestGestureHelper
     {
-        private void Awake() { enabled = false; }
-        protected override UniTask Test() => UniTask.CompletedTask;
-
         public async UniTask TestSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
         {
             await Swipe(direction, distance, duration);

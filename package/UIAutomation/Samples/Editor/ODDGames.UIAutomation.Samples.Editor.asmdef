@@ -1,0 +1,21 @@
+{
+    "name": "ODDGames.UIAutomation.Samples.Editor",
+    "rootNamespace": "ODDGames.UIAutomation.Samples.Editor",
+    "references": [
+        "ODDGames.UIAutomation",
+        "ODDGames.UIAutomation.Samples",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

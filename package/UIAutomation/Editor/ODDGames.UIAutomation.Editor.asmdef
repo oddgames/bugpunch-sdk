@@ -1,0 +1,37 @@
+{
+    "name": "ODDGames.UIAutomation.Editor",
+    "rootNamespace": "ODDGames.UIAutomation.Editor",
+    "references": [
+        "ODDGames.UIAutomation",
+        "ODDGames.UIAutomation.AI",
+        "ODDGames.UIAutomation.AI.Editor",
+        "ODDGames.UIAutomation.VisualBuilder",
+        "ODDGames.UIAutomation.VisualBuilder.Editor",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "UniTask",
+        "Unity.Recorder.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.recorder",
+            "expression": "",
+            "define": "UNITY_RECORDER"
+        },
+        {
+            "name": "com.oddgames.uitest",
+            "expression": "",
+            "define": "UITEST_AI"
+        }
+    ],
+    "noEngineReferences": false
+}

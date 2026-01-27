@@ -3,8 +3,9 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using Cysharp.Threading.Tasks;
+using ODDGames.UIAutomation;
 
-namespace ODDGames.UITest.Tests
+namespace ODDGames.UIAutomation.Tests
 {
     /// <summary>
     /// Tests for GameObject manipulation methods: Disable, Enable, Freeze, Teleport, NoClip, Clip.

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-01-27
+
+### Changed
+- **BREAKING**: Package folder renamed from `UITest` to `UIAutomation` - clearer naming
+- **BREAKING**: New static `UIAutomation` class replaces `UITestBehaviour` base class
+  - Use `using static ODDGames.UIAutomation.UIAutomation;` for access to all helpers
+  - Tests are now plain `[TestFixture]` classes using `[UnityTest]` with `IEnumerator` and `UniTask.ToCoroutine()`
+  - No more inheriting from MonoBehaviour - cleaner, more idiomatic Unity test pattern
+- `UITestBehaviour` removed (was marked obsolete)
+
+### Fixed
+- **Near() spatial search bounds calculation** - Fixed incorrect text bounds when canvas has non-identity scale
+  - Now uses `RectTransform.GetWorldCorners()` instead of `TransformVector()` for reliable world-space bounds
+  - Fixes direction checks (Above, Below, Left, Right) failing on scaled canvases
+
 ## [1.0.53] - 2026-01-27
 
 ### Fixed

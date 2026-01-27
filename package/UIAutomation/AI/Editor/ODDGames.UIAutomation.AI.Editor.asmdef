@@ -1,0 +1,20 @@
+{
+    "name": "ODDGames.UIAutomation.AI.Editor",
+    "rootNamespace": "ODDGames.UIAutomation.AI.Editor",
+    "references": [
+        "ODDGames.UIAutomation",
+        "ODDGames.UIAutomation.AI",
+        "UniTask"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

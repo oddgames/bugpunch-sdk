@@ -1,0 +1,21 @@
+{
+    "name": "ODDGames.UIAutomation.VisualBuilder",
+    "rootNamespace": "ODDGames.UIAutomation.VisualBuilder",
+    "references": [
+        "ODDGames.UIAutomation",
+        "ODDGames.UIAutomation.AI",
+        "UniTask",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "Newtonsoft.Json"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

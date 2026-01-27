@@ -1,0 +1,19 @@
+{
+    "name": "ODDGames.UIAutomation.Recording",
+    "rootNamespace": "ODDGames.UIAutomation",
+    "references": [
+        "ODDGames.UIAutomation",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "UniTask"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

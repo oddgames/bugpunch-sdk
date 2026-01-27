@@ -6,8 +6,9 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.TestTools;
 using Cysharp.Threading.Tasks;
+using ODDGames.UIAutomation;
 
-namespace ODDGames.UITest.Tests
+namespace ODDGames.UIAutomation.Tests
 {
     /// <summary>
     /// PlayMode tests for keyboard hold/sequence functionality.

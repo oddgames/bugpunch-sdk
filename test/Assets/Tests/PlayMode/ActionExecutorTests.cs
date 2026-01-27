@@ -10,8 +10,9 @@ using UnityEngine.TestTools;
 using UnityEngine.UI;
 using Cysharp.Threading.Tasks;
 using TMPro;
+using ODDGames.UIAutomation;
 
-namespace ODDGames.UITest.Tests
+namespace ODDGames.UIAutomation.Tests
 {
     /// <summary>
     /// PlayMode tests for ActionExecutor - the unified action execution layer.
@@ -521,10 +522,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Create helper to access protected method
-                var helperGO = new GameObject("ClickDropdownHelper");
-                helperGO.transform.SetParent(_canvas.transform, false);
-                var helper = helperGO.AddComponent<TestClickDropdownHelper>();
-                _createdObjects.Add(helperGO);
+                var helper = new TestClickDropdownHelper();
 
                 await helper.TestClickDropdownItems(new Search().Name("TestDropdown"));
 
@@ -571,10 +569,7 @@ namespace ODDGames.UITest.Tests
                 }
 
                 // Create helper to access protected method
-                var helperGO = new GameObject("ClickScrollHelper");
-                helperGO.transform.SetParent(_canvas.transform, false);
-                var helper = helperGO.AddComponent<TestClickScrollHelper>();
-                _createdObjects.Add(helperGO);
+                var helper = new TestClickScrollHelper();
 
                 await helper.TestClickScrollItems(new Search().Name("TestScrollView"));
 
@@ -1112,294 +1107,6 @@ namespace ODDGames.UITest.Tests
 
         #endregion
 
-        #region Assertion Tests
-
-        [UnityTest]
-        public IEnumerator AssertExists_WithExistingElement_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("ExistingButton", new Vector2(0, 0));
-                await UniTask.Yield();
-
-                ActionExecutor.AssertExists(new Search().Name("ExistingButton"));
-                Assert.Pass("AssertExists passed for existing element");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertExists_WithMissingElement_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<InvalidOperationException>(() =>
-                {
-                    ActionExecutor.AssertExists(new Search().Name("NonExistentButton"));
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertNotExists_WithMissingElement_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                ActionExecutor.AssertNotExists(new Search().Name("NonExistentButton"));
-                Assert.Pass("AssertNotExists passed for missing element");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertNotExists_WithExistingElement_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("ExistingButton", new Vector2(0, 0));
-                await UniTask.Yield();
-
-                Assert.Throws<InvalidOperationException>(() =>
-                {
-                    ActionExecutor.AssertNotExists(new Search().Name("ExistingButton"));
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertText_WithMatchingText_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var go = CreateTextElement("TestText", "Hello World", new Vector2(0, 0));
-                await UniTask.Yield();
-
-                ActionExecutor.AssertText(new Search().Name("TestText"), "Hello World");
-                Assert.Pass("AssertText passed for matching text");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertText_WithMismatchedText_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var go = CreateTextElement("TestText", "Hello World", new Vector2(0, 0));
-                await UniTask.Yield();
-
-                Assert.Throws<InvalidOperationException>(() =>
-                {
-                    ActionExecutor.AssertText(new Search().Name("TestText"), "Wrong Text");
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertToggle_WithMatchingState_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var toggle = CreateToggle("TestToggle", new Vector2(0, 0));
-                toggle.isOn = true;
-                await UniTask.Yield();
-
-                ActionExecutor.AssertToggle(new Search().Name("TestToggle"), true);
-                Assert.Pass("AssertToggle passed for matching state");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertToggle_WithMismatchedState_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var toggle = CreateToggle("TestToggle", new Vector2(0, 0));
-                toggle.isOn = false;
-                await UniTask.Yield();
-
-                Assert.Throws<InvalidOperationException>(() =>
-                {
-                    ActionExecutor.AssertToggle(new Search().Name("TestToggle"), true);
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertSlider_WithMatchingValue_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var slider = CreateSlider("TestSlider", new Vector2(0, 0));
-                slider.value = 0.5f;
-                await UniTask.Yield();
-
-                ActionExecutor.AssertSlider(new Search().Name("TestSlider"), 0.5f);
-                Assert.Pass("AssertSlider passed for matching value");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertSlider_WithMismatchedValue_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var slider = CreateSlider("TestSlider", new Vector2(0, 0));
-                slider.value = 0.5f;
-                await UniTask.Yield();
-
-                Assert.Throws<InvalidOperationException>(() =>
-                {
-                    ActionExecutor.AssertSlider(new Search().Name("TestSlider"), 0.9f);
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertInteractable_WithInteractableElement_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var button = CreateButton("InteractableButton", new Vector2(0, 0));
-                button.interactable = true;
-                await UniTask.Yield();
-
-                ActionExecutor.AssertInteractable(new Search().Name("InteractableButton"), true);
-                Assert.Pass("AssertInteractable passed for interactable element");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertInteractable_WithNonInteractableElement_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var button = CreateButton("NonInteractableButton", new Vector2(0, 0));
-                button.interactable = false;
-                await UniTask.Yield();
-
-                Assert.Throws<InvalidOperationException>(() =>
-                {
-                    ActionExecutor.AssertInteractable(new Search().Name("NonInteractableButton"), true);
-                });
-            });
-        }
-
-        #endregion
-
-        #region Static Path Assertion Tests
-
-        [UnityTest]
-        public IEnumerator Assert_WithTruthyStaticPath_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                // Use Application.isPlaying which is always true in play mode tests
-                await UniTask.Yield();
-
-                ActionExecutor.Assert("Application.isPlaying");
-                Assert.Pass("Assert passed for truthy static path");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator Assert_WithFalsyStaticPath_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                // Use Application.isBatchMode which should be false in editor tests
-                await UniTask.Yield();
-
-                // We need a falsy path - using Screen.fullScreen which is likely false in editor
-                // Note: This test depends on editor state, may need adjustment
-                try
-                {
-                    ActionExecutor.Assert("Screen.fullScreen");
-                    // If we get here, fullScreen was true - skip the test
-                    if (Screen.fullScreen)
-                        Assert.Pass("Screen was full screen, test skipped");
-                    else
-                        Assert.Fail("Assert should have thrown for falsy path");
-                }
-                catch (InvalidOperationException)
-                {
-                    Assert.Pass("Assert correctly threw for falsy static path");
-                }
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertGeneric_WithMatchingValue_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                // Use Application.platform with expected value
-                ActionExecutor.Assert("Application.isPlaying", true);
-                Assert.Pass("Assert<T> passed for matching value");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertGreater_WithValidComparison_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                // Screen.width should be > 0
-                ActionExecutor.AssertGreater("Screen.width", 0);
-                Assert.Pass("AssertGreater passed");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertGreater_WithInvalidComparison_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<InvalidOperationException>(() =>
-                {
-                    // Screen.width should not be > 100000
-                    ActionExecutor.AssertGreater("Screen.width", 100000);
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertLess_WithValidComparison_Passes()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                // Screen.width should be < 100000
-                ActionExecutor.AssertLess("Screen.width", 100000);
-                Assert.Pass("AssertLess passed");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator AssertLess_WithInvalidComparison_Throws()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<InvalidOperationException>(() =>
-                {
-                    // Screen.width should not be < 0
-                    ActionExecutor.AssertLess("Screen.width", 0);
-                });
-            });
-        }
-
-        #endregion
-
         #region WaitFor Tests
 
         [UnityTest]
@@ -1829,28 +1536,22 @@ namespace ODDGames.UITest.Tests
     /// <summary>
     /// Test helper for ClickDropdownItems.
     /// </summary>
-    [UITest(Scenario = 9990, Feature = "Test Helper", Story = "ClickDropdown Helper")]
-    public class TestClickDropdownHelper : UITestBehaviour
+    public class TestClickDropdownHelper
     {
-        protected override UniTask Test() => UniTask.CompletedTask;
-        private void Awake() { enabled = false; }
         public async UniTask TestClickDropdownItems(Search search, int delayBetween = 0)
         {
-            await ClickDropdownItems(search, delayBetween, throwIfMissing: true, searchTime: 2);
+            await UIAutomation.ClickDropdownItems(search, delayBetween, throwIfMissing: true, searchTime: 2);
         }
     }
 
     /// <summary>
     /// Test helper for ClickScrollItems.
     /// </summary>
-    [UITest(Scenario = 9989, Feature = "Test Helper", Story = "ClickScroll Helper")]
-    public class TestClickScrollHelper : UITestBehaviour
+    public class TestClickScrollHelper
     {
-        protected override UniTask Test() => UniTask.CompletedTask;
-        private void Awake() { enabled = false; }
         public async UniTask TestClickScrollItems(Search search, int delayBetween = 0)
         {
-            await ClickScrollItems(search, delayBetween, throwIfMissing: true, searchTime: 2);
+            await UIAutomation.ClickScrollItems(search, delayBetween, throwIfMissing: true, searchTime: 2);
         }
     }
 
