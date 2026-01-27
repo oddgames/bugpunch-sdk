@@ -1430,10 +1430,6 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static UniTask<bool> WaitFor(Search search, string expectedText, float timeout = 10f) => ActionExecutor.WaitFor(search, expectedText, timeout);
 
-        /// <summary>
-        /// Waits for a toggle to be in the expected state.
-        /// </summary>
-        public static UniTask<bool> WaitFor(Search search, bool expectedOn, float timeout = 10f) => ActionExecutor.WaitFor(search, expectedOn, timeout);
 
         /// <summary>
         /// Waits for an element to disappear.

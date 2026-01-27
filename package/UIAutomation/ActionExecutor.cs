@@ -1523,35 +1523,6 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Waits until a toggle is in the expected state.
-        /// </summary>
-        /// <param name="search">The search query to find the toggle</param>
-        /// <param name="expectedOn">Expected isOn state</param>
-        /// <param name="timeout">Maximum time to wait in seconds</param>
-        /// <returns>True if state matched, false if timeout</returns>
-        public static async UniTask<bool> WaitFor(Search search, bool expectedOn, float timeout = 10f)
-        {
-            float startTime = Time.realtimeSinceStartup;
-
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
-            {
-                var go = search.FindFirst();
-                if (go != null)
-                {
-                    var toggle = go.GetComponent<UnityEngine.UI.Toggle>();
-                    if (toggle != null && toggle.isOn == expectedOn)
-                    {
-                        Log($"WaitFor({search}, {expectedOn}) satisfied");
-                        return true;
-                    }
-                }
-                await UniTask.Delay(100, true);
-            }
-
-            return false;
-        }
-
-        /// <summary>
         /// Waits until no element matching the search exists.
         /// </summary>
         /// <param name="search">The search query</param>
