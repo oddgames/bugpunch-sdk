@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.53] - 2026-01-27
+
+### Fixed
+- Actually renamed `Search.Static()` to `Search.Reflect()` across all code, tests, and documentation (code changes were missing in v1.0.52)
+
 ## [1.0.52] - 2026-01-27
 
 ### Changed

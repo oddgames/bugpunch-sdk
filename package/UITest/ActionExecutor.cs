@@ -1513,7 +1513,7 @@ namespace ODDGames.UITest
         /// <summary>
         /// Asserts that a Search (static path or UI element) resolves to a truthy value.
         /// </summary>
-        /// <param name="search">Search to check (e.g., Search.Static("GameManager.IsReady"))</param>
+        /// <param name="search">Search to check (e.g., Search.Reflect("GameManager.IsReady"))</param>
         /// <param name="message">Optional custom failure message</param>
         public static void Assert(Search search, string message = null)
         {
@@ -1979,7 +1979,7 @@ namespace ODDGames.UITest
         /// <summary>
         /// Resolves a dot-separated path to a value using reflection.
         /// Searches all loaded assemblies for matching types.
-        /// Public entry point for Search.Static().
+        /// Public entry point for Search.Reflect().
         /// </summary>
         public static object ResolveStaticPathPublic(string path) => ResolveStaticPath(path);
 

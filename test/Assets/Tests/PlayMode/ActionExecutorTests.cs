@@ -1543,7 +1543,7 @@ namespace ODDGames.UITest.Tests
                 TestTrucks.PlayerTruck = new TruckController { Name = "MainTruck", Health = 100f };
                 await UniTask.Yield();
 
-                var path = Search.Static("TestTrucks.PlayerTruck");
+                var path = Search.Reflect("TestTrucks.PlayerTruck");
                 Assert.IsNotNull(path.Value);
                 Assert.AreEqual("MainTruck", path.GetValue<string>("Name"));
                 Assert.AreEqual(100f, path.GetValue<float>("Health"));
@@ -1562,7 +1562,7 @@ namespace ODDGames.UITest.Tests
                 };
                 await UniTask.Yield();
 
-                var damage = Search.Static("TestTrucks.PlayerTruck").Property("DamageController");
+                var damage = Search.Reflect("TestTrucks.PlayerTruck").Property("DamageController");
                 Assert.AreEqual(150f, damage.GetValue<float>("MaxHealth"));
                 Assert.IsTrue(damage.GetValue<bool>("IsDamaged"));
             });
@@ -1588,7 +1588,7 @@ namespace ODDGames.UITest.Tests
                 };
                 await UniTask.Yield();
 
-                var truck = Search.Static("TestTrucks.PlayerTruck");
+                var truck = Search.Reflect("TestTrucks.PlayerTruck");
 
                 // String
                 Assert.AreEqual("TestTruck", truck.Property("Name").StringValue);
@@ -1623,7 +1623,7 @@ namespace ODDGames.UITest.Tests
                 };
                 await UniTask.Yield();
 
-                var truck = Search.Static("TestTrucks.PlayerTruck");
+                var truck = Search.Reflect("TestTrucks.PlayerTruck");
 
                 // String array
                 var tags = truck.Property("Tags").GetValue<string[]>();
@@ -1651,7 +1651,7 @@ namespace ODDGames.UITest.Tests
                 // BoolValue on a string should throw InvalidOperationException
                 Assert.Throws<System.InvalidOperationException>(() =>
                 {
-                    var _ = Search.Static("TestTrucks.PlayerTruck").Property("Name").BoolValue;
+                    var _ = Search.Reflect("TestTrucks.PlayerTruck").Property("Name").BoolValue;
                 });
             });
         }
@@ -1665,7 +1665,7 @@ namespace ODDGames.UITest.Tests
                 TestTrucks.PlayerTruck.SetSecretCode("SECRET");
                 await UniTask.Yield();
 
-                Assert.AreEqual("SECRET", Search.Static("TestTrucks.PlayerTruck").Property("_secretCode").StringValue);
+                Assert.AreEqual("SECRET", Search.Reflect("TestTrucks.PlayerTruck").Property("_secretCode").StringValue);
             });
         }
 
@@ -1687,7 +1687,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 var names = new List<string>();
-                foreach (var truck in Search.Static("TestTrucks.PlayerTrucks"))
+                foreach (var truck in Search.Reflect("TestTrucks.PlayerTrucks"))
                 {
                     names.Add(truck.GetValue<string>("Name"));
                 }
@@ -1712,7 +1712,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 float total = 0f;
-                foreach (var truck in Search.Static("TestTrucks.PlayerTrucks"))
+                foreach (var truck in Search.Reflect("TestTrucks.PlayerTrucks"))
                 {
                     total += truck.Property("DamageController").GetValue<float>("MaxHealth");
                 }

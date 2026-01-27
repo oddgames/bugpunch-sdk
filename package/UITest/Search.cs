@@ -2543,16 +2543,16 @@ namespace ODDGames.UITest
         /// <returns>A Search representing the resolved value</returns>
         /// <example>
         /// // Access static values
-        /// var score = Search.Static("GameManager.Instance.Score").IntValue;
+        /// var score = Search.Reflect("GameManager.Instance.Score").IntValue;
         ///
         /// // Iterate over arrays
-        /// foreach (var player in Search.Static("GameManager.Players"))
+        /// foreach (var player in Search.Reflect("GameManager.Players"))
         ///     Debug.Log(player.Property("Name").StringValue);
         ///
         /// // Use with Assert
-        /// ActionExecutor.Assert(Search.Static("GameManager.IsReady").Property("Value"), true);
+        /// ActionExecutor.Assert(Search.Reflect("GameManager.IsReady").Property("Value"), true);
         /// </example>
-        public static Search Static(string path)
+        public static Search Reflect(string path)
         {
             var value = ActionExecutor.ResolveStaticPathPublic(path);
             return new Search(value, path);
@@ -2714,16 +2714,16 @@ namespace ODDGames.UITest
         /// <example>
         /// <code>
         /// // Access array element from static path
-        /// var item = Search.Static("GameManager.Instance").Property("Players").Index(0);
+        /// var item = Search.Reflect("GameManager.Instance").Property("Players").Index(0);
         ///
         /// // Access list element
-        /// var weapon = Search.Static("Inventory.Items").Index(2).Property("Name").StringValue;
+        /// var weapon = Search.Reflect("Inventory.Items").Index(2).Property("Name").StringValue;
         ///
         /// // Access array property from UI element component
         /// var firstItem = new Search().Name("Inventory").Property("Items").Index(0).StringValue;
         ///
         /// // Chain with other accessors
-        /// var name = Search.Static("Config.Settings").Property("Profiles").Index(0).Property("Name").StringValue;
+        /// var name = Search.Reflect("Config.Settings").Property("Profiles").Index(0).Property("Name").StringValue;
         /// </code>
         /// </example>
         public Search Index(int index)
@@ -2749,13 +2749,13 @@ namespace ODDGames.UITest
         /// <example>
         /// <code>
         /// // Access dictionary element
-        /// var player = Search.Static("GameManager.Instance").Property("PlayersByName").Index("Player1");
+        /// var player = Search.Reflect("GameManager.Instance").Property("PlayersByName").Index("Player1");
         ///
         /// // Access dictionary property from UI element component
         /// var value = new Search().Name("Config").Property("Settings").Index("volume").FloatValue;
         ///
         /// // Chain with other accessors
-        /// var score = Search.Static("Leaderboard.Scores").Index("TopPlayer").IntValue;
+        /// var score = Search.Reflect("Leaderboard.Scores").Index("TopPlayer").IntValue;
         /// </code>
         /// </example>
         public Search Index(string key)
@@ -2781,10 +2781,10 @@ namespace ODDGames.UITest
         /// <example>
         /// <code>
         /// // Access array element using indexer syntax
-        /// var item = Search.Static("GameManager.Instance").Property("Players")[0];
+        /// var item = Search.Reflect("GameManager.Instance").Property("Players")[0];
         ///
         /// // Chain with other accessors
-        /// var name = Search.Static("Config.Settings").Property("Profiles")[0].Property("Name").StringValue;
+        /// var name = Search.Reflect("Config.Settings").Property("Profiles")[0].Property("Name").StringValue;
         ///
         /// // From UI element property
         /// var firstItem = new Search().Name("Inventory").Property("Items")[0].StringValue;
@@ -2801,7 +2801,7 @@ namespace ODDGames.UITest
         /// <example>
         /// <code>
         /// // Access dictionary element using indexer syntax
-        /// var player = Search.Static("GameManager.Instance").Property("PlayersByName")["Player1"];
+        /// var player = Search.Reflect("GameManager.Instance").Property("PlayersByName")["Player1"];
         ///
         /// // From UI element property
         /// var value = new Search().Name("Config").Property("Settings")["volume"].FloatValue;
@@ -2819,10 +2819,10 @@ namespace ODDGames.UITest
         /// <example>
         /// <code>
         /// // Call a parameterless method
-        /// var result = Search.Static("GameManager.Instance").Invoke("GetScore").IntValue;
+        /// var result = Search.Reflect("GameManager.Instance").Invoke("GetScore").IntValue;
         ///
         /// // Call a method with arguments
-        /// var player = Search.Static("GameManager.Instance").Invoke("GetPlayer", "Player1");
+        /// var player = Search.Reflect("GameManager.Instance").Invoke("GetPlayer", "Player1");
         ///
         /// // Call method on UI element component
         /// new Search().Name("MyButton").Invoke("IsInteractable").BoolValue;
@@ -2908,9 +2908,9 @@ namespace ODDGames.UITest
         /// <example>
         /// <code>
         /// // Call method and get typed result
-        /// int score = Search.Static("GameManager.Instance").Invoke&lt;int&gt;("GetScore");
-        /// string name = Search.Static("Player.Instance").Invoke&lt;string&gt;("GetDisplayName");
-        /// bool valid = Search.Static("Validator").Invoke&lt;bool&gt;("IsValid", inputValue);
+        /// int score = Search.Reflect("GameManager.Instance").Invoke&lt;int&gt;("GetScore");
+        /// string name = Search.Reflect("Player.Instance").Invoke&lt;string&gt;("GetDisplayName");
+        /// bool valid = Search.Reflect("Validator").Invoke&lt;bool&gt;("IsValid", inputValue);
         /// </code>
         /// </example>
         public T Invoke<T>(string methodName, params object[] args)
