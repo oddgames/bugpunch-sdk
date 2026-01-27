@@ -54,22 +54,22 @@ namespace ODDGames.UITest
         #region Search Helpers
 
         /// <summary>
-        /// Creates a Search from a static path for accessing game state via reflection.
+        /// Creates a Search from a reflection path for accessing game state.
         /// </summary>
         /// <param name="path">Dot-separated path to a static field or property (e.g., "GameManager.Instance.Score").</param>
-        /// <returns>A new Search instance for accessing the static value.</returns>
+        /// <returns>A new Search instance for accessing the value.</returns>
         /// <example>
-        /// // Access static properties
-        /// var health = Static("Player.Instance.Health").FloatValue;
-        /// var score = Static("GameManager.Instance.Score").IntValue;
+        /// // Access properties via reflection
+        /// var health = Reflect("Player.Instance.Health").FloatValue;
+        /// var score = Reflect("GameManager.Instance.Score").IntValue;
         ///
         /// // Use indexers
-        /// var firstPlayer = Static("GameManager.Players")[0];
+        /// var firstPlayer = Reflect("GameManager.Players")[0];
         ///
         /// // Invoke methods
-        /// Static("GameManager.Instance").Invoke("StartGame");
+        /// Reflect("GameManager.Instance").Invoke("StartGame");
         /// </example>
-        protected static Search Static(string path) => Search.Static(path);
+        protected static Search Reflect(string path) => Search.Reflect(path);
 
         /// <summary>
         /// Creates a Search query that matches GameObjects by name. Supports * wildcards for pattern matching.

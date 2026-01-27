@@ -181,10 +181,10 @@ await SceneChange(seconds: 30);                        // Wait for scene load
 
 ```csharp
 // Read values
-var score = Search.Static("GameManager.Instance.Score").IntValue;
-var health = Search.Static("Player.Instance.Health").FloatValue;
-var ready = Search.Static("GameManager.Instance.IsReady").BoolValue;
-var name = Search.Static("Player.Instance.Name").StringValue;
+var score = Search.Reflect("GameManager.Instance.Score").IntValue;
+var health = Search.Reflect("Player.Instance.Health").FloatValue;
+var ready = Search.Reflect("GameManager.Instance.IsReady").BoolValue;
+var name = Search.Reflect("Player.Instance.Name").StringValue;
 
 // Value properties: .Value, .StringValue, .BoolValue, .IntValue, .FloatValue
 //                   .Vector3Value, .Vector2Value, .ColorValue, .QuaternionValue, .ArrayValue
@@ -193,7 +193,7 @@ var name = Search.Static("Player.Instance.Name").StringValue;
 ### Property Navigation
 
 ```csharp
-Search.Static("Player.Instance")
+Search.Reflect("Player.Instance")
     .Property("Inventory")
     .Property("EquippedWeapon")
     .Property("Damage")
@@ -204,22 +204,22 @@ Search.Static("Player.Instance")
 
 ```csharp
 // Method syntax
-Search.Static("Game.Players").Index(0).Property("Name").StringValue;
-Search.Static("Config.Settings").Index("volume").FloatValue;
+Search.Reflect("Game.Players").Index(0).Property("Name").StringValue;
+Search.Reflect("Config.Settings").Index("volume").FloatValue;
 
 // C# indexer syntax
-Search.Static("Game.Players")[0].Property("Name").StringValue;
-Search.Static("Config")["settings"]["audio"].FloatValue;
+Search.Reflect("Game.Players")[0].Property("Name").StringValue;
+Search.Reflect("Config")["settings"]["audio"].FloatValue;
 
 // Inline in path
-Search.Static("Game.Players[0].Name").StringValue;
-Search.Static("Config.Settings[\"volume\"]").FloatValue;
+Search.Reflect("Game.Players[0].Name").StringValue;
+Search.Reflect("Config.Settings[\"volume\"]").FloatValue;
 ```
 
 ### Array Iteration
 
 ```csharp
-foreach (var item in Search.Static("Inventory.Items"))
+foreach (var item in Search.Reflect("Inventory.Items"))
 {
     var name = item.Property("Name").StringValue;
     var count = item.Property("Count").IntValue;
@@ -229,7 +229,7 @@ foreach (var item in Search.Static("Inventory.Items"))
 ### Component Access
 
 ```csharp
-Search.Static("Player.Instance")
+Search.Reflect("Player.Instance")
     .Component<Rigidbody>()
     .Property("isKinematic")
     .SetValue(true);
@@ -243,15 +243,15 @@ new Search().Name("Player")
 ### Method Invocation
 
 ```csharp
-Search.Static("GameManager.Instance").Invoke("StartGame");
-Search.Static("Player.Instance").Invoke("TakeDamage", 10f);
-var result = Search.Static("Validator").Invoke<bool>("Validate", data);
+Search.Reflect("GameManager.Instance").Invoke("StartGame");
+Search.Reflect("Player.Instance").Invoke("TakeDamage", 10f);
+var result = Search.Reflect("Validator").Invoke<bool>("Validate", data);
 ```
 
 ### SetValue
 
 ```csharp
-Search.Static("GameManager.Instance")
+Search.Reflect("GameManager.Instance")
     .Property("Score")
     .SetValue(100);
 ```
@@ -259,9 +259,9 @@ Search.Static("GameManager.Instance")
 ### WaitFor with Static Paths
 
 ```csharp
-await WaitFor(Search.Static("GameManager.Instance.IsReady"));        // Truthy
-await WaitFor(Search.Static("Player.Score"), 100);                   // Specific value
-await WaitFor(Search.Static("Game.State"), "Playing", timeout: 10f);
+await WaitFor(Search.Reflect("GameManager.Instance.IsReady"));        // Truthy
+await WaitFor(Search.Reflect("Player.Score"), 100);                   // Specific value
+await WaitFor(Search.Reflect("Game.State"), "Playing", timeout: 10f);
 ```
 
 ---
@@ -284,7 +284,7 @@ All methods return restoration tokens for cleanup.
 ```csharp
 // Direct call
 new Search().Name("Player").Freeze();
-Search.Static("GameManager.player").NoClip();
+Search.Reflect("GameManager.player").NoClip();
 
 // Manual restore
 var state = new Search().Name("Player").NoClip();
@@ -341,9 +341,9 @@ Assert.AreEqual(0.5f, await GetValue<float>(Name("Slider")), 0.01f);
 ### With Static Paths
 
 ```csharp
-Assert.IsTrue(Search.Static("GameManager.Instance.IsReady").BoolValue);
-Assert.Greater(Search.Static("Player.Score").IntValue, 0);
-Assert.AreEqual("MainLevel", Search.Static("LevelManager.CurrentLevel.Name").StringValue);
+Assert.IsTrue(Search.Reflect("GameManager.Instance.IsReady").BoolValue);
+Assert.Greater(Search.Reflect("Player.Score").IntValue, 0);
+Assert.AreEqual("MainLevel", Search.Reflect("LevelManager.CurrentLevel.Name").StringValue);
 ```
 
 ---
@@ -365,10 +365,10 @@ public class CoinCollectionTest : UITestBehaviour
 
         // Act
         await Click("StartGame");
-        await WaitFor(Search.Static("Player.Instance"));
+        await WaitFor(Search.Reflect("Player.Instance"));
 
         // Assert
-        Assert.Greater(Search.Static("Player.Score").IntValue, 0);
+        Assert.Greater(Search.Reflect("Player.Score").IntValue, 0);
     }
 }
 ```

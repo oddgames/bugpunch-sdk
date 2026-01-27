@@ -62,7 +62,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var value = Search.Static("SearchIndexerTests+TestData.StringArray")
+                var value = Search.Reflect("SearchIndexerTests+TestData.StringArray")
                     .Index(1)
                     .StringValue;
 
@@ -77,7 +77,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var value = Search.Static("SearchIndexerTests+TestData.IntList")
+                var value = Search.Reflect("SearchIndexerTests+TestData.IntList")
                     .Index(2)
                     .IntValue;
 
@@ -92,7 +92,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var value = Search.Static("SearchIndexerTests+TestData.StringDict")
+                var value = Search.Reflect("SearchIndexerTests+TestData.StringDict")
                     .Index("name")
                     .StringValue;
 
@@ -107,14 +107,14 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var name = Search.Static("SearchIndexerTests+TestData.Players")
+                var name = Search.Reflect("SearchIndexerTests+TestData.Players")
                     .Index(0)
                     .Property("Name")
                     .StringValue;
 
                 Assert.AreEqual("Alice", name);
 
-                var score = Search.Static("SearchIndexerTests+TestData.Players")
+                var score = Search.Reflect("SearchIndexerTests+TestData.Players")
                     .Index(1)
                     .Property("Score")
                     .IntValue;
@@ -130,7 +130,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var name = Search.Static("SearchIndexerTests+TestData.PlayersByName")
+                var name = Search.Reflect("SearchIndexerTests+TestData.PlayersByName")
                     .Index("bob")
                     .Property("Name")
                     .StringValue;
@@ -148,7 +148,7 @@ namespace ODDGames.UITest.Tests
 
                 Assert.Throws<System.IndexOutOfRangeException>(() =>
                 {
-                    var value = Search.Static("SearchIndexerTests+TestData.StringArray")
+                    var value = Search.Reflect("SearchIndexerTests+TestData.StringArray")
                         .Index(100)
                         .StringValue;
                 });
@@ -164,7 +164,7 @@ namespace ODDGames.UITest.Tests
 
                 Assert.Throws<KeyNotFoundException>(() =>
                 {
-                    var value = Search.Static("SearchIndexerTests+TestData.StringDict")
+                    var value = Search.Reflect("SearchIndexerTests+TestData.StringDict")
                         .Index("nonexistent")
                         .StringValue;
                 });
@@ -182,7 +182,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var value = Search.Static("SearchIndexerTests+TestData.StringArray[2]")
+                var value = Search.Reflect("SearchIndexerTests+TestData.StringArray[2]")
                     .StringValue;
 
                 Assert.AreEqual("two", value);
@@ -196,7 +196,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var value = Search.Static("SearchIndexerTests+TestData.IntList[4]")
+                var value = Search.Reflect("SearchIndexerTests+TestData.IntList[4]")
                     .IntValue;
 
                 Assert.AreEqual(50, value);
@@ -210,7 +210,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var value = Search.Static("SearchIndexerTests+TestData.StringDict[\"level\"]")
+                var value = Search.Reflect("SearchIndexerTests+TestData.StringDict[\"level\"]")
                     .StringValue;
 
                 Assert.AreEqual("5", value);
@@ -224,7 +224,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var value = Search.Static("SearchIndexerTests+TestData.StringDict['score']")
+                var value = Search.Reflect("SearchIndexerTests+TestData.StringDict['score']")
                     .StringValue;
 
                 Assert.AreEqual("1000", value);
@@ -238,7 +238,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var name = Search.Static("SearchIndexerTests+TestData.Players[2].Name")
+                var name = Search.Reflect("SearchIndexerTests+TestData.Players[2].Name")
                     .StringValue;
 
                 Assert.AreEqual("Charlie", name);
@@ -252,7 +252,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var score = Search.Static("SearchIndexerTests+TestData.PlayersByName[\"alice\"].Score")
+                var score = Search.Reflect("SearchIndexerTests+TestData.PlayersByName[\"alice\"].Score")
                     .IntValue;
 
                 Assert.AreEqual(100, score);
@@ -267,7 +267,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // NestedArray[1][2] should be 6
-                var value = Search.Static("SearchIndexerTests+TestData.NestedArray[1][2]")
+                var value = Search.Reflect("SearchIndexerTests+TestData.NestedArray[1][2]")
                     .IntValue;
 
                 Assert.AreEqual(6, value);
@@ -286,7 +286,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Use Property() to navigate to collection then use inline indexer
-                var value = Search.Static("SearchIndexerTests+TestData")
+                var value = Search.Reflect("SearchIndexerTests+TestData")
                     .Property("StringArray[0]")
                     .StringValue;
 
@@ -301,7 +301,7 @@ namespace ODDGames.UITest.Tests
             {
                 await UniTask.Yield();
 
-                var value = Search.Static("SearchIndexerTests+TestData")
+                var value = Search.Reflect("SearchIndexerTests+TestData")
                     .Property("StringDict[\"name\"]")
                     .StringValue;
 
@@ -321,7 +321,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Use C# indexer syntax instead of .Index()
-                var value = Search.Static("SearchIndexerTests+TestData.StringArray")[1]
+                var value = Search.Reflect("SearchIndexerTests+TestData.StringArray")[1]
                     .StringValue;
 
                 Assert.AreEqual("one", value);
@@ -336,7 +336,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Use C# indexer syntax for dictionary
-                var value = Search.Static("SearchIndexerTests+TestData.StringDict")["name"]
+                var value = Search.Reflect("SearchIndexerTests+TestData.StringDict")["name"]
                     .StringValue;
 
                 Assert.AreEqual("TestPlayer", value);
@@ -351,7 +351,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Chain indexer with property access
-                var name = Search.Static("SearchIndexerTests+TestData")
+                var name = Search.Reflect("SearchIndexerTests+TestData")
                     .Property("Players")[1]
                     .Property("Name")
                     .StringValue;
@@ -368,7 +368,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Use indexer syntax for nested array access
-                var value = Search.Static("SearchIndexerTests+TestData")
+                var value = Search.Reflect("SearchIndexerTests+TestData")
                     .Property("NestedArray")[2][0]
                     .IntValue;
 
@@ -388,7 +388,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Use dot instead of + for nested type
-                var value = Search.Static("SearchIndexerTests.TestData.StringArray[0]")
+                var value = Search.Reflect("SearchIndexerTests.TestData.StringArray[0]")
                     .StringValue;
 
                 Assert.AreEqual("zero", value);
@@ -403,7 +403,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Use dot instead of + with Index() method
-                var value = Search.Static("SearchIndexerTests.TestData.IntList")
+                var value = Search.Reflect("SearchIndexerTests.TestData.IntList")
                     .Index(3)
                     .IntValue;
 
@@ -419,7 +419,7 @@ namespace ODDGames.UITest.Tests
                 await UniTask.Yield();
 
                 // Use dot syntax with chained property and indexer
-                var name = Search.Static("SearchIndexerTests.TestData.Players[1].Name")
+                var name = Search.Reflect("SearchIndexerTests.TestData.Players[1].Name")
                     .StringValue;
 
                 Assert.AreEqual("Bob", name);
@@ -441,7 +441,7 @@ namespace ODDGames.UITest.Tests
                 var originalScore = TestData.Players[0].Score;
 
                 // Set value via Property chain
-                Search.Static("SearchIndexerTests.TestData.Players[0]")
+                Search.Reflect("SearchIndexerTests.TestData.Players[0]")
                     .Property("Score")
                     .SetValue(999);
 
@@ -463,7 +463,7 @@ namespace ODDGames.UITest.Tests
                 var originalName = TestData.Players[1].Name;
 
                 // Set value via Index() then Property()
-                Search.Static("SearchIndexerTests.TestData.Players")
+                Search.Reflect("SearchIndexerTests.TestData.Players")
                     .Index(1)
                     .Property("Name")
                     .SetValue("Modified");
@@ -486,7 +486,7 @@ namespace ODDGames.UITest.Tests
                 var originalScore = TestData.Players[2].Score;
 
                 // Set value via inline indexer in path
-                Search.Static("SearchIndexerTests.TestData.Players[2]")
+                Search.Reflect("SearchIndexerTests.TestData.Players[2]")
                     .Property("Score")
                     .SetValue(777);
 
@@ -507,7 +507,7 @@ namespace ODDGames.UITest.Tests
                 // Attempting to set value directly on Static() result should fail
                 Assert.Throws<System.InvalidOperationException>(() =>
                 {
-                    Search.Static("SearchIndexerTests.TestData.Players[0]")
+                    Search.Reflect("SearchIndexerTests.TestData.Players[0]")
                         .SetValue(null);
                 });
             });
@@ -524,7 +524,7 @@ namespace ODDGames.UITest.Tests
                 var originalName = TestData.PlayersByName["alice"].Name;
 
                 // Set via dictionary index and property
-                Search.Static("SearchIndexerTests.TestData.PlayersByName")
+                Search.Reflect("SearchIndexerTests.TestData.PlayersByName")
                     .Index("alice")
                     .Property("Name")
                     .SetValue("Alicia");

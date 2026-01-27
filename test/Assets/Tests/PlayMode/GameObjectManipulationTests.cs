@@ -276,7 +276,7 @@ namespace ODDGames.UITest.Tests
                 TestManager.Player = _testObject;
                 Assert.IsTrue(_testObject.activeSelf);
 
-                await Search.Static("GameObjectManipulationTests.TestManager.Player").Disable();
+                await Search.Reflect("GameObjectManipulationTests.TestManager.Player").Disable();
 
                 Assert.IsFalse(_testObject.activeSelf);
             });
@@ -293,7 +293,7 @@ namespace ODDGames.UITest.Tests
                 var rb = _testObject.GetComponent<Rigidbody>();
                 rb.isKinematic = false;
 
-                await Search.Static("GameObjectManipulationTests.TestManager.Player").Freeze();
+                await Search.Reflect("GameObjectManipulationTests.TestManager.Player").Freeze();
 
                 Assert.IsTrue(rb.isKinematic);
             });
@@ -310,7 +310,7 @@ namespace ODDGames.UITest.Tests
                 var col = _testObject.GetComponent<BoxCollider>();
                 Assert.IsTrue(col.enabled);
 
-                await Search.Static("GameObjectManipulationTests.TestManager.Player").NoClip();
+                await Search.Reflect("GameObjectManipulationTests.TestManager.Player").NoClip();
 
                 Assert.IsFalse(col.enabled);
             });

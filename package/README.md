@@ -182,22 +182,22 @@ await Click(new Search("Play"));  // Constructor shorthand for text search
 
 ### Static Path Access
 
-Access static fields, properties, and nested members directly in tests using `Search.Static()`:
+Access static fields, properties, and nested members directly in tests using `Search.Reflect()`:
 
 ```csharp
 // Access static properties
-var health = Search.Static("PlayerManager.CurrentPlayer.Health").FloatValue;
-var isActive = Search.Static("GameState.IsGameActive").BoolValue;
+var health = Search.Reflect("PlayerManager.CurrentPlayer.Health").FloatValue;
+var isActive = Search.Reflect("GameState.IsGameActive").BoolValue;
 
 // Navigate nested properties
-var damage = Search.Static("Player.DamageController").Property("MaxHealth").FloatValue;
+var damage = Search.Reflect("Player.DamageController").Property("MaxHealth").FloatValue;
 
 // Use with NUnit assertions
-Assert.AreEqual(100f, Search.Static("Player.Health").Value);
-Assert.Greater(Search.Static("Player.Score").Value, 0);
+Assert.AreEqual(100f, Search.Reflect("Player.Health").Value);
+Assert.Greater(Search.Reflect("Player.Score").Value, 0);
 
 // Iterate over static arrays
-foreach (var item in Search.Static("Inventory.Items"))
+foreach (var item in Search.Reflect("Inventory.Items"))
 {
     var name = item.Property("Name").StringValue;
 }
@@ -205,14 +205,14 @@ foreach (var item in Search.Static("Inventory.Items"))
 
 | Property/Method | Description | Example |
 |----------------|-------------|---------|
-| `Static(path)` | Create search from static path | `Search.Static("GameManager.Instance")` |
+| `Reflect(path)` | Create search from static path | `Search.Reflect("GameManager.Instance")` |
 | `Property(name)` | Navigate to property/field | `.Property("Health")` |
-| `Value` | Get raw object value | `Search.Static("Player.Score").Value` |
-| `StringValue` | Get string value | `Search.Static("Player.Name").StringValue` |
-| `BoolValue` | Get boolean value | `Search.Static("Game.IsPaused").BoolValue` |
-| `IntValue` | Get integer value | `Search.Static("Player.Score").IntValue` |
-| `FloatValue` | Get float value | `Search.Static("Player.Health").FloatValue` |
-| `ArrayValue` | Get array as object[] | `Search.Static("Inventory.Items").ArrayValue` |
+| `Value` | Get raw object value | `Search.Reflect("Player.Score").Value` |
+| `StringValue` | Get string value | `Search.Reflect("Player.Name").StringValue` |
+| `BoolValue` | Get boolean value | `Search.Reflect("Game.IsPaused").BoolValue` |
+| `IntValue` | Get integer value | `Search.Reflect("Player.Score").IntValue` |
+| `FloatValue` | Get float value | `Search.Reflect("Player.Health").FloatValue` |
+| `ArrayValue` | Get array as object[] | `Search.Reflect("Inventory.Items").ArrayValue` |
 | `GetValue<T>(path)` | Get typed value at sub-path | `.GetValue<float>("Health")` |
 
 **Type Resolution**: Short type names (e.g., `PlayerManager`) are auto-resolved if unique. For ambiguous types, use the full namespace (e.g., `MyGame.Managers.PlayerManager`).
