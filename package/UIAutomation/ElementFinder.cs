@@ -12,7 +12,7 @@ namespace ODDGames.UIAutomation
     /// Shared utility for finding UI elements in the scene.
     /// Used by UIAutomation and AI testing.
     /// </summary>
-    public static class ElementFinder
+    internal static class ElementFinder
     {
         /// <summary>
         /// Finds all active, visible, interactable Selectables in the scene.
@@ -220,7 +220,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Information about a non-Selectable interactable element.
         /// </summary>
-        public class InteractableInfo
+        internal class InteractableInfo
         {
             public GameObject GameObject { get; set; }
             public string Type { get; set; } // "draggable", "droptarget", "clickable"

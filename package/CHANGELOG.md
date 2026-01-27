@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2026-01-27
+
+### Added
+- `WaitFor(Search search, bool expectedOn, float timeout)` - Wait for toggle to be in expected state
+- `WaitFor<T>(string path, T expected, float timeout)` - Wait for static path to equal expected value
+
+### Changed
+- Made `ActionExecutor`, `StaticPath`, and `ElementFinder` internal - use only `UIAutomation` static class as the public API
+
 ## [1.1.2] - 2026-01-27
 
 ### Changed
