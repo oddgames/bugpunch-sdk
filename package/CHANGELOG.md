@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-01-27
+
+### Changed
+- Updated README and documentation to use async Task pattern (no more UniTask.ToCoroutine)
+- Added explanation of `using static ODDGames.UIAutomation.UIAutomation;` pattern
+- Removed UniTask as a documented dependency (framework uses native async)
+- Updated display name to "ODD Games UI Automation"
+
 ## [1.1.1] - 2026-01-27
 
 ### Changed
