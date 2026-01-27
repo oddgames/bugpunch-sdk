@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.52] - 2026-01-27
+
+### Changed
+- **BREAKING**: `Search.Static()` renamed to `Search.Reflect()` - clearer naming for reflection-based access
+  - `Search.Reflect("GameManager.Instance.Score").IntValue`
+  - `Reflect("GameManager.Instance")` helper available in test classes
+
+### Added
+- **`Property()` dot notation** - Navigate nested properties with a single call
+  - `Property("a.b.c")` is equivalent to `Property("a").Property("b").Property("c")`
+  - Example: `Reflect("GameModeDrag.Instance").Property("loadedLevel.player.racingLine")`
+- **`Deserialize(string json)`** - Deserialize JSON (Newtonsoft) and set as property value
+  - Example: `Reflect("GameManager.Instance").Property("PlayerData").Deserialize(@"{ ""Name"": ""Test"" }")`
+- **`Serialize(bool indented = false)`** - Serialize current value to JSON string (Newtonsoft)
+  - Example: `var json = Reflect("Player.Instance").Property("Stats").Serialize(true)`
+- **`Search.New<T>(string json = null)`** - Create new instance, optionally from JSON
+  - Example: `var player = Search.New<PlayerData>(@"{ ""Name"": ""Test"", ""Health"": 100 }")`
+- **`Search.New(string typeName, string json = null)`** - Create instance by type name (no generic needed)
+  - Example: `var player = Search.New("PlayerData", @"{ ""Name"": ""Test"" }")`
+
 ## [1.0.51] - 2026-01-17
 
 ### Changed
