@@ -907,7 +907,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Assert text {(containsMode ? "contains" : "equals")} passed: \"{actualText}\"");
         }
 
-        private static async UniTask AssertToggleStateAsync(VisualBlock block, bool expectedOn, CancellationToken ct)
+        private static async UniTask AssertToggleStateAsync(VisualBlock block, bool value, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -919,9 +919,9 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 throw new InvalidOperationException($"Assert failed: Element '{element.name}' is not a Toggle");
             }
 
-            if (toggle.isOn != expectedOn)
+            if (toggle.isOn != value)
             {
-                throw new InvalidOperationException($"Assert failed: Toggle '{element.name}' is {(toggle.isOn ? "ON" : "OFF")} but expected {(expectedOn ? "ON" : "OFF")}");
+                throw new InvalidOperationException($"Assert failed: Toggle '{element.name}' is {(toggle.isOn ? "ON" : "OFF")} but expected {(value ? "ON" : "OFF")}");
             }
 
             Debug.Log($"[VisualTestRunner] Assert toggle state passed: {element.name} is {(toggle.isOn ? "ON" : "OFF")}");

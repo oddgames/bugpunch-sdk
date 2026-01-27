@@ -3,7 +3,6 @@
     "rootNamespace": "ODDGames.UIAutomation.AI.Editor",
     "references": [
         "ODDGames.UIAutomation",
-        "ODDGames.UIAutomation.AI",
         "UniTask"
     ],
     "includePlatforms": [

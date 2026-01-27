@@ -1188,7 +1188,7 @@ namespace ODDGames.UIAutomation.Tests
                 toggle.isOn = true;
                 await UniTask.Yield();
 
-                var result = await ActionExecutor.WaitFor(new Search().Name("WaitToggle"), true, timeout: 1f);
+                var result = await ActionExecutor.WaitFor(new Search().Name("WaitToggle"), timeout: 1f);
                 Assert.IsTrue(result, "WaitFor should return true for matching toggle state");
             });
         }
