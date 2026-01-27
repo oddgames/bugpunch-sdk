@@ -1,0 +1,24 @@
+{
+    "name": "ODDGames.UIAutomation.VisualBuilder.Editor",
+    "rootNamespace": "ODDGames.UIAutomation.VisualBuilder.Editor",
+    "references": [
+        "ODDGames.UIAutomation",
+        "ODDGames.UIAutomation.AI",
+        "ODDGames.UIAutomation.AI.Editor",
+        "ODDGames.UIAutomation.VisualBuilder",
+        "UniTask",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

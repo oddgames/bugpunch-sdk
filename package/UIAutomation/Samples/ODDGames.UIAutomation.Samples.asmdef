@@ -1,0 +1,19 @@
+{
+    "name": "ODDGames.UIAutomation.Samples",
+    "rootNamespace": "ODDGames.UIAutomation.Samples",
+    "references": [
+        "ODDGames.UIAutomation",
+        "UniTask",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

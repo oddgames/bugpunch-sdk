@@ -9,8 +9,9 @@ using UnityEngine.TestTools;
 using UnityEngine.UI;
 using Cysharp.Threading.Tasks;
 using TMPro;
+using ODDGames.UIAutomation;
 
-namespace ODDGames.UITest.Tests
+namespace ODDGames.UIAutomation.Tests
 {
     /// <summary>
     /// Extended PlayMode tests for Search class - covers uncovered methods from coverage report.

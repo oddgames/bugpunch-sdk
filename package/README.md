@@ -61,7 +61,7 @@ For a specific version:
 ### Basic Test Structure
 
 ```csharp
-using ODDGames.UITest;
+using ODDGames.UIAutomation;
 using Cysharp.Threading.Tasks;
 
 [UITest(Scenario = 1, Feature = "Login", Story = "User can log in")]
@@ -447,7 +447,7 @@ var result = await AutoExplorer.StartExploration(new ExploreSettings
 ### Jenkins/CI Batch Mode
 
 ```bash
-Unity.exe -batchmode -executeMethod ODDGames.UITest.AutoExplorer.RunBatch \
+Unity.exe -batchmode -executeMethod ODDGames.UIAutomation.AutoExplorer.RunBatch \
   -exploreSeconds 300 \
   -exploreSeed 12345
 ```
@@ -491,10 +491,10 @@ Configure in **Edit > Project Settings > UITest**:
 
 | Assembly | Platform | Description |
 |----------|----------|-------------|
-| `ODDGames.UITest` | Runtime | Core test framework |
-| `ODDGames.UITest.Editor` | Editor | Test runner and editor tools |
-| `ODDGames.UITest.Recording` | Runtime | Recording/playback system |
-| `ODDGames.UITest.Recording.Editor` | Editor | Recording toolbar and generator |
+| `ODDGames.UIAutomation` | Runtime | Core test framework |
+| `ODDGames.UIAutomation.Editor` | Editor | Test runner and editor tools |
+| `ODDGames.UIAutomation.Recording` | Runtime | Recording/playback system |
+| `ODDGames.UIAutomation.Recording.Editor` | Editor | Recording toolbar and generator |
 
 ## Version History
 

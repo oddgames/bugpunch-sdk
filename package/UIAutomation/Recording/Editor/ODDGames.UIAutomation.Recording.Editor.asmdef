@@ -1,0 +1,29 @@
+{
+    "name": "ODDGames.UIAutomation.Recording.Editor",
+    "rootNamespace": "ODDGames.UIAutomation.Editor",
+    "references": [
+        "ODDGames.UIAutomation",
+        "ODDGames.UIAutomation.Recording",
+        "ODDGames.UIAutomation.Editor",
+        "Unity.TextMeshPro",
+        "UniTask",
+        "ToolbarExtender.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.marijnzwemmer.unity-toolbar-extender",
+            "expression": "",
+            "define": "HAS_TOOLBAR_EXTENDER"
+        }
+    ],
+    "noEngineReferences": false
+}
