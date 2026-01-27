@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-01-27
+
+### Changed
+- **BREAKING**: Package ID changed from `com.oddgames.uitest` to `au.com.oddgames.uiautomation`
+  - Update your `manifest.json` to use the new package ID
+
 ## [1.1.0] - 2026-01-27
 
 ### Changed
