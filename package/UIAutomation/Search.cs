@@ -57,7 +57,7 @@ namespace ODDGames.UIAutomation
     ///   - Wildcard (*): "btn_*" matches btn_play, btn_settings; "*Button" matches PlayButton, SubmitButton
     ///   - OR (|): "OK|Okay|Confirm" matches any of those values; combinable with wildcards: "*Yes*|*OK*"
     ///
-    /// With 'using static ODDGames.UIAutomation.UIAutomation':
+    /// With 'using static ODDGames.UIAutomation.ActionExecutor':
     ///   await Click(Text("Play"));
     ///   await Click(Name("btn_*").Type&lt;Button&gt;());
     ///   await Click(Text("OK|Okay|Confirm"));
@@ -1447,6 +1447,34 @@ namespace ODDGames.UIAutomation
             var results = FindAll(includeInactive);
             return results.Count > 0 ? results[0] : null;
         }
+
+        /// <summary>
+        /// Validates this search query and returns details about what was found.
+        /// Useful for AI feedback - call this before performing actions to verify the target exists.
+        /// </summary>
+        /// <returns>Validation result with count and description of matches.</returns>
+        public SearchValidation Validate()
+        {
+            var results = FindAll();
+            return new SearchValidation
+            {
+                Success = results.Count > 0,
+                Count = results.Count,
+                Query = ToString(),
+                MatchedNames = results.Take(5).Select(go => go.name).ToList(),
+                Message = results.Count == 0
+                    ? $"No elements found matching '{ToString()}'"
+                    : results.Count == 1
+                        ? $"Found '{results[0].name}'"
+                        : $"Found {results.Count} elements: {string.Join(", ", results.Take(3).Select(go => go.name))}{(results.Count > 3 ? "..." : "")}"
+            };
+        }
+
+        /// <summary>
+        /// Returns true if at least one element matches this search query.
+        /// Faster than FindFirst() != null for existence checks.
+        /// </summary>
+        public bool Exists() => FindFirst() != null;
 
         /// <summary>
         /// Gets the screen position of the first matching element.
@@ -3762,5 +3790,31 @@ namespace ODDGames.UIAutomation
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// Result of a Search.Validate() call. Provides quick feedback on whether a search query would succeed.
+    /// </summary>
+    public class SearchValidation
+    {
+        /// <summary>True if at least one element was found.</summary>
+        public bool Success { get; set; }
+
+        /// <summary>Number of matching elements found.</summary>
+        public int Count { get; set; }
+
+        /// <summary>The search query that was validated.</summary>
+        public string Query { get; set; }
+
+        /// <summary>Names of the first few matching GameObjects (up to 5).</summary>
+        public List<string> MatchedNames { get; set; }
+
+        /// <summary>Human-readable message describing the validation result.</summary>
+        public string Message { get; set; }
+
+        /// <summary>Implicit conversion to bool for easy conditionals.</summary>
+        public static implicit operator bool(SearchValidation v) => v.Success;
+
+        public override string ToString() => Message;
     }
 }

@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.5] - 2026-01-28
+
+### Changed
+- **BREAKING**: Removed `UIAutomation` facade class - use `ActionExecutor` directly
+  - `using static ODDGames.UIAutomation.ActionExecutor;` replaces `using static ODDGames.UIAutomation.UIAutomation;`
+  - All methods now in single `ActionExecutor` class
+- **BREAKING**: `UITestBehaviour` base class completely removed - use standard NUnit `[TestFixture]` pattern
+- `ScrollTo()` now uses drag-based input injection instead of direct normalizedPosition manipulation
+  - Automatically detects horizontal vs vertical scrolling based on ScrollRect configuration
+  - Smart direction detection based on target position relative to viewport center
+  - Supports diagonal scrolling for 2D scroll views (both horizontal and vertical enabled)
+- Updated all documentation to reflect new `ActionExecutor` API
+
+### Added
+- `ScrollToAndClick()` - Scroll to target element and click it in one action
+
 ## [1.1.4] - 2026-01-27
 
 ### Changed

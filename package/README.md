@@ -19,7 +19,7 @@ Add to your `Packages/manifest.json`:
 ```csharp
 using System.Threading.Tasks;
 using NUnit.Framework;
-using static ODDGames.UIAutomation.UIAutomation;
+using static ODDGames.UIAutomation.ActionExecutor;
 
 [TestFixture]
 public class LoginTests
@@ -42,7 +42,7 @@ public class LoginTests
 
 ## Understanding `using static`
 
-The `using static ODDGames.UIAutomation.UIAutomation;` directive imports all helpers directly:
+The `using static ODDGames.UIAutomation.ActionExecutor;` directive imports all helpers directly:
 
 ```csharp
 // With 'using static' - clean and readable
@@ -50,7 +50,7 @@ await Click(Name("Button"));
 await TextInput(Adjacent("Username:"), "test");
 
 // Without - verbose
-await UIAutomation.Click(UIAutomation.Name("Button"));
+await ActionExecutor.Click(ActionExecutor.Name("Button"));
 ```
 
 This gives you direct access to:
