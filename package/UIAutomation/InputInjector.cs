@@ -577,6 +577,7 @@ namespace ODDGames.UIAutomation
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1).</param>
         public static async UniTask InjectTwoFingerSwipe(Vector2 centerPosition, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
+            await EnsureGameViewFocusAsync();
             var offset = GetDirectionOffset(direction, normalizedDistance);
 
             // Calculate finger positions
@@ -881,9 +882,9 @@ namespace ODDGames.UIAutomation
         /// <param name="startPos">Start position in screen coordinates</param>
         /// <param name="endPos">End position in screen coordinates</param>
         /// <param name="duration">Duration of the drag movement (minimum 1 second)</param>
-        /// <param name="holdTime">Time to hold at start position before dragging (default 0.5s)</param>
+        /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging (ignored on touch devices)</param>
-        public static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        public static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             await EnsureGameViewFocusAsync();
 
@@ -905,7 +906,7 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag movement</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
-        public static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        internal static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             var mouse = Mouse.current;
             if (mouse == null)
@@ -967,13 +968,39 @@ namespace ODDGames.UIAutomation
                 }
                 LogDebug($"MouseDrag held for {holdTime}s");
             }
-
-            // Interpolate mouse position over duration (real-time based)
-            float dragStartTime = Time.realtimeSinceStartup;
-            float dragEndTime = dragStartTime + duration;
-            while (Time.realtimeSinceStartup < dragEndTime)
+            else
             {
-                float t = Mathf.Clamp01((Time.realtimeSinceStartup - dragStartTime) / duration);
+                // Even with no hold, send one event at start position to register the initial press
+                // This ensures listeners can capture lastMousePosition before movement begins
+                using (StateEvent.From(mouse, out var initPtr))
+                {
+                    mouse.position.WriteValueIntoEvent(startPos, initPtr);
+                    mouse.delta.WriteValueIntoEvent(Vector2.zero, initPtr);
+                    buttonControl.WriteValueIntoEvent(1f, initPtr);
+                    InputSystem.QueueEvent(initPtr);
+                }
+                InputSystem.Update();
+                await UniTask.Yield();
+            }
+
+            // Interpolate mouse position over duration
+            // Use frame-based interpolation with minimum frames to ensure movement is always captured
+            const int minFrames = 5; // Minimum frames to ensure movement registers
+            int frameCount = 0;
+            float dragStartTime = Time.realtimeSinceStartup;
+
+            while (frameCount < minFrames || Time.realtimeSinceStartup < dragStartTime + duration)
+            {
+                frameCount++;
+                // Use frame count for interpolation to ensure smooth progression regardless of timing
+                float t = Mathf.Clamp01((float)frameCount / minFrames);
+                if (duration > 0 && Time.realtimeSinceStartup < dragStartTime + duration)
+                {
+                    // If still within duration, use time-based interpolation for smoother motion
+                    t = Mathf.Max(t, (Time.realtimeSinceStartup - dragStartTime) / duration);
+                }
+                t = Mathf.Clamp01(t);
+
                 Vector2 currentPos = Vector2.Lerp(startPos, endPos, t);
                 Vector2 delta = currentPos - previousPos;
 
@@ -988,6 +1015,9 @@ namespace ODDGames.UIAutomation
 
                 previousPos = currentPos;
                 await UniTask.Yield(); // Frame-based to ensure event processing
+
+                // Exit early if we've reached the end position and minimum frames
+                if (frameCount >= minFrames && t >= 1f) break;
             }
 
             // Ensure we reach the final position
@@ -999,6 +1029,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(finalPtr);
             }
             InputSystem.Update();
+            await UniTask.Yield(); // Allow final position to be processed before mouse up
 
             // Mouse button up at end
             using (StateEvent.From(mouse, out var upPtr))
@@ -1025,7 +1056,7 @@ namespace ODDGames.UIAutomation
         /// <param name="endPos">End position in screen coordinates</param>
         /// <param name="duration">Duration of the drag movement</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
-        public static async UniTask InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.5f)
+        internal static async UniTask InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f)
         {
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
@@ -1074,12 +1105,21 @@ namespace ODDGames.UIAutomation
                 }
             }
 
-            // Touch moved (real-time based interpolation)
+            // Touch moved - frame-based with minimum frames to ensure movement registers
+            const int minFrames = 5;
+            int frameCount = 0;
             float dragStartTime = Time.realtimeSinceStartup;
-            float dragEndTime = dragStartTime + duration;
-            while (Time.realtimeSinceStartup < dragEndTime)
+
+            while (frameCount < minFrames || Time.realtimeSinceStartup < dragStartTime + duration)
             {
-                float t = Mathf.Clamp01((Time.realtimeSinceStartup - dragStartTime) / duration);
+                frameCount++;
+                float t = Mathf.Clamp01((float)frameCount / minFrames);
+                if (duration > 0 && Time.realtimeSinceStartup < dragStartTime + duration)
+                {
+                    t = Mathf.Max(t, (Time.realtimeSinceStartup - dragStartTime) / duration);
+                }
+                t = Mathf.Clamp01(t);
+
                 Vector2 currentPos = Vector2.Lerp(startPos, endPos, t);
                 Vector2 delta = currentPos - previousPos;
 
@@ -1095,6 +1135,8 @@ namespace ODDGames.UIAutomation
                 InputSystem.Update();
                 previousPos = currentPos;
                 await UniTask.Yield();
+
+                if (frameCount >= minFrames && t >= 1f) break;
             }
 
             // Ensure we reach the final position
@@ -1108,6 +1150,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(finalPtr);
             }
             InputSystem.Update();
+            await UniTask.Yield(); // Allow final position to be processed before touch end
 
             // Touch ended
             using (StateEvent.From(touchscreen, out var endPtr))
@@ -1487,6 +1530,7 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the pinch gesture</param>
         public static async UniTask InjectPinch(Vector2 centerPosition, float scale, float duration)
         {
+            await EnsureGameViewFocusAsync();
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
             {
@@ -1675,6 +1719,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask InjectTwoFingerDrag(Vector2 start1, Vector2 end1, Vector2 start2, Vector2 end2, float duration)
         {
+            await EnsureGameViewFocusAsync();
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
             {
@@ -1761,6 +1806,7 @@ namespace ODDGames.UIAutomation
         /// <param name="fingerDistance">Normalized distance from center (0-1) for finger positions.</param>
         public static async UniTask InjectRotate(Vector2 centerPosition, float degrees, float duration, float fingerDistance = 0.05f)
         {
+            await EnsureGameViewFocusAsync();
             // Calculate the radius based on screen size and finger distance
             float radiusPixels = fingerDistance * Mathf.Min(Screen.width, Screen.height);
             await InjectRotatePixels(centerPosition, degrees, duration, radiusPixels);
