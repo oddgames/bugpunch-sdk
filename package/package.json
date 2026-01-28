@@ -1,16 +1,17 @@
 {
   "name": "au.com.oddgames.uiautomation",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "displayName": "ODD Games UI Automation",
-  "description": "UI automation testing framework for Unity projects",
+  "description": "Automated UI testing for Unity games. Record user interactions and replay them as tests. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events. Find elements by name, text content, type, or spatial relationship. Includes AI-powered test generation from natural language prompts.",
   "unity": "2022.3",
   "repository": {
     "type": "git",
     "url": "https://github.com/oddgames/ui-automation.git",
     "directory": "package"
   },
-  "changelogUrl": "https://github.com/oddgames/ui-automation/blob/main/package/CHANGELOG.md",
+  "changelogUrl": "https://raw.githubusercontent.com/oddgames/ui-automation/main/package/CHANGELOG.md",
   "documentationUrl": "https://github.com/oddgames/ui-automation/wiki",
+  "license": "SEE LICENSE IN LICENSE",
   "_commitHash": "e5013e1",
   "dependencies": {
     "com.unity.textmeshpro": "3.0.0",

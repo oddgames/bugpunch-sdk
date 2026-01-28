@@ -398,7 +398,7 @@ namespace ODDGames.UIAutomation.Editor
             sb.AppendLine("- Generate a descriptive PascalCase class name based on what the test does (e.g., GarageToFreestyleTest, BuyTruckTest)");
             sb.AppendLine("- Use [TestFixture] attribute on the class");
             sb.AppendLine("- Use [UnityTest] attribute on test methods returning IEnumerator");
-            sb.AppendLine("- Add 'using static ODDGames.UIAutomation.UIAutomation;' for static access to all test methods");
+            sb.AppendLine("- Add 'using static ODDGames.UIAutomation.ActionExecutor;' for static access to all test methods");
             sb.AppendLine("- Use UniTask.ToCoroutine(async () => { ... }) pattern inside test methods");
             sb.AppendLine("- Use await Click(Name(\"pattern\")) for clicks - PREFER text content over element names when available");
             sb.AppendLine("- Use await Wait(seconds) for delays between actions");

@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.7] - 2026-01-28
+
+### Fixed
+- **CRITICAL**: Fixed missing method errors (`ClickAtAsync`, `TypeTextAsync`, etc.) - AIActionExecutor now uses correct method names
+- **CRITICAL**: Fixed `DebugMode` reference in InputInjector to use `ActionExecutor.DebugMode`
+- All package source files now properly committed (v1.1.5 and v1.1.6 were incomplete)
+
+### Changed
+- Improved package.json `description` field with detailed feature explanation
+- Updated root README.md with installation instructions and repo structure
+- `/deploy` command now ensures ALL package files are staged before commit
+
+### Added
+- `license` field to package.json
+- Root README.md with installation guide and private repo token instructions
+
 ## [1.1.6] - 2026-01-28
 
 ### Added

@@ -628,11 +628,11 @@ namespace ODDGames.UIAutomation.AI
                     action.ScreenPosition.Value.x * Screen.width,
                     action.ScreenPosition.Value.y * Screen.height
                 );
-                await ActionExecutor.ClickAtAsync(screenPos);
+                await ActionExecutor.ClickAt(screenPos);
             }
             else if (action.TargetElement?.gameObject != null)
             {
-                await ActionExecutor.ClickAsync(action.TargetElement.gameObject);
+                await ActionExecutor.Click(action.TargetElement.gameObject);
             }
             else
             {
@@ -645,16 +645,16 @@ namespace ODDGames.UIAutomation.AI
             if (action.TargetElement?.gameObject == null)
             {
                 // No target element, just type text directly
-                await ActionExecutor.TypeTextAsync(action.Text);
+                await ActionExecutor.TypeText(action.Text);
                 if (action.PressEnter)
                 {
                     await DelaySafe(50, ct);
-                    await ActionExecutor.PressKeyAsync(Key.Enter);
+                    await ActionExecutor.PressKey(Key.Enter);
                 }
                 return;
             }
 
-            await ActionExecutor.TypeAsync(action.TargetElement.gameObject, action.Text, action.ClearFirst, action.PressEnter);
+            await ActionExecutor.Type(action.TargetElement.gameObject, action.Text, action.ClearFirst, action.PressEnter);
         }
 
         private static async UniTask ExecuteDragAsync(DragAction action, CancellationToken ct)
@@ -666,12 +666,12 @@ namespace ODDGames.UIAutomation.AI
 
             if (action.ToElement?.gameObject != null)
             {
-                await ActionExecutor.DragToAsync(action.FromElement.gameObject, action.ToElement.gameObject, action.Duration);
+                await ActionExecutor.DragTo(action.FromElement.gameObject, action.ToElement.gameObject, action.Duration);
             }
             else if (!string.IsNullOrEmpty(action.Direction))
             {
                 // Normalize distance to screen height fraction
-                await ActionExecutor.DragAsync(action.FromElement.gameObject, action.Direction, action.Distance / Screen.height, action.Duration);
+                await ActionExecutor.Drag(action.FromElement.gameObject, action.Direction, action.Distance / Screen.height, action.Duration);
             }
             else
             {
@@ -686,7 +686,7 @@ namespace ODDGames.UIAutomation.AI
                 throw new InvalidOperationException("Scroll action has no target element");
             }
 
-            await ActionExecutor.ScrollAsync(action.TargetElement.gameObject, action.Direction, action.Amount);
+            await ActionExecutor.Scroll(action.TargetElement.gameObject, action.Direction, action.Amount);
         }
 
         private static async UniTask ExecuteDoubleClickAsync(DoubleClickAction action, CancellationToken ct)
@@ -697,11 +697,11 @@ namespace ODDGames.UIAutomation.AI
                     action.ScreenPosition.Value.x * Screen.width,
                     action.ScreenPosition.Value.y * Screen.height
                 );
-                await ActionExecutor.DoubleClickAtAsync(screenPos);
+                await ActionExecutor.DoubleClickAt(screenPos);
             }
             else if (action.TargetElement?.gameObject != null)
             {
-                await ActionExecutor.DoubleClickAsync(action.TargetElement.gameObject);
+                await ActionExecutor.DoubleClick(action.TargetElement.gameObject);
             }
             else
             {
@@ -717,11 +717,11 @@ namespace ODDGames.UIAutomation.AI
                     action.ScreenPosition.Value.x * Screen.width,
                     action.ScreenPosition.Value.y * Screen.height
                 );
-                await ActionExecutor.TripleClickAtAsync(screenPos);
+                await ActionExecutor.TripleClickAt(screenPos);
             }
             else if (action.TargetElement?.gameObject != null)
             {
-                await ActionExecutor.TripleClickAsync(action.TargetElement.gameObject);
+                await ActionExecutor.TripleClick(action.TargetElement.gameObject);
             }
             else
             {
@@ -736,7 +736,7 @@ namespace ODDGames.UIAutomation.AI
                 throw new InvalidOperationException("Hold action has no target element");
             }
 
-            await ActionExecutor.HoldAsync(action.TargetElement.gameObject, action.Duration);
+            await ActionExecutor.Hold(action.TargetElement.gameObject, action.Duration);
         }
 
         private static async UniTask ExecuteSwipeAsync(SwipeAction action, CancellationToken ct)
@@ -746,17 +746,17 @@ namespace ODDGames.UIAutomation.AI
                 throw new InvalidOperationException("Swipe action has no target element");
             }
 
-            await ActionExecutor.SwipeAsync(action.TargetElement.gameObject, action.Direction, action.Distance, action.Duration);
+            await ActionExecutor.Swipe(action.TargetElement.gameObject, action.Direction, action.Distance, action.Duration);
         }
 
         private static async UniTask ExecutePinchAsync(PinchAction action, CancellationToken ct)
         {
-            await ActionExecutor.PinchAsync(action.TargetElement?.gameObject, action.Scale, action.Duration);
+            await ActionExecutor.Pinch(action.TargetElement?.gameObject, action.Scale, action.Duration);
         }
 
         private static async UniTask ExecuteTwoFingerSwipeAsync(TwoFingerSwipeAction action, CancellationToken ct)
         {
-            await ActionExecutor.TwoFingerSwipeAsync(
+            await ActionExecutor.TwoFingerSwipe(
                 action.TargetElement?.gameObject,
                 action.Direction,
                 action.Distance,
@@ -766,7 +766,7 @@ namespace ODDGames.UIAutomation.AI
 
         private static async UniTask ExecuteRotateAsync(RotateAction action, CancellationToken ct)
         {
-            await ActionExecutor.RotateAsync(
+            await ActionExecutor.Rotate(
                 action.TargetElement?.gameObject,
                 action.Degrees,
                 action.Duration,
@@ -787,7 +787,7 @@ namespace ODDGames.UIAutomation.AI
             }
 
             // AI sends value as 0-1 normalized
-            await ActionExecutor.SetSliderAsync(slider, action.Value);
+            await ActionExecutor.SetSlider(slider, action.Value);
         }
 
         private static async UniTask ExecuteSetScrollbarAsync(SetScrollbarAction action, CancellationToken ct)
@@ -804,7 +804,7 @@ namespace ODDGames.UIAutomation.AI
             }
 
             // AI sends value as 0-1 normalized
-            await ActionExecutor.SetScrollbarAsync(scrollbar, action.Value);
+            await ActionExecutor.SetScrollbar(scrollbar, action.Value);
         }
 
         private static async UniTask ExecuteClickDropdownAsync(ClickDropdownAction action, CancellationToken ct)
@@ -820,11 +820,11 @@ namespace ODDGames.UIAutomation.AI
             bool found;
             if (action.OptionIndex >= 0)
             {
-                found = await ActionExecutor.ClickDropdownAsync(search, action.OptionIndex);
+                found = await ActionExecutor.ClickDropdown(search, action.OptionIndex);
             }
             else if (!string.IsNullOrEmpty(action.OptionLabel))
             {
-                found = await ActionExecutor.ClickDropdownAsync(search, action.OptionLabel);
+                found = await ActionExecutor.ClickDropdown(search, action.OptionLabel);
             }
             else
             {
@@ -841,7 +841,7 @@ namespace ODDGames.UIAutomation.AI
         {
             if (Enum.TryParse<Key>(action.Key, true, out var key))
             {
-                await ActionExecutor.PressKeyAsync(key);
+                await ActionExecutor.PressKey(key);
             }
             else
             {
@@ -866,7 +866,7 @@ namespace ODDGames.UIAutomation.AI
 
             if (keys.Count > 0)
             {
-                await ActionExecutor.HoldKeysAsync(keys.ToArray(), action.Duration);
+                await ActionExecutor.HoldKeys(action.Duration, keys.ToArray());
             }
         }
 
