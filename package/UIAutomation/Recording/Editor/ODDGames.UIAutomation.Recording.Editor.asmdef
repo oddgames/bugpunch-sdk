@@ -6,7 +6,6 @@
         "ODDGames.UIAutomation.Recording",
         "ODDGames.UIAutomation.Editor",
         "Unity.TextMeshPro",
-        "UniTask",
         "ToolbarExtender.Editor"
     ],
     "includePlatforms": [

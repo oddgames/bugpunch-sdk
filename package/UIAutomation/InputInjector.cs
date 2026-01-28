@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
+using System.Threading;
+using System.Threading.Tasks;
+
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -9,6 +11,102 @@ using UnityEngine.UI;
 
 namespace ODDGames.UIAutomation
 {
+    /// <summary>
+    /// Async helpers for Unity frame-based operations.
+    /// </summary>
+    public static class Async
+    {
+        private static SynchronizationContext _unitySyncContext;
+
+        /// <summary>
+        /// Captures the Unity main thread synchronization context.
+        /// Call this from a MonoBehaviour Awake/Start or RuntimeInitializeOnLoadMethod.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void CaptureContext()
+        {
+            _unitySyncContext = SynchronizationContext.Current;
+        }
+
+        /// <summary>
+        /// Ensures execution continues on the Unity main thread and waits for a frame.
+        /// Use this after completing an action to ensure the EventSystem has processed events.
+        /// </summary>
+        public static async Task ToMainThread()
+        {
+            // If we're already on main thread with Unity's context, just yield a frame
+            if (SynchronizationContext.Current == _unitySyncContext && _unitySyncContext != null)
+            {
+                await DelayFrames(1);
+                return;
+            }
+
+            // Otherwise, marshal back to main thread
+            var tcs = new TaskCompletionSource<bool>();
+            if (_unitySyncContext != null)
+            {
+                _unitySyncContext.Post(_ =>
+                {
+                    tcs.SetResult(true);
+                }, null);
+                await tcs.Task;
+                await DelayFrames(1);
+            }
+            else
+            {
+                // Fallback if context wasn't captured (shouldn't happen in normal use)
+                await DelayFrames(1);
+            }
+        }
+
+        /// <summary>
+        /// Waits for the specified number of frames.
+        /// </summary>
+        public static async Task DelayFrames(int frameCount = 1, CancellationToken ct = default)
+        {
+            int target = Time.frameCount + frameCount;
+            while (Time.frameCount < target)
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Yield();
+            }
+        }
+
+    }
+
+    /// <summary>
+    /// Extension methods for Task.
+    /// </summary>
+    public static class TaskExtensions
+    {
+        /// <summary>
+        /// Fire and forget a task, logging any exceptions.
+        /// </summary>
+        public static void Forget(this Task task)
+        {
+            if (task == null) return;
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                    Debug.LogException(t.Exception.InnerException ?? t.Exception);
+            }, TaskContinuationOptions.OnlyOnFaulted);
+        }
+
+        /// <summary>
+        /// Fire and forget a task with a result.
+        /// </summary>
+        public static void Forget<T>(this Task<T> task)
+        {
+            if (task == null) return;
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                    Debug.LogException(t.Exception.InnerException ?? t.Exception);
+            }, TaskContinuationOptions.OnlyOnFaulted);
+        }
+    }
+
+
     /// <summary>
     /// Fluent builder for creating key sequences with hold durations.
     /// Supports both simultaneous (Together) and sequential (Then) key combinations.
@@ -44,7 +142,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Start a sequence by pressing (tap) one or more keys.
         /// </summary>
-        public static Keys Press(params Key[] keys) => new Keys().AddStep(keys, 0f, true);
+        public static Keys Press(params Key[] keys) => new Keys().AddStep(keys, 0f);
 
         /// <summary>
         /// Set the duration for the current step.
@@ -64,9 +162,9 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Chain a key press (tap) after the current step.
         /// </summary>
-        public Keys ThenPress(params Key[] keys) => AddStep(keys, 0f, true);
+        public Keys ThenPress(params Key[] keys) => AddStep(keys, 0f);
 
-        Keys AddStep(Key[] keys, float duration, bool isPress)
+        Keys AddStep(Key[] keys, float duration, bool isPress = true)
         {
             _steps.Add(new KeyStep(keys, duration, isPress));
             return this;
@@ -75,7 +173,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Execute the key sequence.
         /// </summary>
-        public async UniTask Execute()
+        public async Task Execute()
         {
             foreach (var step in _steps)
             {
@@ -99,7 +197,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Gets the awaiter for direct await support on Keys builder.
         /// </summary>
-        public Cysharp.Threading.Tasks.UniTask.Awaiter GetAwaiter() => Execute().GetAwaiter();
+        public System.Runtime.CompilerServices.TaskAwaiter GetAwaiter() => Execute().GetAwaiter();
 
         readonly struct KeyStep
         {
@@ -335,7 +433,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Sets a slider to a specific normalized value (0-1) via click.
         /// </summary>
-        public static async UniTask SetSlider(Slider slider, float normalizedValue)
+        public static async Task SetSlider(Slider slider, float normalizedValue)
         {
             var clickPos = GetSliderClickPosition(slider, normalizedValue);
             await InjectPointerTap(clickPos);
@@ -344,7 +442,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Sets a scrollbar to a specific normalized value (0-1) via click.
         /// </summary>
-        public static async UniTask SetScrollbar(Scrollbar scrollbar, float normalizedValue)
+        public static async Task SetScrollbar(Scrollbar scrollbar, float normalizedValue)
         {
             var clickPos = GetScrollbarClickPosition(scrollbar, normalizedValue);
             await InjectPointerTap(clickPos);
@@ -355,7 +453,7 @@ namespace ODDGames.UIAutomation
         /// Note: Uses direct text manipulation as a workaround because Unity's IMGUI keyboard
         /// shortcuts (Ctrl+A, Backspace) cannot be injected via the new Input System.
         /// </summary>
-        public static async UniTask ClearInputField(GameObject inputFieldGO)
+        public static async Task ClearInputField(GameObject inputFieldGO)
         {
             // Check if there's text to clear
             var tmpInput = inputFieldGO.GetComponent<TMP_InputField>();
@@ -367,14 +465,14 @@ namespace ODDGames.UIAutomation
                 // Click to focus the field first
                 var screenPos = GetScreenPosition(inputFieldGO);
                 await InjectPointerTap(screenPos);
-                await UniTask.DelayFrame(2);
+                await Async.DelayFrames(2);
 
                 // Clear the text directly - workaround for IMGUI keyboard shortcut limitation
                 // Then re-activate the field since setting text can deactivate it
                 tmpInput.text = "";
                 tmpInput.ActivateInputField();
                 tmpInput.MoveTextEnd(false);
-                await UniTask.DelayFrame(2);
+                await Async.DelayFrames(2);
                 return;
             }
 
@@ -387,14 +485,14 @@ namespace ODDGames.UIAutomation
                 // Click to focus the field first
                 var screenPos = GetScreenPosition(inputFieldGO);
                 await InjectPointerTap(screenPos);
-                await UniTask.DelayFrame(2);
+                await Async.DelayFrames(2);
 
                 // Clear the text directly - workaround for IMGUI keyboard shortcut limitation
                 // Then re-activate the field since setting text can deactivate it
                 legacyInput.text = "";
                 legacyInput.ActivateInputField();
                 legacyInput.MoveTextEnd(false);
-                await UniTask.DelayFrame(2);
+                await Async.DelayFrames(2);
             }
         }
 
@@ -402,7 +500,7 @@ namespace ODDGames.UIAutomation
         /// Presses a key while holding a modifier key (e.g., Ctrl+A, Shift+Tab).
         /// This simulates the real sequence: modifier down, key down, key up, modifier up.
         /// </summary>
-        public static async UniTask PressKeyWithModifier(Key modifier, Key key)
+        public static async Task PressKeyWithModifier(Key modifier, Key key)
         {
             await EnsureGameViewFocusAsync();
 
@@ -416,24 +514,24 @@ namespace ODDGames.UIAutomation
             // Step 1: Press modifier key down
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
             InputSystem.Update();
-            await UniTask.Yield();
-            await UniTask.DelayFrame(2); // Give time for EventSystem to process
+            await Task.Yield();
+            await Async.DelayFrames(2); // Give time for EventSystem to process
 
             // Step 2: Press the main key while modifier is held
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier, key));
             InputSystem.Update();
-            await UniTask.Yield();
-            await UniTask.DelayFrame(2);
+            await Task.Yield();
+            await Async.DelayFrames(2);
 
             // Step 3: Release the main key (modifier still held)
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Step 4: Release modifier
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -444,14 +542,14 @@ namespace ODDGames.UIAutomation
         /// This method uses direct text manipulation as the only reliable cross-platform approach.
         /// See: https://discussions.unity.com/t/code-to-fix-tmp_inputfield-to-support-new-inputsystem/774250
         /// </summary>
-        public static async UniTask TypeIntoField(GameObject inputFieldGO, string text, bool clearFirst = true, bool pressEnter = false)
+        public static async Task TypeIntoField(GameObject inputFieldGO, string text, bool clearFirst = true, bool pressEnter = false)
         {
             var screenPos = GetScreenPosition(inputFieldGO);
             LogDebug($"TypeIntoField '{inputFieldGO.name}' at ({screenPos.x:F0},{screenPos.y:F0}) text='{text}'");
 
             // Click to focus the field
             await InjectPointerTap(screenPos);
-            await UniTask.DelayFrame(2);
+            await Async.DelayFrames(2);
 
             // TMP_InputField uses IMGUI Event.PopEvent() for keyboard input, not Input System.
             // InputSystem.QueueTextEvent() does NOT work with TMP_InputField.
@@ -467,7 +565,7 @@ namespace ODDGames.UIAutomation
                 // Re-activate and move cursor to end
                 tmpInput.ActivateInputField();
                 tmpInput.MoveTextEnd(false);
-                await UniTask.DelayFrame(2);
+                await Async.DelayFrames(2);
             }
             else
             {
@@ -482,7 +580,7 @@ namespace ODDGames.UIAutomation
                     // Re-activate and move cursor to end
                     legacyInput.ActivateInputField();
                     legacyInput.MoveTextEnd(false);
-                    await UniTask.DelayFrame(2);
+                    await Async.DelayFrames(2);
                 }
                 else
                 {
@@ -493,7 +591,7 @@ namespace ODDGames.UIAutomation
             // Press Enter if requested
             if (pressEnter)
             {
-                await UniTask.DelayFrame(2);
+                await Async.DelayFrames(2);
                 await PressKey(Key.Enter);
             }
         }
@@ -501,7 +599,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a swipe gesture on an element.
         /// </summary>
-        public static async UniTask Swipe(GameObject element, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
+        public static async Task Swipe(GameObject element, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
         {
             var startPos = GetScreenPosition(element);
             var offset = GetDirectionOffset(direction, normalizedDistance);
@@ -513,7 +611,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a scroll action on a scrollable element.
         /// </summary>
-        public static async UniTask ScrollElement(GameObject scrollableElement, string direction, float amount = 0.3f)
+        public static async Task ScrollElement(GameObject scrollableElement, string direction, float amount = 0.3f)
         {
             var center = GetScreenPosition(scrollableElement);
 
@@ -537,7 +635,7 @@ namespace ODDGames.UIAutomation
         /// Performs a pinch gesture on an element or screen center.
         /// Scale > 1 zooms in, scale less than 1 zooms out.
         /// </summary>
-        public static async UniTask Pinch(GameObject element, float scale, float duration = 0.5f)
+        public static async Task Pinch(GameObject element, float scale, float duration = 0.5f)
         {
             Vector2 center = element != null
                 ? GetScreenPosition(element)
@@ -549,7 +647,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a two-finger swipe gesture on an element or screen center.
         /// </summary>
-        public static async UniTask TwoFingerSwipe(GameObject element, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        public static async Task TwoFingerSwipe(GameObject element, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             Vector2 centerPos = element != null
                 ? GetScreenPosition(element)
@@ -575,7 +673,7 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1).</param>
         /// <param name="duration">Duration of the swipe in seconds.</param>
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1).</param>
-        public static async UniTask InjectTwoFingerSwipe(Vector2 centerPosition, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        public static async Task InjectTwoFingerSwipe(Vector2 centerPosition, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             await EnsureGameViewFocusAsync();
             var offset = GetDirectionOffset(direction, normalizedDistance);
@@ -593,7 +691,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a two-finger rotation gesture on an element or screen center.
         /// </summary>
-        public static async UniTask Rotate(GameObject element, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
+        public static async Task Rotate(GameObject element, float degrees, float duration = 0.5f, float fingerDistance = 0.05f)
         {
             Vector2 centerPos = element != null
                 ? GetScreenPosition(element)
@@ -608,7 +706,7 @@ namespace ODDGames.UIAutomation
         /// Ensures the Game view has focus in the Editor so input events are received.
         /// Does nothing at runtime or in builds.
         /// </summary>
-        public static async UniTask EnsureGameViewFocusAsync()
+        public static async Task EnsureGameViewFocusAsync()
         {
 #if UNITY_EDITOR
             var gameViewType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
@@ -619,12 +717,12 @@ namespace ODDGames.UIAutomation
                 {
                     gameView.Focus();
                     // Wait for focus to take effect
-                    await UniTask.Yield();
-                    await UniTask.Yield();
+                    await Task.Yield();
+                    await Task.Yield();
                 }
             }
 #else
-            await UniTask.CompletedTask;
+            await Task.CompletedTask;
 #endif
         }
 
@@ -646,7 +744,7 @@ namespace ODDGames.UIAutomation
         /// Injects a click/tap at the specified screen position.
         /// Uses touch on mobile (iOS/Android), mouse on desktop.
         /// </summary>
-        public static async UniTask InjectPointerTap(Vector2 screenPosition)
+        public static async Task InjectPointerTap(Vector2 screenPosition)
         {
             LogDebug($"InjectPointerTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             await EnsureGameViewFocusAsync();
@@ -673,27 +771,27 @@ namespace ODDGames.UIAutomation
             // Move mouse to position
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Mouse button down
-            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Mouse button up
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
             LogDebug("InjectPointerTap complete");
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
         /// Injects a double click/tap at the specified screen position.
         /// Uses touch on mobile (iOS/Android), mouse on desktop.
         /// </summary>
-        public static async UniTask InjectPointerDoubleTap(Vector2 screenPosition)
+        public static async Task InjectPointerDoubleTap(Vector2 screenPosition)
         {
             await EnsureGameViewFocusAsync();
 
@@ -715,50 +813,52 @@ namespace ODDGames.UIAutomation
             // First click
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
-            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Brief delay between clicks - needs to be long enough for Unity's Button to reset
             // but short enough to be recognized as a double-click by the system
-            await UniTask.Delay(100);
+            await Task.Delay(100);
+
+            await EnsureGameViewFocusAsync(); // Ensure focus before second click
 
             // Re-set position before second click to ensure it's registered after the delay
             mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Second click
-            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
         /// Injects a double-tap touch gesture.
         /// </summary>
-        public static async UniTask InjectTouchDoubleTap(Vector2 screenPosition)
+        public static async Task InjectTouchDoubleTap(Vector2 screenPosition)
         {
             // First tap
             await InjectTouchTap(screenPosition);
 
             // Brief delay between taps - needs to be long enough for Unity's Button to reset
-            await UniTask.Delay(100);
+            await Task.Delay(100);
 
             // Second tap
             await InjectTouchTap(screenPosition);
@@ -769,7 +869,7 @@ namespace ODDGames.UIAutomation
         /// Triple-click is commonly used to select all text in input fields.
         /// Uses touch on mobile (iOS/Android), mouse on desktop.
         /// </summary>
-        public static async UniTask InjectPointerTripleTap(Vector2 screenPosition)
+        public static async Task InjectPointerTripleTap(Vector2 screenPosition)
         {
             await EnsureGameViewFocusAsync();
 
@@ -789,41 +889,43 @@ namespace ODDGames.UIAutomation
             // Three clicks in quick succession
             for (int i = 0; i < 3; i++)
             {
+                await EnsureGameViewFocusAsync(); // Ensure focus before each click
+
                 var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
 
                 // Move to position
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
 
                 // Mouse down
-                mouseState = mouseState.WithButton(MouseButton.Left, true);
+                mouseState = mouseState.WithButton(MouseButton.Left);
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
 
                 // Mouse up
                 mouseState = mouseState.WithButton(MouseButton.Left, false);
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
 
                 // Brief delay between clicks (short enough to be recognized as multi-click)
                 if (i < 2)
-                    await UniTask.Delay(50);
+                    await Task.Delay(50);
             }
         }
 
         /// <summary>
         /// Injects a triple-tap touch gesture.
         /// </summary>
-        public static async UniTask InjectTouchTripleTap(Vector2 screenPosition)
+        public static async Task InjectTouchTripleTap(Vector2 screenPosition)
         {
             for (int i = 0; i < 3; i++)
             {
                 await InjectTouchTap(screenPosition);
                 if (i < 2)
-                    await UniTask.Delay(50);
+                    await Task.Delay(50);
             }
         }
 
@@ -831,7 +933,7 @@ namespace ODDGames.UIAutomation
         /// Injects a single-finger tap gesture using the Input System.
         /// Used on mobile platforms (iOS/Android).
         /// </summary>
-        public static async UniTask InjectTouchTap(Vector2 screenPosition)
+        public static async Task InjectTouchTap(Vector2 screenPosition)
         {
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
@@ -858,7 +960,7 @@ namespace ODDGames.UIAutomation
             }
             InputSystem.Update(); // Force event processing
 
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Touch ended (tap is just began + ended at same position)
             using (StateEvent.From(touchscreen, out var endPtr))
@@ -872,7 +974,7 @@ namespace ODDGames.UIAutomation
             }
             InputSystem.Update(); // Force event processing
 
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -884,7 +986,7 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag movement (minimum 1 second)</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging (ignored on touch devices)</param>
-        public static async UniTask InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
+        public static async Task InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             await EnsureGameViewFocusAsync();
 
@@ -906,7 +1008,7 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag movement</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
+        internal static async Task InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             var mouse = Mouse.current;
             if (mouse == null)
@@ -935,7 +1037,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(posPtr);
             }
             InputSystem.Update(); // Force event processing
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Mouse button down at start
             using (StateEvent.From(mouse, out var downPtr))
@@ -946,7 +1048,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(downPtr);
             }
             InputSystem.Update(); // Force event processing
-            await UniTask.Yield(); // Allow PointerDown to register
+            await Task.Yield(); // Allow PointerDown to register
 
             LogDebug($"MouseDrag mouse down at ({startPos.x:F0},{startPos.y:F0})");
 
@@ -964,7 +1066,7 @@ namespace ODDGames.UIAutomation
                         InputSystem.QueueEvent(holdPtr);
                     }
                     InputSystem.Update();
-                    await UniTask.Yield();
+                    await Task.Yield();
                 }
                 LogDebug($"MouseDrag held for {holdTime}s");
             }
@@ -980,7 +1082,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(initPtr);
                 }
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
             }
 
             // Interpolate mouse position over duration
@@ -1014,7 +1116,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.Update(); // Force event processing each frame
 
                 previousPos = currentPos;
-                await UniTask.Yield(); // Frame-based to ensure event processing
+                await Task.Yield(); // Frame-based to ensure event processing
 
                 // Exit early if we've reached the end position and minimum frames
                 if (frameCount >= minFrames && t >= 1f) break;
@@ -1029,7 +1131,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(finalPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield(); // Allow final position to be processed before mouse up
+            await Task.Yield(); // Allow final position to be processed before mouse up
 
             // Mouse button up at end
             using (StateEvent.From(mouse, out var upPtr))
@@ -1044,8 +1146,8 @@ namespace ODDGames.UIAutomation
             LogDebug($"MouseDrag mouse up at ({endPos.x:F0},{endPos.y:F0})");
 
             // Allow UI to process the drag end event
-            await UniTask.Yield();
-            await UniTask.Yield();
+            await Task.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1056,7 +1158,7 @@ namespace ODDGames.UIAutomation
         /// <param name="endPos">End position in screen coordinates</param>
         /// <param name="duration">Duration of the drag movement</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
-        internal static async UniTask InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f)
+        internal static async Task InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f)
         {
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
@@ -1083,7 +1185,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Hold at start position before dragging (real-time based, send Stationary events)
             if (holdTime > 0)
@@ -1101,7 +1203,7 @@ namespace ODDGames.UIAutomation
                         InputSystem.QueueEvent(holdPtr);
                     }
                     InputSystem.Update();
-                    await UniTask.Yield();
+                    await Task.Yield();
                 }
             }
 
@@ -1134,7 +1236,7 @@ namespace ODDGames.UIAutomation
                 }
                 InputSystem.Update();
                 previousPos = currentPos;
-                await UniTask.Yield();
+                await Task.Yield();
 
                 if (frameCount >= minFrames && t >= 1f) break;
             }
@@ -1150,7 +1252,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(finalPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield(); // Allow final position to be processed before touch end
+            await Task.Yield(); // Allow final position to be processed before touch end
 
             // Touch ended
             using (StateEvent.From(touchscreen, out var endPtr))
@@ -1163,7 +1265,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1171,7 +1273,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <param name="position">Screen position to scroll at</param>
         /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
-        public static async UniTask InjectScroll(Vector2 position, float delta)
+        public static async Task InjectScroll(Vector2 position, float delta)
         {
             await EnsureGameViewFocusAsync();
 
@@ -1189,17 +1291,27 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(posPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
-            // Send scroll event (120 is standard scroll delta unit)
+            // Send scroll event with delta value
             using (StateEvent.From(mouse, out var scrollPtr))
             {
                 mouse.position.WriteValueIntoEvent(position, scrollPtr);
-                mouse.scroll.WriteValueIntoEvent(new Vector2(0, delta * 120), scrollPtr);
+                mouse.scroll.WriteValueIntoEvent(new Vector2(0, delta), scrollPtr);
                 InputSystem.QueueEvent(scrollPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
+
+            // Reset scroll to zero (scroll is a delta, needs to return to zero)
+            using (StateEvent.From(mouse, out var resetPtr))
+            {
+                mouse.position.WriteValueIntoEvent(position, resetPtr);
+                mouse.scroll.WriteValueIntoEvent(Vector2.zero, resetPtr);
+                InputSystem.QueueEvent(resetPtr);
+            }
+            InputSystem.Update();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1207,7 +1319,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <param name="position">Screen position to scroll at</param>
         /// <param name="scrollDelta">Scroll delta vector (for horizontal and vertical scrolling)</param>
-        public static async UniTask InjectScroll(Vector2 position, Vector2 scrollDelta)
+        public static async Task InjectScroll(Vector2 position, Vector2 scrollDelta)
         {
             await EnsureGameViewFocusAsync();
 
@@ -1225,7 +1337,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(posPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Send scroll event
             using (StateEvent.From(mouse, out var scrollPtr))
@@ -1235,7 +1347,17 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(scrollPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
+
+            // Reset scroll to zero (scroll is a delta, needs to return to zero)
+            using (StateEvent.From(mouse, out var resetPtr))
+            {
+                mouse.position.WriteValueIntoEvent(position, resetPtr);
+                mouse.scroll.WriteValueIntoEvent(Vector2.zero, resetPtr);
+                InputSystem.QueueEvent(resetPtr);
+            }
+            InputSystem.Update();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1245,7 +1367,7 @@ namespace ODDGames.UIAutomation
         /// Note: TMP_InputField does NOT use Keyboard.onTextInput - it uses IMGUI Event.PopEvent().
         /// For TMP_InputField, use TypeIntoField() instead which handles this limitation.
         /// </summary>
-        public static async UniTask TypeText(string text)
+        public static async Task TypeText(string text)
         {
             LogDebug($"TypeText '{text}' ({text?.Length ?? 0} chars)");
 
@@ -1264,7 +1386,7 @@ namespace ODDGames.UIAutomation
                 // See: https://github.com/Unity-Technologies/InputSystem/blob/develop/Assets/Tests/InputSystem/CoreTests_Devices.cs
                 InputSystem.QueueTextEvent(keyboard, c);
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
             }
 
             LogDebug("TypeText complete");
@@ -1273,7 +1395,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Selects all text in the currently focused input field using Ctrl+A.
         /// </summary>
-        public static async UniTask SelectAllText()
+        public static async Task SelectAllText()
         {
             var keyboard = Keyboard.current;
             if (keyboard == null)
@@ -1285,18 +1407,18 @@ namespace ODDGames.UIAutomation
             // Press Ctrl+A
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.LeftCtrl, Key.A));
             InputSystem.Update();
-            await UniTask.DelayFrame(2);
+            await Async.DelayFrames(2);
 
             // Release keys
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
         /// Deletes all text in the currently focused input field using Ctrl+A followed by Backspace.
         /// </summary>
-        public static async UniTask DeleteAllText()
+        public static async Task DeleteAllText()
         {
             await SelectAllText();
             await PressKey(Key.Backspace);
@@ -1305,7 +1427,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Presses and releases a keyboard key.
         /// </summary>
-        public static async UniTask PressKey(Key key)
+        public static async Task PressKey(Key key)
         {
             await EnsureGameViewFocusAsync();
 
@@ -1318,11 +1440,11 @@ namespace ODDGames.UIAutomation
 
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(key));
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1330,7 +1452,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <param name="key">The key to hold</param>
         /// <param name="duration">How long to hold the key in seconds</param>
-        public static async UniTask HoldKey(Key key, float duration)
+        public static async Task HoldKey(Key key, float duration)
         {
             await EnsureGameViewFocusAsync();
 
@@ -1346,7 +1468,7 @@ namespace ODDGames.UIAutomation
             // Key down
             InputSystem.QueueStateEvent(keyboard, keyState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Hold for duration - re-queue key state each frame so input system registers continuous hold
             float elapsed = 0f;
@@ -1354,14 +1476,14 @@ namespace ODDGames.UIAutomation
             {
                 InputSystem.QueueStateEvent(keyboard, keyState);
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
                 elapsed += Time.deltaTime;
             }
 
             // Key up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1369,7 +1491,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <param name="keys">The keys to hold together</param>
         /// <param name="duration">How long to hold the keys in seconds</param>
-        public static async UniTask HoldKeys(Key[] keys, float duration)
+        public static async Task HoldKeys(Key[] keys, float duration)
         {
             if (keys == null || keys.Length == 0)
                 return;
@@ -1388,7 +1510,7 @@ namespace ODDGames.UIAutomation
             // Keys down (all at once)
             InputSystem.QueueStateEvent(keyboard, keyState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Hold for duration - re-queue key state each frame so input system registers continuous hold
             float elapsed = 0f;
@@ -1396,21 +1518,21 @@ namespace ODDGames.UIAutomation
             {
                 InputSystem.QueueStateEvent(keyboard, keyState);
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
                 elapsed += Time.deltaTime;
             }
 
             // Keys up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
         /// Injects a hold/long-press at the specified screen position.
         /// Uses touch on mobile (iOS/Android), mouse on desktop.
         /// </summary>
-        public static async UniTask InjectPointerHold(Vector2 screenPosition, float holdSeconds)
+        public static async Task InjectPointerHold(Vector2 screenPosition, float holdSeconds)
         {
             await EnsureGameViewFocusAsync();
 
@@ -1433,13 +1555,13 @@ namespace ODDGames.UIAutomation
             // Move mouse to position
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Mouse button down
-            mouseState = mouseState.WithButton(MouseButton.Left, true);
+            mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Hold for specified duration - re-queue state each frame
             float elapsed = 0f;
@@ -1447,7 +1569,7 @@ namespace ODDGames.UIAutomation
             {
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
                 elapsed += Time.deltaTime;
             }
 
@@ -1455,14 +1577,14 @@ namespace ODDGames.UIAutomation
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
         /// Injects a touch hold/long-press gesture using the Input System.
         /// Used on mobile platforms (iOS/Android).
         /// </summary>
-        public static async UniTask InjectTouchHold(Vector2 screenPosition, float holdSeconds)
+        public static async Task InjectTouchHold(Vector2 screenPosition, float holdSeconds)
         {
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
@@ -1488,7 +1610,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Hold for specified duration (touch stays in Stationary phase)
             float elapsed = 0f;
@@ -1504,7 +1626,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(stationaryPtr);
                 }
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
                 elapsed += Time.deltaTime;
             }
 
@@ -1519,7 +1641,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1528,7 +1650,7 @@ namespace ODDGames.UIAutomation
         /// <param name="centerPosition">Center point of the pinch</param>
         /// <param name="scale">Scale factor: less than 1 = pinch in (zoom out), greater than 1 = pinch out (zoom in)</param>
         /// <param name="duration">Duration of the pinch gesture</param>
-        public static async UniTask InjectPinch(Vector2 centerPosition, float scale, float duration)
+        public static async Task InjectPinch(Vector2 centerPosition, float scale, float duration)
         {
             await EnsureGameViewFocusAsync();
             var touchscreen = Touchscreen.current;
@@ -1572,7 +1694,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Interpolate pinch movement
             for (int i = 1; i < totalFrames; i++)
@@ -1596,7 +1718,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
             }
 
             // Both touches end
@@ -1615,7 +1737,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1625,7 +1747,7 @@ namespace ODDGames.UIAutomation
         /// <param name="scale">Scale factor: less than 1 = pinch in (zoom out), greater than 1 = pinch out (zoom in)</param>
         /// <param name="duration">Duration of the pinch gesture</param>
         /// <param name="fingerDistancePixels">Initial distance of each finger from center in pixels</param>
-        public static async UniTask InjectPinch(Vector2 centerPosition, float scale, float duration, float fingerDistancePixels)
+        public static async Task InjectPinch(Vector2 centerPosition, float scale, float duration, float fingerDistancePixels)
         {
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
@@ -1668,7 +1790,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Interpolate pinch movement
             for (int i = 1; i < totalFrames; i++)
@@ -1692,7 +1814,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
             }
 
             // Both touches end
@@ -1711,13 +1833,13 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
         /// Simulates a two-finger drag gesture (both fingers moving in parallel).
         /// </summary>
-        public static async UniTask InjectTwoFingerDrag(Vector2 start1, Vector2 end1, Vector2 start2, Vector2 end2, float duration)
+        public static async Task InjectTwoFingerDrag(Vector2 start1, Vector2 end1, Vector2 start2, Vector2 end2, float duration)
         {
             await EnsureGameViewFocusAsync();
             var touchscreen = Touchscreen.current;
@@ -1751,7 +1873,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Interpolate movement
             for (int i = 1; i < totalFrames; i++)
@@ -1775,7 +1897,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
             }
 
             // Both touches end
@@ -1794,7 +1916,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>
@@ -1804,7 +1926,7 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle (positive = clockwise, negative = counter-clockwise).</param>
         /// <param name="duration">Duration of the gesture in seconds.</param>
         /// <param name="fingerDistance">Normalized distance from center (0-1) for finger positions.</param>
-        public static async UniTask InjectRotate(Vector2 centerPosition, float degrees, float duration, float fingerDistance = 0.05f)
+        public static async Task InjectRotate(Vector2 centerPosition, float degrees, float duration, float fingerDistance = 0.05f)
         {
             await EnsureGameViewFocusAsync();
             // Calculate the radius based on screen size and finger distance
@@ -1819,7 +1941,7 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle (positive = clockwise, negative = counter-clockwise).</param>
         /// <param name="duration">Duration of the gesture in seconds.</param>
         /// <param name="radiusPixels">Distance from center in pixels for finger positions.</param>
-        public static async UniTask InjectRotatePixels(Vector2 centerPosition, float degrees, float duration, float radiusPixels)
+        public static async Task InjectRotatePixels(Vector2 centerPosition, float degrees, float duration, float radiusPixels)
         {
             var touchscreen = Touchscreen.current;
             if (touchscreen == null)
@@ -1859,7 +1981,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
 
             // Rotate touches around the center
             for (int i = 1; i <= totalFrames; i++)
@@ -1895,7 +2017,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
-                await UniTask.Yield();
+                await Task.Yield();
             }
 
             // Calculate final positions
@@ -1920,7 +2042,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await UniTask.Yield();
+            await Task.Yield();
         }
     }
 }

@@ -1,7 +1,8 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Cysharp.Threading.Tasks;
+
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -47,13 +48,13 @@ namespace ODDGames.UIAutomation
                     TryBackOnStuck = true
                 };
 
-                StartExplorationAfterDelay(settings).Forget();
+                StartExplorationAfterDelay(settings);
             }
         }
 
-        private static async UniTaskVoid StartExplorationAfterDelay(ExploreSettings settings)
+        private static async void StartExplorationAfterDelay(ExploreSettings settings)
         {
-            await UniTask.DelayFrame(30);
+            await Async.DelayFrames(30);
             Debug.Log($"[AutoExplorer] Starting from Test Explorer - Duration: {settings.DurationSeconds}s, Actions: {settings.MaxActions}, DeadEnd: {settings.StopOnDeadEnd}");
             var result = await StartExploration(settings);
             Debug.Log($"[AutoExplorer] Completed - {result.ActionsPerformed} actions in {result.DurationSeconds:F1}s. Reason: {result.StopReason}");
@@ -84,7 +85,7 @@ namespace ODDGames.UIAutomation
         /// Starts auto-exploration from a static context (batch mode, editor script, etc.).
         /// Creates a temporary GameObject with AutoExplorer component if needed.
         /// </summary>
-        public static async UniTask<ExploreResult> StartExploration(ExploreSettings settings = null)
+        public static async Task<ExploreResult> StartExploration(ExploreSettings settings = null)
         {
             settings ??= new ExploreSettings();
 
@@ -136,17 +137,17 @@ namespace ODDGames.UIAutomation
             {
                 if (state == UnityEditor.PlayModeStateChange.EnteredPlayMode)
                 {
-                    RunBatchExploration(settings).Forget();
+                    RunBatchExploration(settings);
                 }
             };
 #else
-            RunBatchExploration(settings).Forget();
+            RunBatchExploration(settings);
 #endif
         }
 
-        private static async UniTaskVoid RunBatchExploration(ExploreSettings settings)
+        private static async void RunBatchExploration(ExploreSettings settings)
         {
-            await UniTask.DelayFrame(10); // Wait for scene to initialize
+            await Async.DelayFrames(10); // Wait for scene to initialize
 
             try
             {
@@ -272,13 +273,13 @@ namespace ODDGames.UIAutomation
 
             if (autoStart)
             {
-                StartExplorationDelayed().Forget();
+                StartExplorationDelayed();
             }
         }
 
-        private async UniTaskVoid StartExplorationDelayed()
+        private async void StartExplorationDelayed()
         {
-            await UniTask.Delay((int)(autoStartDelay * 1000));
+            await Task.Delay((int)(autoStartDelay * 1000));
             await RunExploration(GetSettingsFromInspector());
         }
 
@@ -313,7 +314,7 @@ namespace ODDGames.UIAutomation
             _cancellationRequested = true;
         }
 
-        public async UniTask<ExploreResult> RunExploration(ExploreSettings settings)
+        public async Task<ExploreResult> RunExploration(ExploreSettings settings)
         {
             if (IsExploring)
             {
@@ -387,7 +388,7 @@ namespace ODDGames.UIAutomation
                         {
                             await TryClickBackButton();
                         }
-                        await UniTask.Delay((int)(settings.DelayBetweenActions * 1000));
+                        await Task.Delay((int)(settings.DelayBetweenActions * 1000));
                         continue;
                     }
 
@@ -397,7 +398,7 @@ namespace ODDGames.UIAutomation
                     if (target == null)
                     {
                         consecutiveFailures++;
-                        await UniTask.Delay((int)(settings.DelayBetweenActions * 1000));
+                        await Task.Delay((int)(settings.DelayBetweenActions * 1000));
                         continue;
                     }
 
@@ -419,7 +420,7 @@ namespace ODDGames.UIAutomation
                                 CurrentResult.ActionsPerformed++;
                                 CurrentResult.ClickedElements.Add("[Back/Exit]");
                                 OnActionPerformed?.Invoke("[Back/Exit]", CurrentResult.ActionsPerformed);
-                                await UniTask.Delay((int)(settings.DelayBetweenActions * 1000));
+                                await Task.Delay((int)(settings.DelayBetweenActions * 1000));
                                 continue;
                             }
                         }
@@ -440,7 +441,7 @@ namespace ODDGames.UIAutomation
 
                     OnActionPerformed?.Invoke(target.gameObject.name, CurrentResult.ActionsPerformed);
 
-                    await UniTask.Delay((int)(settings.DelayBetweenActions * 1000));
+                    await Task.Delay((int)(settings.DelayBetweenActions * 1000));
                 }
             }
             catch (Exception ex)
@@ -592,7 +593,7 @@ namespace ODDGames.UIAutomation
             return topCandidates[_random.Next(topCandidates.Count)].Element;
         }
 
-        private async UniTask<string> PerformAction(Selectable element, ExploreSettings settings)
+        private async Task<string> PerformAction(Selectable element, ExploreSettings settings)
         {
             var goName = element.gameObject.name;
 
@@ -641,7 +642,7 @@ namespace ODDGames.UIAutomation
             {
                 // Click to open, then click random option
                 await ClickElement(element);
-                await UniTask.Delay(200); // Wait for dropdown to open
+                await Task.Delay(200); // Wait for dropdown to open
                 var optionCount = tmpDropdown.options.Count;
                 if (optionCount > 0)
                 {
@@ -655,7 +656,7 @@ namespace ODDGames.UIAutomation
             if (element is Dropdown dropdown)
             {
                 await ClickElement(element);
-                await UniTask.Delay(200);
+                await Task.Delay(200);
                 var optionCount = dropdown.options.Count;
                 if (optionCount > 0)
                 {
@@ -671,7 +672,7 @@ namespace ODDGames.UIAutomation
             return $"Click '{goName}'";
         }
 
-        private async UniTask DragSlider(Slider slider, float targetValue)
+        private async Task DragSlider(Slider slider, float targetValue)
         {
             var rectTransform = slider.GetComponent<RectTransform>();
             if (rectTransform == null)
@@ -704,26 +705,26 @@ namespace ODDGames.UIAutomation
             await InjectMouseDrag(startPos, endPos, 0.3f);
         }
 
-        private async UniTask TypeIntoInput(TMP_InputField input, string text)
+        private async Task TypeIntoInput(TMP_InputField input, string text)
         {
             // Click to focus
             await ClickElement(input);
-            await UniTask.Delay(100);
+            await Task.Delay(100);
 
             // Clear existing text and type new text
             input.text = text;
             input.onValueChanged?.Invoke(text);
         }
 
-        private async UniTask TypeIntoLegacyInput(InputField input, string text)
+        private async Task TypeIntoLegacyInput(InputField input, string text)
         {
             await ClickElement(input);
-            await UniTask.Delay(100);
+            await Task.Delay(100);
             input.text = text;
             input.onValueChanged?.Invoke(text);
         }
 
-        private async UniTask ScrollView(ScrollRect scrollRect, Vector2 delta)
+        private async Task ScrollView(ScrollRect scrollRect, Vector2 delta)
         {
             var content = scrollRect.content;
             if (content == null) return;
@@ -739,7 +740,7 @@ namespace ODDGames.UIAutomation
             await InjectMouseDrag(startPos, endPos, 0.3f);
         }
 
-        private async UniTask ClickDropdownOption(int index)
+        private async Task ClickDropdownOption(int index)
         {
             // Find dropdown items - they're usually created dynamically
             var items = FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)
@@ -752,18 +753,18 @@ namespace ODDGames.UIAutomation
             }
         }
 
-        private async UniTask InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration)
+        private async Task InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration)
         {
             await InputInjector.InjectPointerDrag(startPos, endPos, duration);
         }
 
-        private async UniTask ClickElement(Selectable element)
+        private async Task ClickElement(Selectable element)
         {
             var screenPos = InputInjector.GetScreenPosition(element.gameObject);
             await InputInjector.InjectPointerTap(screenPos);
         }
 
-        private async UniTask<bool> TryClickBackButton()
+        private async Task<bool> TryClickBackButton()
         {
             // Try by name patterns
             foreach (var pattern in BackButtonPatterns)

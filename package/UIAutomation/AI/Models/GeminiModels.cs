@@ -1,8 +1,9 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -141,7 +142,7 @@ namespace ODDGames.UIAutomation.AI
         /// <summary>
         /// Fetches available models from the Gemini API.
         /// </summary>
-        public static async UniTask<List<GeminiModelInfo>> ListModelsAsync(string apiKey, CancellationToken ct = default)
+        public static async Task<List<GeminiModelInfo>> ListModelsAsync(string apiKey, CancellationToken ct = default)
         {
             // Return cache if valid
             if (CachedModels != null)
@@ -172,7 +173,7 @@ namespace ODDGames.UIAutomation.AI
                         return new List<GeminiModelInfo>();
                     }
 
-                    await UniTask.Delay(100, ignoreTimeScale: true, cancellationToken: ct);
+                    await Task.Delay(100, ct);
                 }
 
                 if (webRequest.result != UnityWebRequest.Result.Success)

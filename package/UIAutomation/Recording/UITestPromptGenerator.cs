@@ -37,7 +37,7 @@ namespace ODDGames.UIAutomation
 
 ## Overview
 
-UIAutomation is a Unity UI testing framework that enables automated UI testing through code. Tests use NUnit's `[TestFixture]` and `[UnityTest]` attributes with `using static ODDGames.UIAutomation.ActionExecutor;` for easy access to all test methods.
+UIAutomation is a Unity UI testing framework that enables automated UI testing through code. Tests use NUnit's `[TestFixture]` and `[Test]` attributes with `using static ODDGames.UIAutomation.ActionExecutor;` for easy access to all test methods.
 
 ## Class Structure
 
@@ -45,22 +45,19 @@ UIAutomation is a Unity UI testing framework that enables automated UI testing t
 
 ```csharp
 using NUnit.Framework;
-using UnityEngine.TestTools;
-using Cysharp.Threading.Tasks;
+using System.Threading.Tasks;
+
 using static ODDGames.UIAutomation.ActionExecutor;
 
 [TestFixture]
 public class MyTest
 {
-    [UnityTest]
-    public IEnumerator TestSomething()
+    [Test]
+    public async Task TestSomething()
     {
-        return UniTask.ToCoroutine(async () =>
-        {
-            await EnsureSceneLoaded(""TestScene"");
-            await Click(Name(""Button""));
-            await Wait(1);
-        });
+        await EnsureSceneLoaded(""TestScene"");
+        await Click(Name(""Button""));
+        await Wait(1);
     }
 }
 ```

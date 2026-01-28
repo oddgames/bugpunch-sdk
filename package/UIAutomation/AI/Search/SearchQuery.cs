@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
 using UnityEngine;
 
 namespace ODDGames.UIAutomation.AI
@@ -24,9 +23,7 @@ namespace ODDGames.UIAutomation.AI
     {
         /// <summary>
         /// Base search method: "text", "name", "type", "path", "adjacent", "any", "texture", "tag"
-        /// Uses [JsonProperty] to map from "base" in JSON while avoiding C# keyword conflict.
         /// </summary>
-        [JsonProperty("base")]
         public string searchBase;
 
         /// <summary>
@@ -266,7 +263,7 @@ namespace ODDGames.UIAutomation.AI
 
             try
             {
-                return JsonConvert.DeserializeObject<SearchQuery>(json);
+                return JsonUtility.FromJson<SearchQuery>(json);
             }
             catch (Exception ex)
             {
@@ -280,10 +277,7 @@ namespace ODDGames.UIAutomation.AI
         /// </summary>
         public string ToJson()
         {
-            return JsonConvert.SerializeObject(this, Formatting.None, new JsonSerializerSettings
-            {
-                NullValueHandling = NullValueHandling.Ignore
-            });
+            return JsonUtility.ToJson(this);
         }
 
         /// <summary>

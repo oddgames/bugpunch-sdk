@@ -2,7 +2,7 @@
 using UnityEngine;
 using UnityEditor;
 using System.Linq;
-using Cysharp.Threading.Tasks;
+using ODDGames.UIAutomation;
 
 namespace ODDGames.UIAutomation.AI.Editor
 {
@@ -64,7 +64,7 @@ namespace ODDGames.UIAutomation.AI.Editor
             var tests = group.Tests;
 
             showTests = EditorGUILayout.Foldout(showTests,
-                $"Tests in Group ({tests.Count})", true);
+                $"Tests in Group ({tests.Count})");
 
             if (!showTests)
                 return;
@@ -102,7 +102,7 @@ namespace ODDGames.UIAutomation.AI.Editor
                     GUI.enabled = Application.isPlaying && !AITestRunner.IsRunning;
                     if (GUILayout.Button("Run", GUILayout.Width(40)))
                     {
-                        RunTest(test).Forget();
+                        RunTest(test);
                     }
                     GUI.enabled = true;
 
@@ -121,7 +121,7 @@ namespace ODDGames.UIAutomation.AI.Editor
             GUI.enabled = Application.isPlaying && !AITestRunner.IsRunning && tests.Count > 0;
             if (GUILayout.Button("Run All Tests", GUILayout.Width(120)))
             {
-                RunAllTests().Forget();
+                RunAllTests();
             }
             GUI.enabled = true;
 
@@ -135,7 +135,7 @@ namespace ODDGames.UIAutomation.AI.Editor
             EditorGUI.indentLevel--;
         }
 
-        private async UniTaskVoid RunTest(AITest test)
+        private async void RunTest(AITest test)
         {
             var settings = AITestSettings.Instance;
             var config = settings.CreateRunnerConfig();
@@ -156,7 +156,7 @@ namespace ODDGames.UIAutomation.AI.Editor
             Debug.Log($"[AITest] {test.name}: {result.Status} - {result.Message}");
         }
 
-        private async UniTaskVoid RunAllTests()
+        private async void RunAllTests()
         {
             var settings = AITestSettings.Instance;
             var config = settings.CreateRunnerConfig();

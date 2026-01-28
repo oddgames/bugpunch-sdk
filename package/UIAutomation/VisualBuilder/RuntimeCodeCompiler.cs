@@ -2,7 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
-using Cysharp.Threading.Tasks;
+using System.Threading.Tasks;
+
 using UnityEngine;
 
 namespace ODDGames.UIAutomation.VisualBuilder
@@ -35,9 +36,9 @@ namespace ODDGames.UIAutomation.VisualBuilder
         }
 
         /// <summary>
-        /// Executes async C# code that returns UniTask.
+        /// Executes async C# code that returns Task.
         /// </summary>
-        public static async UniTask ExecuteAsync(string code)
+        public static async Task ExecuteAsync(string code)
         {
             if (string.IsNullOrWhiteSpace(code))
                 return;
@@ -46,7 +47,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Execute(code);
 
             // Allow frame to process
-            await UniTask.Yield();
+            await Task.Yield();
         }
 
         /// <summary>

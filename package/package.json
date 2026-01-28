@@ -1,6 +1,6 @@
 {
   "name": "au.com.oddgames.uiautomation",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "displayName": "ODD Games UI Automation",
   "description": "Automated UI testing for Unity games. Record user interactions and replay them as tests. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events. Find elements by name, text content, type, or spatial relationship. Includes AI-powered test generation from natural language prompts.",
   "unity": "2022.3",
@@ -15,8 +15,7 @@
   "_commitHash": "e5013e1",
   "dependencies": {
     "com.unity.textmeshpro": "3.0.0",
-    "com.unity.inputsystem": "1.7.0",
-    "com.unity.nuget.newtonsoft-json": "3.2.1"
+    "com.unity.inputsystem": "1.7.0"
   },
   "keywords": [
     "ui",

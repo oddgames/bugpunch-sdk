@@ -1,8 +1,9 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -488,7 +489,7 @@ namespace ODDGames.UIAutomation.AI
         /// Executes an AI action using Unity's Input System.
         /// Captures screen state before and after to detect changes.
         /// </summary>
-        public static async UniTask<ActionResult> ExecuteAsync(AIAction action, CancellationToken ct = default)
+        public static async Task<ActionResult> ExecuteAsync(AIAction action, CancellationToken ct = default)
         {
             var startTime = Time.realtimeSinceStartup;
 
@@ -619,7 +620,7 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        private static async UniTask ExecuteClickAsync(ClickAction action, CancellationToken ct)
+        private static async Task ExecuteClickAsync(ClickAction action, CancellationToken ct)
         {
             if (action.ScreenPosition.HasValue)
             {
@@ -640,7 +641,7 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        private static async UniTask ExecuteTypeAsync(TypeAction action, CancellationToken ct)
+        private static async Task ExecuteTypeAsync(TypeAction action, CancellationToken ct)
         {
             if (action.TargetElement?.gameObject == null)
             {
@@ -657,7 +658,7 @@ namespace ODDGames.UIAutomation.AI
             await ActionExecutor.Type(action.TargetElement.gameObject, action.Text, action.ClearFirst, action.PressEnter);
         }
 
-        private static async UniTask ExecuteDragAsync(DragAction action, CancellationToken ct)
+        private static async Task ExecuteDragAsync(DragAction action, CancellationToken ct)
         {
             if (action.FromElement?.gameObject == null)
             {
@@ -679,7 +680,7 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        private static async UniTask ExecuteScrollAsync(ScrollAction action, CancellationToken ct)
+        private static async Task ExecuteScrollAsync(ScrollAction action, CancellationToken ct)
         {
             if (action.TargetElement?.gameObject == null)
             {
@@ -689,7 +690,7 @@ namespace ODDGames.UIAutomation.AI
             await ActionExecutor.Scroll(action.TargetElement.gameObject, action.Direction, action.Amount);
         }
 
-        private static async UniTask ExecuteDoubleClickAsync(DoubleClickAction action, CancellationToken ct)
+        private static async Task ExecuteDoubleClickAsync(DoubleClickAction action, CancellationToken ct)
         {
             if (action.ScreenPosition.HasValue)
             {
@@ -709,7 +710,7 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        private static async UniTask ExecuteTripleClickAsync(TripleClickAction action, CancellationToken ct)
+        private static async Task ExecuteTripleClickAsync(TripleClickAction action, CancellationToken ct)
         {
             if (action.ScreenPosition.HasValue)
             {
@@ -729,7 +730,7 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        private static async UniTask ExecuteHoldAsync(HoldAction action, CancellationToken ct)
+        private static async Task ExecuteHoldAsync(HoldAction action, CancellationToken ct)
         {
             if (action.TargetElement?.gameObject == null)
             {
@@ -739,7 +740,7 @@ namespace ODDGames.UIAutomation.AI
             await ActionExecutor.Hold(action.TargetElement.gameObject, action.Duration);
         }
 
-        private static async UniTask ExecuteSwipeAsync(SwipeAction action, CancellationToken ct)
+        private static async Task ExecuteSwipeAsync(SwipeAction action, CancellationToken ct)
         {
             if (action.TargetElement?.gameObject == null)
             {
@@ -749,12 +750,12 @@ namespace ODDGames.UIAutomation.AI
             await ActionExecutor.Swipe(action.TargetElement.gameObject, action.Direction, action.Distance, action.Duration);
         }
 
-        private static async UniTask ExecutePinchAsync(PinchAction action, CancellationToken ct)
+        private static async Task ExecutePinchAsync(PinchAction action, CancellationToken ct)
         {
             await ActionExecutor.Pinch(action.TargetElement?.gameObject, action.Scale, action.Duration);
         }
 
-        private static async UniTask ExecuteTwoFingerSwipeAsync(TwoFingerSwipeAction action, CancellationToken ct)
+        private static async Task ExecuteTwoFingerSwipeAsync(TwoFingerSwipeAction action, CancellationToken ct)
         {
             await ActionExecutor.TwoFingerSwipe(
                 action.TargetElement?.gameObject,
@@ -764,7 +765,7 @@ namespace ODDGames.UIAutomation.AI
                 action.FingerSpacing);
         }
 
-        private static async UniTask ExecuteRotateAsync(RotateAction action, CancellationToken ct)
+        private static async Task ExecuteRotateAsync(RotateAction action, CancellationToken ct)
         {
             await ActionExecutor.Rotate(
                 action.TargetElement?.gameObject,
@@ -773,7 +774,7 @@ namespace ODDGames.UIAutomation.AI
                 action.FingerDistance);
         }
 
-        private static async UniTask ExecuteSetSliderAsync(SetSliderAction action, CancellationToken ct)
+        private static async Task ExecuteSetSliderAsync(SetSliderAction action, CancellationToken ct)
         {
             if (action.TargetElement?.gameObject == null)
             {
@@ -790,7 +791,7 @@ namespace ODDGames.UIAutomation.AI
             await ActionExecutor.SetSlider(slider, action.Value);
         }
 
-        private static async UniTask ExecuteSetScrollbarAsync(SetScrollbarAction action, CancellationToken ct)
+        private static async Task ExecuteSetScrollbarAsync(SetScrollbarAction action, CancellationToken ct)
         {
             if (action.TargetElement?.gameObject == null)
             {
@@ -807,7 +808,7 @@ namespace ODDGames.UIAutomation.AI
             await ActionExecutor.SetScrollbar(scrollbar, action.Value);
         }
 
-        private static async UniTask ExecuteClickDropdownAsync(ClickDropdownAction action, CancellationToken ct)
+        private static async Task ExecuteClickDropdownAsync(ClickDropdownAction action, CancellationToken ct)
         {
             if (action.TargetElement?.gameObject == null)
             {
@@ -837,7 +838,7 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        private static async UniTask ExecuteKeyPressAsync(KeyPressAction action, CancellationToken ct)
+        private static async Task ExecuteKeyPressAsync(KeyPressAction action, CancellationToken ct)
         {
             if (Enum.TryParse<Key>(action.Key, true, out var key))
             {
@@ -849,7 +850,7 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        private static async UniTask ExecuteKeyHoldAsync(KeyHoldAction action, CancellationToken ct)
+        private static async Task ExecuteKeyHoldAsync(KeyHoldAction action, CancellationToken ct)
         {
             var keys = new List<Key>();
             foreach (var keyName in action.Keys)
@@ -873,14 +874,14 @@ namespace ODDGames.UIAutomation.AI
         /// <summary>
         /// Safe delay that won't hang when exiting play mode.
         /// </summary>
-        private static async UniTask DelaySafe(int milliseconds, CancellationToken ct)
+        private static async Task DelaySafe(int milliseconds, CancellationToken ct)
         {
             if (!Application.isPlaying || ct.IsCancellationRequested)
                 return;
 
             try
             {
-                await UniTask.Delay(milliseconds, ignoreTimeScale: true, cancellationToken: ct);
+                await Task.Delay(milliseconds, ct);
             }
             catch (OperationCanceledException)
             {

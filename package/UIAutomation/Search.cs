@@ -1,9 +1,10 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using Cysharp.Threading.Tasks;
+
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -2579,7 +2580,7 @@ namespace ODDGames.UIAutomation
         ///     Debug.Log(player.Property("Name").StringValue);
         ///
         /// // Use with Assert
-        /// ActionExecutor.Assert(Search.Reflect("GameManager.IsReady").Property("Value"), true);
+        /// ActionExecutor.Assert(Search.Reflect("GameManager.IsReady").Property("Value"));
         /// </example>
         public static Search Reflect(string path)
         {
@@ -3197,7 +3198,7 @@ namespace ODDGames.UIAutomation
         /// // ... test code ...
         /// state.Restore(); // Re-enables the panel
         /// </example>
-        public async UniTask<ActiveState> Disable(float searchTime = 10f)
+        public async Task<ActiveState> Disable(float searchTime = 10f)
         {
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new ActiveState(go, go.activeSelf);
@@ -3217,7 +3218,7 @@ namespace ODDGames.UIAutomation
         /// // ... test code ...
         /// state.Restore(); // Disables it again if it was originally disabled
         /// </example>
-        public async UniTask<ActiveState> Enable(float searchTime = 10f)
+        public async Task<ActiveState> Enable(float searchTime = 10f)
         {
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime, includeInactive: true);
             var state = new ActiveState(go, go.activeSelf);
@@ -3238,7 +3239,7 @@ namespace ODDGames.UIAutomation
         /// // ... test code ...
         /// state.Restore(); // Restores original isKinematic and velocities
         /// </example>
-        public async UniTask<FreezeState> Freeze(bool includeChildren = true, float searchTime = 10f)
+        public async Task<FreezeState> Freeze(bool includeChildren = true, float searchTime = 10f)
         {
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new FreezeState();
@@ -3296,7 +3297,7 @@ namespace ODDGames.UIAutomation
         /// // ... test code ...
         /// state.Restore(); // Returns player to original position
         /// </example>
-        public async UniTask<PositionState> Teleport(Vector3 worldPosition, float searchTime = 10f)
+        public async Task<PositionState> Teleport(Vector3 worldPosition, float searchTime = 10f)
         {
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new PositionState(go.transform);
@@ -3317,7 +3318,7 @@ namespace ODDGames.UIAutomation
         /// // ... test code ...
         /// state.Restore(); // Re-enables colliders that were originally enabled
         /// </example>
-        public async UniTask<ColliderState> NoClip(bool includeChildren = true, float searchTime = 10f)
+        public async Task<ColliderState> NoClip(bool includeChildren = true, float searchTime = 10f)
         {
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new ColliderState();
@@ -3365,7 +3366,7 @@ namespace ODDGames.UIAutomation
         /// // ... test code ...
         /// state.Restore(); // Disables colliders that were originally disabled
         /// </example>
-        public async UniTask<ColliderState> Clip(bool includeChildren = true, float searchTime = 10f)
+        public async Task<ColliderState> Clip(bool includeChildren = true, float searchTime = 10f)
         {
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new ColliderState();
@@ -3404,7 +3405,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Helper to get a GameObject from either a static path or UI search (async with timeout).
         /// </summary>
-        private async UniTask<GameObject> FindGameObjectFromSearchOrStaticAsync(float searchTime = 10f, bool includeInactive = false)
+        private async Task<GameObject> FindGameObjectFromSearchOrStaticAsync(float searchTime = 10f, bool includeInactive = false)
         {
             if (_isStaticPath)
             {
@@ -3432,7 +3433,7 @@ namespace ODDGames.UIAutomation
                     var result = FindFirst();
                     if (result != null)
                         return result;
-                    await UniTask.Delay(100, true);
+                    await Task.Delay(100);
                 }
 
                 throw new TimeoutException($"No GameObject found matching '{this}' within {searchTime}s");

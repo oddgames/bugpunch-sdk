@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using Newtonsoft.Json;
 using ODDGames.UIAutomation.AI;
 using UnityEngine;
 
@@ -164,13 +163,10 @@ namespace ODDGames.UIAutomation.VisualBuilder
             }
 
             sb.AppendLine($"    {fieldName}:");
-            // Serialize the SearchQuery as JSON using Newtonsoft.Json
+            // Serialize the SearchQuery using Unity's JsonUtility
             if (selector.query != null)
             {
-                var queryJson = JsonConvert.SerializeObject(selector.query, Formatting.None, new JsonSerializerSettings
-                {
-                    NullValueHandling = NullValueHandling.Ignore
-                });
+                var queryJson = JsonUtility.ToJson(selector.query);
                 sb.AppendLine($"      query: {queryJson}");
             }
             if (!string.IsNullOrEmpty(selector.displayName))
@@ -382,10 +378,10 @@ namespace ODDGames.UIAutomation.VisualBuilder
             switch (key)
             {
                 case "query":
-                    // Parse the SearchQuery JSON using Newtonsoft.Json
+                    // Parse the SearchQuery JSON using Unity's JsonUtility
                     try
                     {
-                        selector.query = JsonConvert.DeserializeObject<SearchQuery>(value);
+                        selector.query = JsonUtility.FromJson<SearchQuery>(value);
                     }
                     catch (Exception ex)
                     {

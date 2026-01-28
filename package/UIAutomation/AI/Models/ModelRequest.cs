@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using UnityEngine;
 
 namespace ODDGames.UIAutomation.AI
 {
@@ -214,32 +214,24 @@ namespace ODDGames.UIAutomation.AI
 
             try
             {
-                // Serialize to JSON and then deserialize to SearchQuery
-                // This handles both Dictionary<string, object> and already-parsed objects
-                var json = JsonConvert.SerializeObject(value);
-                return JsonConvert.DeserializeObject<SearchQuery>(json);
-            }
-            catch (JsonException ex)
-            {
-                error = $"Failed to parse search query: {ex.Message}";
-
                 // If it's a string, try to parse as JSON directly
                 if (value is string str && !string.IsNullOrEmpty(str))
                 {
-                    try
-                    {
-                        var result = SearchQuery.FromJson(str);
-                        if (result != null)
-                        {
-                            error = null;
-                            return result;
-                        }
-                    }
-                    catch (Exception innerEx)
-                    {
-                        error = $"Failed to parse search query JSON string: {innerEx.Message}";
-                    }
+                    var result = SearchQuery.FromJson(str);
+                    if (result != null)
+                        return result;
+                    error = "Failed to parse search query from string";
+                    return null;
                 }
+
+                // Try to serialize to JSON and then deserialize to SearchQuery
+                // This handles Dictionary<string, object> from parsed JSON
+                var json = JsonUtility.ToJson(value);
+                return JsonUtility.FromJson<SearchQuery>(json);
+            }
+            catch (Exception ex)
+            {
+                error = $"Failed to parse search query: {ex.Message}";
                 return null;
             }
         }

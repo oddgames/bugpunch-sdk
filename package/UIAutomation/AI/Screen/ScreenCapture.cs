@@ -1,5 +1,6 @@
+using System.Threading.Tasks;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
+
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -25,7 +26,7 @@ namespace ODDGames.UIAutomation.AI
         /// <summary>
         /// Captures the current screen state including screenshot and element discovery.
         /// </summary>
-        public static async UniTask<ScreenState> CaptureAsync(bool annotateScreenshot = true)
+        public static async Task<ScreenState> CaptureAsync(bool annotateScreenshot = true)
         {
             // Capture screenshot asynchronously
             Texture2D screenshot;
@@ -119,7 +120,7 @@ namespace ODDGames.UIAutomation.AI
         /// <summary>
         /// Captures just the screenshot without element discovery.
         /// </summary>
-        public static async UniTask<byte[]> CaptureScreenshotOnlyAsync()
+        public static async Task<byte[]> CaptureScreenshotOnlyAsync()
         {
             try
             {
@@ -196,7 +197,7 @@ namespace ODDGames.UIAutomation.AI
         /// Captures the current screen to a texture asynchronously.
         /// Uses AsyncGPUReadback to avoid blocking and "ReadPixels not inside drawing frame" errors.
         /// </summary>
-        private static async UniTask<Texture2D> CaptureScreenshotAsync()
+        private static async Task<Texture2D> CaptureScreenshotAsync()
         {
             if (!Application.isPlaying)
                 return null;
@@ -209,7 +210,7 @@ namespace ODDGames.UIAutomation.AI
                 // Wait a frame to ensure rendering is complete
                 try
                 {
-                    await UniTask.DelayFrame(1, PlayerLoopTiming.PostLateUpdate);
+                    await Async.DelayFrames(1);
                 }
                 catch
                 {
@@ -223,7 +224,7 @@ namespace ODDGames.UIAutomation.AI
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(rt);
 
                 // Use AsyncGPUReadback to read without blocking
-                var tcs = new UniTaskCompletionSource<Texture2D>();
+                var tcs = new TaskCompletionSource<Texture2D>();
 
                 _ = AsyncGPUReadback.Request(rt, 0, TextureFormat.RGBA32, (request) =>
                 {
@@ -265,16 +266,16 @@ namespace ODDGames.UIAutomation.AI
                 });
 
                 // Wait for result with timeout to prevent hanging
-                var timeoutTask = UniTask.Delay(2000, ignoreTimeScale: true);
+                var timeoutTask = Task.Delay(2000);
                 var resultTask = tcs.Task;
 
-                var (winIndex, timeoutResult, captureResult) = await UniTask.WhenAny(
-                    timeoutTask.ContinueWith(() => (Texture2D)null),
-                    resultTask
-                );
+                var completedTask = await Task.WhenAny(timeoutTask, resultTask);
 
-                // winIndex 0 = timeout completed first, 1 = capture completed first
-                return winIndex == 0 ? null : captureResult;
+                // If timeout completed first, return null
+                if (completedTask == timeoutTask)
+                    return null;
+
+                return await resultTask;
             }
             catch
             {

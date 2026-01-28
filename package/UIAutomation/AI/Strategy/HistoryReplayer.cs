@@ -1,6 +1,7 @@
+using System.Threading.Tasks;
 using System;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+
 using UnityEngine;
 
 namespace ODDGames.UIAutomation.AI
@@ -49,7 +50,7 @@ namespace ODDGames.UIAutomation.AI
         /// <param name="currentScreenHash">Current screen hash to validate starting point</param>
         /// <param name="ct">Cancellation token</param>
         /// <returns>Result indicating success, divergence, or failure</returns>
-        public async UniTask<ReplayResult> ReplayAsync(
+        public async Task<ReplayResult> ReplayAsync(
             ActionSequence sequence,
             string currentScreenHash,
             CancellationToken ct = default)
@@ -132,7 +133,7 @@ namespace ODDGames.UIAutomation.AI
 
                         try
                         {
-                            await UniTask.Delay(config.ScreenCaptureDelayMs, ignoreTimeScale: true, cancellationToken: ct);
+                            await Task.Delay(config.ScreenCaptureDelayMs, ct);
                         }
                         catch { break; }
 
@@ -160,7 +161,7 @@ namespace ODDGames.UIAutomation.AI
 
                         try
                         {
-                            await UniTask.Delay(config.ActionDelayMs, ignoreTimeScale: true, cancellationToken: ct);
+                            await Task.Delay(config.ActionDelayMs, ct);
                         }
                         catch { break; }
                     }

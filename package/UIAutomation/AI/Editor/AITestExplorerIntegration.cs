@@ -1,9 +1,10 @@
+using System.Threading.Tasks;
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Cysharp.Threading.Tasks;
+
 using UnityEditor;
 using UnityEngine;
 
@@ -113,7 +114,7 @@ namespace ODDGames.UIAutomation.AI.Editor
         /// <summary>
         /// Run an AI test and return the result.
         /// </summary>
-        public static async UniTask<AITestResult> RunAITestAsync(AITest test)
+        public static async Task<AITestResult> RunAITestAsync(AITest test)
         {
             if (!Application.isPlaying)
             {

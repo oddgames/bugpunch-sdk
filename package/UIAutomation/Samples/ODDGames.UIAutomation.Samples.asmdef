@@ -3,7 +3,6 @@
     "rootNamespace": "ODDGames.UIAutomation.Samples",
     "references": [
         "ODDGames.UIAutomation",
-        "UniTask",
         "Unity.InputSystem",
         "Unity.TextMeshPro"
     ],

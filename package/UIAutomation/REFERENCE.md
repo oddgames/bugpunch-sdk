@@ -8,7 +8,7 @@
 [UITest(Feature = "Login")]
 public class LoginTest : UITestBehaviour
 {
-    protected override async UniTask Test()
+    protected override async Task Test()
     {
         await Click("Login");                              // Click button with "Login" text
         await TextInput(Adjacent("Username:"), "user");    // Type in field next to label
@@ -358,7 +358,7 @@ using NUnit.Framework;
 [UITest(Feature = "Gameplay", Story = "Player can collect coins", Severity = Severity.Critical)]
 public class CoinCollectionTest : UITestBehaviour
 {
-    protected override async UniTask Test()
+    protected override async Task Test()
     {
         // Arrange
         await Wait(Name("GameScene"), seconds: 10);

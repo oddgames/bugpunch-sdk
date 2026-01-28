@@ -1,7 +1,8 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -55,7 +56,7 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
             targetTest = test ?? throw new ArgumentNullException(nameof(test));
         }
 
-        public async UniTask StartAsync(string prompt)
+        public async Task StartAsync(string prompt)
         {
             if (currentState != State.Idle)
                 throw new InvalidOperationException($"Cannot start in state: {currentState}");
@@ -169,10 +170,10 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
             }
         }
 
-        public async UniTask RestartAsync(string prompt)
+        public async Task RestartAsync(string prompt)
         {
             Stop();
-            await UniTask.Delay(100);
+            await Task.Delay(100);
 
             if (targetTest != null && BlocksAdded > 0)
             {

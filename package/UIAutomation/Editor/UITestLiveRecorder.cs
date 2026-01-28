@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -81,7 +82,7 @@ namespace ODDGames.UIAutomation.Editor
             }
         }
 
-        [MenuItem("Window/Analysis/UI Automation/Live Recorder", true)]
+        [MenuItem("Window/Analysis/UI Automation/Live Recorder")]
         public static bool ToggleRecorderValidate()
         {
             Menu.SetChecked("Window/Analysis/UI Automation/Live Recorder", _isEnabled);
@@ -390,7 +391,7 @@ namespace ODDGames.UIAutomation.Editor
         private string GenerateTestCode()
         {
             var sb = new StringBuilder();
-            sb.AppendLine("protected override async UniTask Test()");
+            sb.AppendLine("protected override async Task Test()");
             sb.AppendLine("{");
 
             foreach (var action in _recordedActions)

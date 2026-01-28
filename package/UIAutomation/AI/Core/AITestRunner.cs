@@ -1,7 +1,8 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -157,7 +158,7 @@ namespace ODDGames.UIAutomation.AI
         /// <summary>
         /// Runs the AI test.
         /// </summary>
-        public async UniTask<AITestResult> RunAsync(CancellationToken externalCt = default)
+        public async Task<AITestResult> RunAsync(CancellationToken externalCt = default)
         {
             if (isRunning)
             {
@@ -412,7 +413,7 @@ namespace ODDGames.UIAutomation.AI
 
                         try
                         {
-                            await UniTask.Delay((int)(test.actionDelaySeconds * 1000), ignoreTimeScale: true, cancellationToken: ct);
+                            await Task.Delay((int)(test.actionDelaySeconds * 1000), ct);
                         }
                         catch (OperationCanceledException)
                         {
@@ -511,7 +512,7 @@ namespace ODDGames.UIAutomation.AI
             debugLogger?.LogConfig(test, config, modelProvider?.Name ?? test.model);
         }
 
-        private async UniTask<ReplayResult> TryHistoryReplayAsync(CancellationToken ct)
+        private async Task<ReplayResult> TryHistoryReplayAsync(CancellationToken ct)
         {
             if (!config.EnableHistoryReplay)
             {
