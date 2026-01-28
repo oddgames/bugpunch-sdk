@@ -2,10 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.12] - 2026-01-28
+
+### Removed
+- `IgnoreErrors` property - use `LogAssert.ignoreFailingMessages` directly instead (Unity's API doesn't work outside test context)
+
 ## [1.1.11] - 2026-01-28
 
 ### Added
-- `IgnoreErrors` property - set to `true` to prevent Unity error logs from failing tests
 - `CaptureUnobservedExceptions` property - set to `true` to capture fire-and-forget Task exceptions
 - `CapturedExceptions` read-only list and `ClearCapturedExceptions()` method for inspecting captured exceptions
 - Test runner assembly reference for test-only features (guarded by `UNITY_INCLUDE_TESTS`)
