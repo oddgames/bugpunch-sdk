@@ -1,6 +1,6 @@
 {
   "name": "au.com.oddgames.uiautomation",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "displayName": "ODD Games UI Automation",
   "description": "Automated UI testing for Unity games. Record user interactions and replay them as tests. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events. Find elements by name, text content, type, or spatial relationship. Includes AI-powered test generation from natural language prompts.",
   "unity": "2022.3",

@@ -277,6 +277,64 @@ namespace ODDGames.UIAutomation
         static int EffectiveInterval => DebugMode ? (int)(Interval * DebugIntervalMultiplier) : Interval;
         static int EffectivePollInterval => DebugMode ? (int)(PollInterval * DebugIntervalMultiplier) : PollInterval;
 
+#if UNITY_INCLUDE_TESTS
+        /// <summary>
+        /// When true, ignores Unity error logs so they don't fail tests.
+        /// Set this at the start of your test method.
+        /// </summary>
+        public static bool IgnoreErrors
+        {
+            get => UnityEngine.TestTools.LogAssert.ignoreFailingMessages;
+            set => UnityEngine.TestTools.LogAssert.ignoreFailingMessages = value;
+        }
+
+        private static readonly System.Collections.Generic.List<Exception> _capturedExceptions = new System.Collections.Generic.List<Exception>();
+        private static bool _captureHandlerAttached;
+
+        /// <summary>
+        /// When true, captures unobserved Task exceptions instead of letting them crash.
+        /// Access captured exceptions via <see cref="CapturedExceptions"/>.
+        /// </summary>
+        public static bool CaptureUnobservedExceptions
+        {
+            get => _captureHandlerAttached;
+            set
+            {
+                if (value && !_captureHandlerAttached)
+                {
+                    System.Threading.Tasks.TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+                    _captureHandlerAttached = true;
+                    _capturedExceptions.Clear();
+                }
+                else if (!value && _captureHandlerAttached)
+                {
+                    System.Threading.Tasks.TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
+                    _captureHandlerAttached = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the list of exceptions captured when <see cref="CaptureUnobservedExceptions"/> is true.
+        /// </summary>
+        public static System.Collections.Generic.IReadOnlyList<Exception> CapturedExceptions => _capturedExceptions;
+
+        /// <summary>
+        /// Clears the list of captured exceptions.
+        /// </summary>
+        public static void ClearCapturedExceptions() => _capturedExceptions.Clear();
+
+        private static void OnUnobservedTaskException(object sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs e)
+        {
+            e.SetObserved();
+            if (e.Exception != null)
+            {
+                foreach (var inner in e.Exception.InnerExceptions)
+                    _capturedExceptions.Add(inner);
+            }
+        }
+#endif
+
         #endregion
 
         #region Random Generator

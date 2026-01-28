@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.11] - 2026-01-28
+
+### Added
+- `IgnoreErrors` property - set to `true` to prevent Unity error logs from failing tests
+- `CaptureUnobservedExceptions` property - set to `true` to capture fire-and-forget Task exceptions
+- `CapturedExceptions` read-only list and `ClearCapturedExceptions()` method for inspecting captured exceptions
+- Test runner assembly reference for test-only features (guarded by `UNITY_INCLUDE_TESTS`)
+
+### Removed
+- `UITestAttribute` - unused metadata attribute removed
+
 ## [1.1.10] - 2026-01-28
 
 ### Changed
