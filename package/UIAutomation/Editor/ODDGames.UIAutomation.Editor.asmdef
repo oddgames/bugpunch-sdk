@@ -26,11 +26,6 @@
             "name": "com.unity.recorder",
             "expression": "",
             "define": "UNITY_RECORDER"
-        },
-        {
-            "name": "com.oddgames.uitest",
-            "expression": "",
-            "define": "UITEST_AI"
         }
     ],
     "noEngineReferences": false

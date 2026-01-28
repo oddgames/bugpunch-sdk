@@ -3040,7 +3040,7 @@ namespace ODDGames.UIAutomation
                 if (!_disposed && _go != null)
                 {
                     _go.SetActive(_wasActive);
-                    Debug.Log($"[UITEST] Restored '{_go.name}' active={_wasActive}");
+                    Debug.Log($"[UIAutomation] Restored '{_go.name}' active={_wasActive}");
                 }
                 _disposed = true;
             }
@@ -3104,7 +3104,7 @@ namespace ODDGames.UIAutomation
                         }
                     }
                 }
-                Debug.Log($"[UITEST] Restored {Count} rigidbodies");
+                Debug.Log($"[UIAutomation] Restored {Count} rigidbodies");
                 _disposed = true;
             }
 
@@ -3153,7 +3153,7 @@ namespace ODDGames.UIAutomation
                     if (col != null)
                         col.enabled = wasEnabled;
                 }
-                Debug.Log($"[UITEST] Restored {Count} colliders");
+                Debug.Log($"[UIAutomation] Restored {Count} colliders");
                 _disposed = true;
             }
 
@@ -3181,7 +3181,7 @@ namespace ODDGames.UIAutomation
                 if (!_disposed && _transform != null)
                 {
                     _transform.position = _originalPosition;
-                    Debug.Log($"[UITEST] Restored '{_transform.name}' to {_originalPosition}");
+                    Debug.Log($"[UIAutomation] Restored '{_transform.name}' to {_originalPosition}");
                 }
                 _disposed = true;
             }
@@ -3205,7 +3205,7 @@ namespace ODDGames.UIAutomation
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new ActiveState(go, go.activeSelf);
             go.SetActive(false);
-            Debug.Log($"[UITEST] Disable '{go.name}'");
+            Debug.Log($"[UIAutomation] Disable '{go.name}'");
             return state;
         }
 
@@ -3225,7 +3225,7 @@ namespace ODDGames.UIAutomation
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime, includeInactive: true);
             var state = new ActiveState(go, go.activeSelf);
             go.SetActive(true);
-            Debug.Log($"[UITEST] Enable '{go.name}'");
+            Debug.Log($"[UIAutomation] Enable '{go.name}'");
             return state;
         }
 
@@ -3283,7 +3283,7 @@ namespace ODDGames.UIAutomation
                 }
             }
 
-            Debug.Log($"[UITEST] Freeze '{go.name}' - affected {state.Count} rigidbodies");
+            Debug.Log($"[UIAutomation] Freeze '{go.name}' - affected {state.Count} rigidbodies");
             return state;
         }
 
@@ -3304,7 +3304,7 @@ namespace ODDGames.UIAutomation
             var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
             var state = new PositionState(go.transform);
             go.transform.position = worldPosition;
-            Debug.Log($"[UITEST] Teleport '{go.name}' to {worldPosition}");
+            Debug.Log($"[UIAutomation] Teleport '{go.name}' to {worldPosition}");
             return state;
         }
 
@@ -3352,7 +3352,7 @@ namespace ODDGames.UIAutomation
                 }
             }
 
-            Debug.Log($"[UITEST] NoClip '{go.name}' - disabled {state.Count} colliders");
+            Debug.Log($"[UIAutomation] NoClip '{go.name}' - disabled {state.Count} colliders");
             return state;
         }
 
@@ -3400,7 +3400,7 @@ namespace ODDGames.UIAutomation
                 }
             }
 
-            Debug.Log($"[UITEST] Clip '{go.name}' - enabled {state.Count} colliders");
+            Debug.Log($"[UIAutomation] Clip '{go.name}' - enabled {state.Count} colliders");
             return state;
         }
 

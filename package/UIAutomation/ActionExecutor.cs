@@ -13,6 +13,31 @@ using UnityEngine.UI;
 namespace ODDGames.UIAutomation
 {
     /// <summary>
+    /// Exception thrown when a UIAutomation operation fails.
+    /// </summary>
+    public class UIAutomationException : Exception
+    {
+        public UIAutomationException(string message) : base(message) { }
+        public UIAutomationException(string message, Exception innerException) : base(message, innerException) { }
+    }
+
+    /// <summary>
+    /// Exception thrown when a UIAutomation operation times out.
+    /// </summary>
+    public class UIAutomationTimeoutException : UIAutomationException
+    {
+        public UIAutomationTimeoutException(string message) : base(message) { }
+    }
+
+    /// <summary>
+    /// Exception thrown when a UIAutomation element is not found.
+    /// </summary>
+    public class UIAutomationNotFoundException : UIAutomationException
+    {
+        public UIAutomationNotFoundException(string message) : base(message) { }
+    }
+
+    /// <summary>
     /// Wrapper for navigating object properties via reflection.
     /// Supports fluent chaining and iteration over arrays/lists.
     /// </summary>
@@ -275,7 +300,7 @@ namespace ODDGames.UIAutomation
         public static void SetRandomSeed(int seed)
         {
             RandomGenerator = new System.Random(seed);
-            Debug.Log($"[UITEST] RandomSeed set to {seed}");
+            Debug.Log($"[UIAutomation] RandomSeed set to {seed}");
         }
 
         #endregion
@@ -341,13 +366,66 @@ namespace ODDGames.UIAutomation
 
         #region Logging
 
-        static void Log(string message) => Debug.Log($"[UIAUTOMATION] {message}");
+        static void Log(string message) => Debug.Log($"[UIAutomation] {message}");
 
         static void LogDebug(string message)
         {
             if (DebugMode)
-                Debug.Log($"[UIAUTOMATION:DEBUG] {message}");
+                Debug.Log($"[UIAutomation:DEBUG] {message}");
         }
+
+        static void LogStart(string action) => Log($"START: {action}");
+        static void LogComplete(string action) => Log($"COMPLETE: {action}");
+        static void LogComplete(string action, string result) => Log($"COMPLETE: {action} -> {result}");
+        static void LogFail(string action, string reason) => Debug.LogWarning($"[UIAutomation] FAILED: {action} - {reason}");
+
+        /// <summary>
+        /// Disposable action logger that logs START on creation and COMPLETE on disposal.
+        /// Use with 'using' statement for automatic cleanup and proper nesting prevention.
+        /// </summary>
+        private struct ActionLog : IDisposable
+        {
+            private readonly string _action;
+            private string _result;
+            private bool _disposed;
+            private bool _failed;
+
+            public ActionLog(string action)
+            {
+                _action = action;
+                _result = null;
+                _disposed = false;
+                _failed = false;
+                Log($"START: {action}");
+            }
+
+            /// <summary>Sets a result message to be included in the COMPLETE log.</summary>
+            public void SetResult(string result) => _result = result;
+
+            /// <summary>Marks the action as failed with a reason. Prevents COMPLETE from being logged.</summary>
+            public void Fail(string reason)
+            {
+                _failed = true;
+                Debug.LogWarning($"[UIAutomation] FAILED: {_action} - {reason}");
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+
+                if (!_failed)
+                {
+                    if (_result != null)
+                        Log($"COMPLETE: {_action} -> {_result}");
+                    else
+                        Log($"COMPLETE: {_action}");
+                }
+            }
+        }
+
+        /// <summary>Creates an ActionLog that logs START now and COMPLETE when disposed.</summary>
+        private static ActionLog LogAction(string action) => new ActionLog(action);
 
         #endregion
 
@@ -360,11 +438,12 @@ namespace ODDGames.UIAutomation
         {
             if (SceneManager.GetActiveScene().name == sceneName)
             {
+                Log($"EnsureSceneLoaded(\"{sceneName}\") - already loaded");
                 await UniTask.Yield();
                 return;
             }
 
-            Debug.Log($"[UITEST] Loading scene: {sceneName}");
+            LogStart($"EnsureSceneLoaded(\"{sceneName}\")");
             var asyncOp = SceneManager.LoadSceneAsync(sceneName);
 
             float startTime = Time.realtimeSinceStartup;
@@ -374,11 +453,11 @@ namespace ODDGames.UIAutomation
             }
 
             if (!asyncOp.isDone)
-                throw new TimeoutException($"Scene '{sceneName}' did not load within {timeout} seconds");
+                throw new UIAutomationTimeoutException($"Scene '{sceneName}' did not load within {timeout} seconds");
 
             // Let scene initialize
             await UniTask.DelayFrame(3);
-            Debug.Log($"[UITEST] Scene loaded: {sceneName}");
+            LogComplete($"EnsureSceneLoaded(\"{sceneName}\")");
         }
 
         /// <summary>
@@ -387,15 +466,15 @@ namespace ODDGames.UIAutomation
         public static async UniTask SceneChange(float seconds = 30)
         {
             string startScene = SceneManager.GetActiveScene().name;
+            LogStart($"SceneChange(from=\"{startScene}\", timeout={seconds}s)");
             float startTime = Time.realtimeSinceStartup;
-
-            Debug.Log($"[UITEST] SceneChange - waiting for scene change from '{startScene}'");
 
             while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying)
             {
                 if (SceneManager.GetActiveScene().name != startScene)
                 {
-                    Debug.Log($"[UITEST] SceneChange - scene changed to '{SceneManager.GetActiveScene().name}'");
+                    string newScene = SceneManager.GetActiveScene().name;
+                    LogComplete($"SceneChange", $"changed to '{newScene}'");
                     await ActionComplete();
                     return;
                 }
@@ -403,7 +482,8 @@ namespace ODDGames.UIAutomation
                 await UniTask.Delay(EffectivePollInterval, true, PlayerLoopTiming.Update);
             }
 
-            throw new TimeoutException($"Scene did not change from '{startScene}' within {seconds} seconds");
+            LogFail($"SceneChange(from=\"{startScene}\")", $"scene did not change within {seconds}s");
+            throw new UIAutomationTimeoutException($"Scene did not change from '{startScene}' within {seconds} seconds");
         }
 
         /// <summary>
@@ -415,12 +495,11 @@ namespace ODDGames.UIAutomation
             int maxAttempts = 20,
             float timeout = 60f)
         {
+            LogStart($"NavigateToMainMenu({mainMenuIdentifier})");
             backButtonPatterns ??= new[] { "Back", "Close", "Exit", "Return", "*Back*", "*Close*", "*Exit*", "X" };
 
             float startTime = Time.realtimeSinceStartup;
             int attempts = 0;
-
-            Debug.Log($"[UITEST] NavigateToMainMenu - looking for main menu indicator...");
 
             while (attempts < maxAttempts && (Time.realtimeSinceStartup - startTime) < timeout)
             {
@@ -428,7 +507,7 @@ namespace ODDGames.UIAutomation
                 var mainMenuElement = await Find<Transform>(mainMenuIdentifier, throwIfMissing: false, seconds: 0.5f);
                 if (mainMenuElement != null)
                 {
-                    Debug.Log($"[UITEST] NavigateToMainMenu - reached main menu");
+                    LogComplete($"NavigateToMainMenu", $"reached after {attempts} back actions");
                     return;
                 }
 
@@ -440,7 +519,7 @@ namespace ODDGames.UIAutomation
                     var backButton = await Find<Selectable>(search, throwIfMissing: false, seconds: 0.1f);
                     if (backButton != null && backButton.interactable)
                     {
-                        Debug.Log($"[UITEST] NavigateToMainMenu - clicking '{backButton.name}'");
+                        LogDebug($"NavigateToMainMenu - clicking '{backButton.name}'");
                         await Click(search, searchTime: 0.5f);
                         clickedBack = true;
                         attempts++;
@@ -452,14 +531,15 @@ namespace ODDGames.UIAutomation
                 if (!clickedBack)
                 {
                     // Try pressing Escape key as fallback
-                    Debug.Log($"[UITEST] NavigateToMainMenu - no back button found, pressing Escape");
+                    LogDebug($"NavigateToMainMenu - no back button found, pressing Escape");
                     await PressKey(Key.Escape);
                     attempts++;
                     await Wait(0.5f);
                 }
             }
 
-            throw new TimeoutException($"Could not navigate to main menu within {maxAttempts} attempts or {timeout} seconds");
+            LogFail($"NavigateToMainMenu", $"could not reach within {maxAttempts} attempts or {timeout}s");
+            throw new UIAutomationTimeoutException($"Could not navigate to main menu within {maxAttempts} attempts or {timeout} seconds");
         }
 
         #endregion
@@ -481,8 +561,9 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask Wait(Search search, int seconds = 10)
         {
-            Debug.Log($"[UITEST] Wait ({seconds}s)");
+            LogStart($"Wait({search}, timeout={seconds}s)");
             await Find<Transform>(search, true, seconds);
+            LogComplete($"Wait({search})");
         }
 
         /// <summary>
@@ -490,7 +571,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask WaitFor(Func<bool> condition, float seconds = 60, string description = "condition")
         {
-            Debug.Log($"[UITEST] WaitFor ({seconds}) [{description}]");
+            LogStart($"WaitFor(\"{description}\", timeout={seconds}s)");
 
             var startTime = Time.realtimeSinceStartup;
 
@@ -498,7 +579,8 @@ namespace ODDGames.UIAutomation
             {
                 if (condition())
                 {
-                    LogDebug($"WaitFor: '{description}' satisfied after {Time.realtimeSinceStartup - startTime:F2}s");
+                    float elapsed = Time.realtimeSinceStartup - startTime;
+                    LogComplete($"WaitFor(\"{description}\")", $"satisfied after {elapsed:F2}s");
                     await ActionComplete();
                     return;
                 }
@@ -506,7 +588,8 @@ namespace ODDGames.UIAutomation
                 await UniTask.Delay(EffectivePollInterval, true, PlayerLoopTiming.Update);
             }
 
-            throw new TimeoutException($"Condition '{description}' not met within {seconds} seconds");
+            LogFail($"WaitFor(\"{description}\")", $"condition not met within {seconds}s");
+            throw new UIAutomationTimeoutException($"Condition '{description}' not met within {seconds} seconds");
         }
 
         /// <summary>
@@ -514,7 +597,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask WaitFramerate(int averageFps, float sampleDuration = 2f, float timeout = 60f)
         {
-            Debug.Log($"[UITEST] WaitFramerate - waiting for {averageFps} FPS");
+            LogStart($"WaitFramerate(target={averageFps}fps, timeout={timeout}s)");
 
             float startTime = Time.realtimeSinceStartup;
 
@@ -533,13 +616,14 @@ namespace ODDGames.UIAutomation
 
                 if (currentFps >= averageFps)
                 {
-                    Debug.Log($"[UITEST] WaitFramerate - achieved {currentFps:F1} FPS");
+                    LogComplete($"WaitFramerate", $"achieved {currentFps:F1} FPS");
                     await ActionComplete();
                     return;
                 }
             }
 
-            throw new TimeoutException($"Framerate did not reach {averageFps} FPS within {timeout} seconds");
+            LogFail($"WaitFramerate(target={averageFps}fps)", $"did not reach target within {timeout}s");
+            throw new UIAutomationTimeoutException($"Framerate did not reach {averageFps} FPS within {timeout} seconds");
         }
 
         static async UniTask ActionComplete()
@@ -558,19 +642,21 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask TextInput(Search search, string input, float seconds = 10, bool pressEnter = false)
         {
-            Debug.Log($"[UITEST] TextInput '{input}'");
+            LogStart($"TextInput({search}, \"{input}\")");
 
             var tmpInput = await Find<TMP_InputField>(search, false, 0.1f);
             if (tmpInput != null)
             {
                 await InputInjector.TypeIntoField(tmpInput.gameObject, input, clearFirst: true, pressEnter: pressEnter);
                 await ActionComplete();
+                LogComplete($"TextInput({search}, \"{input}\")", $"TMP_InputField '{tmpInput.name}'");
                 return;
             }
 
             var legacyInput = await Find<InputField>(search, true, seconds);
             await InputInjector.TypeIntoField(legacyInput.gameObject, input, clearFirst: true, pressEnter: pressEnter);
             await ActionComplete();
+            LogComplete($"TextInput({search}, \"{input}\")", $"InputField '{legacyInput.name}'");
         }
 
         #endregion
@@ -582,7 +668,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask<T> Find<T>(Search search, bool throwIfMissing = true, float seconds = 10) where T : Component
         {
-            LogDebug($"Find<{typeof(T).Name}> search={search} timeout={seconds}s");
+            LogStart($"Find<{typeof(T).Name}>({search})");
 
             var startTime = Time.realtimeSinceStartup;
 
@@ -594,7 +680,7 @@ namespace ODDGames.UIAutomation
                     var component = result.GetComponent<T>() ?? result.GetComponentInChildren<T>() ?? result.GetComponentInParent<T>();
                     if (component != null)
                     {
-                        LogDebug($"Find<{typeof(T).Name}> found: {result.name}");
+                        LogComplete($"Find<{typeof(T).Name}>({search})", $"'{result.name}'");
                         return component;
                     }
                 }
@@ -603,8 +689,9 @@ namespace ODDGames.UIAutomation
             }
 
             if (throwIfMissing)
-                throw new TimeoutException($"Could not find {typeof(T).Name} matching {search} within {seconds} seconds");
+                throw new UIAutomationTimeoutException($"Could not find {typeof(T).Name} matching {search} within {seconds} seconds");
 
+            LogFail($"Find<{typeof(T).Name}>({search})", $"Element not found within {seconds}s");
             return null;
         }
 
@@ -646,9 +733,10 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask PressKey(Key key)
         {
-            Debug.Log($"[UITEST] PressKey [{key}]");
+            LogStart($"PressKey({key})");
             await InputInjector.PressKey(key);
             await ActionComplete();
+            LogComplete($"PressKey({key})");
         }
 
         /// <summary>
@@ -656,13 +744,14 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask PressKey(KeyCode key)
         {
-            Debug.Log($"[UITEST] PressKey [{key}]");
+            LogStart($"PressKey({key})");
             var inputKey = KeyCodeToKey(key);
             if (inputKey != Key.None)
             {
                 await InputInjector.PressKey(inputKey);
             }
             await ActionComplete();
+            LogComplete($"PressKey({key})");
         }
 
         /// <summary>
@@ -670,7 +759,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask PressKeys(string text)
         {
-            Debug.Log($"[UITEST] PressKeys '{text}'");
+            LogStart($"PressKeys(\"{text}\")");
             foreach (char c in text)
             {
                 var key = CharToKey(c);
@@ -681,6 +770,7 @@ namespace ODDGames.UIAutomation
                 }
             }
             await ActionComplete();
+            LogComplete($"PressKeys(\"{text}\")");
         }
 
         /// <summary>
@@ -688,9 +778,10 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask HoldKey(Key key, float duration)
         {
-            Debug.Log($"[UITEST] HoldKey [{key}] for {duration}s");
+            LogStart($"HoldKey({key}, {duration}s)");
             await InputInjector.HoldKey(key, duration);
             await ActionComplete();
+            LogComplete($"HoldKey({key}, {duration}s)");
         }
 
         /// <summary>
@@ -698,9 +789,11 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask HoldKeys(float duration, params Key[] keys)
         {
-            Debug.Log($"[UITEST] HoldKeys [{string.Join(", ", keys)}] for {duration}s");
+            string keysStr = string.Join(", ", keys);
+            LogStart($"HoldKeys([{keysStr}], {duration}s)");
             await InputInjector.HoldKeys(keys, duration);
             await ActionComplete();
+            LogComplete($"HoldKeys([{keysStr}], {duration}s)");
         }
 
         /// <summary>
@@ -708,12 +801,13 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask HoldKey(KeyCode key, float duration)
         {
-            Debug.Log($"[UITEST] HoldKey [{key}] for {duration}s");
+            LogStart($"HoldKey({key}, {duration}s)");
             var inputKey = KeyCodeToKey(key);
             if (inputKey != Key.None)
             {
                 await InputInjector.HoldKey(inputKey, duration);
                 await ActionComplete();
+                LogComplete($"HoldKey({key}, {duration}s)");
             }
         }
 
@@ -722,6 +816,8 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask HoldKeys(float duration, params KeyCode[] keys)
         {
+            string keysStr = string.Join(", ", keys);
+            LogStart($"HoldKeys([{keysStr}], {duration}s)");
             var inputKeys = keys
                 .Select(k => KeyCodeToKey(k))
                 .Where(k => k != Key.None)
@@ -729,9 +825,9 @@ namespace ODDGames.UIAutomation
 
             if (inputKeys.Length > 0)
             {
-                Debug.Log($"[UITEST] HoldKeys [{string.Join(", ", keys)}] for {duration}s");
                 await InputInjector.HoldKeys(inputKeys, duration);
                 await ActionComplete();
+                LogComplete($"HoldKeys([{keysStr}], {duration}s)");
             }
         }
 
@@ -740,12 +836,13 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask PressKey(char c)
         {
-            Debug.Log($"[UITEST] PressKey '{c}'");
+            LogStart($"PressKey('{c}')");
             var key = CharToKey(c);
             if (key != Key.None)
             {
                 await InputInjector.PressKey(key);
                 await ActionComplete();
+                LogComplete($"PressKey('{c}')");
             }
         }
 
@@ -754,7 +851,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask PressKey(string keyName)
         {
-            Debug.Log($"[UITEST] PressKey \"{keyName}\"");
+            LogStart($"PressKey(\"{keyName}\")");
             if (keyName.Length == 1)
             {
                 await PressKey(keyName[0]);
@@ -892,6 +989,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if element was found and clicked, false otherwise</returns>
         public static async UniTask<bool> Click(Search search, float searchTime = 10f, int index = 0)
         {
+            LogStart($"Click({search})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -901,13 +999,14 @@ namespace ODDGames.UIAutomation
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Log($"Click({search}) -> '{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
                     await InputInjector.InjectPointerTap(screenPos);
+                    LogComplete($"Click({search})", $"'{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"Click({search})", $"Element not found within {searchTime}s");
             return false;
         }
 
@@ -918,7 +1017,7 @@ namespace ODDGames.UIAutomation
         internal static async UniTask Click(GameObject target)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "Click target cannot be null");
+                throw new UIAutomationException("Click target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
             Log($"Click '{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
@@ -931,8 +1030,9 @@ namespace ODDGames.UIAutomation
         /// <param name="screenPosition">Screen coordinates to click</param>
         public static async UniTask ClickAt(Vector2 screenPosition)
         {
-            Log($"Click at ({screenPosition.x:F0}, {screenPosition.y:F0})");
+            LogStart($"ClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
             await InputInjector.InjectPointerTap(screenPosition);
+            LogComplete($"ClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
         }
 
         /// <summary>
@@ -954,6 +1054,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if element was found and double-clicked, false otherwise</returns>
         public static async UniTask<bool> DoubleClick(Search search, float searchTime = 10f, int index = 0)
         {
+            LogStart($"DoubleClick({search})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -963,13 +1064,14 @@ namespace ODDGames.UIAutomation
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Log($"DoubleClick({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
                     await InputInjector.InjectPointerDoubleTap(screenPos);
+                    LogComplete($"DoubleClick({search})", $"'{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"DoubleClick({search})", $"Element not found within {searchTime}s");
             return false;
         }
 
@@ -980,7 +1082,7 @@ namespace ODDGames.UIAutomation
         internal static async UniTask DoubleClick(GameObject target)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "DoubleClick target cannot be null");
+                throw new UIAutomationException("DoubleClick target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
             Log($"DoubleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
@@ -993,8 +1095,9 @@ namespace ODDGames.UIAutomation
         /// <param name="screenPosition">Screen coordinates to double-click</param>
         public static async UniTask DoubleClickAt(Vector2 screenPosition)
         {
-            Log($"DoubleClick at ({screenPosition.x:F0}, {screenPosition.y:F0})");
+            LogStart($"DoubleClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
             await InputInjector.InjectPointerDoubleTap(screenPosition);
+            LogComplete($"DoubleClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
         }
 
         /// <summary>
@@ -1007,6 +1110,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if element was found and triple-clicked, false otherwise</returns>
         public static async UniTask<bool> TripleClick(Search search, float searchTime = 10f, int index = 0)
         {
+            LogStart($"TripleClick({search})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1016,13 +1120,14 @@ namespace ODDGames.UIAutomation
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Log($"TripleClick({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
                     await InputInjector.InjectPointerTripleTap(screenPos);
+                    LogComplete($"TripleClick({search})", $"'{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"TripleClick({search})", $"Element not found within {searchTime}s");
             return false;
         }
 
@@ -1034,7 +1139,7 @@ namespace ODDGames.UIAutomation
         internal static async UniTask TripleClick(GameObject target)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "TripleClick target cannot be null");
+                throw new UIAutomationException("TripleClick target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
             Log($"TripleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
@@ -1048,8 +1153,9 @@ namespace ODDGames.UIAutomation
         /// <param name="screenPosition">Screen coordinates to triple-click</param>
         public static async UniTask TripleClickAt(Vector2 screenPosition)
         {
-            Log($"TripleClick at ({screenPosition.x:F0}, {screenPosition.y:F0})");
+            LogStart($"TripleClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
             await InputInjector.InjectPointerTripleTap(screenPosition);
+            LogComplete($"TripleClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
         }
 
         /// <summary>
@@ -1062,6 +1168,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if element was found and held, false otherwise</returns>
         public static async UniTask<bool> Hold(Search search, float seconds, float searchTime = 10f, int index = 0)
         {
+            LogStart($"Hold({search}, {seconds}s)");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1071,13 +1178,14 @@ namespace ODDGames.UIAutomation
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Log($"Hold({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) for {seconds}s");
                     await InputInjector.InjectPointerHold(screenPos, seconds);
+                    LogComplete($"Hold({search}, {seconds}s)", $"'{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"Hold({search}, {seconds}s)", $"Element not found within {searchTime}s");
             return false;
         }
 
@@ -1089,7 +1197,7 @@ namespace ODDGames.UIAutomation
         internal static async UniTask Hold(GameObject target, float seconds)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "Hold target cannot be null");
+                throw new UIAutomationException("Hold target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
             Log($"Hold at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}' for {seconds}s");
@@ -1103,8 +1211,9 @@ namespace ODDGames.UIAutomation
         /// <param name="seconds">Duration of the hold in seconds</param>
         public static async UniTask HoldAt(Vector2 screenPosition, float seconds)
         {
-            Log($"Hold at ({screenPosition.x:F0}, {screenPosition.y:F0}) for {seconds}s");
+            LogStart($"HoldAt(({screenPosition.x:F0},{screenPosition.y:F0}), {seconds}s)");
             await InputInjector.InjectPointerHold(screenPosition, seconds);
+            LogComplete($"HoldAt(({screenPosition.x:F0},{screenPosition.y:F0}), {seconds}s)");
         }
 
         #endregion
@@ -1123,6 +1232,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if input field was found and text was typed, false otherwise</returns>
         public static async UniTask<bool> Type(Search search, string text, bool clearFirst = true, bool pressEnter = false, float searchTime = 10f, int index = 0)
         {
+            LogStart($"Type({search}, \"{text}\")");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1131,13 +1241,14 @@ namespace ODDGames.UIAutomation
                 if (results.Count > index)
                 {
                     var target = results[index];
-                    Log($"Type({search}) -> '{target.name}' text=\"{text}\" (clear={clearFirst}, enter={pressEnter})");
                     await InputInjector.TypeIntoField(target, text, clearFirst, pressEnter);
+                    LogComplete($"Type({search}, \"{text}\")", $"'{target.name}' (clear={clearFirst}, enter={pressEnter})");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"Type({search}, \"{text}\")", $"Element not found within {searchTime}s");
             return false;
         }
 
@@ -1151,7 +1262,7 @@ namespace ODDGames.UIAutomation
         internal static async UniTask Type(GameObject inputField, string text, bool clearFirst = true, bool pressEnter = false)
         {
             if (inputField == null)
-                throw new System.ArgumentNullException(nameof(inputField), "Type target cannot be null");
+                throw new UIAutomationException("Type target cannot be null");
 
             Log($"Type \"{text}\" into '{inputField.name}' (clear={clearFirst}, enter={pressEnter})");
             await InputInjector.TypeIntoField(inputField, text, clearFirst, pressEnter);
@@ -1163,8 +1274,9 @@ namespace ODDGames.UIAutomation
         /// <param name="text">The text to type</param>
         public static async UniTask TypeText(string text)
         {
-            Log($"TypeText \"{text}\"");
+            LogStart($"TypeText(\"{text}\")");
             await InputInjector.TypeText(text);
+            LogComplete($"TypeText(\"{text}\")");
         }
 
         #endregion
@@ -1182,8 +1294,9 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
         /// <returns>True if element was found and dragged, false otherwise</returns>
-        public static async UniTask<bool> Drag(Search search, Vector2 direction, float duration = 1.0f, float searchTime = 10f, int index = 0, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        public static async UniTask<bool> Drag(Search search, Vector2 direction, float duration = 0.3f, float searchTime = 10f, int index = 0, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
+            LogStart($"Drag({search}, direction=({direction.x:F0},{direction.y:F0}))");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1194,13 +1307,14 @@ namespace ODDGames.UIAutomation
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
                     var endPos = screenPos + direction;
-                    Log($"Drag({search}) -> '{target.name}' from ({screenPos.x:F0}, {screenPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
                     await InputInjector.InjectPointerDrag(screenPos, endPos, duration, holdTime, button);
+                    LogComplete($"Drag({search})", $"'{target.name}' from ({screenPos.x:F0},{screenPos.y:F0}) by ({direction.x:F0},{direction.y:F0})");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"Drag({search})", $"Element not found within {searchTime}s");
             return false;
         }
 
@@ -1214,8 +1328,9 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging (for elements requiring hold-to-drag)</param>
         /// <param name="button">Which mouse button to use for dragging</param>
         /// <returns>True if both elements were found and drag completed, false otherwise</returns>
-        public static async UniTask<bool> DragTo(Search fromSearch, Search toSearch, float duration = 1.0f, float searchTime = 10f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        public static async UniTask<bool> DragTo(Search fromSearch, Search toSearch, float duration = 0.3f, float searchTime = 10f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
+            LogStart($"DragTo({fromSearch} -> {toSearch})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1228,13 +1343,14 @@ namespace ODDGames.UIAutomation
                     var toTarget = toResults[0];
                     var fromPos = InputInjector.GetScreenPosition(fromTarget);
                     var toPos = InputInjector.GetScreenPosition(toTarget);
-                    Log($"DragTo({fromSearch}) -> '{fromTarget.name}' to ({toSearch}) -> '{toTarget.name}' over {duration}s (hold={holdTime}s, button={button})");
                     await InputInjector.InjectPointerDrag(fromPos, toPos, duration, holdTime, button);
+                    LogComplete($"DragTo({fromSearch} -> {toSearch})", $"'{fromTarget.name}' to '{toTarget.name}'");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"DragTo({fromSearch} -> {toSearch})", $"elements not found within {searchTime}s");
             return false;
         }
 
@@ -1246,10 +1362,10 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async UniTask Drag(GameObject source, Vector2 direction, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        internal static async UniTask Drag(GameObject source, Vector2 direction, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             if (source == null)
-                throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
+                throw new UIAutomationException("Drag source cannot be null");
 
             var startPos = InputInjector.GetScreenPosition(source);
             var endPos = startPos + direction;
@@ -1266,10 +1382,10 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async UniTask Drag(GameObject source, string direction, float normalizedDistance = 0.2f, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        internal static async UniTask Drag(GameObject source, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             if (source == null)
-                throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
+                throw new UIAutomationException("Drag source cannot be null");
 
             var offset = InputInjector.GetDirectionOffset(direction, normalizedDistance);
             await Drag(source, offset, duration, holdTime, button);
@@ -1283,12 +1399,12 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async UniTask DragTo(GameObject source, GameObject target, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        internal static async UniTask DragTo(GameObject source, GameObject target, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             if (source == null)
-                throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
+                throw new UIAutomationException("Drag source cannot be null");
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "Drag target cannot be null");
+                throw new UIAutomationException("Drag target cannot be null");
 
             var startPos = InputInjector.GetScreenPosition(source);
             var endPos = InputInjector.GetScreenPosition(target);
@@ -1304,10 +1420,10 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async UniTask DragTo(GameObject source, Vector2 targetPosition, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        internal static async UniTask DragTo(GameObject source, Vector2 targetPosition, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             if (source == null)
-                throw new System.ArgumentNullException(nameof(source), "Drag source cannot be null");
+                throw new UIAutomationException("Drag source cannot be null");
 
             var startPos = InputInjector.GetScreenPosition(source);
             Log($"Drag from '{source.name}' to ({targetPosition.x:F0}, {targetPosition.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
@@ -1322,10 +1438,11 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
-        public static async UniTask DragFromTo(Vector2 startPosition, Vector2 endPosition, float duration = 1.0f, float holdTime = 0.5f, PointerButton button = PointerButton.Left)
+        public static async UniTask DragFromTo(Vector2 startPosition, Vector2 endPosition, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
-            Log($"Drag from ({startPosition.x:F0}, {startPosition.y:F0}) to ({endPosition.x:F0}, {endPosition.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
+            LogStart($"DragFromTo(({startPosition.x:F0},{startPosition.y:F0}) -> ({endPosition.x:F0},{endPosition.y:F0}))");
             await InputInjector.InjectPointerDrag(startPosition, endPosition, duration, holdTime, button);
+            LogComplete($"DragFromTo(({startPosition.x:F0},{startPosition.y:F0}) -> ({endPosition.x:F0},{endPosition.y:F0}))");
         }
 
         #endregion
@@ -1340,7 +1457,7 @@ namespace ODDGames.UIAutomation
         internal static async UniTask Scroll(GameObject target, float delta)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "Scroll target cannot be null");
+                throw new UIAutomationException("Scroll target cannot be null");
 
             var screenPos = InputInjector.GetScreenPosition(target);
             Log($"Scroll on '{target.name}' delta={delta}");
@@ -1356,10 +1473,11 @@ namespace ODDGames.UIAutomation
         internal static async UniTask Scroll(GameObject target, string direction, float amount = 0.3f)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "Scroll target cannot be null");
+                throw new UIAutomationException("Scroll target cannot be null");
 
-            Log($"Scroll '{target.name}' {direction} amount={amount}");
+            LogStart($"Scroll(target=\"{target.name}\", {direction}, amount={amount})");
             await InputInjector.ScrollElement(target, direction, amount);
+            LogComplete($"Scroll(target=\"{target.name}\", {direction})");
         }
 
         /// <summary>
@@ -1369,8 +1487,9 @@ namespace ODDGames.UIAutomation
         /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
         public static async UniTask ScrollAt(Vector2 position, float delta)
         {
-            Log($"Scroll at ({position.x:F0}, {position.y:F0}) delta={delta}");
+            LogStart($"ScrollAt(({position.x:F0},{position.y:F0}), delta={delta})");
             await InputInjector.InjectScroll(position, delta);
+            LogComplete($"ScrollAt(({position.x:F0},{position.y:F0}), delta={delta})");
         }
 
         /// <summary>
@@ -1383,6 +1502,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if element was found and scrolled, false otherwise</returns>
         public static async UniTask<bool> Scroll(Search search, float delta, float searchTime = 10f, int index = 0)
         {
+            LogStart($"Scroll({search}, delta={delta})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1392,13 +1512,14 @@ namespace ODDGames.UIAutomation
                 {
                     var target = results[index];
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Log($"Scroll({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) delta={delta}");
                     await InputInjector.InjectScroll(screenPos, delta);
+                    LogComplete($"Scroll({search})", $"'{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"Scroll({search})", $"element not found within {searchTime}s");
             return false;
         }
 
@@ -1413,6 +1534,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if element was found and scrolled, false otherwise</returns>
         public static async UniTask<bool> Scroll(Search search, string direction, float amount = 0.3f, float searchTime = 10f, int index = 0)
         {
+            LogStart($"Scroll({search}, {direction}, amount={amount})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1421,13 +1543,14 @@ namespace ODDGames.UIAutomation
                 if (results.Count > index)
                 {
                     var target = results[index];
-                    Log($"Scroll({search}) -> '{target.name}' {direction} amount={amount}");
                     await InputInjector.ScrollElement(target, direction, amount);
+                    LogComplete($"Scroll({search}, {direction})", $"'{target.name}'");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"Scroll({search}, {direction})", $"element not found within {searchTime}s");
             return false;
         }
 
@@ -1443,10 +1566,11 @@ namespace ODDGames.UIAutomation
         public static async UniTask SetSlider(Slider slider, float normalizedValue)
         {
             if (slider == null)
-                throw new System.ArgumentNullException(nameof(slider), "Slider cannot be null");
+                throw new UIAutomationException("Slider cannot be null");
 
-            Log($"SetSlider '{slider.name}' to {normalizedValue:F2}");
+            LogStart($"SetSlider(\"{slider.name}\", {normalizedValue:F2})");
             await InputInjector.SetSlider(slider, normalizedValue);
+            LogComplete($"SetSlider(\"{slider.name}\", {normalizedValue:F2})");
         }
 
         /// <summary>
@@ -1457,11 +1581,11 @@ namespace ODDGames.UIAutomation
         internal static async UniTask SetSlider(GameObject target, float normalizedValue)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "Slider target cannot be null");
+                throw new UIAutomationException("Slider target cannot be null");
 
             var slider = target.GetComponent<Slider>();
             if (slider == null)
-                throw new System.InvalidOperationException($"GameObject '{target.name}' does not have a Slider component");
+                throw new UIAutomationException($"GameObject '{target.name}' does not have a Slider component");
 
             await SetSlider(slider, normalizedValue);
         }
@@ -1474,10 +1598,11 @@ namespace ODDGames.UIAutomation
         public static async UniTask SetScrollbar(Scrollbar scrollbar, float normalizedValue)
         {
             if (scrollbar == null)
-                throw new System.ArgumentNullException(nameof(scrollbar), "Scrollbar cannot be null");
+                throw new UIAutomationException("Scrollbar cannot be null");
 
-            Log($"SetScrollbar '{scrollbar.name}' to {normalizedValue:F2}");
+            LogStart($"SetScrollbar(\"{scrollbar.name}\", {normalizedValue:F2})");
             await InputInjector.SetScrollbar(scrollbar, normalizedValue);
+            LogComplete($"SetScrollbar(\"{scrollbar.name}\", {normalizedValue:F2})");
         }
 
         /// <summary>
@@ -1488,11 +1613,11 @@ namespace ODDGames.UIAutomation
         internal static async UniTask SetScrollbar(GameObject target, float normalizedValue)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "Scrollbar target cannot be null");
+                throw new UIAutomationException("Scrollbar target cannot be null");
 
             var scrollbar = target.GetComponent<Scrollbar>();
             if (scrollbar == null)
-                throw new System.InvalidOperationException($"GameObject '{target.name}' does not have a Scrollbar component");
+                throw new UIAutomationException($"GameObject '{target.name}' does not have a Scrollbar component");
 
             await SetScrollbar(scrollbar, normalizedValue);
         }
@@ -1505,11 +1630,12 @@ namespace ODDGames.UIAutomation
         public static async UniTask ClickSlider(Slider slider, float normalizedValue)
         {
             if (slider == null)
-                throw new System.ArgumentNullException(nameof(slider), "Slider cannot be null");
+                throw new UIAutomationException("Slider cannot be null");
 
             var clickPos = InputInjector.GetSliderClickPosition(slider, normalizedValue);
-            Log($"ClickSlider '{slider.name}' at {normalizedValue:F2} position ({clickPos.x:F0}, {clickPos.y:F0})");
+            LogStart($"ClickSlider(\"{slider.name}\", {normalizedValue:F2})");
             await InputInjector.InjectPointerTap(clickPos);
+            LogComplete($"ClickSlider(\"{slider.name}\", {normalizedValue:F2})", $"at ({clickPos.x:F0},{clickPos.y:F0})");
         }
 
         /// <summary>
@@ -1519,15 +1645,16 @@ namespace ODDGames.UIAutomation
         /// <param name="fromValue">Starting value (0-1)</param>
         /// <param name="toValue">Ending value (0-1)</param>
         /// <param name="duration">Duration of the drag</param>
-        public static async UniTask DragSlider(Slider slider, float fromValue, float toValue, float duration = 1.0f, float holdTime = 0.5f)
+        public static async UniTask DragSlider(Slider slider, float fromValue, float toValue, float duration = 0.3f, float holdTime = 0.05f)
         {
             if (slider == null)
-                throw new System.ArgumentNullException(nameof(slider), "Slider cannot be null");
+                throw new UIAutomationException("Slider cannot be null");
 
             var startPos = InputInjector.GetSliderClickPosition(slider, fromValue);
             var endPos = InputInjector.GetSliderClickPosition(slider, toValue);
-            Log($"DragSlider '{slider.name}' from {fromValue:F2} to {toValue:F2} (hold={holdTime}s)");
+            LogStart($"DragSlider(\"{slider.name}\", {fromValue:F2} -> {toValue:F2})");
             await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime);
+            LogComplete($"DragSlider(\"{slider.name}\", {fromValue:F2} -> {toValue:F2})");
         }
 
         /// <summary>
@@ -1539,6 +1666,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if slider was found and clicked, false otherwise</returns>
         public static async UniTask<bool> ClickSlider(Search search, float normalizedValue, float searchTime = 10f)
         {
+            LogStart($"ClickSlider({search}, {normalizedValue:F2})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1549,14 +1677,15 @@ namespace ODDGames.UIAutomation
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
-                        Log($"ClickSlider({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await ClickSlider(slider, normalizedValue);
+                        LogComplete($"ClickSlider({search})", $"'{go.name}'");
                         return true;
                     }
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"ClickSlider({search})", $"slider not found within {searchTime}s");
             return false;
         }
 
@@ -1569,8 +1698,9 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag</param>
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <returns>True if slider was found and dragged, false otherwise</returns>
-        public static async UniTask<bool> DragSlider(Search search, float fromValue, float toValue, float duration = 1.0f, float searchTime = 10f, float holdTime = 0.5f)
+        public static async UniTask<bool> DragSlider(Search search, float fromValue, float toValue, float duration = 0.3f, float searchTime = 10f, float holdTime = 0.05f)
         {
+            LogStart($"DragSlider({search}, {fromValue:F2} -> {toValue:F2})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1581,14 +1711,15 @@ namespace ODDGames.UIAutomation
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
-                        Log($"DragSlider({search}) -> '{go.name}' from {fromValue:F2} to {toValue:F2}");
                         await DragSlider(slider, fromValue, toValue, duration, holdTime);
+                        LogComplete($"DragSlider({search})", $"'{go.name}'");
                         return true;
                     }
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"DragSlider({search})", $"slider not found within {searchTime}s");
             return false;
         }
 
@@ -1601,6 +1732,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if slider was found and set, false otherwise</returns>
         public static async UniTask<bool> SetSlider(Search search, float normalizedValue, float searchTime = 10f)
         {
+            LogStart($"SetSlider({search}, {normalizedValue:F2})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1611,14 +1743,15 @@ namespace ODDGames.UIAutomation
                     var slider = go.GetComponent<Slider>();
                     if (slider != null)
                     {
-                        Log($"SetSlider({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await SetSlider(slider, normalizedValue);
+                        LogComplete($"SetSlider({search})", $"'{go.name}'");
                         return true;
                     }
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"SetSlider({search})", $"slider not found within {searchTime}s");
             return false;
         }
 
@@ -1631,6 +1764,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if scrollbar was found and set, false otherwise</returns>
         public static async UniTask<bool> SetScrollbar(Search search, float normalizedValue, float searchTime = 10f)
         {
+            LogStart($"SetScrollbar({search}, {normalizedValue:F2})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1641,14 +1775,15 @@ namespace ODDGames.UIAutomation
                     var scrollbar = go.GetComponent<Scrollbar>();
                     if (scrollbar != null)
                     {
-                        Log($"SetScrollbar({search}) -> '{go.name}' value={normalizedValue:F2}");
                         await SetScrollbar(scrollbar, normalizedValue);
+                        LogComplete($"SetScrollbar({search})", $"'{go.name}'");
                         return true;
                     }
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"SetScrollbar({search})", $"scrollbar not found within {searchTime}s");
             return false;
         }
 
@@ -1663,10 +1798,10 @@ namespace ODDGames.UIAutomation
         /// <param name="direction">Direction: "up", "down", "left", "right"</param>
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
-        internal static async UniTask Swipe(GameObject target, string direction, float normalizedDistance = 0.2f, float duration = 1.0f)
+        internal static async UniTask Swipe(GameObject target, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
         {
             if (target == null)
-                throw new System.ArgumentNullException(nameof(target), "Swipe target cannot be null");
+                throw new UIAutomationException("Swipe target cannot be null");
 
             Log($"Swipe on '{target.name}' {direction} distance={normalizedDistance} duration={duration}s");
             await InputInjector.Swipe(target, direction, normalizedDistance, duration);
@@ -1679,12 +1814,26 @@ namespace ODDGames.UIAutomation
         /// <param name="direction">Direction: "up", "down", "left", "right"</param>
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
-        public static async UniTask SwipeAt(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 1.0f)
+        /// <summary>
+        /// Internal swipe implementation - no logging as callers handle that.
+        /// </summary>
+        private static async UniTask SwipeAtInternal(Vector2 position, string direction, float normalizedDistance, float duration)
         {
             var offset = InputInjector.GetDirectionOffset(direction, normalizedDistance);
             var endPos = position + offset;
-            Log($"Swipe at ({position.x:F0}, {position.y:F0}) {direction}");
-            await InputInjector.InjectMouseDrag(position, endPos, duration);
+            // Swipes should have no hold time - they're quick drag motions
+            // Use InjectPointerDrag which handles focus and platform detection
+            await InputInjector.InjectPointerDrag(position, endPos, duration, holdTime: 0f);
+        }
+
+        /// <summary>
+        /// Performs a swipe gesture at a specific screen position (pixels).
+        /// </summary>
+        public static async UniTask SwipeAt(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
+        {
+            LogStart($"SwipeAt(({position.x:F0},{position.y:F0}), {direction})");
+            await SwipeAtInternal(position, direction, normalizedDistance, duration);
+            LogComplete($"SwipeAt(({position.x:F0},{position.y:F0}), {direction})");
         }
 
         /// <summary>
@@ -1693,7 +1842,7 @@ namespace ODDGames.UIAutomation
         /// <param name="target">The GameObject to pinch on</param>
         /// <param name="scale">Scale factor (less than 1 = zoom out, greater than 1 = zoom in)</param>
         /// <param name="duration">Duration of the pinch</param>
-        internal static async UniTask Pinch(GameObject target, float scale, float duration = 1.0f)
+        internal static async UniTask Pinch(GameObject target, float scale, float duration = 0.3f)
         {
             Log($"Pinch on '{target?.name ?? "screen center"}' scale={scale} duration={duration}s");
             await InputInjector.Pinch(target, scale, duration);
@@ -1705,10 +1854,11 @@ namespace ODDGames.UIAutomation
         /// <param name="position">Screen position for the pinch center</param>
         /// <param name="scale">Scale factor</param>
         /// <param name="duration">Duration of the pinch</param>
-        public static async UniTask PinchAt(Vector2 position, float scale, float duration = 1.0f)
+        public static async UniTask PinchAt(Vector2 position, float scale, float duration = 0.3f)
         {
-            Log($"Pinch at ({position.x:F0}, {position.y:F0}) scale={scale} duration={duration}s");
+            LogStart($"PinchAt(({position.x:F0},{position.y:F0}), scale={scale})");
             await InputInjector.InjectPinch(position, scale, duration);
+            LogComplete($"PinchAt(({position.x:F0},{position.y:F0}), scale={scale})");
         }
 
         /// <summary>
@@ -1720,8 +1870,9 @@ namespace ODDGames.UIAutomation
         /// <param name="fingerDistancePixels">Initial distance of each finger from center in pixels</param>
         public static async UniTask PinchAt(Vector2 position, float scale, float duration, float fingerDistancePixels)
         {
-            Log($"Pinch at ({position.x:F0}, {position.y:F0}) scale={scale} duration={duration}s fingerDistance={fingerDistancePixels}px");
+            LogStart($"PinchAt(({position.x:F0},{position.y:F0}), scale={scale}, fingerDistance={fingerDistancePixels}px)");
             await InputInjector.InjectPinch(position, scale, duration, fingerDistancePixels);
+            LogComplete($"PinchAt(({position.x:F0},{position.y:F0}), scale={scale})");
         }
 
         /// <summary>
@@ -1729,11 +1880,12 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <param name="scale">Scale factor (less than 1 = zoom out, greater than 1 = zoom in)</param>
         /// <param name="duration">Duration of the pinch</param>
-        public static async UniTask Pinch(float scale, float duration = 1.0f)
+        public static async UniTask Pinch(float scale, float duration = 0.3f)
         {
+            LogStart($"Pinch(scale={scale}) at center");
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            Log($"Pinch at screen center scale={scale} duration={duration}s");
             await InputInjector.InjectPinch(center, scale, duration);
+            LogComplete($"Pinch(scale={scale}) at center");
         }
 
         /// <summary>
@@ -1743,7 +1895,7 @@ namespace ODDGames.UIAutomation
         /// <param name="yPercent">Vertical position as percentage (0-1)</param>
         /// <param name="scale">Scale factor</param>
         /// <param name="duration">Duration of the pinch</param>
-        public static async UniTask PinchAt(float xPercent, float yPercent, float scale, float duration = 1.0f)
+        public static async UniTask PinchAt(float xPercent, float yPercent, float scale, float duration = 0.3f)
         {
             var position = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
             await PinchAt(position, scale, duration);
@@ -1757,7 +1909,7 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
-        internal static async UniTask TwoFingerSwipe(GameObject target, string direction, float normalizedDistance = 0.2f, float duration = 1.0f, float fingerSpacing = 0.03f)
+        internal static async UniTask TwoFingerSwipe(GameObject target, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             Log($"TwoFingerSwipe on '{target?.name ?? "screen center"}' {direction}");
             await InputInjector.TwoFingerSwipe(target, direction, normalizedDistance, duration, fingerSpacing);
@@ -1771,10 +1923,11 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
-        public static async UniTask TwoFingerSwipeAt(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 1.0f, float fingerSpacing = 0.03f)
+        public static async UniTask TwoFingerSwipeAt(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
-            Log($"TwoFingerSwipe at ({position.x:F0}, {position.y:F0}) {direction}");
+            LogStart($"TwoFingerSwipeAt(({position.x:F0},{position.y:F0}), {direction})");
             await InputInjector.InjectTwoFingerSwipe(position, direction, normalizedDistance, duration, fingerSpacing);
+            LogComplete($"TwoFingerSwipeAt(({position.x:F0},{position.y:F0}), {direction})");
         }
 
         /// <summary>
@@ -1784,11 +1937,12 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
-        public static async UniTask TwoFingerSwipe(SwipeDirection direction, float normalizedDistance = 0.2f, float duration = 1.0f, float fingerSpacing = 0.03f)
+        public static async UniTask TwoFingerSwipe(SwipeDirection direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            Log($"TwoFingerSwipe at screen center {direction}");
+            LogStart($"TwoFingerSwipe({direction}) at center");
             await InputInjector.InjectTwoFingerSwipe(center, direction.ToString().ToLower(), normalizedDistance, duration, fingerSpacing);
+            LogComplete($"TwoFingerSwipe({direction}) at center");
         }
 
         /// <summary>
@@ -1800,7 +1954,7 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
-        public static async UniTask TwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float normalizedDistance = 0.2f, float duration = 1.0f, float fingerSpacing = 0.03f)
+        public static async UniTask TwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             var position = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
             await TwoFingerSwipeAt(position, direction.ToString().ToLower(), normalizedDistance, duration, fingerSpacing);
@@ -1813,10 +1967,11 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle (positive = clockwise, negative = counter-clockwise)</param>
         /// <param name="duration">Duration of the rotation</param>
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
-        internal static async UniTask Rotate(GameObject target, float degrees, float duration = 1.0f, float fingerDistance = 0.05f)
+        internal static async UniTask Rotate(GameObject target, float degrees, float duration = 0.3f, float fingerDistance = 0.05f)
         {
-            Log($"Rotate on '{target?.name ?? "screen center"}' degrees={degrees} duration={duration}s");
+            LogStart($"Rotate(target=\"{target?.name ?? "null"}\", {degrees}°, {duration}s)");
             await InputInjector.Rotate(target, degrees, duration, fingerDistance);
+            LogComplete($"Rotate(target=\"{target?.name ?? "null"}\", {degrees}°)");
         }
 
         /// <summary>
@@ -1826,10 +1981,11 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle</param>
         /// <param name="duration">Duration of the rotation</param>
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
-        public static async UniTask RotateAt(Vector2 position, float degrees, float duration = 1.0f, float fingerDistance = 0.05f)
+        public static async UniTask RotateAt(Vector2 position, float degrees, float duration = 0.3f, float fingerDistance = 0.05f)
         {
-            Log($"Rotate at ({position.x:F0}, {position.y:F0}) degrees={degrees} duration={duration}s");
+            LogStart($"RotateAt(({position.x:F0},{position.y:F0}), {degrees}°, {duration}s)");
             await InputInjector.InjectRotate(position, degrees, duration, fingerDistance);
+            LogComplete($"RotateAt(({position.x:F0},{position.y:F0}), {degrees}°)");
         }
 
         /// <summary>
@@ -1840,7 +1996,7 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle</param>
         /// <param name="duration">Duration of the rotation</param>
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
-        public static async UniTask RotateAt(float xPercent, float yPercent, float degrees, float duration = 1.0f, float fingerDistance = 0.05f)
+        public static async UniTask RotateAt(float xPercent, float yPercent, float degrees, float duration = 0.3f, float fingerDistance = 0.05f)
         {
             var position = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
             await RotateAt(position, degrees, duration, fingerDistance);
@@ -1855,8 +2011,9 @@ namespace ODDGames.UIAutomation
         /// <param name="radiusPixels">Distance from center in pixels for finger positions</param>
         public static async UniTask RotateAtPixels(Vector2 position, float degrees, float duration, float radiusPixels)
         {
-            Log($"Rotate at ({position.x:F0}, {position.y:F0}) degrees={degrees} duration={duration}s radius={radiusPixels}px");
+            LogStart($"RotateAtPixels(({position.x:F0},{position.y:F0}), {degrees}°, radius={radiusPixels}px)");
             await InputInjector.InjectRotatePixels(position, degrees, duration, radiusPixels);
+            LogComplete($"RotateAtPixels(({position.x:F0},{position.y:F0}), {degrees}°)");
         }
 
         /// <summary>
@@ -1865,11 +2022,12 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle (positive = clockwise, negative = counter-clockwise)</param>
         /// <param name="duration">Duration of the rotation</param>
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
-        public static async UniTask Rotate(float degrees, float duration = 1.0f, float fingerDistance = 0.05f)
+        public static async UniTask Rotate(float degrees, float duration = 0.3f, float fingerDistance = 0.05f)
         {
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            Log($"Rotate at screen center degrees={degrees} duration={duration}s");
+            LogStart($"Rotate({degrees}°) at center");
             await InputInjector.InjectRotate(center, degrees, duration, fingerDistance);
+            LogComplete($"Rotate({degrees}°) at center");
         }
 
         /// <summary>
@@ -1878,12 +2036,13 @@ namespace ODDGames.UIAutomation
         /// <param name="direction">The direction to drag (pixel offset)</param>
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
-        public static async UniTask Drag(Vector2 direction, float duration = 1.0f, float holdTime = 0.5f)
+        public static async UniTask Drag(Vector2 direction, float duration = 0.3f, float holdTime = 0.05f)
         {
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
             var endPos = center + direction;
-            Log($"Drag from screen center by ({direction.x:F0}, {direction.y:F0}) over {duration}s");
+            LogStart($"Drag(direction=({direction.x:F0},{direction.y:F0})) from center");
             await InputInjector.InjectPointerDrag(center, endPos, duration, holdTime);
+            LogComplete($"Drag(direction=({direction.x:F0},{direction.y:F0})) from center");
         }
 
         #endregion
@@ -1899,6 +2058,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if dropdown was found and option selected, false otherwise</returns>
         public static async UniTask<bool> ClickDropdown(Search search, int optionIndex, float searchTime = 10f)
         {
+            LogStart($"ClickDropdown({search}, index={optionIndex})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1910,8 +2070,8 @@ namespace ODDGames.UIAutomation
                     var legacyDropdown = go.GetComponent<Dropdown>();
                     if (legacyDropdown != null)
                     {
-                        Log($"ClickDropdown({search}) -> '{go.name}' index={optionIndex}");
                         await ClickDropdownItem(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
+                        LogComplete($"ClickDropdown({search})", $"'{go.name}' index={optionIndex}");
                         return true;
                     }
 
@@ -1919,14 +2079,15 @@ namespace ODDGames.UIAutomation
                     var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
                     if (tmpDropdown != null)
                     {
-                        Log($"ClickDropdown({search}) -> '{go.name}' index={optionIndex}");
                         await ClickDropdownItem(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
+                        LogComplete($"ClickDropdown({search})", $"'{go.name}' index={optionIndex}");
                         return true;
                     }
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"ClickDropdown({search}, index={optionIndex})", $"dropdown not found within {searchTime}s");
             return false;
         }
 
@@ -1939,6 +2100,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if dropdown was found and option selected, false otherwise</returns>
         public static async UniTask<bool> ClickDropdown(Search search, string optionLabel, float searchTime = 10f)
         {
+            LogStart($"ClickDropdown({search}, label=\"{optionLabel}\")");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
@@ -1953,8 +2115,8 @@ namespace ODDGames.UIAutomation
                         int optionIndex = legacyDropdown.options.FindIndex(o => o.text == optionLabel);
                         if (optionIndex >= 0)
                         {
-                            Log($"ClickDropdown({search}) -> '{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
                             await ClickDropdownItem(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
+                            LogComplete($"ClickDropdown({search})", $"'{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
                             return true;
                         }
                     }
@@ -1966,8 +2128,8 @@ namespace ODDGames.UIAutomation
                         int optionIndex = tmpDropdown.options.FindIndex(o => o.text == optionLabel);
                         if (optionIndex >= 0)
                         {
-                            Log($"ClickDropdown({search}) -> '{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
                             await ClickDropdownItem(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
+                            LogComplete($"ClickDropdown({search})", $"'{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
                             return true;
                         }
                     }
@@ -1975,6 +2137,7 @@ namespace ODDGames.UIAutomation
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"ClickDropdown({search}, label=\"{optionLabel}\")", $"dropdown or option not found within {searchTime}s");
             return false;
         }
 
@@ -1993,7 +2156,7 @@ namespace ODDGames.UIAutomation
             // Wait for new toggles to appear (the dropdown items)
             Toggle[] newToggles = null;
             float waitTime = 0f;
-            const float maxWaitTime = 0.5f;
+            const float maxWaitTime = 2f;
 
             while (waitTime < maxWaitTime)
             {
@@ -2012,7 +2175,7 @@ namespace ODDGames.UIAutomation
                 if (newToggles.Length > optionIndex)
                 {
                     var targetToggle = newToggles[optionIndex];
-                    Log($"ClickDropdown selecting option {optionIndex}: '{targetToggle.name}'");
+                    LogDebug($"ClickDropdown selecting option {optionIndex}: '{targetToggle.name}'");
                     await Click(targetToggle.gameObject);
                     return;
                 }
@@ -2021,7 +2184,7 @@ namespace ODDGames.UIAutomation
                 waitTime += 0.05f;
             }
 
-            Debug.LogWarning($"[ActionExecutor] ClickDropdown - Item at index {optionIndex} not found (found {newToggles?.Length ?? 0} new toggles)");
+            LogFail($"ClickDropdown", $"item at index {optionIndex} not found (found {newToggles?.Length ?? 0} new toggles)");
         }
 
         #endregion
@@ -2036,6 +2199,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if any element was found and clicked, false otherwise</returns>
         public static async UniTask<bool> ClickAny(Search search, float searchTime = 10f)
         {
+            LogStart($"ClickAny({search})");
             float startTime = Time.realtimeSinceStartup;
             var rnd = new System.Random((int)System.DateTime.Now.Millisecond);
 
@@ -2047,13 +2211,14 @@ namespace ODDGames.UIAutomation
                     // Randomly select one
                     var target = results.OrderBy(_ => rnd.Next()).First();
                     var screenPos = InputInjector.GetScreenPosition(target);
-                    Log($"ClickAny({search}) -> '{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0}) (from {results.Count} matches)");
                     await Click(target);
+                    LogComplete($"ClickAny({search})", $"'{target.name}' at ({screenPos.x:F0},{screenPos.y:F0}) from {results.Count} matches");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"ClickAny({search})", $"no elements found within {searchTime}s");
             return false;
         }
 
@@ -2249,6 +2414,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if element found, false if timeout</returns>
         public static async UniTask<bool> WaitFor(Search search, float timeout = 10f)
         {
+            LogStart($"WaitFor({search})");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
@@ -2256,13 +2422,13 @@ namespace ODDGames.UIAutomation
                 var result = search.FindFirst();
                 if (result != null)
                 {
-                    Log($"WaitFor({search}) found '{result.name}'");
+                    LogComplete($"WaitFor({search})", $"found '{result.name}'");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
-            LogDebug($"WaitFor({search}) timed out after {timeout}s");
+            LogFail($"WaitFor({search})", $"timed out after {timeout}s");
             return false;
         }
 
@@ -2275,6 +2441,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if text matched, false if timeout</returns>
         public static async UniTask<bool> WaitFor(Search search, string expectedText, float timeout = 10f)
         {
+            LogStart($"WaitFor({search}, text=\"{expectedText}\", timeout={timeout}s)");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
@@ -2295,13 +2462,15 @@ namespace ODDGames.UIAutomation
 
                     if (actual == expectedText)
                     {
-                        Log($"WaitFor({search}, \"{expectedText}\") satisfied");
+                        float elapsed = Time.realtimeSinceStartup - startTime;
+                        LogComplete($"WaitFor({search}, text=\"{expectedText}\")", $"satisfied after {elapsed:F2}s");
                         return true;
                     }
                 }
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"WaitFor({search}, text=\"{expectedText}\")", $"timed out after {timeout}s");
             return false;
         }
 
@@ -2313,6 +2482,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if element gone, false if timeout</returns>
         public static async UniTask<bool> WaitForNot(Search search, float timeout = 10f)
         {
+            LogStart($"WaitForNot({search}, timeout={timeout}s)");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
@@ -2320,13 +2490,14 @@ namespace ODDGames.UIAutomation
                 var result = search.FindFirst();
                 if (result == null)
                 {
-                    Log($"WaitForNot({search}) satisfied");
+                    float elapsed = Time.realtimeSinceStartup - startTime;
+                    LogComplete($"WaitForNot({search})", $"satisfied after {elapsed:F2}s");
                     return true;
                 }
                 await UniTask.Delay(100, true);
             }
 
-            LogDebug($"WaitForNot({search}) timed out after {timeout}s");
+            LogFail($"WaitForNot({search})", $"timed out after {timeout}s");
             return false;
         }
 
@@ -2338,6 +2509,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if truthy, false if timeout</returns>
         public static async UniTask<bool> WaitFor(string path, float timeout = 10f)
         {
+            LogStart($"WaitFor(path=\"{path}\", timeout={timeout}s)");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
@@ -2347,7 +2519,8 @@ namespace ODDGames.UIAutomation
                     var value = ResolveStaticPath(path);
                     if (IsTruthy(value))
                     {
-                        Log($"WaitFor({path}) satisfied");
+                        float elapsed = Time.realtimeSinceStartup - startTime;
+                        LogComplete($"WaitFor(path=\"{path}\")", $"satisfied after {elapsed:F2}s");
                         return true;
                     }
                 }
@@ -2359,6 +2532,7 @@ namespace ODDGames.UIAutomation
                 await UniTask.Delay(100, true);
             }
 
+            LogFail($"WaitFor(path=\"{path}\")", $"timed out after {timeout}s");
             return false;
         }
 
@@ -2372,6 +2546,7 @@ namespace ODDGames.UIAutomation
         /// <returns>True if value matched, false if timeout</returns>
         public static async UniTask<bool> WaitFor<T>(string path, T expected, float timeout = 10f)
         {
+            LogStart($"WaitFor(path=\"{path}\", expected={expected}, timeout={timeout}s)");
             float startTime = Time.realtimeSinceStartup;
 
             while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
@@ -2381,7 +2556,8 @@ namespace ODDGames.UIAutomation
                     var value = ResolveStaticPath(path);
                     if (value is T typedValue && Equals(typedValue, expected))
                     {
-                        Log($"WaitFor({path}, {expected}) satisfied");
+                        float elapsed = Time.realtimeSinceStartup - startTime;
+                        LogComplete($"WaitFor(path=\"{path}\", expected={expected})", $"satisfied after {elapsed:F2}s");
                         return true;
                     }
                     // Try conversion
@@ -2392,7 +2568,8 @@ namespace ODDGames.UIAutomation
                             var converted = (T)Convert.ChangeType(value, typeof(T));
                             if (Equals(converted, expected))
                             {
-                                Log($"WaitFor({path}, {expected}) satisfied");
+                                float elapsed = Time.realtimeSinceStartup - startTime;
+                                LogComplete($"WaitFor(path=\"{path}\", expected={expected})", $"satisfied after {elapsed:F2}s");
                                 return true;
                             }
                         }
@@ -2407,7 +2584,7 @@ namespace ODDGames.UIAutomation
                 await UniTask.Delay(100, true);
             }
 
-            LogDebug($"WaitFor({path}, {expected}) timed out after {timeout}s");
+            LogFail($"WaitFor(path=\"{path}\", expected={expected})", $"timed out after {timeout}s");
             return false;
         }
 
@@ -2420,8 +2597,9 @@ namespace ODDGames.UIAutomation
 
         private static object ResolveStaticPath(string path)
         {
+            LogDebug($"Reflect(\"{path}\")");
             if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Path cannot be null or empty", nameof(path));
+                throw new UIAutomationException("Reflect path cannot be null or empty");
 
             var parts = path.Split('.');
 
@@ -2457,7 +2635,7 @@ namespace ODDGames.UIAutomation
                     var hint = matches.Count > 1
                         ? $" Multiple types found: {string.Join(", ", matches.Select(t => t.FullName).Take(5))}. Use full namespace to disambiguate."
                         : " Make sure to include the full namespace (e.g., 'MyNamespace.MyClass.Property').";
-                    throw new InvalidOperationException($"Could not find type '{firstPart}' in path: {path}.{hint}");
+                    throw new UIAutomationException($"Reflect: Could not find type '{firstPart}' in path: {path}.{hint}");
                 }
             }
 
@@ -2843,37 +3021,44 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a swipe gesture on an element.
         /// </summary>
-        public static async UniTask Swipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 1.0f, bool throwIfMissing = true, float searchTime = 10)
+        public static async UniTask Swipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, bool throwIfMissing = true, float searchTime = 10)
         {
-            Debug.Log($"[UITEST] Swipe [{direction}] on {search}");
+            LogStart($"Swipe({search}, {direction})");
 
             var element = await Find<RectTransform>(search, throwIfMissing, searchTime);
-            if (element == null) return;
+            if (element == null)
+            {
+                LogFail($"Swipe({search}, {direction})", "Element not found");
+                return;
+            }
 
             await InputInjector.Swipe(element.gameObject, direction.ToString().ToLower(), distance, duration);
             await ActionComplete();
+            LogComplete($"Swipe({search}, {direction})", $"'{element.name}'");
         }
 
         /// <summary>
         /// Performs a swipe gesture at screen center.
         /// </summary>
-        public static async UniTask Swipe(SwipeDirection direction, float distance = 0.2f, float duration = 1.0f)
+        public static async UniTask Swipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
         {
+            LogStart($"Swipe({direction}) at center");
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            Debug.Log($"[UITEST] Swipe [{direction}] at screen center");
-            await SwipeAt(center, direction.ToString().ToLower(), distance, duration);
+            await SwipeAtInternal(center, direction.ToString().ToLower(), distance, duration);
             await ActionComplete();
+            LogComplete($"Swipe({direction}) at center");
         }
 
         /// <summary>
         /// Performs a swipe gesture at a specific screen position.
         /// </summary>
-        public static async UniTask SwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 1.0f)
+        public static async UniTask SwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
         {
+            LogStart($"SwipeAt({xPercent:P0}, {yPercent:P0}, {direction})");
             var startPos = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
-            Debug.Log($"[UITEST] SwipeAt ({xPercent:P0}, {yPercent:P0}) [{direction}]");
-            await SwipeAt(startPos, direction.ToString().ToLower(), distance, duration);
+            await SwipeAtInternal(startPos, direction.ToString().ToLower(), distance, duration);
             await ActionComplete();
+            LogComplete($"SwipeAt({xPercent:P0}, {yPercent:P0}, {direction})");
         }
 
         #endregion
@@ -2972,22 +3157,23 @@ namespace ODDGames.UIAutomation
         /// <param name="throwIfMissing">If true, throws exception when target not found</param>
         /// <param name="searchTime">Time to search for the scroll view</param>
         /// <returns>The GameObject of the target if found, null otherwise</returns>
-        public static async UniTask<GameObject> ScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20, bool throwIfMissing = true, float searchTime = 5)
+        public static async UniTask<GameObject> ScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20, bool throwIfMissing = true, float searchTime = 10f)
         {
-            Log($"ScrollTo: searching for scroll view");
+            LogStart($"ScrollTo({scrollViewSearch}, {targetSearch})");
             var scrollRect = await Find<ScrollRect>(scrollViewSearch, true, searchTime);
 
             if (scrollRect == null)
             {
                 if (throwIfMissing)
-                    throw new Exception($"ScrollTo: Could not find ScrollRect matching: {scrollViewSearch}");
+                    throw new UIAutomationNotFoundException($"ScrollTo: Could not find ScrollRect matching: {scrollViewSearch}");
+                LogFail($"ScrollTo({scrollViewSearch}, {targetSearch})", "ScrollRect not found");
                 return null;
             }
 
             bool canScrollHorizontal = scrollRect.horizontal;
             bool canScrollVertical = scrollRect.vertical;
 
-            Log($"ScrollTo: found scroll view '{scrollRect.name}', horizontal={canScrollHorizontal}, vertical={canScrollVertical}");
+            LogDebug($"ScrollTo: found scroll view '{scrollRect.name}', horizontal={canScrollHorizontal}, vertical={canScrollVertical}");
 
             // First check if target is already visible
             var target = targetSearch.FindFirst();
@@ -3351,16 +3537,17 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask<Component> RandomClick(Search filter = null)
         {
+            LogStart($"RandomClick(filter={filter?.ToString() ?? "none"})");
             var clickables = GetClickableElements(filter);
             if (!clickables.Any())
             {
-                Debug.Log("[UITEST] RandomClick - No clickable elements found");
+                LogFail($"RandomClick", "no clickable elements found");
                 return null;
             }
 
             var target = clickables.ElementAt(RandomGenerator.Next(clickables.Count()));
-            Debug.Log($"[UITEST] RandomClick - Selected '{target.gameObject.name}'");
             await Click(target.gameObject);
+            LogComplete($"RandomClick", $"'{target.gameObject.name}'");
             return target;
         }
 
@@ -3369,6 +3556,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async UniTask<Component> RandomClickExcept(params Search[] exclude)
         {
+            LogStart($"RandomClickExcept(excluding {exclude.Length} patterns)");
             var allClickables = GetClickableElements(null);
             var filtered = allClickables.Where(c =>
             {
@@ -3379,13 +3567,13 @@ namespace ODDGames.UIAutomation
 
             if (!filtered.Any())
             {
-                Debug.Log("[UITEST] RandomClickExcept - No clickable elements found");
+                LogFail($"RandomClickExcept", "no clickable elements found after filtering");
                 return null;
             }
 
             var target = filtered.ElementAt(RandomGenerator.Next(filtered.Count()));
-            Debug.Log($"[UITEST] RandomClickExcept - Selected '{target.gameObject.name}'");
             await Click(target.gameObject);
+            LogComplete($"RandomClickExcept", $"'{target.gameObject.name}'");
             return target;
         }
 
@@ -3423,7 +3611,7 @@ namespace ODDGames.UIAutomation
             var startTime = Time.realtimeSinceStartup;
             int consecutiveNoClick = 0;
 
-            Debug.Log($"[UITEST] AutoExplore started - StopCondition: {stopCondition}, Value: {value}");
+            LogStart($"AutoExplore(condition={stopCondition}, value={value})");
 
             while (Application.isPlaying)
             {
@@ -3435,6 +3623,7 @@ namespace ODDGames.UIAutomation
                         if (result.TimeElapsed >= value)
                         {
                             result.StopReason = SimpleExploreStopCondition.Time;
+                            LogComplete($"AutoExplore", $"time limit reached, {result.ActionsPerformed} actions in {result.TimeElapsed:F1}s");
                             return result;
                         }
                         break;
@@ -3442,6 +3631,7 @@ namespace ODDGames.UIAutomation
                         if (result.ActionsPerformed >= (int)value)
                         {
                             result.StopReason = SimpleExploreStopCondition.ActionCount;
+                            LogComplete($"AutoExplore", $"action count reached, {result.ActionsPerformed} actions in {result.TimeElapsed:F1}s");
                             return result;
                         }
                         break;
@@ -3449,6 +3639,7 @@ namespace ODDGames.UIAutomation
                         if (consecutiveNoClick >= 3)
                         {
                             result.StopReason = SimpleExploreStopCondition.DeadEnd;
+                            LogComplete($"AutoExplore", $"dead end reached, {result.ActionsPerformed} actions in {result.TimeElapsed:F1}s");
                             return result;
                         }
                         break;

@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.8] - 2026-01-28
+
+### Added
+- `UIAutomationException`, `UIAutomationTimeoutException`, `UIAutomationNotFoundException` exception classes for better error identification
+- `LogStart()`, `LogComplete()`, `LogFail()` helper methods for consistent action logging
+- `ActionLog` disposable struct for cleaner START/COMPLETE logging pattern
+- All public ActionExecutor methods now log START before action and COMPLETE/FAILED after
+
+### Changed
+- Log prefix changed from `[UITEST]` to `[UIAutomation]`
+- All exceptions now use `UIAutomationException` family instead of generic `TimeoutException`/`InvalidOperationException`
+- Default `holdTime` reduced from 0.5s to 0.05s for all drag operations - most drags don't need a long hold before movement
+- Default gesture `duration` reduced from 1.0s to 0.3s (Drag, Swipe, Pinch, Rotate, TwoFingerSwipe)
+- `ScrollTo` searchTime default increased from 5s to 10f for consistency
+- `ClickDropdown` maxWaitTime for options increased from 0.5s to 2s for slow UI
+- `InjectMouseDrag` and `InjectTouchDrag` now `internal` - use `InjectPointerDrag` instead
+- Removed unused `UITEST_AI` version define from Editor asmdef
+
+### Fixed
+- `SwipeAt` now passes `holdTime: 0f` - swipes are immediate drag motions without hold delay
+- Swipe/SwipeAt nested logging - internal method now used to prevent double START/COMPLETE logs
+- `InjectMouseDrag`/`InjectTouchDrag` timing reliability:
+  - Now uses minimum 5 frames for drag motion regardless of timing
+  - Yields one frame when `holdTime=0` to ensure initial position registers
+  - Yields after final position event before releasing button/touch to ensure delta is processed
+  - Fixes flaky swipe tests that failed when timing raced ahead of frame processing
+- `SwipeAtInternal` now uses `InjectPointerDrag` (ensures Game View focus)
+- Added `EnsureGameViewFocusAsync` to `InjectTwoFingerSwipe`, `InjectPinch`, `InjectTwoFingerDrag`, `InjectRotate`
+
 ## [1.1.7] - 2026-01-28
 
 ### Fixed
