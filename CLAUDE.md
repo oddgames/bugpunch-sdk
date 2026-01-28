@@ -53,8 +53,32 @@ Key wiki files to update:
 
 ## Local Changelog (Uncommitted)
 
-Update this section as you work. Used to generate CHANGELOG.md during `/deploy`. Clear after deploy.
+Track changes methodically as you work. Used to generate CHANGELOG.md during `/deploy`.
+
+### Rules for Local Changes
+
+1. **Add entries as you complete work** - After implementing a feature/fix, add a bullet point immediately
+2. **Be specific** - Include method names, class names, and what changed
+3. **Categorize entries**:
+   - `**BREAKING**:` - API changes requiring user code updates
+   - `**Added**:` - New features/methods
+   - `**Changed**:` - Modifications to existing behavior
+   - `**Fixed**:` - Bug fixes
+   - `**Removed**:` - Deleted features/methods
+
+4. **Handle iterative development** - When going back and forth between implementations:
+   - Remove entries for approaches that were abandoned
+   - Keep only the final implemented approach
+   - If reverting a change entirely, remove its entry
+   - Don't track intermediate experiments that didn't ship
+
+5. **Resolve conflicts** - If a new task contradicts a previous local change:
+   - Remove the conflicting entry
+   - Add the new approach instead
+   - Only track what will actually be deployed
+
+6. **Clear after deploy** - Replace all entries with `(None - cleared after vX.Y.Z deploy)` after successful `/deploy`
 
 ### Current Local Changes
 
-(None - cleared after v1.1.5 deploy)
+(None - cleared after v1.1.6 deploy)

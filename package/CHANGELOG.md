@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.6] - 2026-01-28
+
+### Added
+- `repository`, `changelogUrl`, `documentationUrl` fields to package.json for better Unity Package Manager integration
+- `_commitHash` field to package.json for cache invalidation assistance
+
 ## [1.1.5] - 2026-01-28
 
 ### Changed
