@@ -354,69 +354,64 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
         private static async UniTask ExecuteClickAsync(VisualBlock block, CancellationToken ct)
         {
-            var element = await ResolveElementAsync(block.target, ct);
-            if (element?.gameObject == null)
+            var search = GetSearchOrThrow(block.target, "Click");
+            var success = await ActionExecutor.Click(search, DefaultTimeoutMs / 1000f);
+            if (!success)
                 throw new InvalidOperationException($"Click target not found: {GetSelectorDisplay(block.target)}");
-
-            await ActionExecutor.ClickAsync(element.gameObject);
         }
 
         private static async UniTask ExecuteDoubleClickAsync(VisualBlock block, CancellationToken ct)
         {
-            var element = await ResolveElementAsync(block.target, ct);
-            if (element?.gameObject == null)
+            var search = GetSearchOrThrow(block.target, "DoubleClick");
+            var success = await ActionExecutor.DoubleClick(search, DefaultTimeoutMs / 1000f);
+            if (!success)
                 throw new InvalidOperationException($"DoubleClick target not found: {GetSelectorDisplay(block.target)}");
-
-            await ActionExecutor.DoubleClickAsync(element.gameObject);
         }
 
         private static async UniTask ExecuteTripleClickAsync(VisualBlock block, CancellationToken ct)
         {
-            var element = await ResolveElementAsync(block.target, ct);
-            if (element?.gameObject == null)
+            var search = GetSearchOrThrow(block.target, "TripleClick");
+            var success = await ActionExecutor.TripleClick(search, DefaultTimeoutMs / 1000f);
+            if (!success)
                 throw new InvalidOperationException($"TripleClick target not found: {GetSelectorDisplay(block.target)}");
-
-            await ActionExecutor.TripleClickAsync(element.gameObject);
         }
 
         private static async UniTask ExecuteHoldAsync(VisualBlock block, CancellationToken ct)
         {
-            var element = await ResolveElementAsync(block.target, ct);
-            if (element?.gameObject == null)
+            var search = GetSearchOrThrow(block.target, "Hold");
+            var success = await ActionExecutor.Hold(search, block.holdSeconds, DefaultTimeoutMs / 1000f);
+            if (!success)
                 throw new InvalidOperationException($"Hold target not found: {GetSelectorDisplay(block.target)}");
-
-            await ActionExecutor.HoldAsync(element.gameObject, block.holdSeconds);
         }
 
         private static async UniTask ExecuteTypeAsync(VisualBlock block, CancellationToken ct)
         {
-            var element = await ResolveElementAsync(block.target, ct);
-            if (element?.gameObject == null)
+            var search = GetSearchOrThrow(block.target, "Type");
+            var success = await ActionExecutor.Type(search, block.text, block.clearFirst, block.pressEnter, DefaultTimeoutMs / 1000f);
+            if (!success)
                 throw new InvalidOperationException($"Type target not found: {GetSelectorDisplay(block.target)}");
-
-            await ActionExecutor.TypeAsync(element.gameObject, block.text, block.clearFirst, block.pressEnter);
         }
 
         private static async UniTask ExecuteDragAsync(VisualBlock block, CancellationToken ct)
         {
-            var fromElement = await ResolveElementAsync(block.target, ct);
-            if (fromElement?.gameObject == null)
-                throw new InvalidOperationException($"Drag source not found: {GetSelectorDisplay(block.target)}");
+            var fromSearch = GetSearchOrThrow(block.target, "Drag source");
 
             // Determine end position and execute drag
             if (block.dragTarget != null && block.dragTarget.IsValid())
             {
                 // Drag to another element
-                var toElement = await ResolveElementAsync(block.dragTarget, ct);
-                if (toElement?.gameObject == null)
-                    throw new InvalidOperationException($"Drag target not found: {GetSelectorDisplay(block.dragTarget)}");
-
-                await ActionExecutor.DragToAsync(fromElement.gameObject, toElement.gameObject, block.dragDuration);
+                var toSearch = GetSearchOrThrow(block.dragTarget, "Drag target");
+                var success = await ActionExecutor.DragTo(fromSearch, toSearch, block.dragDuration, DefaultTimeoutMs / 1000f);
+                if (!success)
+                    throw new InvalidOperationException($"Drag failed: source or target not found");
             }
             else if (!string.IsNullOrEmpty(block.dragDirection))
             {
                 // Directional drag
-                await ActionExecutor.DragAsync(fromElement.gameObject, block.dragDirection, block.dragDistance, block.dragDuration);
+                var offset = InputInjector.GetDirectionOffset(block.dragDirection, block.dragDistance);
+                var success = await ActionExecutor.Drag(fromSearch, offset, block.dragDuration, DefaultTimeoutMs / 1000f);
+                if (!success)
+                    throw new InvalidOperationException($"Drag source not found: {GetSelectorDisplay(block.target)}");
             }
             else
             {
@@ -426,11 +421,22 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
         private static async UniTask ExecuteScrollAsync(VisualBlock block, CancellationToken ct)
         {
-            var element = await ResolveElementAsync(block.target, ct);
-            if (element?.gameObject == null)
+            var search = GetSearchOrThrow(block.target, "Scroll");
+            var success = await ActionExecutor.Scroll(search, block.scrollDirection, block.scrollAmount, DefaultTimeoutMs / 1000f);
+            if (!success)
                 throw new InvalidOperationException($"Scroll target not found: {GetSelectorDisplay(block.target)}");
+        }
 
-            await ActionExecutor.ScrollAsync(element.gameObject, block.scrollDirection, block.scrollAmount);
+        private static Search GetSearchOrThrow(ElementSelector selector, string actionName)
+        {
+            if (selector == null || !selector.IsValid())
+                throw new InvalidOperationException($"{actionName} target selector is invalid");
+
+            var search = selector.ToSearch();
+            if (search == null)
+                throw new InvalidOperationException($"{actionName} target could not be converted to Search");
+
+            return search;
         }
 
         private static async UniTask ExecuteWaitAsync(VisualBlock block, CancellationToken ct)
@@ -574,11 +580,11 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
             if (keys.Count == 1)
             {
-                await ActionExecutor.HoldKeyAsync(keys[0], block.keyHoldDuration);
+                await ActionExecutor.HoldKey(keys[0], block.keyHoldDuration);
             }
             else
             {
-                await ActionExecutor.HoldKeysAsync(keys.ToArray(), block.keyHoldDuration);
+                await ActionExecutor.HoldKeys(block.keyHoldDuration, keys.ToArray());
             }
         }
 
@@ -591,7 +597,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             }
 
             Debug.Log($"[VisualTestRunner] Pressing key: {key}");
-            await ActionExecutor.PressKeyAsync(key);
+            await ActionExecutor.PressKey(key);
         }
 
         private static async UniTask ExecuteWaitForElementAsync(VisualBlock block, CancellationToken ct)
@@ -714,7 +720,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
             // Convert percentage (0-100) to normalized (0-1)
             var normalizedValue = block.sliderValue / 100f;
-            await ActionExecutor.SetSliderAsync(slider, normalizedValue);
+            await ActionExecutor.SetSlider(slider, normalizedValue);
         }
 
         private static async UniTask ExecuteSetScrollbarAsync(VisualBlock block, CancellationToken ct)
@@ -729,7 +735,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
             // Convert percentage (0-100) to normalized (0-1)
             var normalizedValue = block.scrollbarValue / 100f;
-            await ActionExecutor.SetScrollbarAsync(scrollbar, normalizedValue);
+            await ActionExecutor.SetScrollbar(scrollbar, normalizedValue);
         }
 
         private static async UniTask ExecuteClickDropdownAsync(VisualBlock block, CancellationToken ct)
@@ -742,11 +748,11 @@ namespace ODDGames.UIAutomation.VisualBuilder
             bool found;
             if (block.dropdownIndex >= 0)
             {
-                found = await ActionExecutor.ClickDropdownAsync(search, block.dropdownIndex);
+                found = await ActionExecutor.ClickDropdown(search, block.dropdownIndex);
             }
             else if (!string.IsNullOrEmpty(block.dropdownLabel))
             {
-                found = await ActionExecutor.ClickDropdownAsync(search, block.dropdownLabel);
+                found = await ActionExecutor.ClickDropdown(search, block.dropdownLabel);
             }
             else
             {
@@ -763,7 +769,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Swipe target not found: {GetSelectorDisplay(block.target)}");
 
-            await ActionExecutor.SwipeAsync(element.gameObject, block.swipeDirection, block.swipeDistance, block.swipeDuration);
+            await ActionExecutor.Swipe(element.gameObject, block.swipeDirection, block.swipeDistance, block.swipeDuration);
         }
 
         private static async UniTask ExecutePinchAsync(VisualBlock block, CancellationToken ct)
@@ -773,18 +779,18 @@ namespace ODDGames.UIAutomation.VisualBuilder
             // Block supports explicit center position override
             if (block.pinchCenterPosition.HasValue)
             {
-                await ActionExecutor.PinchAtAsync(block.pinchCenterPosition.Value, block.pinchScale, block.pinchDuration);
+                await ActionExecutor.PinchAt(block.pinchCenterPosition.Value, block.pinchScale, block.pinchDuration);
                 return;
             }
 
-            await ActionExecutor.PinchAsync(element?.gameObject, block.pinchScale, block.pinchDuration);
+            await ActionExecutor.Pinch(element?.gameObject, block.pinchScale, block.pinchDuration);
         }
 
         private static async UniTask ExecuteTwoFingerSwipeAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
 
-            await ActionExecutor.TwoFingerSwipeAsync(
+            await ActionExecutor.TwoFingerSwipe(
                 element?.gameObject,
                 block.swipeDirection,
                 block.swipeDistance,
@@ -796,7 +802,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
 
-            await ActionExecutor.RotateAsync(
+            await ActionExecutor.Rotate(
                 element?.gameObject,
                 block.rotateDegrees,
                 block.rotateDuration,

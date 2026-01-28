@@ -138,11 +138,11 @@ namespace ODDGames.UIAutomation
     public static class InputInjector
     {
         /// <summary>
-        /// Logs a debug message only when UIAutomation.DebugMode is enabled.
+        /// Logs a debug message only when ActionExecutor.DebugMode is enabled.
         /// </summary>
         static void LogDebug(string message)
         {
-            if (UIAutomation.DebugMode)
+            if (ActionExecutor.DebugMode)
                 Debug.Log($"[InputInjector] {message}");
         }
         /// <summary>

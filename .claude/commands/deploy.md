@@ -24,7 +24,10 @@ Deploy the UITest package - version bump, tag, and push.
    - Clear the "Current Local Changes" section in CLAUDE.md
 
 4. **Commit and push changes**
-   - Stage all pending changes including version bump and docs
+   - **CRITICAL**: Run `git status` first to see ALL modified files
+   - **CRITICAL**: Stage ALL modified files in `package/` directory - do NOT selectively commit
+   - Use `git add package/ CLAUDE.md README.md` to ensure all package code is included
+   - Verify with `git status` that all package changes are staged before committing
    - Commit with message: "v{version} - {brief description of changes}"
    - Push to origin
 
