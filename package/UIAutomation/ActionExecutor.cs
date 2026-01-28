@@ -278,16 +278,6 @@ namespace ODDGames.UIAutomation
         static int EffectivePollInterval => DebugMode ? (int)(PollInterval * DebugIntervalMultiplier) : PollInterval;
 
 #if UNITY_INCLUDE_TESTS
-        /// <summary>
-        /// When true, ignores Unity error logs so they don't fail tests.
-        /// Set this at the start of your test method.
-        /// </summary>
-        public static bool IgnoreErrors
-        {
-            get => UnityEngine.TestTools.LogAssert.ignoreFailingMessages;
-            set => UnityEngine.TestTools.LogAssert.ignoreFailingMessages = value;
-        }
-
         private static readonly System.Collections.Generic.List<Exception> _capturedExceptions = new System.Collections.Generic.List<Exception>();
         private static bool _captureHandlerAttached;
 
