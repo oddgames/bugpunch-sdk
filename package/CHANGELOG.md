@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.9] - 2026-01-28
+
+### Removed
+- **BREAKING**: Removed implicit string to Search conversion - `Click("text")` no longer compiles
+  - Use explicit search methods: `Click(Text("text"))` or `Click(Name("name"))`
+  - This prevents confusion where `"ToggleDebug"` would search for text content, not GameObject name
+
 ## [1.1.8] - 2026-01-28
 
 ### Added

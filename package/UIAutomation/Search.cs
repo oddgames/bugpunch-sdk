@@ -1489,9 +1489,6 @@ namespace ODDGames.UIAutomation
             return GetScreenPosition(results[index]);
         }
 
-        /// <summary>Implicit conversion from string to Search.Text().</summary>
-        public static implicit operator Search(string text) => new Search(text);
-
         #endregion
 
         #region Value Properties
