@@ -13,7 +13,7 @@ using UnityEngine.TestTools;
 using TMPro;
 using Cysharp.Threading.Tasks;
 using ODDGames.UIAutomation;
-using static ODDGames.UIAutomation.UIAutomation;
+using static ODDGames.UIAutomation.ActionExecutor;
 
 namespace ODDGames.UIAutomation.Tests
 {
@@ -2654,6 +2654,209 @@ namespace ODDGames.UIAutomation.Tests
             Assert.Less(scrollRect.verticalNormalizedPosition, 0.5f, "Should have scrolled down");
         }
 
+        [Test]
+        public async Task ScrollTo_FromBottom_ScrollsUp()
+        {
+            var scrollView = CreateScrollView("TestScrollView", new Vector2(0, 0), new Vector2(300, 200));
+            var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+            var content = scrollRect.content;
+
+            // Target at the top, hidden items below
+            CreateScrollItem("TargetItem", "Target", content.transform);
+            for (int i = 0; i < 15; i++)
+            {
+                CreateScrollItem($"Item{i}", $"Item {i}", content.transform);
+            }
+
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+            await Task.Yield();
+
+            // Start at the BOTTOM
+            scrollRect.verticalNormalizedPosition = 0f;
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+
+            Debug.Log($"[TEST] Content height: {content.rect.height}, Viewport height: {scrollRect.viewport.rect.height}");
+            Debug.Log($"[TEST] Initial scroll position: {scrollRect.verticalNormalizedPosition}");
+
+            var test = new TestScrollHelper();
+            var result = await test.TestScrollTo(
+                new Search().Name("TestScrollView"),
+                new Search().Name("TargetItem"),
+                maxScrollAttempts: 20);
+
+            Debug.Log($"[TEST] Final scroll position: {scrollRect.verticalNormalizedPosition}");
+
+            Assert.IsNotNull(result, "Should find target after scrolling up");
+            Assert.AreEqual("TargetItem", result.name);
+            Assert.Greater(scrollRect.verticalNormalizedPosition, 0.5f, "Should have scrolled up");
+        }
+
+        [Test]
+        public async Task ScrollTo_FromMiddle_ScrollsCorrectDirection()
+        {
+            var scrollView = CreateScrollView("TestScrollView", new Vector2(0, 0), new Vector2(300, 200));
+            var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+            var content = scrollRect.content;
+
+            // Items above, middle items, target at bottom
+            for (int i = 0; i < 10; i++)
+            {
+                CreateScrollItem($"TopItem{i}", $"Top {i}", content.transform);
+            }
+            for (int i = 0; i < 10; i++)
+            {
+                CreateScrollItem($"MiddleItem{i}", $"Middle {i}", content.transform);
+            }
+            CreateScrollItem("TargetItem", "Target", content.transform);
+
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+            await Task.Yield();
+
+            // Start in the MIDDLE
+            scrollRect.verticalNormalizedPosition = 0.5f;
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+
+            Debug.Log($"[TEST] Initial scroll position: {scrollRect.verticalNormalizedPosition}");
+
+            var test = new TestScrollHelper();
+            var result = await test.TestScrollTo(
+                new Search().Name("TestScrollView"),
+                new Search().Name("TargetItem"),
+                maxScrollAttempts: 25);
+
+            Debug.Log($"[TEST] Final scroll position: {scrollRect.verticalNormalizedPosition}");
+
+            Assert.IsNotNull(result, "Should find target after scrolling");
+            Assert.AreEqual("TargetItem", result.name);
+        }
+
+        [Test]
+        public async Task ScrollTo_Horizontal_ScrollsRight()
+        {
+            var scrollView = CreateHorizontalScrollView("HScrollView", new Vector2(0, 0), new Vector2(300, 100));
+            var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+            var content = scrollRect.content;
+
+            // Items to the left, target on the right
+            for (int i = 0; i < 10; i++)
+            {
+                CreateHorizontalScrollItem($"Item{i}", $"Item {i}", content.transform);
+            }
+            CreateHorizontalScrollItem("TargetItem", "Target", content.transform);
+
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+            await Task.Yield();
+
+            // Start at the LEFT (horizontalNormalizedPosition = 0)
+            scrollRect.horizontalNormalizedPosition = 0f;
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+
+            Debug.Log($"[TEST] Content width: {content.rect.width}, Viewport width: {scrollRect.viewport.rect.width}");
+            Debug.Log($"[TEST] Initial scroll position: {scrollRect.horizontalNormalizedPosition}");
+
+            var test = new TestScrollHelper();
+            var result = await test.TestScrollTo(
+                new Search().Name("HScrollView"),
+                new Search().Name("TargetItem"),
+                maxScrollAttempts: 20);
+
+            Debug.Log($"[TEST] Final scroll position: {scrollRect.horizontalNormalizedPosition}");
+
+            Assert.IsNotNull(result, "Should find target after scrolling right");
+            Assert.AreEqual("TargetItem", result.name);
+            Assert.Greater(scrollRect.horizontalNormalizedPosition, 0.5f, "Should have scrolled right");
+        }
+
+        [Test]
+        public async Task ScrollTo_Horizontal_ScrollsLeft()
+        {
+            var scrollView = CreateHorizontalScrollView("HScrollView", new Vector2(0, 0), new Vector2(300, 100));
+            var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+            var content = scrollRect.content;
+
+            // Target on the left, items to the right
+            CreateHorizontalScrollItem("TargetItem", "Target", content.transform);
+            for (int i = 0; i < 10; i++)
+            {
+                CreateHorizontalScrollItem($"Item{i}", $"Item {i}", content.transform);
+            }
+
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+            await Task.Yield();
+
+            // Start at the RIGHT (horizontalNormalizedPosition = 1)
+            scrollRect.horizontalNormalizedPosition = 1f;
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+
+            Debug.Log($"[TEST] Initial scroll position: {scrollRect.horizontalNormalizedPosition}");
+
+            var test = new TestScrollHelper();
+            var result = await test.TestScrollTo(
+                new Search().Name("HScrollView"),
+                new Search().Name("TargetItem"),
+                maxScrollAttempts: 20);
+
+            Debug.Log($"[TEST] Final scroll position: {scrollRect.horizontalNormalizedPosition}");
+
+            Assert.IsNotNull(result, "Should find target after scrolling left");
+            Assert.AreEqual("TargetItem", result.name);
+            Assert.Less(scrollRect.horizontalNormalizedPosition, 0.5f, "Should have scrolled left");
+        }
+
+        [Test]
+        public async Task ScrollTo_Diagonal_ScrollsToCorner()
+        {
+            // Create a 2D scroll view (both horizontal and vertical enabled)
+            var scrollView = Create2DScrollView("DiagScrollView", new Vector2(0, 0), new Vector2(200, 200));
+            var scrollRect = scrollView.GetComponentInChildren<ScrollRect>();
+            var content = scrollRect.content;
+
+            // Create a grid of items, target in bottom-right corner
+            for (int row = 0; row < 5; row++)
+            {
+                for (int col = 0; col < 5; col++)
+                {
+                    string name = (row == 4 && col == 4) ? "TargetItem" : $"Item_{row}_{col}";
+                    Create2DScrollItem(name, name, content.transform, row, col);
+                }
+            }
+
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+            await Task.Yield();
+
+            // Start at top-left (vertical=1, horizontal=0)
+            scrollRect.verticalNormalizedPosition = 1f;
+            scrollRect.horizontalNormalizedPosition = 0f;
+            await Task.Yield();
+            Canvas.ForceUpdateCanvases();
+
+            Debug.Log($"[TEST] Content size: {content.rect.width}x{content.rect.height}");
+            Debug.Log($"[TEST] Initial scroll position: h={scrollRect.horizontalNormalizedPosition}, v={scrollRect.verticalNormalizedPosition}");
+
+            var test = new TestScrollHelper();
+            var result = await test.TestScrollTo(
+                new Search().Name("DiagScrollView"),
+                new Search().Name("TargetItem"),
+                maxScrollAttempts: 30);
+
+            Debug.Log($"[TEST] Final scroll position: h={scrollRect.horizontalNormalizedPosition}, v={scrollRect.verticalNormalizedPosition}");
+
+            Assert.IsNotNull(result, "Should find target after diagonal scrolling");
+            Assert.AreEqual("TargetItem", result.name);
+            // Target is bottom-right, so should have scrolled right (h > 0.5) and down (v < 0.5)
+            Assert.Greater(scrollRect.horizontalNormalizedPosition, 0.3f, "Should have scrolled right");
+            Assert.Less(scrollRect.verticalNormalizedPosition, 0.7f, "Should have scrolled down");
+        }
+
         #endregion
 
         #region InRegion Tests
@@ -2878,6 +3081,148 @@ namespace ODDGames.UIAutomation.Tests
             var sizeFitter = content.AddComponent<ContentSizeFitter>();
             sizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             scrollRect.content = contentRect;
+            return go;
+        }
+
+        private GameObject CreateHorizontalScrollView(string name, Vector2 position, Vector2 size)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = size;
+            rect.anchoredPosition = position;
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.15f, 0.15f, 0.15f);
+            go.AddComponent<Mask>().showMaskGraphic = true;
+            var scrollRect = go.AddComponent<ScrollRect>();
+            scrollRect.horizontal = true;
+            scrollRect.vertical = false;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.inertia = false;
+
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(go.transform, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            scrollRect.viewport = viewportRect;
+
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0, 0);
+            contentRect.anchorMax = new Vector2(0, 1);
+            contentRect.pivot = new Vector2(0, 0.5f);
+            contentRect.sizeDelta = new Vector2(size.x * 2, 0);
+
+            var layoutGroup = content.AddComponent<HorizontalLayoutGroup>();
+            layoutGroup.childAlignment = TextAnchor.MiddleLeft;
+            layoutGroup.childControlWidth = false;
+            layoutGroup.childControlHeight = true;
+            layoutGroup.childForceExpandWidth = false;
+            layoutGroup.childForceExpandHeight = true;
+            layoutGroup.spacing = 5;
+            layoutGroup.padding = new RectOffset(5, 5, 5, 5);
+            var sizeFitter = content.AddComponent<ContentSizeFitter>();
+            sizeFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scrollRect.content = contentRect;
+            return go;
+        }
+
+        private GameObject CreateHorizontalScrollItem(string name, string text, Transform parent)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(80, 0);
+            var layoutElement = go.AddComponent<LayoutElement>();
+            layoutElement.preferredWidth = 80;
+            layoutElement.flexibleHeight = 1;
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.25f, 0.25f, 0.25f);
+
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(go.transform, false);
+            _createdObjects.Add(textGO);
+            var textRect = textGO.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.alignment = TextAlignmentOptions.Center;
+            return go;
+        }
+
+        private GameObject Create2DScrollView(string name, Vector2 position, Vector2 size)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = size;
+            rect.anchoredPosition = position;
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.15f, 0.15f, 0.15f);
+            go.AddComponent<Mask>().showMaskGraphic = true;
+            var scrollRect = go.AddComponent<ScrollRect>();
+            scrollRect.horizontal = true;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.inertia = false;
+
+            var viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(go.transform, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.sizeDelta = Vector2.zero;
+            scrollRect.viewport = viewportRect;
+
+            var content = new GameObject("Content");
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.AddComponent<RectTransform>();
+            // Anchor to top-left, pivot at top-left
+            contentRect.anchorMin = new Vector2(0, 1);
+            contentRect.anchorMax = new Vector2(0, 1);
+            contentRect.pivot = new Vector2(0, 1);
+            // Content is larger than viewport in both dimensions
+            contentRect.sizeDelta = new Vector2(size.x * 3, size.y * 3);
+
+            scrollRect.content = contentRect;
+            return go;
+        }
+
+        private GameObject Create2DScrollItem(string name, string text, Transform parent, int row, int col)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            _createdObjects.Add(go);
+            var rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(80, 60);
+            // Position based on row/col (top-left origin)
+            rect.anchorMin = new Vector2(0, 1);
+            rect.anchorMax = new Vector2(0, 1);
+            rect.pivot = new Vector2(0, 1);
+            rect.anchoredPosition = new Vector2(col * 90 + 10, -(row * 70 + 10));
+
+            var image = go.AddComponent<Image>();
+            image.color = new Color(0.25f, 0.25f, 0.25f);
+
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(go.transform, false);
+            _createdObjects.Add(textGO);
+            var textRect = textGO.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+            var tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = 12;
+            tmp.alignment = TextAlignmentOptions.Center;
             return go;
         }
 
@@ -3227,7 +3572,8 @@ namespace ODDGames.UIAutomation.Tests
     {
         public async UniTask TestClickComponent(Component component)
         {
-            await Click(component);
+            // Click using component's gameObject name as search
+            await Click(Name(component.gameObject.name));
         }
 
         public async UniTask<List<Button>> TestFindAllButtons(Search search)

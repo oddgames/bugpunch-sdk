@@ -57,4 +57,4 @@ Update this section as you work. Used to generate CHANGELOG.md during `/deploy`.
 
 ### Current Local Changes
 
-(none)
+(None - cleared after v1.1.5 deploy)
