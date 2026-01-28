@@ -4,7 +4,7 @@ using UnityEditor;
 using System.IO;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+using ODDGames.UIAutomation;
 
 namespace ODDGames.UIAutomation.AI.Editor
 {
@@ -193,10 +193,10 @@ namespace ODDGames.UIAutomation.AI.Editor
         {
             settings = AITestSettings.Instance;
             serializedSettings = new SerializedObject(settings);
-            RefreshModelsAsync().Forget();
+            RefreshModelsAsync();
         }
 
-        private async UniTaskVoid RefreshModelsAsync()
+        private async void RefreshModelsAsync()
         {
             if (string.IsNullOrEmpty(settings.geminiApiKey))
             {
@@ -263,7 +263,7 @@ namespace ODDGames.UIAutomation.AI.Editor
             {
                 serializedSettings.ApplyModifiedProperties();
                 GeminiModels.ClearCache();
-                RefreshModelsAsync().Forget();
+                RefreshModelsAsync();
             }
 
             if (!string.IsNullOrEmpty(settings.geminiApiKey))
@@ -280,7 +280,7 @@ namespace ODDGames.UIAutomation.AI.Editor
                     if (GUILayout.Button("Refresh Models", GUILayout.Width(120)))
                     {
                         GeminiModels.ClearCache();
-                        RefreshModelsAsync().Forget();
+                        RefreshModelsAsync();
                     }
                 }
 

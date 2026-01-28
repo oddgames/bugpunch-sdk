@@ -1,7 +1,7 @@
 #if UNITY_EDITOR
 using UnityEngine;
 using UnityEditor;
-using Cysharp.Threading.Tasks;
+using ODDGames.UIAutomation;
 
 namespace ODDGames.UIAutomation.AI.Editor
 {
@@ -64,7 +64,7 @@ namespace ODDGames.UIAutomation.AI.Editor
             GUI.enabled = Application.isPlaying && !AITestRunner.IsRunning;
             if (GUILayout.Button("Run Test", GUILayout.Height(30)))
             {
-                RunTest().Forget();
+                RunTest();
             }
             GUI.enabled = true;
 
@@ -96,7 +96,7 @@ namespace ODDGames.UIAutomation.AI.Editor
             var successfulRuns = test.SuccessfulRuns;
 
             showHistory = EditorGUILayout.Foldout(showHistory,
-                $"Successful Runs ({successfulRuns.Count})", true);
+                $"Successful Runs ({successfulRuns.Count})");
 
             if (showHistory && successfulRuns.Count > 0)
             {
@@ -140,7 +140,7 @@ namespace ODDGames.UIAutomation.AI.Editor
             }
         }
 
-        private async UniTaskVoid RunTest()
+        private async void RunTest()
         {
             var settings = AITestSettings.Instance;
             var config = settings.CreateRunnerConfig();

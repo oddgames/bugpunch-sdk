@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
-using Newtonsoft.Json;
 using UnityEngine;
 
 namespace ODDGames.UIAutomation.AI
@@ -16,7 +14,6 @@ namespace ODDGames.UIAutomation.AI
     {
         private readonly string sessionFolder;
         private readonly string sessionId;
-        private int stepCount;
         private bool disposed;
 
         private readonly List<StepSummary> steps = new List<StepSummary>();
@@ -66,7 +63,6 @@ namespace ODDGames.UIAutomation.AI
             }
 
             Debug.Log($"[AIDebugLogger] LogStep({stepNumber}) starting...");
-            stepCount = stepNumber;
             var stepFolder = Path.Combine(sessionFolder, $"step_{stepNumber:D3}");
 
             try
@@ -84,19 +80,25 @@ namespace ODDGames.UIAutomation.AI
                 // Save element list as JSON
                 if (screen?.Elements != null)
                 {
-                    // Create simplified element data to avoid Unity type serialization issues
-                    var elementsData = screen.Elements.Select(e => new
+                    var sb = new StringBuilder();
+                    sb.AppendLine("[");
+                    for (int i = 0; i < screen.Elements.Count; i++)
                     {
-                        e.name,
-                        e.text,
-                        e.type,
-                        bounds = new { e.bounds.x, e.bounds.y, e.bounds.width, e.bounds.height },
-                        e.isEnabled,
-                        e.path,
-                        searchPattern = e.GetSearchPattern(e.needsDisambiguation)
-                    }).ToList();
-                    var elementsJson = JsonConvert.SerializeObject(elementsData, Formatting.Indented);
-                    File.WriteAllText(Path.Combine(stepFolder, "elements.json"), elementsJson);
+                        var e = screen.Elements[i];
+                        sb.AppendLine("  {");
+                        sb.AppendLine($"    \"name\": {JsonEscape(e.name)},");
+                        sb.AppendLine($"    \"text\": {JsonEscape(e.text)},");
+                        sb.AppendLine($"    \"type\": {JsonEscape(e.type)},");
+                        sb.AppendLine($"    \"bounds\": {{ \"x\": {e.bounds.x}, \"y\": {e.bounds.y}, \"width\": {e.bounds.width}, \"height\": {e.bounds.height} }},");
+                        sb.AppendLine($"    \"isEnabled\": {e.isEnabled.ToString().ToLower()},");
+                        sb.AppendLine($"    \"path\": {JsonEscape(e.path)},");
+                        sb.AppendLine($"    \"searchPattern\": {JsonEscape(e.GetSearchPattern(e.needsDisambiguation))}");
+                        sb.Append("  }");
+                        if (i < screen.Elements.Count - 1) sb.Append(",");
+                        sb.AppendLine();
+                    }
+                    sb.AppendLine("]");
+                    File.WriteAllText(Path.Combine(stepFolder, "elements.json"), sb.ToString());
 
                     // Also save element list prompt (what AI sees)
                     var elementPrompt = screen.GetElementListPrompt();
@@ -104,16 +106,14 @@ namespace ODDGames.UIAutomation.AI
                 }
 
                 // Save screen state metadata
-                var screenMeta = new
-                {
-                    ScreenHash = screen?.ScreenHash,
-                    ElementStateHash = screen?.ElementStateHash,
-                    ElementCount = screen?.Elements?.Count ?? 0,
-                    Timestamp = DateTime.Now.ToString("HH:mm:ss.fff")
-                };
-                File.WriteAllText(
-                    Path.Combine(stepFolder, "screen_meta.json"),
-                    JsonConvert.SerializeObject(screenMeta, Formatting.Indented));
+                var screenMeta = new StringBuilder();
+                screenMeta.AppendLine("{");
+                screenMeta.AppendLine($"  \"ScreenHash\": {JsonEscape(screen?.ScreenHash)},");
+                screenMeta.AppendLine($"  \"ElementStateHash\": {JsonEscape(screen?.ElementStateHash)},");
+                screenMeta.AppendLine($"  \"ElementCount\": {screen?.Elements?.Count ?? 0},");
+                screenMeta.AppendLine($"  \"Timestamp\": {JsonEscape(DateTime.Now.ToString("HH:mm:ss.fff"))}");
+                screenMeta.AppendLine("}");
+                File.WriteAllText(Path.Combine(stepFolder, "screen_meta.json"), screenMeta.ToString());
 
                 // Save prompt sent to AI
                 if (!string.IsNullOrEmpty(promptSentToAI))
@@ -130,19 +130,39 @@ namespace ODDGames.UIAutomation.AI
                 // Save tool calls
                 if (toolCalls != null && toolCalls.Count > 0)
                 {
-                    var toolCallsData = new List<object>();
-                    foreach (var tc in toolCalls)
+                    var tcJson = new StringBuilder();
+                    tcJson.AppendLine("[");
+                    for (int i = 0; i < toolCalls.Count; i++)
                     {
-                        toolCallsData.Add(new
+                        var tc = toolCalls[i];
+                        tcJson.AppendLine("  {");
+                        tcJson.AppendLine($"    \"Id\": {JsonEscape(tc.Id)},");
+                        tcJson.AppendLine($"    \"Name\": {JsonEscape(tc.Name)},");
+                        tcJson.Append($"    \"Arguments\": ");
+                        if (tc.Arguments != null)
                         {
-                            Id = tc.Id,
-                            Name = tc.Name,
-                            Arguments = tc.Arguments
-                        });
+                            tcJson.AppendLine("{");
+                            var argKeys = new List<string>(tc.Arguments.Keys);
+                            for (int j = 0; j < argKeys.Count; j++)
+                            {
+                                var key = argKeys[j];
+                                var val = tc.Arguments[key];
+                                tcJson.Append($"      {JsonEscape(key)}: {JsonEscape(val?.ToString())}");
+                                if (j < argKeys.Count - 1) tcJson.Append(",");
+                                tcJson.AppendLine();
+                            }
+                            tcJson.AppendLine("    }");
+                        }
+                        else
+                        {
+                            tcJson.AppendLine("null");
+                        }
+                        tcJson.Append("  }");
+                        if (i < toolCalls.Count - 1) tcJson.Append(",");
+                        tcJson.AppendLine();
                     }
-                    File.WriteAllText(
-                        Path.Combine(stepFolder, "tool_calls.json"),
-                        JsonConvert.SerializeObject(toolCallsData, Formatting.Indented));
+                    tcJson.AppendLine("]");
+                    File.WriteAllText(Path.Combine(stepFolder, "tool_calls.json"), tcJson.ToString());
                 }
 
                 // Save raw response
@@ -202,21 +222,19 @@ namespace ODDGames.UIAutomation.AI
             {
                 Directory.CreateDirectory(stepFolder);
 
-                var actionData = new
-                {
-                    ActionType = action?.ActionType,
-                    Description = action?.Description,
-                    SearchQuery = searchQueryJson,
-                    Success = result?.Success ?? false,
-                    Error = result?.Error,
-                    ScreenChanged = result?.ScreenChanged ?? false,
-                    ScreenHashAfter = result?.ScreenHashAfter,
-                    Timestamp = DateTime.Now.ToString("HH:mm:ss.fff")
-                };
+                var actionJson = new StringBuilder();
+                actionJson.AppendLine("{");
+                actionJson.AppendLine($"  \"ActionType\": {JsonEscape(action?.ActionType)},");
+                actionJson.AppendLine($"  \"Description\": {JsonEscape(action?.Description)},");
+                actionJson.AppendLine($"  \"SearchQuery\": {searchQueryJson ?? "null"},");
+                actionJson.AppendLine($"  \"Success\": {(result?.Success ?? false).ToString().ToLower()},");
+                actionJson.AppendLine($"  \"Error\": {JsonEscape(result?.Error)},");
+                actionJson.AppendLine($"  \"ScreenChanged\": {(result?.ScreenChanged ?? false).ToString().ToLower()},");
+                actionJson.AppendLine($"  \"ScreenHashAfter\": {JsonEscape(result?.ScreenHashAfter)},");
+                actionJson.AppendLine($"  \"Timestamp\": {JsonEscape(DateTime.Now.ToString("HH:mm:ss.fff"))}");
+                actionJson.AppendLine("}");
 
-                File.WriteAllText(
-                    Path.Combine(stepFolder, "action_result.json"),
-                    JsonConvert.SerializeObject(actionData, Formatting.Indented));
+                File.WriteAllText(Path.Combine(stepFolder, "action_result.json"), actionJson.ToString());
 
                 Log($"Action: {action?.ActionType} - Success: {result?.Success}, Error: {result?.Error ?? "none"}");
             }
@@ -253,22 +271,20 @@ namespace ODDGames.UIAutomation.AI
 
             try
             {
-                var configData = new
-                {
-                    TestName = test?.name,
-                    Prompt = test?.prompt,
-                    Model = modelName,
-                    MaxActions = test?.maxActions ?? 0,
-                    TimeoutSeconds = test?.timeoutSeconds ?? 0,
-                    ActionDelaySeconds = test?.actionDelaySeconds ?? 0,
-                    SendScreenshots = config?.SendScreenshots ?? false,
-                    EnableHistoryReplay = config?.EnableHistoryReplay ?? false,
-                    StartedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-                };
+                var configJson = new StringBuilder();
+                configJson.AppendLine("{");
+                configJson.AppendLine($"  \"TestName\": {JsonEscape(test?.name)},");
+                configJson.AppendLine($"  \"Prompt\": {JsonEscape(test?.prompt)},");
+                configJson.AppendLine($"  \"Model\": {JsonEscape(modelName)},");
+                configJson.AppendLine($"  \"MaxActions\": {test?.maxActions ?? 0},");
+                configJson.AppendLine($"  \"TimeoutSeconds\": {test?.timeoutSeconds ?? 0},");
+                configJson.AppendLine($"  \"ActionDelaySeconds\": {test?.actionDelaySeconds ?? 0},");
+                configJson.AppendLine($"  \"SendScreenshots\": {(config?.SendScreenshots ?? false).ToString().ToLower()},");
+                configJson.AppendLine($"  \"EnableHistoryReplay\": {(config?.EnableHistoryReplay ?? false).ToString().ToLower()},");
+                configJson.AppendLine($"  \"StartedAt\": {JsonEscape(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))}");
+                configJson.AppendLine("}");
 
-                File.WriteAllText(
-                    Path.Combine(sessionFolder, "config.json"),
-                    JsonConvert.SerializeObject(configData, Formatting.Indented));
+                File.WriteAllText(Path.Combine(sessionFolder, "config.json"), configJson.ToString());
 
                 Log($"Test: {test?.name}");
                 Log($"Prompt: {test?.prompt}");
@@ -289,19 +305,17 @@ namespace ODDGames.UIAutomation.AI
 
             try
             {
-                var resultData = new
-                {
-                    Status = result?.Status.ToString(),
-                    Message = result?.Message,
-                    ActionCount = result?.ActionCount ?? 0,
-                    DurationSeconds = result?.DurationSeconds ?? 0,
-                    FinalModel = result?.FinalModel,
-                    CompletedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-                };
+                var resultJson = new StringBuilder();
+                resultJson.AppendLine("{");
+                resultJson.AppendLine($"  \"Status\": {JsonEscape(result?.Status.ToString())},");
+                resultJson.AppendLine($"  \"Message\": {JsonEscape(result?.Message)},");
+                resultJson.AppendLine($"  \"ActionCount\": {result?.ActionCount ?? 0},");
+                resultJson.AppendLine($"  \"DurationSeconds\": {result?.DurationSeconds ?? 0},");
+                resultJson.AppendLine($"  \"FinalModel\": {JsonEscape(result?.FinalModel)},");
+                resultJson.AppendLine($"  \"CompletedAt\": {JsonEscape(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))}");
+                resultJson.AppendLine("}");
 
-                File.WriteAllText(
-                    Path.Combine(sessionFolder, "result.json"),
-                    JsonConvert.SerializeObject(resultData, Formatting.Indented));
+                File.WriteAllText(Path.Combine(sessionFolder, "result.json"), resultJson.ToString());
 
                 Log($"Result: {result?.Status} - {result?.Message}");
                 Log($"Duration: {result?.DurationSeconds:F1}s, Actions: {result?.ActionCount}");
@@ -341,10 +355,25 @@ namespace ODDGames.UIAutomation.AI
                     sessionLog.ToString());
 
                 // Save step summary
-                var summaryJson = JsonConvert.SerializeObject(steps, Formatting.Indented);
-                File.WriteAllText(
-                    Path.Combine(sessionFolder, "steps_summary.json"),
-                    summaryJson);
+                var summaryJson = new StringBuilder();
+                summaryJson.AppendLine("[");
+                for (int i = 0; i < steps.Count; i++)
+                {
+                    var step = steps[i];
+                    summaryJson.AppendLine("  {");
+                    summaryJson.AppendLine($"    \"StepNumber\": {step.StepNumber},");
+                    summaryJson.AppendLine($"    \"Timestamp\": {JsonEscape(step.Timestamp.ToString("o"))},");
+                    summaryJson.AppendLine($"    \"ScreenHash\": {JsonEscape(step.ScreenHash)},");
+                    summaryJson.AppendLine($"    \"ElementCount\": {step.ElementCount},");
+                    summaryJson.AppendLine($"    \"Reasoning\": {JsonEscape(step.Reasoning)},");
+                    summaryJson.AppendLine($"    \"ToolCallCount\": {step.ToolCallCount},");
+                    summaryJson.AppendLine($"    \"ToolCalls\": {JsonEscape(step.ToolCalls)}");
+                    summaryJson.Append("  }");
+                    if (i < steps.Count - 1) summaryJson.Append(",");
+                    summaryJson.AppendLine();
+                }
+                summaryJson.AppendLine("]");
+                File.WriteAllText(Path.Combine(sessionFolder, "steps_summary.json"), summaryJson.ToString());
 
                 // Create index.html for easy browsing
                 CreateIndexHtml();
@@ -419,12 +448,13 @@ namespace ODDGames.UIAutomation.AI
         private static string HtmlEncode(string str)
         {
             if (string.IsNullOrEmpty(str)) return str;
-            return str
-                .Replace("&", "&amp;")
-                .Replace("<", "&lt;")
-                .Replace(">", "&gt;")
-                .Replace("\"", "&quot;")
-                .Replace("'", "&#39;");
+            return str.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+        }
+
+        private static string JsonEscape(string str)
+        {
+            if (str == null) return "null";
+            return "\"" + str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t") + "\"";
         }
 
         private class StepSummary

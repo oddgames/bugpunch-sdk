@@ -322,7 +322,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
         /// <summary>C# code to execute (compiled at runtime with Emit)</summary>
         public string codeBody;
 
-        /// <summary>Whether the code is async (returns UniTask)</summary>
+        /// <summary>Whether the code is async (returns Task)</summary>
         public bool codeIsAsync;
 
         // === VisualScript Block ===

@@ -4,10 +4,8 @@
     "references": [
         "ODDGames.UIAutomation",
         "ODDGames.UIAutomation.AI",
-        "UniTask",
         "Unity.TextMeshPro",
-        "Unity.InputSystem",
-        "Newtonsoft.Json"
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

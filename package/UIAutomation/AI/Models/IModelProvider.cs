@@ -1,5 +1,6 @@
+using System.Threading.Tasks;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+
 
 namespace ODDGames.UIAutomation.AI
 {
@@ -26,12 +27,12 @@ namespace ODDGames.UIAutomation.AI
         /// <summary>
         /// Sends a request to the model and returns the response.
         /// </summary>
-        UniTask<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken ct = default);
+        Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken ct = default);
 
         /// <summary>
         /// Tests the connection to this provider.
         /// </summary>
-        UniTask<bool> TestConnectionAsync(CancellationToken ct = default);
+        Task<bool> TestConnectionAsync(CancellationToken ct = default);
 
         /// <summary>
         /// Estimates the token count for the given text.

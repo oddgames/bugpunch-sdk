@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.10] - 2026-01-28
+
+### Changed
+- **BREAKING**: `ClickAt(float, float)` and `ClickAt(Vector2)` now interpret values as percentages (0-1) instead of pixel coordinates
+  - `ClickAt(0.5f, 0.5f)` clicks at screen center (50%, 50%)
+  - Consistent with `PinchAt`, `SwipeAt`, and other percentage-based methods
+- All public async methods in `ActionExecutor` now use unified `RunAction` pattern for consistent START/COMPLETE logging
+- `ActionScope` refactored to support async awaiter pattern: `await using var action = await RunAction(...)`
+- `ActionScope` now ensures main thread before logging START (via `Async.ToMainThread()`)
+
+### Fixed
+- Focus stealing during multi-click operations now handled properly
+  - `InjectPointerDoubleTap` ensures Game View focus before second click
+  - `InjectPointerTripleTap` ensures Game View focus before each click
+  - Prevents flaky tests when user steals focus during test execution
+
 ## [1.1.9] - 2026-01-28
 
 ### Removed

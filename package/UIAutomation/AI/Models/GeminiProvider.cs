@@ -1,8 +1,9 @@
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -47,7 +48,7 @@ namespace ODDGames.UIAutomation.AI
             this.Name = $"Gemini ({this.modelName})";
         }
 
-        public async UniTask<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken ct = default)
+        public async Task<ModelResponse> CompleteAsync(ModelRequest request, CancellationToken ct = default)
         {
             var startTime = Time.realtimeSinceStartup;
 
@@ -84,7 +85,7 @@ namespace ODDGames.UIAutomation.AI
                     try
                     {
                         // Use time-based delay instead of frame-based to avoid hanging
-                        await UniTask.Delay(100, ignoreTimeScale: true, cancellationToken: ct);
+                        await Task.Delay(100, ct);
                     }
                     catch (OperationCanceledException)
                     {
@@ -113,7 +114,7 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        public async UniTask<bool> TestConnectionAsync(CancellationToken ct = default)
+        public async Task<bool> TestConnectionAsync(CancellationToken ct = default)
         {
             if (string.IsNullOrEmpty(apiKey))
                 return false;
@@ -136,7 +137,7 @@ namespace ODDGames.UIAutomation.AI
                     }
                     try
                     {
-                        await UniTask.Delay(100, ignoreTimeScale: true, cancellationToken: ct);
+                        await Task.Delay(100, ct);
                     }
                     catch
                     {

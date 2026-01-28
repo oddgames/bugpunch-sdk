@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+using System.Threading.Tasks;
+
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -139,7 +140,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
         /// <param name="progress">Optional progress callback</param>
         /// <param name="ct">Cancellation token</param>
         /// <returns>Test result with per-step results</returns>
-        public static async UniTask<VisualTestResult> RunAsync(
+        public static async Task<VisualTestResult> RunAsync(
             VisualTest test,
             Action<VisualTestProgress> progress = null,
             CancellationToken ct = default)
@@ -163,7 +164,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                     });
 
                     await LoadSceneAsync(test.startScene, ct);
-                    await UniTask.Delay(500, cancellationToken: ct); // Allow scene to settle
+                    await Task.Delay(500, cancellationToken: ct); // Allow scene to settle
                 }
 
                 // Execute each block
@@ -216,7 +217,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
         /// <summary>
         /// Executes a single visual block.
         /// </summary>
-        public static async UniTask<VisualBlockResult> ExecuteBlockAsync(
+        public static async Task<VisualBlockResult> ExecuteBlockAsync(
             VisualBlock block,
             int stepIndex = 0,
             CancellationToken ct = default)
@@ -333,7 +334,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 }
 
                 // Post-action delay for UI to update
-                await UniTask.Delay(PostActionDelayMs, cancellationToken: ct);
+                await Task.Delay(PostActionDelayMs, cancellationToken: ct);
 
                 var executionTime = (Time.realtimeSinceStartup - startTime) * 1000f;
                 return VisualBlockResult.Succeeded(block, stepIndex, executionTime);
@@ -352,7 +353,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
         #region Block Execution Methods
 
-        private static async UniTask ExecuteClickAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteClickAsync(VisualBlock block, CancellationToken ct)
         {
             var search = GetSearchOrThrow(block.target, "Click");
             var success = await ActionExecutor.Click(search, DefaultTimeoutMs / 1000f);
@@ -360,7 +361,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 throw new InvalidOperationException($"Click target not found: {GetSelectorDisplay(block.target)}");
         }
 
-        private static async UniTask ExecuteDoubleClickAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteDoubleClickAsync(VisualBlock block, CancellationToken ct)
         {
             var search = GetSearchOrThrow(block.target, "DoubleClick");
             var success = await ActionExecutor.DoubleClick(search, DefaultTimeoutMs / 1000f);
@@ -368,7 +369,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 throw new InvalidOperationException($"DoubleClick target not found: {GetSelectorDisplay(block.target)}");
         }
 
-        private static async UniTask ExecuteTripleClickAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteTripleClickAsync(VisualBlock block, CancellationToken ct)
         {
             var search = GetSearchOrThrow(block.target, "TripleClick");
             var success = await ActionExecutor.TripleClick(search, DefaultTimeoutMs / 1000f);
@@ -376,7 +377,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 throw new InvalidOperationException($"TripleClick target not found: {GetSelectorDisplay(block.target)}");
         }
 
-        private static async UniTask ExecuteHoldAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteHoldAsync(VisualBlock block, CancellationToken ct)
         {
             var search = GetSearchOrThrow(block.target, "Hold");
             var success = await ActionExecutor.Hold(search, block.holdSeconds, DefaultTimeoutMs / 1000f);
@@ -384,7 +385,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 throw new InvalidOperationException($"Hold target not found: {GetSelectorDisplay(block.target)}");
         }
 
-        private static async UniTask ExecuteTypeAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteTypeAsync(VisualBlock block, CancellationToken ct)
         {
             var search = GetSearchOrThrow(block.target, "Type");
             var success = await ActionExecutor.Type(search, block.text, block.clearFirst, block.pressEnter, DefaultTimeoutMs / 1000f);
@@ -392,7 +393,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 throw new InvalidOperationException($"Type target not found: {GetSelectorDisplay(block.target)}");
         }
 
-        private static async UniTask ExecuteDragAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteDragAsync(VisualBlock block, CancellationToken ct)
         {
             var fromSearch = GetSearchOrThrow(block.target, "Drag source");
 
@@ -419,7 +420,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             }
         }
 
-        private static async UniTask ExecuteScrollAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteScrollAsync(VisualBlock block, CancellationToken ct)
         {
             var search = GetSearchOrThrow(block.target, "Scroll");
             var success = await ActionExecutor.Scroll(search, block.scrollDirection, block.scrollAmount, DefaultTimeoutMs / 1000f);
@@ -439,14 +440,14 @@ namespace ODDGames.UIAutomation.VisualBuilder
             return search;
         }
 
-        private static async UniTask ExecuteWaitAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteWaitAsync(VisualBlock block, CancellationToken ct)
         {
             var waitMs = Mathf.Max(0, (int)(block.waitSeconds * 1000f));
             Debug.Log($"[VisualTestRunner] Waiting {block.waitSeconds}s");
-            await UniTask.Delay(waitMs, cancellationToken: ct);
+            await Task.Delay(waitMs, cancellationToken: ct);
         }
 
-        private static async UniTask ExecuteRunCodeAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteRunCodeAsync(VisualBlock block, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(block.codeBody))
                 throw new InvalidOperationException("RunCode block has no code");
@@ -460,13 +461,13 @@ namespace ODDGames.UIAutomation.VisualBuilder
             else
             {
                 RuntimeCodeCompiler.Execute(block.codeBody);
-                await UniTask.Yield();
+                await Task.Yield();
             }
 
             Debug.Log($"[VisualTestRunner] Custom code executed");
         }
 
-        private static async UniTask ExecuteVisualScriptAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteVisualScriptAsync(VisualBlock block, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(block.visualScriptEvent))
                 throw new InvalidOperationException("VisualScript block has no event name");
@@ -500,7 +501,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 Debug.LogWarning($"[VisualTestRunner] No Visual Scripting graphs received event '{block.visualScriptEvent}'");
             }
 
-            await UniTask.Yield();
+            await Task.Yield();
             Debug.Log($"[VisualTestRunner] Visual Script event triggered");
         }
 
@@ -553,7 +554,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             }
         }
 
-        private static async UniTask ExecuteKeyHoldAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteKeyHoldAsync(VisualBlock block, CancellationToken ct)
         {
             var keyNames = (block.keyHoldKeys ?? "W").Split(',', StringSplitOptions.RemoveEmptyEntries);
             var keys = new List<UnityEngine.InputSystem.Key>();
@@ -588,7 +589,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             }
         }
 
-        private static async UniTask ExecuteKeyPressAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteKeyPressAsync(VisualBlock block, CancellationToken ct)
         {
             var keyName = block.keyName ?? "Escape";
             if (!Enum.TryParse<UnityEngine.InputSystem.Key>(keyName, true, out var key))
@@ -600,7 +601,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             await ActionExecutor.PressKey(key);
         }
 
-        private static async UniTask ExecuteWaitForElementAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteWaitForElementAsync(VisualBlock block, CancellationToken ct)
         {
             Debug.Log($"[VisualTestRunner] Waiting for element: {GetSelectorDisplay(block.target)}");
 
@@ -615,7 +616,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Element appeared: {element.name}");
         }
 
-        private static async UniTask ExecuteScrollUntilAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteScrollUntilAsync(VisualBlock block, CancellationToken ct)
         {
             Debug.Log($"[VisualTestRunner] ScrollUntil: Looking for {GetSelectorDisplay(block.target)}");
 
@@ -681,15 +682,15 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
                 Debug.Log($"[VisualTestRunner] Scroll attempt {attempt + 1}/{maxAttempts}");
                 await InputInjector.InjectScroll(center, scrollDelta);
-                await UniTask.Delay(150, cancellationToken: ct); // Wait for scroll animation
+                await Task.Delay(150, cancellationToken: ct); // Wait for scroll animation
             }
 
             throw new InvalidOperationException($"Element not found after {maxAttempts} scroll attempts: {GetSelectorDisplay(block.target)}");
         }
 
-        private static async UniTask ExecuteScreenshotAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteScreenshotAsync(VisualBlock block, CancellationToken ct)
         {
-            await UniTask.Yield(); // Wait for rendering
+            await Task.Yield(); // Wait for rendering
 
             var filename = block.screenshotName;
             if (string.IsNullOrEmpty(filename))
@@ -708,7 +709,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTest] {message}");
         }
 
-        private static async UniTask ExecuteSetSliderAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteSetSliderAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -723,7 +724,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             await ActionExecutor.SetSlider(slider, normalizedValue);
         }
 
-        private static async UniTask ExecuteSetScrollbarAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteSetScrollbarAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -738,7 +739,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             await ActionExecutor.SetScrollbar(scrollbar, normalizedValue);
         }
 
-        private static async UniTask ExecuteClickDropdownAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteClickDropdownAsync(VisualBlock block, CancellationToken ct)
         {
             if (block.target == null || !block.target.IsValid())
                 throw new InvalidOperationException("ClickDropdown requires a target element selector");
@@ -763,7 +764,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 throw new InvalidOperationException($"Dropdown not found: {GetSelectorDisplay(block.target)}");
         }
 
-        private static async UniTask ExecuteSwipeAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteSwipeAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -772,7 +773,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             await ActionExecutor.Swipe(element.gameObject, block.swipeDirection, block.swipeDistance, block.swipeDuration);
         }
 
-        private static async UniTask ExecutePinchAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecutePinchAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
 
@@ -786,7 +787,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             await ActionExecutor.Pinch(element?.gameObject, block.pinchScale, block.pinchDuration);
         }
 
-        private static async UniTask ExecuteTwoFingerSwipeAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteTwoFingerSwipeAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
 
@@ -798,7 +799,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 block.twoFingerSpacing);
         }
 
-        private static async UniTask ExecuteRotateAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteRotateAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
 
@@ -809,9 +810,9 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 block.rotateFingerDistance);
         }
 
-        private static async UniTask ExecuteAssertAsync(VisualBlock block, CancellationToken ct)
+        private static async Task ExecuteAssertAsync(VisualBlock block, CancellationToken ct)
         {
-            await UniTask.Yield(); // Allow a frame for UI to update
+            await Task.Yield(); // Allow a frame for UI to update
 
             switch (block.assertCondition)
             {
@@ -868,7 +869,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
         #region Assert Helpers
 
-        private static async UniTask AssertElementExistsAsync(VisualBlock block, bool shouldExist, CancellationToken ct)
+        private static async Task AssertElementExistsAsync(VisualBlock block, bool shouldExist, CancellationToken ct)
         {
             var element = await TryResolveElementAsync(block.target, ct);
             bool exists = element?.gameObject != null;
@@ -885,7 +886,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Assert {(shouldExist ? "exists" : "not exists")} passed for '{GetSelectorDisplay(block.target)}'");
         }
 
-        private static async UniTask AssertTextAsync(VisualBlock block, bool containsMode, CancellationToken ct)
+        private static async Task AssertTextAsync(VisualBlock block, bool containsMode, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -913,7 +914,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Assert text {(containsMode ? "contains" : "equals")} passed: \"{actualText}\"");
         }
 
-        private static async UniTask AssertToggleStateAsync(VisualBlock block, bool value, CancellationToken ct)
+        private static async Task AssertToggleStateAsync(VisualBlock block, bool value, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -933,7 +934,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Assert toggle state passed: {element.name} is {(toggle.isOn ? "ON" : "OFF")}");
         }
 
-        private static async UniTask AssertSliderValueAsync(VisualBlock block, CancellationToken ct)
+        private static async Task AssertSliderValueAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -956,7 +957,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Assert slider value passed: {element.name} = {actual:F3} (expected {expected:F3} ±{variance:F3})");
         }
 
-        private static async UniTask AssertDropdownIndexAsync(VisualBlock block, CancellationToken ct)
+        private static async Task AssertDropdownIndexAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -989,7 +990,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Assert dropdown index passed: {element.name} = {actual}");
         }
 
-        private static async UniTask AssertDropdownTextAsync(VisualBlock block, CancellationToken ct)
+        private static async Task AssertDropdownTextAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -1022,7 +1023,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Assert dropdown text passed: {element.name} = \"{actual}\"");
         }
 
-        private static async UniTask AssertInputValueAsync(VisualBlock block, CancellationToken ct)
+        private static async Task AssertInputValueAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
             if (element?.gameObject == null)
@@ -1055,9 +1056,9 @@ namespace ODDGames.UIAutomation.VisualBuilder
             Debug.Log($"[VisualTestRunner] Assert input value passed: {element.name} = \"{actual}\"");
         }
 
-        private static async UniTask AssertCustomExpressionAsync(VisualBlock block, CancellationToken ct)
+        private static async Task AssertCustomExpressionAsync(VisualBlock block, CancellationToken ct)
         {
-            await UniTask.Yield();
+            await Task.Yield();
 
             if (string.IsNullOrWhiteSpace(block.assertExpression))
                 throw new InvalidOperationException("Assert failed: No custom expression specified");
@@ -1081,7 +1082,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
         /// Resolves an ElementSelector to an actual ElementInfo.
         /// Throws if element cannot be found.
         /// </summary>
-        private static async UniTask<ElementInfo> ResolveElementAsync(
+        private static async Task<ElementInfo> ResolveElementAsync(
             ElementSelector selector,
             CancellationToken ct,
             int timeoutMs = DefaultTimeoutMs)
@@ -1098,7 +1099,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
         /// Tries to resolve an ElementSelector to an actual ElementInfo.
         /// Returns null if element cannot be found within timeout.
         /// </summary>
-        private static async UniTask<ElementInfo> TryResolveElementAsync(
+        private static async Task<ElementInfo> TryResolveElementAsync(
             ElementSelector selector,
             CancellationToken ct,
             int timeoutMs = DefaultTimeoutMs)
@@ -1119,7 +1120,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 if (matched != null)
                     return matched;
 
-                await UniTask.Delay(ElementWaitDelayMs, cancellationToken: ct);
+                await Task.Delay(ElementWaitDelayMs, cancellationToken: ct);
             }
 
             return null;
@@ -1234,7 +1235,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
         /// <summary>
         /// Loads a scene asynchronously.
         /// </summary>
-        private static async UniTask LoadSceneAsync(string sceneName, CancellationToken ct)
+        private static async Task LoadSceneAsync(string sceneName, CancellationToken ct)
         {
             var asyncOp = SceneManager.LoadSceneAsync(sceneName);
             if (asyncOp == null)
@@ -1243,7 +1244,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
             while (!asyncOp.isDone)
             {
                 ct.ThrowIfCancellationRequested();
-                await UniTask.Yield();
+                await Task.Yield();
             }
         }
 

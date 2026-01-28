@@ -397,14 +397,13 @@ namespace ODDGames.UIAutomation.Editor
             sb.AppendLine("Requirements:");
             sb.AppendLine("- Generate a descriptive PascalCase class name based on what the test does (e.g., GarageToFreestyleTest, BuyTruckTest)");
             sb.AppendLine("- Use [TestFixture] attribute on the class");
-            sb.AppendLine("- Use [UnityTest] attribute on test methods returning IEnumerator");
+            sb.AppendLine("- Use [Test] attribute on async test methods returning Task");
             sb.AppendLine("- Add 'using static ODDGames.UIAutomation.ActionExecutor;' for static access to all test methods");
-            sb.AppendLine("- Use UniTask.ToCoroutine(async () => { ... }) pattern inside test methods");
             sb.AppendLine("- Use await Click(Name(\"pattern\")) for clicks - PREFER text content over element names when available");
             sb.AppendLine("- Use await Wait(seconds) for delays between actions");
             sb.AppendLine("- Use await WaitFor(() => condition, timeout, \"description\") for waiting on state changes");
             sb.AppendLine("- Analyze the log.txt to understand game state transitions and add appropriate waits");
-            sb.AppendLine("- Add using Cysharp.Threading.Tasks; and using NUnit.Framework; at the top");
+            sb.AppendLine("- Add  and using NUnit.Framework; at the top");
             sb.AppendLine("- Make sure to handle popups or dialogs that might appear (use throwIfMissing: false for optional elements)");
             sb.AppendLine("- Steps marked with '** DELIBERATE WAIT DETECTED **' indicate the user intentionally waited (gap >= 2s with stable 30+ fps)");
             sb.AppendLine("- For deliberate waits, add an explicit await Wait(seconds) call BEFORE the action to replicate the user's behavior");

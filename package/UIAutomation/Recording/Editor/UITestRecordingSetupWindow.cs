@@ -22,7 +22,7 @@ namespace ODDGames.UIAutomation.Editor
         public static void ShowWindow(Action<string> onStart)
         {
             onStartCallback = onStart;
-            var window = GetWindow<UITestRecordingSetupWindow>(true, "Record UI Test", true);
+            var window = GetWindow<UITestRecordingSetupWindow>(true, "Record UI Test");
             window.minSize = new Vector2(400, 230);
             window.maxSize = new Vector2(500, 280);
             window.ShowUtility();
@@ -189,7 +189,7 @@ namespace ODDGames.UIAutomation.Editor
 
             if (Directory.Exists(targetPath))
             {
-                Directory.Delete(targetPath, true);
+                Directory.Delete(targetPath);
             }
 
             if (testDataPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
@@ -212,7 +212,7 @@ namespace ODDGames.UIAutomation.Editor
 
             if (testDataPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             {
-                File.Copy(testDataPath, zipPath, true);
+                File.Copy(testDataPath, zipPath);
                 Debug.Log($"[UITestRecorder] Test data zip copied to recording: {zipPath}");
             }
             else
@@ -243,7 +243,7 @@ namespace ODDGames.UIAutomation.Editor
             foreach (string file in Directory.GetFiles(sourceDir))
             {
                 string targetFile = Path.Combine(targetDir, Path.GetFileName(file));
-                File.Copy(file, targetFile, true);
+                File.Copy(file, targetFile);
             }
 
             foreach (string dir in Directory.GetDirectories(sourceDir))

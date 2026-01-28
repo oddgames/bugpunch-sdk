@@ -205,7 +205,7 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
             EditorGUILayout.EndVertical();
 
             // Expandable block list
-            showBlockDetails = EditorGUILayout.Foldout(showBlockDetails, $"Block Details ({blockCount})", true);
+            showBlockDetails = EditorGUILayout.Foldout(showBlockDetails, $"Block Details ({blockCount})");
             if (showBlockDetails)
             {
                 DrawBlockList();
@@ -320,7 +320,7 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
         {
             EditorGUILayout.Space(4);
 
-            showAIPrompt = EditorGUILayout.Foldout(showAIPrompt, "AI Recording Information", true);
+            showAIPrompt = EditorGUILayout.Foldout(showAIPrompt, "AI Recording Information");
             if (!showAIPrompt) return;
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);

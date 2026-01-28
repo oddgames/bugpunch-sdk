@@ -72,7 +72,7 @@ namespace ODDGames.UIAutomation.AI
 
             // Save run data as JSON
             var runPath = Path.Combine(basePath, $"{run.id}.json");
-            var json = JsonUtility.ToJson(run, true);
+            var json = JsonUtility.ToJson(run);
             File.WriteAllText(runPath, json);
 
             // Update index
@@ -241,7 +241,7 @@ namespace ODDGames.UIAutomation.AI
             var screenshotsPath = Path.Combine(basePath, ScreenshotsFolder, id);
             if (Directory.Exists(screenshotsPath))
             {
-                Directory.Delete(screenshotsPath, true);
+                Directory.Delete(screenshotsPath);
             }
         }
 
@@ -252,7 +252,7 @@ namespace ODDGames.UIAutomation.AI
         {
             if (Directory.Exists(basePath))
             {
-                Directory.Delete(basePath, true);
+                Directory.Delete(basePath);
             }
 
             index = new ResultIndex();
@@ -299,7 +299,7 @@ namespace ODDGames.UIAutomation.AI
             EnsureDirectoriesExist();
 
             var indexPath = Path.Combine(basePath, IndexFile);
-            var json = JsonUtility.ToJson(index, true);
+            var json = JsonUtility.ToJson(index);
             File.WriteAllText(indexPath, json);
         }
 

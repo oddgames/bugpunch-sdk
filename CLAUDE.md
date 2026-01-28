@@ -1,4 +1,4 @@
-# UITest Package - Claude Context
+# UIAutomation Package - Claude Context
 
 ## Project Structure
 
@@ -15,13 +15,20 @@ Use the appropriate helper instead: `ClickDropdown()`, `ClickSlider()`, `Click()
 
 **Exception**: `TypeIntoField()` uses direct text manipulation because TMP_InputField doesn't support Input System text events (known Unity limitation).
 
+**No External Dependencies** - The package uses only standard .NET and Unity APIs:
+- Use `System.Threading.Tasks` (async/await) - NOT UniTask
+- Use `System.Text.Json` or manual JSON - NOT Newtonsoft.Json
+- Use `IAsyncDisposable` pattern for action lifecycle management
+
 ## Key Commands
 
 - `/deploy` - Version bump, changelog, commit, tag, and push. **Do NOT commit/push unless explicitly asked via `/deploy`**
 
 ## Testing
 
-**PlayMode Tests** (`test/Assets/Tests/PlayMode/`) - Primary testing approach. NUnit tests with `[UnityTest]`, `IEnumerator`, and `UniTask.ToCoroutine()`.
+**PlayMode Tests** (`test/Assets/Tests/PlayMode/`) - Primary testing approach. NUnit tests with `[Test]` attribute and `async Task` methods.
+
+**Manual Test Execution** - The user runs tests manually in Unity Editor. Do NOT attempt to run Unity tests from the command line.
 
 **Samples** (`package/UITest/Samples/`) - Demonstrations only, not for framework testing.
 
@@ -81,4 +88,4 @@ Track changes methodically as you work. Used to generate CHANGELOG.md during `/d
 
 ### Current Local Changes
 
-(None - cleared after v1.1.9 deploy)
+(None - cleared after v1.1.10 deploy)

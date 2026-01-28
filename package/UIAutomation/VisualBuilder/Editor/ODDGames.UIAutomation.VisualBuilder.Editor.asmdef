@@ -6,7 +6,6 @@
         "ODDGames.UIAutomation.AI",
         "ODDGames.UIAutomation.AI.Editor",
         "ODDGames.UIAutomation.VisualBuilder",
-        "UniTask",
         "Unity.TextMeshPro",
         "Unity.InputSystem"
     ],

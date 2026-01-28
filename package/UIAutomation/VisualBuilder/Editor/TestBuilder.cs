@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
-using Cysharp.Threading.Tasks;
+
 using ODDGames.UIAutomation.AI;
 using UIImage = UnityEngine.UI.Image;
 
@@ -393,8 +394,8 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
 
                 // Wait for play mode
                 while (!EditorApplication.isPlaying)
-                    await UniTask.Yield();
-                await UniTask.DelayFrame(5);
+                    await Task.Yield();
+                await Async.DelayFrames(5);
             }
             else
             {
@@ -414,7 +415,7 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
                 statusLabel.text = $"Running block {i + 1}/{currentTest.blocks.Count}...";
 
                 await ExecuteBlock(currentTest.blocks[i]);
-                await UniTask.Delay(200);
+                await Task.Delay(200);
             }
 
             if (EditorApplication.isPlaying)
@@ -2383,7 +2384,7 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
                     statusLabel.text = $"Running block {i + 1}/{currentTest.blocks.Count}...";
 
                     await ExecuteBlock(currentTest.blocks[i]);
-                    await UniTask.Delay(200);
+                    await Task.Delay(200);
                 }
 
                 statusLabel.text = $"Completed all {currentTest.blocks.Count} blocks";
@@ -2415,13 +2416,13 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
                 statusLabel.text = $"Running block {i + 1}/{targetIndex + 1}...";
 
                 await ExecuteBlock(currentTest.blocks[i]);
-                await UniTask.Delay(200);
+                await Task.Delay(200);
             }
 
             statusLabel.text = $"Completed blocks 1-{targetIndex + 1}";
         }
 
-        private async UniTask RestartScene()
+        private async Task RestartScene()
         {
             if (currentTest == null || string.IsNullOrEmpty(currentTest.startScene)) return;
 
@@ -2431,14 +2432,14 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
 
             while (asyncOp != null && !asyncOp.isDone)
             {
-                await UniTask.Yield();
+                await Task.Yield();
             }
 
             // Wait a frame for scene to settle
-            await UniTask.DelayFrame(2);
+            await Async.DelayFrames(2);
         }
 
-        private async UniTask ExecuteBlock(VisualBlock block)
+        private async Task ExecuteBlock(VisualBlock block)
         {
             var result = await VisualTestRunner.ExecuteBlockAsync(block);
             if (!result.Success)
