@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.14] - 2026-01-30
+
+### Fixed
+- **Frame-based timing for multi-click operations** - Double/triple click and tap now use `DelayFrames` instead of `Task.Delay` for more reliable input processing
+  - `InjectPointerDoubleTap` uses `DelayFrames(3)` between clicks
+  - `InjectTouchDoubleTap` uses `DelayFrames(3)` between taps
+  - `InjectPointerTripleTap` uses `DelayFrames(2)` between clicks
+  - `InjectTouchTripleTap` uses `DelayFrames(2)` between taps
+- **Drag operation timing stability** - Added initial frame delay before starting drags to ensure previous input state settles
+  - `InjectMouseDrag` now waits one frame before positioning mouse
+  - `InjectTouchDrag` now waits one frame before starting touch
+  - Fixes flaky tests when consecutive drags occur (e.g., `Swipe_Diagonal`, sequential swipes)
+
 ## [1.1.13] - 2026-01-29
 
 ### Added
