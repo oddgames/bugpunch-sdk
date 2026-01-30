@@ -51,18 +51,33 @@ namespace ODDGames.UIAutomation.AI
         /// <summary>Whether this model supports structured JSON output</summary>
         public bool SupportsStructuredOutput => InferStructuredOutputSupport();
 
+        /// <summary>Whether this model is a Computer Use model (requires special tool format)</summary>
+        public bool IsComputerUseModel => ModelId.ToLowerInvariant().Contains("computer-use");
+
         /// <summary>
         /// Infers vision support from model name/description.
         /// Gemini 1.5+ and 2.0+ models support vision. Older models like gemini-pro do not.
+        /// TTS, embedding, AQA, and computer-use models don't work with standard function calling.
         /// </summary>
         private bool InferVisionSupport()
         {
             var id = ModelId.ToLowerInvariant();
+
+            // Exclude non-standard models that don't work with our function calling approach
+            if (id.Contains("tts")) return false;           // Text-to-speech models
+            if (id.Contains("embedding")) return false;     // Embedding models
+            if (id.Contains("aqa")) return false;           // Attributed QA models
+            if (id.Contains("imagen")) return false;        // Image generation (not input)
+            if (id.Contains("learnlm")) return false;       // Learning models
+            // Note: computer-use models DO support vision, they just need special tool format
+
             // Vision models include "vision" or are 1.5/2.0+ generation
             if (id.Contains("vision")) return true;
             if (id.Contains("gemini-1.5") || id.Contains("gemini-2")) return true;
+
             // Older gemini-pro without version doesn't support vision
             if (id == "gemini-pro") return false;
+
             return true; // Default to true for newer models
         }
 
@@ -185,15 +200,20 @@ namespace ODDGames.UIAutomation.AI
                 var responseJson = webRequest.downloadHandler.text;
                 var models = ParseModelsResponse(responseJson);
 
-                // Filter to models that support chat and tool calling (required for AI tests)
-                var compatibleModels = models.FindAll(m => m.SupportsChat && m.SupportsTools);
+                // Filter to models that support chat, tool calling, AND vision (required for AI testing)
+                // Exclude Computer Use models - they require built-in Computer Use tools
+                var compatibleModels = models.FindAll(m =>
+                    m.SupportsChat &&
+                    m.SupportsTools &&
+                    m.SupportsVision &&
+                    !m.IsComputerUseModel);
 
-                // Sort by capability: vision + tools first, then by name
+                // Sort by capability: prefer models with structured output, then by context window size
                 compatibleModels.Sort((a, b) =>
                 {
-                    // Prefer models with vision support
-                    if (a.SupportsVision != b.SupportsVision)
-                        return b.SupportsVision.CompareTo(a.SupportsVision);
+                    // Prefer models with structured output support
+                    if (a.SupportsStructuredOutput != b.SupportsStructuredOutput)
+                        return b.SupportsStructuredOutput.CompareTo(a.SupportsStructuredOutput);
                     // Then by context window size
                     return b.inputTokenLimit.CompareTo(a.inputTokenLimit);
                 });
@@ -202,7 +222,7 @@ namespace ODDGames.UIAutomation.AI
                 cachedModels = compatibleModels;
                 cacheTime = DateTime.UtcNow;
 
-                Debug.Log($"[GeminiModels] Found {compatibleModels.Count} compatible models (chat + tools)");
+                Debug.Log($"[GeminiModels] Found {compatibleModels.Count} compatible models (chat + tools + vision + structured output, excluding Computer Use)");
                 return compatibleModels;
             }
             catch (Exception ex)
@@ -232,6 +252,223 @@ namespace ODDGames.UIAutomation.AI
                 m.ModelId.Equals(modelId, StringComparison.OrdinalIgnoreCase) ||
                 m.name.Equals(modelId, StringComparison.OrdinalIgnoreCase) ||
                 m.name.Equals($"models/{modelId}", StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Validates that a model supports vision, tools, and structured output by making a test request.
+        /// Returns null if valid, or an error message if the model doesn't support required features.
+        /// </summary>
+        public static async Task<string> ValidateModelCapabilitiesAsync(string apiKey, string modelId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(modelId))
+                return "API key and model ID are required";
+
+            // Use different validation for Computer Use models
+            if (modelId.ToLowerInvariant().Contains("computer-use"))
+            {
+                return await ValidateComputerUseModelAsync(apiKey, modelId, ct);
+            }
+
+            try
+            {
+                var url = $"{BaseUrl}/{modelId}:generateContent?key={apiKey}";
+
+                // Create a minimal 1x1 red PNG (68 bytes)
+                var minimalPng = Convert.FromBase64String(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==");
+
+                // Build a request that tests vision, tools, and structured output
+                var requestBody = $@"{{
+                    ""contents"": [{{
+                        ""parts"": [
+                            {{""text"": ""What color is this image? Call the report_color function.""}},
+                            {{""inline_data"": {{
+                                ""mime_type"": ""image/png"",
+                                ""data"": ""{Convert.ToBase64String(minimalPng)}""
+                            }}}}
+                        ]
+                    }}],
+                    ""tools"": [{{
+                        ""functionDeclarations"": [{{
+                            ""name"": ""report_color"",
+                            ""description"": ""Report the detected color"",
+                            ""parameters"": {{
+                                ""type"": ""OBJECT"",
+                                ""properties"": {{
+                                    ""color"": {{""type"": ""STRING"", ""description"": ""The color""}}
+                                }},
+                                ""required"": [""color""]
+                            }}
+                        }}]
+                    }}],
+                    ""generationConfig"": {{
+                        ""maxOutputTokens"": 50,
+                        ""responseMimeType"": ""application/json""
+                    }}
+                }}";
+
+                var bodyBytes = Encoding.UTF8.GetBytes(requestBody);
+                using var webRequest = new UnityWebRequest(url, "POST");
+                using var uploadHandler = new UploadHandlerRaw(bodyBytes);
+                using var downloadHandler = new DownloadHandlerBuffer();
+                webRequest.uploadHandler = uploadHandler;
+                webRequest.downloadHandler = downloadHandler;
+                webRequest.SetRequestHeader("Content-Type", "application/json");
+                webRequest.timeout = 30;
+
+                var operation = webRequest.SendWebRequest();
+
+                while (!operation.isDone)
+                {
+                    if (ct.IsCancellationRequested)
+                    {
+                        webRequest.Abort();
+                        return "Validation cancelled";
+                    }
+                    await Task.Delay(100, ct);
+                }
+
+                var responseBody = webRequest.downloadHandler?.text ?? "";
+
+                if (webRequest.result != UnityWebRequest.Result.Success)
+                {
+                    // Try to extract error message from JSON response
+                    var errorMessage = ExtractErrorMessage(responseBody);
+
+                    // Check for specific error patterns
+                    if (responseBody.Contains("Image input modality is not enabled") ||
+                        responseBody.Contains("modality"))
+                    {
+                        return $"Model does not support image input: {errorMessage}";
+                    }
+
+                    if (responseBody.Contains("functionDeclarations") ||
+                        responseBody.Contains("tools"))
+                    {
+                        return $"Model does not support function calling: {errorMessage}";
+                    }
+
+                    if (responseBody.Contains("responseMimeType") ||
+                        responseBody.Contains("JSON"))
+                    {
+                        return $"Model does not support structured output: {errorMessage}";
+                    }
+
+                    return $"Validation failed: {errorMessage}";
+                }
+
+                // Success - model supports all required capabilities
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return $"Validation error: {ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// Validates that a model supports vision by making a test request with an image.
+        /// Returns null if valid, or an error message if the model doesn't support vision.
+        /// </summary>
+        [Obsolete("Use ValidateModelCapabilitiesAsync instead")]
+        public static Task<string> ValidateVisionSupportAsync(string apiKey, string modelId, CancellationToken ct = default)
+            => ValidateModelCapabilitiesAsync(apiKey, modelId, ct);
+
+        /// <summary>
+        /// Validates a Computer Use model by making a test request with the Computer Use tool.
+        /// </summary>
+        private static async Task<string> ValidateComputerUseModelAsync(string apiKey, string modelId, CancellationToken ct)
+        {
+            try
+            {
+                var url = $"{BaseUrl}/{modelId}:generateContent?key={apiKey}";
+
+                // Create a minimal 1x1 red PNG
+                var minimalPng = Convert.FromBase64String(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==");
+
+                // Build a request with the Computer Use tool
+                var requestBody = $@"{{
+                    ""contents"": [{{
+                        ""parts"": [
+                            {{""text"": ""Describe what you see in this image.""}},
+                            {{""inline_data"": {{
+                                ""mime_type"": ""image/png"",
+                                ""data"": ""{Convert.ToBase64String(minimalPng)}""
+                            }}}}
+                        ]
+                    }}],
+                    ""tools"": [{{
+                        ""computer_use"": {{
+                            ""environment"": ""ENVIRONMENT_BROWSER""
+                        }}
+                    }}],
+                    ""generationConfig"": {{
+                        ""maxOutputTokens"": 50
+                    }}
+                }}";
+
+                var bodyBytes = Encoding.UTF8.GetBytes(requestBody);
+                using var webRequest = new UnityWebRequest(url, "POST");
+                using var uploadHandler = new UploadHandlerRaw(bodyBytes);
+                using var downloadHandler = new DownloadHandlerBuffer();
+                webRequest.uploadHandler = uploadHandler;
+                webRequest.downloadHandler = downloadHandler;
+                webRequest.SetRequestHeader("Content-Type", "application/json");
+                webRequest.timeout = 30;
+
+                var operation = webRequest.SendWebRequest();
+
+                while (!operation.isDone)
+                {
+                    if (ct.IsCancellationRequested)
+                    {
+                        webRequest.Abort();
+                        return "Validation cancelled";
+                    }
+                    await Task.Delay(100, ct);
+                }
+
+                var responseBody = webRequest.downloadHandler?.text ?? "";
+
+                if (webRequest.result != UnityWebRequest.Result.Success)
+                {
+                    var errorMessage = ExtractErrorMessage(responseBody);
+                    return $"Computer Use model validation failed: {errorMessage}";
+                }
+
+                // Success - Computer Use model works
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return $"Computer Use validation error: {ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// Extracts error message from Gemini API error response JSON.
+        /// </summary>
+        private static string ExtractErrorMessage(string responseBody)
+        {
+            if (string.IsNullOrEmpty(responseBody))
+                return "Unknown error";
+
+            try
+            {
+                var parsed = SimpleJsonParser.Parse(responseBody);
+                if (parsed.TryGetValue("error", out var errorObj) && errorObj is Dictionary<string, object> error)
+                {
+                    return error.GetValueOrDefault("message")?.ToString() ?? "Unknown error";
+                }
+            }
+            catch
+            {
+                // Ignore parse errors
+            }
+
+            // Return truncated raw response if parsing fails
+            return responseBody.Length > 200 ? responseBody.Substring(0, 200) + "..." : responseBody;
         }
 
         private static List<GeminiModelInfo> ParseModelsResponse(string json)

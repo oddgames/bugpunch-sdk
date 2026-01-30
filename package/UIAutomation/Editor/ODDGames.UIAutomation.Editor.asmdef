@@ -9,7 +9,9 @@
         "ODDGames.UIAutomation.VisualBuilder.Editor",
         "Unity.TextMeshPro",
         "Unity.InputSystem",
-        "Unity.Recorder.Editor"
+        "Unity.Recorder.Editor",
+        "UnityEditor.TestRunner",
+        "UnityEngine.TestRunner"
     ],
     "includePlatforms": [
         "Editor"

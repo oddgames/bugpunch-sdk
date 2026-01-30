@@ -2605,13 +2605,13 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
             if (!hasGemini)
             {
                 statusLabel.text = "No AI provider configured!";
-                UpdateAIStatusPanel(true, "Error", "No API key configured. Go to Project Settings > UI Test > AI Testing to add your Gemini API key.", -1);
+                UpdateAIStatusPanel(true, "Error", "No API key configured. Go to Project Settings > UI Automation > AI Testing to add your Gemini API key.", -1);
 
                 if (EditorUtility.DisplayDialog("AI Not Configured",
-                    "No AI provider is configured.\n\nPlease add your Gemini API key in:\nProject Settings > UI Test > AI Testing",
+                    "No AI provider is configured.\n\nPlease add your Gemini API key in:\nProject Settings > UI Automation > AI Testing",
                     "Open Settings", "Cancel"))
                 {
-                    SettingsService.OpenProjectSettings("Project/UI Test/AI Testing");
+                    SettingsService.OpenProjectSettings("Project/UI Automation/AI Testing");
                 }
                 return;
             }
@@ -2728,7 +2728,7 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
 
         private void OpenAISettings()
         {
-            SettingsService.OpenProjectSettings("Project/UI Test/AI Testing");
+            SettingsService.OpenProjectSettings("Project/UI Automation/AI Testing");
         }
     }
 

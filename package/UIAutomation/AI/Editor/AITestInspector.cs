@@ -20,14 +20,49 @@ namespace ODDGames.UIAutomation.AI.Editor
             test = (AITest)target;
         }
 
+        private void DrawTestRunnerInfo()
+        {
+            var hasPrompt = !string.IsNullOrWhiteSpace(test.prompt);
+
+            EditorGUILayout.BeginVertical("box");
+
+            EditorGUILayout.BeginHorizontal();
+            var icon = hasPrompt ? EditorGUIUtility.IconContent("TestPassed") : EditorGUIUtility.IconContent("TestIgnored");
+            GUILayout.Label(icon, GUILayout.Width(20), GUILayout.Height(20));
+            EditorGUILayout.LabelField("Test Runner Discovery", EditorStyles.boldLabel);
+            EditorGUILayout.EndHorizontal();
+
+            if (hasPrompt)
+            {
+                EditorGUILayout.LabelField($"This test will appear as: AITestDiscovery > {test.name}", EditorStyles.miniLabel);
+            }
+            else
+            {
+                EditorGUILayout.LabelField("Add a prompt to enable test discovery", EditorStyles.miniLabel);
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
+
+            // Test Runner Discovery Info
+            DrawTestRunnerInfo();
+
+            EditorGUILayout.Space(5);
 
             // Test Definition Section
             EditorGUILayout.LabelField("Test Definition", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("prompt"),
                 new GUIContent("Prompt", "What should the test do?"));
+
+            // Validation warning
+            if (string.IsNullOrWhiteSpace(test.prompt))
+            {
+                EditorGUILayout.HelpBox("A prompt is required for this test to appear in Test Runner.", MessageType.Warning);
+            }
 
             EditorGUILayout.Space(10);
 
@@ -59,10 +94,18 @@ namespace ODDGames.UIAutomation.AI.Editor
             EditorGUILayout.Space(10);
 
             // Run Controls
+            EditorGUILayout.LabelField("Run Test", EditorStyles.boldLabel);
+
             EditorGUILayout.BeginHorizontal();
 
+            // Open Test Runner button
+            if (GUILayout.Button("Open Test Runner", GUILayout.Height(30)))
+            {
+                EditorApplication.ExecuteMenuItem("Window/General/Test Runner");
+            }
+
             GUI.enabled = Application.isPlaying && !AITestRunner.IsRunning;
-            if (GUILayout.Button("Run Test", GUILayout.Height(30)))
+            if (GUILayout.Button("Run Now (Play Mode)", GUILayout.Height(30)))
             {
                 RunTest();
             }
@@ -80,7 +123,9 @@ namespace ODDGames.UIAutomation.AI.Editor
 
             if (!Application.isPlaying)
             {
-                EditorGUILayout.HelpBox("Enter Play mode to run the test.", MessageType.Info);
+                EditorGUILayout.HelpBox(
+                    "Use the Test Runner to run this test, or enter Play Mode to run directly.",
+                    MessageType.Info);
             }
 
             EditorGUILayout.Space(10);

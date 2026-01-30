@@ -5,10 +5,18 @@ using UnityEngine;
 namespace ODDGames.UIAutomation.AI
 {
     /// <summary>
-    /// Internal configuration for AI-driven test execution.
-    /// Used by AIRecordingSession to drive visual test generation.
-    /// Not intended to be created as standalone assets.
+    /// ScriptableObject-based AI test configuration.
+    /// Create these assets to define tests that are automatically discovered
+    /// and run by the Unity Test Runner via <see cref="AITestDiscovery"/>.
+    ///
+    /// Usage:
+    /// 1. Create > UITest > AI Test
+    /// 2. Fill in the prompt describing what to test
+    /// 3. The test appears automatically in Test Runner under "AITestDiscovery"
+    ///
+    /// Example prompt: "Navigate to settings, toggle dark mode, verify it's enabled"
     /// </summary>
+    [CreateAssetMenu(fileName = "NewAITest", menuName = "UITest/AI Test", order = 100)]
     public class AITest : ScriptableObject
     {
         [Header("Test Definition")]

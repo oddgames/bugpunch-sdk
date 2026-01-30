@@ -32,6 +32,7 @@ namespace ODDGames.UIAutomation.AI
                 CreateKeyHoldTool(),
                 CreateWaitTool(),
                 CreateScreenshotTool(),
+                CreateGetHierarchyTool(),
                 CreatePassTool(),
                 CreateFailTool()
             };
@@ -590,7 +591,7 @@ namespace ODDGames.UIAutomation.AI
             return new ToolDefinition
             {
                 Name = "screenshot",
-                Description = "Request a screenshot for visual context. Use when element list seems incomplete or you need to verify visual state.",
+                Description = "Request a fresh screenshot for visual context. Use when element list seems incomplete or you need to verify visual state.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -600,6 +601,60 @@ namespace ODDGames.UIAutomation.AI
                         {
                             Type = "string",
                             Description = "Why you need the screenshot (helps with debugging)"
+                        }
+                    }
+                }
+            };
+        }
+
+        private static ToolDefinition CreateGetHierarchyTool()
+        {
+            return new ToolDefinition
+            {
+                Name = "get_hierarchy",
+                Description = "Get the UI hierarchy tree with component info. Returns GameObject names, active state, and key data (text content for Text/TMP, sprite names for Image, values for Slider/Scrollbar, etc.).",
+                Parameters = new ToolParameters
+                {
+                    Type = "object",
+                    Properties = new Dictionary<string, ToolProperty>
+                    {
+                        ["root_name"] = new ToolProperty
+                        {
+                            Type = "string",
+                            Description = "Optional: Name of root GameObject to start from. If not specified, returns Canvas roots."
+                        },
+                        ["max_depth"] = new ToolProperty
+                        {
+                            Type = "integer",
+                            Description = "Maximum depth to traverse (default: 10, max: 20)"
+                        },
+                        ["include_inactive"] = new ToolProperty
+                        {
+                            Type = "boolean",
+                            Description = "Include inactive GameObjects (default: false)"
+                        },
+                        ["type_filter"] = new ToolProperty
+                        {
+                            Type = "array",
+                            Description = "Filter to GameObjects with these component types. If empty, shows all.",
+                            Items = new ToolProperty
+                            {
+                                Type = "string",
+                                Enum = new List<string>
+                                {
+                                    "Button",      // Clickable button
+                                    "Toggle",      // Checkbox/toggle - shows ON/OFF state
+                                    "Slider",      // Slider - shows current value
+                                    "Scrollbar",   // Scrollbar - shows current value
+                                    "Dropdown",    // Dropdown - shows selected option text
+                                    "InputField",  // Text input - shows current text
+                                    "ScrollView",  // Scrollable container
+                                    "Text",        // Any text display - shows text content
+                                    "Image",       // Any image (Image or RawImage) - shows sprite/texture name
+                                    "Canvas",      // Canvas root - shows render mode
+                                    "Interactable" // Any interactive element (Button, Toggle, Slider, etc.)
+                                }
+                            }
                         }
                     }
                 }

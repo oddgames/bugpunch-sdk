@@ -11,7 +11,7 @@ using UnityEngine;
 namespace ODDGames.UIAutomation.AI.Editor
 {
     /// <summary>
-    /// Integration between AI Tests and the UI Test Explorer window.
+    /// Integration between AI Tests and the UI Automation Explorer window.
     /// Provides discovery, creation, and running of AI tests from the explorer.
     /// </summary>
     public static class AITestExplorerIntegration

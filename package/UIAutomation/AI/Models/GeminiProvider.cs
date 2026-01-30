@@ -178,9 +178,75 @@ namespace ODDGames.UIAutomation.AI
             // Add conversation history
             foreach (var msg in request.Messages)
             {
-                var role = msg.Role == "assistant" ? "model" : "user";
                 var parts = new List<object>();
 
+                // Handle tool call results (FunctionResponse)
+                if (!string.IsNullOrEmpty(msg.ToolCallId))
+                {
+                    // This is a function response - must be sent as "user" role with functionResponse part
+                    // Find the original function name from previous messages
+                    var funcName = FindFunctionName(request.Messages, msg.ToolCallId);
+                    parts.Add(new Dictionary<string, object>
+                    {
+                        ["functionResponse"] = new Dictionary<string, object>
+                        {
+                            ["name"] = funcName ?? "unknown",
+                            ["response"] = new Dictionary<string, object>
+                            {
+                                ["result"] = msg.Content ?? "Action executed"
+                            }
+                        }
+                    });
+
+                    // Add screenshot if available
+                    if (msg.Screenshot != null && msg.Screenshot.Length > 0)
+                    {
+                        parts.Add(new
+                        {
+                            inline_data = new
+                            {
+                                mime_type = "image/png",
+                                data = Convert.ToBase64String(msg.Screenshot)
+                            }
+                        });
+                    }
+
+                    contents.Add(new { role = "user", parts = parts });
+                    continue;
+                }
+
+                // Handle assistant messages with tool calls
+                if (msg.Role == "assistant")
+                {
+                    if (!string.IsNullOrEmpty(msg.Content))
+                    {
+                        parts.Add(new { text = msg.Content });
+                    }
+
+                    // Add function calls if present
+                    if (msg.ToolCalls != null && msg.ToolCalls.Count > 0)
+                    {
+                        foreach (var toolCall in msg.ToolCalls)
+                        {
+                            parts.Add(new Dictionary<string, object>
+                            {
+                                ["functionCall"] = new Dictionary<string, object>
+                                {
+                                    ["name"] = toolCall.Name,
+                                    ["args"] = toolCall.Arguments ?? new Dictionary<string, object>()
+                                }
+                            });
+                        }
+                    }
+
+                    if (parts.Count > 0)
+                    {
+                        contents.Add(new { role = "model", parts = parts });
+                    }
+                    continue;
+                }
+
+                // Regular user message
                 if (!string.IsNullOrEmpty(msg.Content))
                 {
                     parts.Add(new { text = msg.Content });
@@ -198,7 +264,10 @@ namespace ODDGames.UIAutomation.AI
                     });
                 }
 
-                contents.Add(new { role = role, parts = parts });
+                if (parts.Count > 0)
+                {
+                    contents.Add(new { role = "user", parts = parts });
+                }
             }
 
             // Add current screenshot and element list
@@ -325,6 +394,30 @@ namespace ODDGames.UIAutomation.AI
             }
 
             return propDef;
+        }
+
+        /// <summary>
+        /// Finds the function name for a tool call ID by searching previous messages.
+        /// </summary>
+        private string FindFunctionName(List<Message> messages, string toolCallId)
+        {
+            if (string.IsNullOrEmpty(toolCallId) || messages == null)
+                return null;
+
+            foreach (var msg in messages)
+            {
+                if (msg.ToolCalls != null)
+                {
+                    foreach (var toolCall in msg.ToolCalls)
+                    {
+                        if (toolCall.Id == toolCallId)
+                            return toolCall.Name;
+                    }
+                }
+            }
+
+            // Fallback: use the ID itself as the name
+            return toolCallId;
         }
 
         private string MapType(string type) => type?.ToUpperInvariant() switch

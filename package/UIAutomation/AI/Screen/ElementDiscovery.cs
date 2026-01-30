@@ -75,6 +75,9 @@ namespace ODDGames.UIAutomation.AI
                     extraInfo = GetExtraInfo(selectable)
                 };
 
+                // Log element position for debugging
+                Debug.Log($"[ElementDiscovery] Element '{element.name}' at screen bounds ({bounds.x:F0},{bounds.y:F0}) size ({bounds.width:F0}x{bounds.height:F0}), normalized ({element.normalizedBounds.x:F3},{element.normalizedBounds.y:F3})");
+
                 elements.Add(element);
             }
 

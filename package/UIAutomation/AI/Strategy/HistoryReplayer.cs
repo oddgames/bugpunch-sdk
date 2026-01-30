@@ -199,7 +199,7 @@ namespace ODDGames.UIAutomation.AI
             switch (recorded.actionType.ToLower())
             {
                 case "click":
-                    var click = new ClickAction { SearchQuery = recorded.target };
+                    var click = new ClickAction { Search = ParseSearchQuery(recorded.target) };
                     if (recorded.parameters != null)
                     {
                         if (recorded.parameters.TryGetValue("x", out var x) &&
@@ -214,7 +214,7 @@ namespace ODDGames.UIAutomation.AI
                     return click;
 
                 case "type":
-                    var type = new TypeAction { SearchQuery = recorded.target };
+                    var type = new TypeAction { Search = ParseSearchQuery(recorded.target) };
                     if (recorded.parameters != null)
                     {
                         if (recorded.parameters.TryGetValue("text", out var text))
@@ -227,11 +227,11 @@ namespace ODDGames.UIAutomation.AI
                     return type;
 
                 case "drag":
-                    var drag = new DragAction { FromSearch = recorded.target };
+                    var drag = new DragAction { FromSearch = ParseSearchQuery(recorded.target) };
                     if (recorded.parameters != null)
                     {
                         if (recorded.parameters.TryGetValue("to", out var toSearch))
-                            drag.ToSearch = toSearch.ToString();
+                            drag.ToSearch = ParseSearchQuery(toSearch.ToString());
                         if (recorded.parameters.TryGetValue("direction", out var dir))
                             drag.Direction = dir.ToString();
                         if (recorded.parameters.TryGetValue("distance", out var dist))
@@ -242,7 +242,7 @@ namespace ODDGames.UIAutomation.AI
                     return drag;
 
                 case "scroll":
-                    var scroll = new ScrollAction { SearchQuery = recorded.target };
+                    var scroll = new ScrollAction { Search = ParseSearchQuery(recorded.target) };
                     if (recorded.parameters != null)
                     {
                         if (recorded.parameters.TryGetValue("direction", out var scrollDir))
@@ -264,6 +264,24 @@ namespace ODDGames.UIAutomation.AI
                 default:
                     return null;
             }
+        }
+
+        /// <summary>
+        /// Parses a target string into a SearchQuery.
+        /// The target can be a JSON SearchQuery or a simple name/text value.
+        /// </summary>
+        private SearchQuery ParseSearchQuery(string target)
+        {
+            if (string.IsNullOrEmpty(target))
+                return null;
+
+            // Try parsing as JSON first
+            var query = SearchQuery.FromJson(target);
+            if (query != null)
+                return query;
+
+            // Fall back to treating it as a name search
+            return SearchQuery.Name(target);
         }
 
         /// <summary>

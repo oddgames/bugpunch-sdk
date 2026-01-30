@@ -22,7 +22,7 @@ namespace ODDGames.UIAutomation.Editor
         public static void ShowWindow(Action<string> onStart)
         {
             onStartCallback = onStart;
-            var window = GetWindow<UITestRecordingSetupWindow>(true, "Record UI Test");
+            var window = GetWindow<UITestRecordingSetupWindow>(true, "Record UI Automation");
             window.minSize = new Vector2(400, 230);
             window.maxSize = new Vector2(500, 280);
             window.ShowUtility();
@@ -39,7 +39,7 @@ namespace ODDGames.UIAutomation.Editor
         void OnGUI()
         {
             EditorGUILayout.Space(10);
-            EditorGUILayout.LabelField("UI Test Recording Setup", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("UI Automation Recording Setup", EditorStyles.boldLabel);
             EditorGUILayout.Space(10);
 
             EditorGUILayout.HelpBox(
