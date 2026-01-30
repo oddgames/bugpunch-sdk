@@ -827,7 +827,8 @@ namespace ODDGames.UIAutomation
 
             // Brief delay between clicks - needs to be long enough for Unity's Button to reset
             // but short enough to be recognized as a double-click by the system
-            await Task.Delay(100);
+            // Use frame-based wait to ensure UI processes the first click
+            await Async.DelayFrames(3);
 
             await EnsureGameViewFocusAsync(); // Ensure focus before second click
 
@@ -858,7 +859,8 @@ namespace ODDGames.UIAutomation
             await InjectTouchTap(screenPosition);
 
             // Brief delay between taps - needs to be long enough for Unity's Button to reset
-            await Task.Delay(100);
+            // Use frame-based wait to ensure UI processes the first tap
+            await Async.DelayFrames(3);
 
             // Second tap
             await InjectTouchTap(screenPosition);
@@ -925,8 +927,9 @@ namespace ODDGames.UIAutomation
             for (int i = 0; i < 3; i++)
             {
                 await InjectTouchTap(screenPosition);
+                // Brief delay between taps - use frame-based wait to ensure UI processes the tap
                 if (i < 2)
-                    await Task.Delay(50);
+                    await Async.DelayFrames(2);
             }
         }
 
@@ -1027,6 +1030,9 @@ namespace ODDGames.UIAutomation
             };
 
             LogDebug($"MouseDrag start=({startPos.x:F0},{startPos.y:F0}) end=({endPos.x:F0},{endPos.y:F0}) duration={duration}s hold={holdTime}s button={button}");
+
+            // Wait for any previous input state to settle before starting new drag
+            await Async.DelayFrames(1);
 
             Vector2 previousPos = startPos;
 
@@ -1171,6 +1177,9 @@ namespace ODDGames.UIAutomation
                     return;
                 }
             }
+
+            // Wait for any previous input state to settle before starting new drag
+            await Async.DelayFrames(1);
 
             const int touchId = 1;
             Vector2 previousPos = startPos;
