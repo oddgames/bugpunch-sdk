@@ -721,7 +721,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
             // Convert percentage (0-100) to normalized (0-1)
             var normalizedValue = block.sliderValue / 100f;
-            await ActionExecutor.SetSlider(slider, normalizedValue);
+            await ActionExecutor.SetSlider(block.target.ToSearch(), normalizedValue);
         }
 
         private static async Task ExecuteSetScrollbarAsync(VisualBlock block, CancellationToken ct)
@@ -736,7 +736,7 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
             // Convert percentage (0-100) to normalized (0-1)
             var normalizedValue = block.scrollbarValue / 100f;
-            await ActionExecutor.SetScrollbar(scrollbar, normalizedValue);
+            await ActionExecutor.SetScrollbar(block.target.ToSearch(), normalizedValue);
         }
 
         private static async Task ExecuteClickDropdownAsync(VisualBlock block, CancellationToken ct)
@@ -770,7 +770,8 @@ namespace ODDGames.UIAutomation.VisualBuilder
             if (element?.gameObject == null)
                 throw new InvalidOperationException($"Swipe target not found: {GetSelectorDisplay(block.target)}");
 
-            await ActionExecutor.Swipe(element.gameObject, block.swipeDirection, block.swipeDistance, block.swipeDuration);
+            var screenPos = InputInjector.GetScreenPosition(element.gameObject);
+            await ActionExecutor.SwipeAt(screenPos, block.swipeDirection, block.swipeDistance, block.swipeDuration);
         }
 
         private static async Task ExecutePinchAsync(VisualBlock block, CancellationToken ct)
@@ -784,15 +785,23 @@ namespace ODDGames.UIAutomation.VisualBuilder
                 return;
             }
 
-            await ActionExecutor.Pinch(element?.gameObject, block.pinchScale, block.pinchDuration);
+            // Use element position if available, otherwise screen center
+            var screenPos = element?.gameObject != null
+                ? InputInjector.GetScreenPosition(element.gameObject)
+                : new UnityEngine.Vector2(UnityEngine.Screen.width / 2f, UnityEngine.Screen.height / 2f);
+            await ActionExecutor.PinchAt(screenPos, block.pinchScale, block.pinchDuration);
         }
 
         private static async Task ExecuteTwoFingerSwipeAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
 
-            await ActionExecutor.TwoFingerSwipe(
-                element?.gameObject,
+            // Use element position if available, otherwise screen center
+            var screenPos = element?.gameObject != null
+                ? InputInjector.GetScreenPosition(element.gameObject)
+                : new UnityEngine.Vector2(UnityEngine.Screen.width / 2f, UnityEngine.Screen.height / 2f);
+            await ActionExecutor.TwoFingerSwipeAt(
+                screenPos,
                 block.swipeDirection,
                 block.swipeDistance,
                 block.swipeDuration,
@@ -803,8 +812,12 @@ namespace ODDGames.UIAutomation.VisualBuilder
         {
             var element = await ResolveElementAsync(block.target, ct);
 
-            await ActionExecutor.Rotate(
-                element?.gameObject,
+            // Use element position if available, otherwise screen center
+            var screenPos = element?.gameObject != null
+                ? InputInjector.GetScreenPosition(element.gameObject)
+                : new UnityEngine.Vector2(UnityEngine.Screen.width / 2f, UnityEngine.Screen.height / 2f);
+            await ActionExecutor.RotateAt(
+                screenPos,
                 block.rotateDegrees,
                 block.rotateDuration,
                 block.rotateFingerDistance);

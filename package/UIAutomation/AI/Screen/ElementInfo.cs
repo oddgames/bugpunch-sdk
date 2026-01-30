@@ -66,6 +66,7 @@ namespace ODDGames.UIAutomation.AI
         /// <summary>
         /// Creates a short annotation string for the element list.
         /// Shows the Search API pattern to find the element, plus type and state info.
+        /// Coordinates are normalized (0.0-1.0) for use with click x/y parameters.
         /// </summary>
         public string ToAnnotation()
         {
@@ -77,6 +78,12 @@ namespace ODDGames.UIAutomation.AI
 
             // Type info
             sb.Append($" [{type}]");
+
+            // Add normalized coordinates (0.0-1.0 range)
+            // Center of the element, Y flipped (0=top for intuitive coordinates)
+            var centerX = normalizedBounds.x + normalizedBounds.width / 2;
+            var centerY = 1f - (normalizedBounds.y + normalizedBounds.height / 2);  // Flip Y (0=top)
+            sb.Append($" at ({centerX:F2},{centerY:F2})");
 
             // Extra info (slider value, toggle state, etc.)
             if (!string.IsNullOrEmpty(extraInfo))

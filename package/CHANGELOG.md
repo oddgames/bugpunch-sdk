@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.13] - 2026-01-29
+
+### Added
+- **No-code AI tests via ScriptableObjects** - Create AI tests as assets that automatically appear in Unity's Test Runner
+  - Create via `+ AI Test` button in Test Runner toolbar or `Create > UITest > AI Test`
+  - Tests appear under `AI > TestName` in the Test Runner
+  - Each `AITest` asset is a ScriptableObject with prompt, knowledge, and configuration
+- **Test Runner toolbar buttons** - Injected buttons for AI test workflow
+  - `↻` Refresh - Triggers domain reload to refresh test discovery
+  - `+ AI Test` - Creates new AITest asset
+  - `Edit` - Opens selected AITest asset in Inspector
+- **AITestInspector** - Custom inspector showing test discovery status with visual icon
+- **`AINavigator`** - Multi-turn conversation recovery for stuck AI tests
+  - Automatically engages when AI reports being stuck or taking no action
+  - Uses focused recovery prompts to help AI find alternative approaches
+  - Configurable max recovery attempts (default: 3)
+
+### Removed
+- **`AIPromptTest`** - Script-based test class removed in favor of ScriptableObject-only approach
+  - All AI tests should now be created as `AITest` assets
+  - Simplifies test creation to pure no-code workflow
+
+### Changed
+- **AI test class structure** - Renamed from `AITestDiscovery` to `AI` for cleaner Test Runner display
+  - Tests now appear as `AI > TestName` instead of `AITestDiscovery > RunAITest(TestName)`
+
 ## [1.1.12] - 2026-01-28
 
 ### Removed

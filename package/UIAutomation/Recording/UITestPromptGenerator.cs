@@ -9,7 +9,7 @@ namespace ODDGames.UIAutomation
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine("# UI Test Recording");
+            sb.AppendLine("# UI Automation Recording");
             sb.AppendLine();
             sb.AppendLine($"- **Recorded At:** {recording.recordedAt}");
             sb.AppendLine($"- **Duration:** {recording.totalDuration:F1} seconds");

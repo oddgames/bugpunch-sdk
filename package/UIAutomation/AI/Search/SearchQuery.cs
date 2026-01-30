@@ -273,6 +273,98 @@ namespace ODDGames.UIAutomation.AI
         }
 
         /// <summary>
+        /// Parses a search pattern string into a SearchQuery.
+        /// Supports patterns like:
+        /// - Name("ButtonName")
+        /// - Text("Submit")
+        /// - Adjacent("Email").Right("InputField")
+        /// - Type("Button")
+        /// </summary>
+        public static SearchQuery FromPattern(string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern))
+                return null;
+
+            pattern = pattern.Trim();
+
+            // Try to parse common patterns
+            // Name("value")
+            if (pattern.StartsWith("Name(\"") && pattern.Contains("\")"))
+            {
+                var value = ExtractQuotedValue(pattern, "Name");
+                if (value != null)
+                    return Name(value);
+            }
+
+            // Text("value")
+            if (pattern.StartsWith("Text(\"") && pattern.Contains("\")"))
+            {
+                var value = ExtractQuotedValue(pattern, "Text");
+                if (value != null)
+                    return Text(value);
+            }
+
+            // Type("value")
+            if (pattern.StartsWith("Type(\"") && pattern.Contains("\")"))
+            {
+                var value = ExtractQuotedValue(pattern, "Type");
+                if (value != null)
+                    return Type(value);
+            }
+
+            // Path("value")
+            if (pattern.StartsWith("Path(\"") && pattern.Contains("\")"))
+            {
+                var value = ExtractQuotedValue(pattern, "Path");
+                if (value != null)
+                    return Path(value);
+            }
+
+            // Adjacent("label").Direction
+            if (pattern.StartsWith("Adjacent(\""))
+            {
+                var label = ExtractQuotedValue(pattern, "Adjacent");
+                if (label != null)
+                {
+                    // Check for direction suffix: .Right, .Left, .Above, .Below
+                    string direction = "right"; // default
+                    if (pattern.Contains(").Right")) direction = "right";
+                    else if (pattern.Contains(").Left")) direction = "left";
+                    else if (pattern.Contains(").Above")) direction = "above";
+                    else if (pattern.Contains(").Below")) direction = "below";
+
+                    return Adjacent(label, direction);
+                }
+            }
+
+            // If nothing matches, treat as a name search
+            Debug.LogWarning($"[SearchQuery] Could not parse pattern '{pattern}', treating as name search");
+            return Name(pattern);
+        }
+
+        /// <summary>
+        /// Extracts the quoted value from a pattern like Method("value")
+        /// </summary>
+        private static string ExtractQuotedValue(string pattern, string methodName)
+        {
+            var prefix = $"{methodName}(\"";
+            if (!pattern.StartsWith(prefix))
+                return null;
+
+            var startIndex = prefix.Length;
+            var endIndex = pattern.IndexOf("\")", startIndex);
+            if (endIndex < 0)
+            {
+                // Try just ending quote (might be at end of string)
+                endIndex = pattern.LastIndexOf('"');
+                if (endIndex <= startIndex)
+                    return null;
+            }
+
+            return pattern.Substring(startIndex, endIndex - startIndex);
+        }
+
+        /// <summary>
         /// Serializes this SearchQuery to JSON.
         /// </summary>
         public string ToJson()

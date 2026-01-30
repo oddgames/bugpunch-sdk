@@ -201,7 +201,7 @@ namespace ODDGames.UIAutomation.AI
             return defaultValue;
         }
 
-        /// <summary>Get an argument as a SearchQuery (handles both object and string formats)</summary>
+        /// <summary>Get an argument as a SearchQuery (handles object, JSON, and pattern string formats)</summary>
         /// <param name="key">The argument key</param>
         /// <param name="error">Out parameter containing any deserialization error message</param>
         /// <returns>The parsed SearchQuery, or null if parsing failed</returns>
@@ -214,12 +214,22 @@ namespace ODDGames.UIAutomation.AI
 
             try
             {
-                // If it's a string, try to parse as JSON directly
+                // If it's a string, try multiple formats
                 if (value is string str && !string.IsNullOrEmpty(str))
                 {
-                    var result = SearchQuery.FromJson(str);
-                    if (result != null)
-                        return result;
+                    // First try JSON format: {"base": "name", "value": "Button1"}
+                    if (str.TrimStart().StartsWith("{"))
+                    {
+                        var result = SearchQuery.FromJson(str);
+                        if (result != null)
+                            return result;
+                    }
+
+                    // Try pattern format: Name("Button1"), Text("Submit"), etc.
+                    var patternResult = SearchQuery.FromPattern(str);
+                    if (patternResult != null)
+                        return patternResult;
+
                     error = "Failed to parse search query from string";
                     return null;
                 }

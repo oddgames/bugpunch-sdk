@@ -1,179 +1,11 @@
 #if UNITY_EDITOR
 using UnityEngine;
 using UnityEditor;
-using System.IO;
 using System.Collections.Generic;
 using System.Threading;
-using ODDGames.UIAutomation;
 
 namespace ODDGames.UIAutomation.AI.Editor
 {
-    /// <summary>
-    /// Project settings for AI Testing configuration.
-    /// </summary>
-    public class AITestSettings : ScriptableObject
-    {
-        private const string SettingsPath = "Assets/Editor/AITestSettings.asset";
-
-        [Header("Gemini")]
-        [Tooltip("Gemini API key from Google AI Studio")]
-        public string geminiApiKey = "";
-
-        [Tooltip("Default model to use for AI tests")]
-        public string defaultModel = "";
-
-        [Header("Defaults")]
-        [Tooltip("Default timeout in seconds")]
-        public float defaultTimeout = 180f;
-
-        [Tooltip("Default maximum actions per test")]
-        public int defaultMaxActions = 50;
-
-        [Tooltip("Default delay between actions")]
-        public float defaultActionDelay = 0.3f;
-
-        [Header("Global Knowledge")]
-        [TextArea(5, 15)]
-        [Tooltip("Context sent to AI for ALL tests. Describe your app's general UI patterns.")]
-        public string globalKnowledge = "";
-
-        [Tooltip("Common patterns that apply to most tests")]
-        public string[] commonPatterns = new string[0];
-
-        [Header("Performance")]
-        [Tooltip("Send screenshots to AI for visual reasoning. Disable for faster text-only mode.")]
-        public bool sendScreenshotsToAI = true;
-
-        [Tooltip("Use text-only mode by default (faster, no vision). The AI relies solely on the element list.")]
-        public bool preferTextOnlyMode = false;
-
-        [Header("Debug")]
-        [Tooltip("Show debug panel during test execution")]
-        public bool showDebugPanel = true;
-
-        [Tooltip("Save screenshots during tests (for debugging, independent of sending to AI)")]
-        public bool saveScreenshots = true;
-
-        [Tooltip("Verbose logging")]
-        public bool verboseLogging = false;
-
-        [Tooltip("Log all AI data (screenshots, prompts, responses) to AIDebug folder")]
-        public bool enableDebugLogging = true;
-
-        private static AITestSettings instance;
-
-        /// <summary>
-        /// Gets the singleton settings instance.
-        /// </summary>
-        public static AITestSettings Instance
-        {
-            get
-            {
-                if (instance == null)
-                {
-                    instance = LoadOrCreate();
-                }
-                return instance;
-            }
-        }
-
-        /// <summary>
-        /// Gets the global knowledge configuration.
-        /// </summary>
-        public GlobalKnowledge GetGlobalKnowledge()
-        {
-            var knowledge = new GlobalKnowledge
-            {
-                context = globalKnowledge,
-                defaultModel = GetEffectiveModel(),
-                defaultTimeoutSeconds = defaultTimeout,
-                defaultMaxActions = defaultMaxActions
-            };
-
-            if (commonPatterns != null)
-            {
-                knowledge.commonPatterns.AddRange(commonPatterns);
-            }
-
-            return knowledge;
-        }
-
-        /// <summary>
-        /// Gets the effective model to use (settings default or first available).
-        /// </summary>
-        public string GetEffectiveModel()
-        {
-            if (!string.IsNullOrEmpty(defaultModel))
-                return defaultModel;
-
-            // Fall back to cached models
-            var cached = GeminiModels.CachedModels;
-            if (cached != null && cached.Count > 0)
-                return cached[0].ModelId;
-
-            return null;
-        }
-
-        /// <summary>
-        /// Creates a runner config for a specific model.
-        /// </summary>
-        public AITestRunnerConfig CreateRunnerConfig(string modelId = null)
-        {
-            var effectiveModel = modelId ?? GetEffectiveModel();
-            // Screenshots are on-demand now - AI requests them via screenshot action when needed
-            var shouldSendScreenshots = false;
-
-            Debug.Log($"[AITest] Creating runner config: model={effectiveModel}, SendScreenshots={shouldSendScreenshots}, Debug={enableDebugLogging}");
-
-            var config = new AITestRunnerConfig
-            {
-                EnableHistoryReplay = true,
-                SendScreenshots = shouldSendScreenshots,
-                EnableDebugLogging = enableDebugLogging
-            };
-
-            // Create provider if we have an API key and model
-            if (!string.IsNullOrEmpty(geminiApiKey) && !string.IsNullOrEmpty(effectiveModel))
-            {
-                // Get context window size from cached model info if available
-                var modelInfo = GeminiModels.GetCachedModel(effectiveModel);
-                var contextSize = modelInfo?.inputTokenLimit ?? 1048576;
-
-                config.ModelProvider = new GeminiProvider(geminiApiKey, effectiveModel, contextWindowSize: contextSize);
-            }
-
-            return config;
-        }
-
-        private static AITestSettings LoadOrCreate()
-        {
-            var settings = AssetDatabase.LoadAssetAtPath<AITestSettings>(SettingsPath);
-
-            if (settings == null)
-            {
-                settings = CreateInstance<AITestSettings>();
-
-                // Ensure directory exists
-                var directory = Path.GetDirectoryName(SettingsPath);
-                if (!Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                AssetDatabase.CreateAsset(settings, SettingsPath);
-                AssetDatabase.SaveAssets();
-            }
-
-            return settings;
-        }
-
-        public void Save()
-        {
-            EditorUtility.SetDirty(this);
-            AssetDatabase.SaveAssets();
-        }
-    }
-
     /// <summary>
     /// Settings provider for Project Settings window.
     /// </summary>
@@ -183,6 +15,8 @@ namespace ODDGames.UIAutomation.AI.Editor
         private AITestSettings settings;
         private List<GeminiModelInfo> availableModels;
         private bool isLoadingModels;
+        private bool isValidatingModel;
+        private string modelValidationError;
         private string[] modelOptions;
         private int selectedModelIndex;
 
@@ -238,6 +72,39 @@ namespace ODDGames.UIAutomation.AI.Editor
             modelOptions = options.ToArray();
         }
 
+        private async void ValidateAndSelectModelAsync(int newIndex)
+        {
+            if (availableModels == null || newIndex >= availableModels.Count)
+                return;
+
+            var model = availableModels[newIndex];
+            isValidatingModel = true;
+            modelValidationError = null;
+
+            var error = await GeminiModels.ValidateModelCapabilitiesAsync(
+                settings.geminiApiKey,
+                model.ModelId,
+                CancellationToken.None);
+
+            isValidatingModel = false;
+
+            if (error != null)
+            {
+                modelValidationError = error;
+                Debug.LogWarning($"[AITestSettings] {error}");
+            }
+            else
+            {
+                // Model validated successfully - apply the selection
+                selectedModelIndex = newIndex;
+                settings.defaultModel = model.ModelId;
+                GeminiModels.DefaultModel = settings.defaultModel;
+                EditorUtility.SetDirty(settings);
+                modelValidationError = null;
+                Debug.Log($"[AITestSettings] Model '{model.ModelId}' validated - supports vision, tools, and structured output");
+            }
+        }
+
         public override void OnGUI(string searchContext)
         {
             if (serializedSettings == null || settings == null)
@@ -291,13 +158,21 @@ namespace ODDGames.UIAutomation.AI.Editor
                 if (modelOptions != null && modelOptions.Length > 0)
                 {
                     EditorGUI.BeginChangeCheck();
-                    selectedModelIndex = EditorGUILayout.Popup("Default Model", selectedModelIndex, modelOptions);
-                    if (EditorGUI.EndChangeCheck() && availableModels != null && selectedModelIndex < availableModels.Count)
+                    var newIndex = EditorGUILayout.Popup("Default Model", selectedModelIndex, modelOptions);
+                    if (EditorGUI.EndChangeCheck() && availableModels != null && newIndex < availableModels.Count && newIndex != selectedModelIndex)
                     {
-                        settings.defaultModel = availableModels[selectedModelIndex].ModelId;
-                        GeminiModels.DefaultModel = settings.defaultModel;
-                        EditorUtility.SetDirty(settings);
+                        ValidateAndSelectModelAsync(newIndex);
                     }
+                }
+
+                // Show validation status
+                if (isValidatingModel)
+                {
+                    EditorGUILayout.HelpBox("Validating model capabilities (vision, tools, JSON)...", MessageType.Info);
+                }
+                else if (!string.IsNullOrEmpty(modelValidationError))
+                {
+                    EditorGUILayout.HelpBox(modelValidationError, MessageType.Error);
                 }
 
                 // Show model info
@@ -386,7 +261,7 @@ namespace ODDGames.UIAutomation.AI.Editor
         [SettingsProvider]
         public static SettingsProvider CreateProvider()
         {
-            var provider = new AITestSettingsProvider("Project/UI Test/AI Testing", SettingsScope.Project)
+            var provider = new AITestSettingsProvider("Project/UI Automation/AI Testing", SettingsScope.Project)
             {
                 keywords = new[] { "AI", "Test", "Gemini", "Automation", "Model" }
             };

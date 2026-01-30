@@ -25,14 +25,14 @@ namespace ODDGames.UIAutomation.Editor
         [MenuItem("Window/Analysis/UI Automation/Generate Test from Recording")]
         public static void ShowWindow()
         {
-            var window = GetWindow<UITestGeneratorWindow>("UI Test Generator");
+            var window = GetWindow<UITestGeneratorWindow>("UI Automation Generator");
             window.minSize = new Vector2(500, 400);
             window.Show();
         }
 
         public static void ShowWindowWithLastRecording()
         {
-            var window = GetWindow<UITestGeneratorWindow>("UI Test Generator");
+            var window = GetWindow<UITestGeneratorWindow>("UI Automation Generator");
             window.minSize = new Vector2(500, 400);
 
             string lastFolder = UITestSettings.LastRecordingFolder;

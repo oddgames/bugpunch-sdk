@@ -118,8 +118,8 @@ namespace ODDGames.UIAutomation.AI
             sb.AppendLine("  wait - Wait for animations/loading");
             sb.AppendLine("    Params: seconds (0.5-5.0)");
             sb.AppendLine("  screenshot - Request a screenshot for visual context");
-            sb.AppendLine("  pass - Declare test PASSED (params: reason)");
-            sb.AppendLine("  fail - Declare test FAILED (params: reason)");
+            sb.AppendLine("  pass - Declare test PASSED (params: reason) - USE WHEN GOAL IS ACHIEVED");
+            sb.AppendLine("  fail - Declare test FAILED (params: reason) - USE WHEN GOAL CANNOT BE ACHIEVED");
             sb.AppendLine();
 
             sb.AppendLine("=== SEARCH QUERY FORMAT ===");
@@ -301,6 +301,23 @@ namespace ODDGames.UIAutomation.AI
             sb.AppendLine("- For drags: 'unchanged' may mean the drop wasn't accepted - try a different target");
             sb.AppendLine("- For clicks: 'unchanged' may mean the button did something internal (no visible change)");
             sb.AppendLine();
+            sb.AppendLine("=== WHEN TO END THE TEST ===");
+            sb.AppendLine("IMPORTANT: You MUST call 'pass' or 'fail' to end the test!");
+            sb.AppendLine();
+            sb.AppendLine("CALL 'pass' WHEN:");
+            sb.AppendLine("- The test goal has been achieved (verify by checking element state/values)");
+            sb.AppendLine("- Example: Goal was 'set slider to 75%' -> slider now shows value=0.75 -> call pass");
+            sb.AppendLine("- Example: Goal was 'click Submit' -> Submit button was clicked -> call pass");
+            sb.AppendLine("- Example: Goal was 'toggle checkbox' -> checkbox state changed -> call pass");
+            sb.AppendLine("- Don't wait for extra confirmation - if the goal action succeeded, call pass immediately");
+            sb.AppendLine();
+            sb.AppendLine("CALL 'fail' WHEN:");
+            sb.AppendLine("- The required element doesn't exist and cannot be navigated to");
+            sb.AppendLine("- You've tried multiple approaches (3+) and none worked");
+            sb.AppendLine("- The UI is in an unexpected state that prevents completing the goal");
+            sb.AppendLine("- A required feature is disabled or unavailable");
+            sb.AppendLine("- Include a clear reason explaining what went wrong");
+            sb.AppendLine();
             sb.AppendLine("WHEN TO REQUEST A SCREENSHOT:");
             sb.AppendLine("- The element list seems sparse but the test goal implies more UI should exist");
             sb.AppendLine("- You need to verify visual state (e.g., colors, images, animations completed)");
@@ -353,7 +370,10 @@ namespace ODDGames.UIAutomation.AI
             }
 
             sb.AppendLine();
-            sb.AppendLine("What action should I take next? Use a tool to interact with the UI, or call pass/fail if the test is complete.");
+            sb.AppendLine("What action should I take next?");
+            sb.AppendLine("- If the goal is ACHIEVED, call 'pass' with reason");
+            sb.AppendLine("- If the goal CANNOT be achieved, call 'fail' with reason");
+            sb.AppendLine("- Otherwise, perform the next action toward the goal");
 
             return sb.ToString();
         }

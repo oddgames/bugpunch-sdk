@@ -284,10 +284,10 @@ namespace ODDGames.UIAutomation.AI.Editor
         {
             return action switch
             {
-                ClickAction click => click.SearchQuery ?? $"({click.ScreenPosition?.x:F2},{click.ScreenPosition?.y:F2})",
-                TypeAction type => type.SearchQuery,
-                DragAction drag => drag.FromSearch,
-                ScrollAction scroll => scroll.SearchQuery,
+                ClickAction click => click.Search?.value ?? $"({click.ScreenPosition?.x:F2},{click.ScreenPosition?.y:F2})",
+                TypeAction type => type.Search?.value,
+                DragAction drag => drag.FromSearch?.value,
+                ScrollAction scroll => scroll.Search?.value,
                 WaitAction wait => $"{wait.Seconds}s",
                 PassAction pass => pass.Reason,
                 FailAction fail => fail.Reason,

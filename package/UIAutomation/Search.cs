@@ -1450,6 +1450,49 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
+        /// Asynchronously resolves the search by polling until the element is found or timeout.
+        /// For recovery-enabled searches, use ActionExecutor methods (Click, Type, etc.) instead.
+        /// </summary>
+        /// <param name="timeout">Maximum time to wait for the element (default 10 seconds).</param>
+        /// <param name="index">Index of the element when multiple match (0-based).</param>
+        /// <returns>Result containing the found element and metadata about the resolution.</returns>
+        /// <example>
+        /// <code>
+        /// var result = await Name("Submit").Resolve();
+        /// if (result.Found) await Click(result.Element);
+        /// </code>
+        /// </example>
+        public async Task<ResolveResult> Resolve(float timeout = 10f, int index = 0)
+        {
+            float startTime = Time.realtimeSinceStartup;
+            var searchDescription = ToString();
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                var results = FindAll();
+                if (results.Count > index)
+                {
+                    return new ResolveResult
+                    {
+                        Found = true,
+                        Element = results[index],
+                        AllElements = results,
+                        SearchQuery = searchDescription
+                    };
+                }
+                await Task.Delay(100);
+            }
+
+            return new ResolveResult
+            {
+                Found = false,
+                Element = null,
+                AllElements = new List<GameObject>(),
+                SearchQuery = searchDescription
+            };
+        }
+
+        /// <summary>
         /// Validates this search query and returns details about what was found.
         /// Useful for AI feedback - call this before performing actions to verify the target exists.
         /// </summary>
@@ -3814,5 +3857,32 @@ namespace ODDGames.UIAutomation
         public static implicit operator bool(SearchValidation v) => v.Success;
 
         public override string ToString() => Message;
+    }
+
+    /// <summary>
+    /// Result of a Search.Resolve() call. Contains the found element and metadata about how it was found.
+    /// </summary>
+    public class ResolveResult
+    {
+        /// <summary>True if at least one element was found.</summary>
+        public bool Found { get; set; }
+
+        /// <summary>The first matching GameObject (or at the specified index), or null if not found.</summary>
+        public GameObject Element { get; set; }
+
+        /// <summary>All matching GameObjects found.</summary>
+        public List<GameObject> AllElements { get; set; }
+
+        /// <summary>The search query that was resolved.</summary>
+        public string SearchQuery { get; set; }
+
+        /// <summary>Implicit conversion to bool for easy conditionals.</summary>
+        public static implicit operator bool(ResolveResult r) => r.Found;
+
+        /// <summary>Implicit conversion to GameObject for seamless use with existing Click methods.</summary>
+        public static implicit operator GameObject(ResolveResult r) => r.Element;
+
+        public override string ToString() =>
+            Found ? $"Found: {Element?.name ?? "null"}" : $"Not found: {SearchQuery}";
     }
 }

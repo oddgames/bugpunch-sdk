@@ -514,24 +514,24 @@ namespace ODDGames.UIAutomation
             // Step 1: Press modifier key down
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
             await Async.DelayFrames(2); // Give time for EventSystem to process
 
             // Step 2: Press the main key while modifier is held
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier, key));
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
             await Async.DelayFrames(2);
 
             // Step 3: Release the main key (modifier still held)
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Step 4: Release modifier
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -717,8 +717,8 @@ namespace ODDGames.UIAutomation
                 {
                     gameView.Focus();
                     // Wait for focus to take effect
-                    await Task.Yield();
-                    await Task.Yield();
+                    await Async.DelayFrames(1);
+                    await Async.DelayFrames(1);
                 }
             }
 #else
@@ -771,20 +771,20 @@ namespace ODDGames.UIAutomation
             // Move mouse to position
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Mouse button down
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Mouse button up
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update(); // Force event processing
             LogDebug("InjectPointerTap complete");
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -813,17 +813,17 @@ namespace ODDGames.UIAutomation
             // First click
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Brief delay between clicks - needs to be long enough for Unity's Button to reset
             // but short enough to be recognized as a double-click by the system
@@ -835,18 +835,18 @@ namespace ODDGames.UIAutomation
             mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Second click
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -889,30 +889,31 @@ namespace ODDGames.UIAutomation
             // Three clicks in quick succession
             for (int i = 0; i < 3; i++)
             {
-                await EnsureGameViewFocusAsync(); // Ensure focus before each click
+                if (i > 0)
+                    await EnsureGameViewFocusAsync(); // Ensure focus before subsequent clicks
 
                 var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
 
                 // Move to position
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
 
                 // Mouse down
                 mouseState = mouseState.WithButton(MouseButton.Left);
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
 
                 // Mouse up
                 mouseState = mouseState.WithButton(MouseButton.Left, false);
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
 
-                // Brief delay between clicks (short enough to be recognized as multi-click)
+                // Brief delay between clicks - use frame-based wait to ensure UI processes the click
                 if (i < 2)
-                    await Task.Delay(50);
+                    await Async.DelayFrames(2);
             }
         }
 
@@ -960,7 +961,7 @@ namespace ODDGames.UIAutomation
             }
             InputSystem.Update(); // Force event processing
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Touch ended (tap is just began + ended at same position)
             using (StateEvent.From(touchscreen, out var endPtr))
@@ -974,7 +975,7 @@ namespace ODDGames.UIAutomation
             }
             InputSystem.Update(); // Force event processing
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1037,7 +1038,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(posPtr);
             }
             InputSystem.Update(); // Force event processing
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Mouse button down at start
             using (StateEvent.From(mouse, out var downPtr))
@@ -1048,7 +1049,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(downPtr);
             }
             InputSystem.Update(); // Force event processing
-            await Task.Yield(); // Allow PointerDown to register
+            await Async.DelayFrames(1); // Allow PointerDown to register
 
             LogDebug($"MouseDrag mouse down at ({startPos.x:F0},{startPos.y:F0})");
 
@@ -1066,7 +1067,7 @@ namespace ODDGames.UIAutomation
                         InputSystem.QueueEvent(holdPtr);
                     }
                     InputSystem.Update();
-                    await Task.Yield();
+                    await Async.DelayFrames(1);
                 }
                 LogDebug($"MouseDrag held for {holdTime}s");
             }
@@ -1082,7 +1083,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(initPtr);
                 }
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
             }
 
             // Interpolate mouse position over duration
@@ -1116,7 +1117,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.Update(); // Force event processing each frame
 
                 previousPos = currentPos;
-                await Task.Yield(); // Frame-based to ensure event processing
+                await Async.DelayFrames(1); // Frame-based to ensure event processing
 
                 // Exit early if we've reached the end position and minimum frames
                 if (frameCount >= minFrames && t >= 1f) break;
@@ -1131,7 +1132,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(finalPtr);
             }
             InputSystem.Update();
-            await Task.Yield(); // Allow final position to be processed before mouse up
+            await Async.DelayFrames(1); // Allow final position to be processed before mouse up
 
             // Mouse button up at end
             using (StateEvent.From(mouse, out var upPtr))
@@ -1146,8 +1147,8 @@ namespace ODDGames.UIAutomation
             LogDebug($"MouseDrag mouse up at ({endPos.x:F0},{endPos.y:F0})");
 
             // Allow UI to process the drag end event
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1185,7 +1186,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Hold at start position before dragging (real-time based, send Stationary events)
             if (holdTime > 0)
@@ -1203,7 +1204,7 @@ namespace ODDGames.UIAutomation
                         InputSystem.QueueEvent(holdPtr);
                     }
                     InputSystem.Update();
-                    await Task.Yield();
+                    await Async.DelayFrames(1);
                 }
             }
 
@@ -1236,7 +1237,7 @@ namespace ODDGames.UIAutomation
                 }
                 InputSystem.Update();
                 previousPos = currentPos;
-                await Task.Yield();
+                await Async.DelayFrames(1);
 
                 if (frameCount >= minFrames && t >= 1f) break;
             }
@@ -1252,7 +1253,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(finalPtr);
             }
             InputSystem.Update();
-            await Task.Yield(); // Allow final position to be processed before touch end
+            await Async.DelayFrames(1); // Allow final position to be processed before touch end
 
             // Touch ended
             using (StateEvent.From(touchscreen, out var endPtr))
@@ -1265,7 +1266,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1291,7 +1292,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(posPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Send scroll event with delta value
             using (StateEvent.From(mouse, out var scrollPtr))
@@ -1301,7 +1302,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(scrollPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Reset scroll to zero (scroll is a delta, needs to return to zero)
             using (StateEvent.From(mouse, out var resetPtr))
@@ -1311,7 +1312,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(resetPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1337,7 +1338,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(posPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Send scroll event
             using (StateEvent.From(mouse, out var scrollPtr))
@@ -1347,7 +1348,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(scrollPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Reset scroll to zero (scroll is a delta, needs to return to zero)
             using (StateEvent.From(mouse, out var resetPtr))
@@ -1357,7 +1358,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(resetPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1386,7 +1387,7 @@ namespace ODDGames.UIAutomation
                 // See: https://github.com/Unity-Technologies/InputSystem/blob/develop/Assets/Tests/InputSystem/CoreTests_Devices.cs
                 InputSystem.QueueTextEvent(keyboard, c);
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
             }
 
             LogDebug("TypeText complete");
@@ -1412,7 +1413,7 @@ namespace ODDGames.UIAutomation
             // Release keys
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1440,11 +1441,11 @@ namespace ODDGames.UIAutomation
 
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(key));
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1468,7 +1469,7 @@ namespace ODDGames.UIAutomation
             // Key down
             InputSystem.QueueStateEvent(keyboard, keyState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Hold for duration - re-queue key state each frame so input system registers continuous hold
             float elapsed = 0f;
@@ -1476,14 +1477,14 @@ namespace ODDGames.UIAutomation
             {
                 InputSystem.QueueStateEvent(keyboard, keyState);
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
                 elapsed += Time.deltaTime;
             }
 
             // Key up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1510,7 +1511,7 @@ namespace ODDGames.UIAutomation
             // Keys down (all at once)
             InputSystem.QueueStateEvent(keyboard, keyState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Hold for duration - re-queue key state each frame so input system registers continuous hold
             float elapsed = 0f;
@@ -1518,14 +1519,14 @@ namespace ODDGames.UIAutomation
             {
                 InputSystem.QueueStateEvent(keyboard, keyState);
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
                 elapsed += Time.deltaTime;
             }
 
             // Keys up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1555,13 +1556,13 @@ namespace ODDGames.UIAutomation
             // Move mouse to position
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Mouse button down
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Hold for specified duration - re-queue state each frame
             float elapsed = 0f;
@@ -1569,7 +1570,7 @@ namespace ODDGames.UIAutomation
             {
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
                 elapsed += Time.deltaTime;
             }
 
@@ -1577,7 +1578,7 @@ namespace ODDGames.UIAutomation
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1610,7 +1611,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Hold for specified duration (touch stays in Stationary phase)
             float elapsed = 0f;
@@ -1626,7 +1627,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(stationaryPtr);
                 }
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
                 elapsed += Time.deltaTime;
             }
 
@@ -1641,7 +1642,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1694,7 +1695,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Interpolate pinch movement
             for (int i = 1; i < totalFrames; i++)
@@ -1718,7 +1719,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
             }
 
             // Both touches end
@@ -1737,7 +1738,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1790,7 +1791,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Interpolate pinch movement
             for (int i = 1; i < totalFrames; i++)
@@ -1814,7 +1815,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
             }
 
             // Both touches end
@@ -1833,7 +1834,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1873,7 +1874,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Interpolate movement
             for (int i = 1; i < totalFrames; i++)
@@ -1897,7 +1898,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
             }
 
             // Both touches end
@@ -1916,7 +1917,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1981,7 +1982,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(beginPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Rotate touches around the center
             for (int i = 1; i <= totalFrames; i++)
@@ -2017,7 +2018,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
-                await Task.Yield();
+                await Async.DelayFrames(1);
             }
 
             // Calculate final positions
@@ -2042,7 +2043,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
-            await Task.Yield();
+            await Async.DelayFrames(1);
         }
     }
 }

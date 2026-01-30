@@ -13,9 +13,6 @@ namespace ODDGames.UIAutomation.AI
 
         /// <summary>Human-readable description of the action</summary>
         public abstract string Description { get; }
-
-        /// <summary>Target element (if applicable)</summary>
-        public ElementInfo TargetElement { get; set; }
     }
 
     /// <summary>
@@ -25,15 +22,13 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "click";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public Vector2? ScreenPosition { get; set; }
 
         public override string Description =>
-            TargetElement != null
-                ? $"Click '{TargetElement.text ?? TargetElement.name}'"
-                : ScreenPosition.HasValue
-                    ? $"Click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
-                    : $"Click {SearchQuery}";
+            ScreenPosition.HasValue
+                ? $"Click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
+                : $"Click {Search?.value ?? "element"}";
     }
 
     /// <summary>
@@ -43,13 +38,13 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "type";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public string Text { get; set; }
         public bool ClearFirst { get; set; } = true;
         public bool PressEnter { get; set; } = false;
 
         public override string Description =>
-            $"Type \"{(Text.Length > 20 ? Text.Substring(0, 17) + "..." : Text)}\" into {TargetElement?.name ?? SearchQuery}";
+            $"Type \"{(Text.Length > 20 ? Text.Substring(0, 17) + "..." : Text)}\" into {Search?.value ?? "field"}";
     }
 
     /// <summary>
@@ -59,24 +54,21 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "drag";
 
-        public string FromSearch { get; set; }
-        public string ToSearch { get; set; }
+        public SearchQuery FromSearch { get; set; }
+        public SearchQuery ToSearch { get; set; }
         public string Direction { get; set; } // "up", "down", "left", "right"
         public float Distance { get; set; } = 200f;
         public float Duration { get; set; } = 0.3f;
-
-        public ElementInfo FromElement { get; set; }
-        public ElementInfo ToElement { get; set; }
 
         public override string Description
         {
             get
             {
-                if (ToElement != null)
-                    return $"Drag from {FromElement?.name ?? FromSearch} to {ToElement.name}";
+                if (ToSearch != null)
+                    return $"Drag from {FromSearch?.value ?? "element"} to {ToSearch?.value ?? "target"}";
                 if (!string.IsNullOrEmpty(Direction))
-                    return $"Drag {FromElement?.name ?? FromSearch} {Direction} by {Distance}px";
-                return $"Drag {FromElement?.name ?? FromSearch}";
+                    return $"Drag {FromSearch?.value ?? "element"} {Direction} by {Distance}px";
+                return $"Drag {FromSearch?.value ?? "element"}";
             }
         }
     }
@@ -88,12 +80,12 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "scroll";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public string Direction { get; set; } // "up", "down", "left", "right"
         public float Amount { get; set; } = 0.3f;
 
         public override string Description =>
-            $"Scroll {TargetElement?.name ?? SearchQuery} {Direction}";
+            $"Scroll {Search?.value ?? "area"} {Direction}";
     }
 
     /// <summary>
@@ -146,21 +138,47 @@ namespace ODDGames.UIAutomation.AI
     }
 
     /// <summary>
+    /// Get hierarchy action - requests the UI hierarchy tree.
+    /// Used when the AI needs to explore the UI structure.
+    /// </summary>
+    public class GetHierarchyAction : AIAction
+    {
+        public override string ActionType => "get_hierarchy";
+
+        public string RootName { get; set; }
+        public int MaxDepth { get; set; } = 10;
+        public bool IncludeInactive { get; set; } = false;
+        /// <summary>Filter to specific component types (e.g., "Button", "Text", "Image")</summary>
+        public string[] TypeFilter { get; set; }
+
+        public override string Description
+        {
+            get
+            {
+                var desc = string.IsNullOrEmpty(RootName)
+                    ? $"Get UI hierarchy (depth: {MaxDepth})"
+                    : $"Get UI hierarchy from '{RootName}' (depth: {MaxDepth})";
+                if (TypeFilter != null && TypeFilter.Length > 0)
+                    desc += $" filtered to: {string.Join(", ", TypeFilter)}";
+                return desc;
+            }
+        }
+    }
+
+    /// <summary>
     /// Double-click action - double-clicks an element.
     /// </summary>
     public class DoubleClickAction : AIAction
     {
         public override string ActionType => "double_click";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public Vector2? ScreenPosition { get; set; }
 
         public override string Description =>
-            TargetElement != null
-                ? $"Double-click '{TargetElement.text ?? TargetElement.name}'"
-                : ScreenPosition.HasValue
-                    ? $"Double-click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
-                    : $"Double-click {SearchQuery}";
+            ScreenPosition.HasValue
+                ? $"Double-click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
+                : $"Double-click {Search?.value ?? "element"}";
     }
 
     /// <summary>
@@ -170,15 +188,13 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "triple_click";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public Vector2? ScreenPosition { get; set; }
 
         public override string Description =>
-            TargetElement != null
-                ? $"Triple-click '{TargetElement.text ?? TargetElement.name}'"
-                : ScreenPosition.HasValue
-                    ? $"Triple-click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
-                    : $"Triple-click {SearchQuery}";
+            ScreenPosition.HasValue
+                ? $"Triple-click at ({ScreenPosition.Value.x:F2}, {ScreenPosition.Value.y:F2})"
+                : $"Triple-click {Search?.value ?? "element"}";
     }
 
     /// <summary>
@@ -188,11 +204,11 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "hold";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public float Duration { get; set; } = 1f;
 
         public override string Description =>
-            $"Hold '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}' for {Duration:F1}s";
+            $"Hold '{Search?.value ?? "element"}' for {Duration:F1}s";
     }
 
     /// <summary>
@@ -228,13 +244,13 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "swipe";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public string Direction { get; set; } // "up", "down", "left", "right"
         public float Distance { get; set; } = 0.2f; // Normalized distance (0-1)
         public float Duration { get; set; } = 0.3f;
 
         public override string Description =>
-            $"Swipe {Direction} on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
+            $"Swipe {Direction} on '{Search?.value ?? "element"}'";
     }
 
     /// <summary>
@@ -244,14 +260,14 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "pinch";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public float Scale { get; set; } = 1.5f; // >1 = zoom in, <1 = zoom out
         public float Duration { get; set; } = 0.5f;
 
         public override string Description =>
             Scale > 1f
-                ? $"Pinch out (zoom in) on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'"
-                : $"Pinch in (zoom out) on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
+                ? $"Pinch out (zoom in) on '{Search?.value ?? "element"}'"
+                : $"Pinch in (zoom out) on '{Search?.value ?? "element"}'";
     }
 
     /// <summary>
@@ -261,11 +277,11 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "set_slider";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public float Value { get; set; } // 0-1 normalized value
 
         public override string Description =>
-            $"Set slider '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}' to {Value:P0}";
+            $"Set slider '{Search?.value ?? "slider"}' to {Value:P0}";
     }
 
     /// <summary>
@@ -275,11 +291,11 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "set_scrollbar";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public float Value { get; set; } // 0-1 normalized value
 
         public override string Description =>
-            $"Set scrollbar '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}' to {Value:P0}";
+            $"Set scrollbar '{Search?.value ?? "scrollbar"}' to {Value:P0}";
     }
 
     /// <summary>
@@ -289,14 +305,14 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "click_dropdown";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public int OptionIndex { get; set; } = -1; // -1 means use label instead
         public string OptionLabel { get; set; }
 
         public override string Description =>
             OptionIndex >= 0
-                ? $"Select option {OptionIndex} in dropdown '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'"
-                : $"Select '{OptionLabel}' in dropdown '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
+                ? $"Select option {OptionIndex} in dropdown '{Search?.value ?? "dropdown"}'"
+                : $"Select '{OptionLabel}' in dropdown '{Search?.value ?? "dropdown"}'";
     }
 
     /// <summary>
@@ -306,14 +322,14 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "two_finger_swipe";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public string Direction { get; set; } // "up", "down", "left", "right"
         public float Distance { get; set; } = 0.2f; // Normalized distance (0-1)
         public float Duration { get; set; } = 0.3f;
         public float FingerSpacing { get; set; } = 0.03f; // Distance between fingers
 
         public override string Description =>
-            $"Two-finger swipe {Direction} on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
+            $"Two-finger swipe {Direction} on '{Search?.value ?? "element"}'";
     }
 
     /// <summary>
@@ -323,15 +339,15 @@ namespace ODDGames.UIAutomation.AI
     {
         public override string ActionType => "rotate";
 
-        public string SearchQuery { get; set; }
+        public SearchQuery Search { get; set; }
         public float Degrees { get; set; } = 90f; // Positive = clockwise, negative = counter-clockwise
         public float Duration { get; set; } = 0.5f;
         public float FingerDistance { get; set; } = 0.05f; // Distance from center for each finger
 
         public override string Description =>
             Degrees > 0
-                ? $"Rotate clockwise {Degrees}° on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'"
-                : $"Rotate counter-clockwise {-Degrees}° on '{TargetElement?.text ?? TargetElement?.name ?? SearchQuery}'";
+                ? $"Rotate clockwise {Degrees}° on '{Search?.value ?? "element"}'"
+                : $"Rotate counter-clockwise {-Degrees}° on '{Search?.value ?? "element"}'";
     }
 
     /// <summary>

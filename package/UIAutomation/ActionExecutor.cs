@@ -39,6 +39,43 @@ namespace ODDGames.UIAutomation
     }
 
     /// <summary>
+    /// Context passed to recovery handlers when an action fails.
+    /// The recovery handler should perform the full action (e.g., dismiss blockers AND click the target).
+    /// </summary>
+    public class RecoveryContext
+    {
+        /// <summary>
+        /// Description of the action that failed (e.g., "Click the button named 'Submit'").
+        /// This describes what the AI should accomplish, not just what element to find.
+        /// </summary>
+        public string FailedAction { get; set; }
+
+        /// <summary>Error message from the failed action.</summary>
+        public string ErrorMessage { get; set; }
+
+        /// <summary>Cancellation token for the recovery operation.</summary>
+        public System.Threading.CancellationToken CancellationToken { get; set; }
+    }
+
+    /// <summary>
+    /// Result of a recovery attempt.
+    /// </summary>
+    public class RecoveryResult
+    {
+        /// <summary>Whether recovery succeeded and the original action now works.</summary>
+        public bool Success { get; set; }
+
+        /// <summary>
+        /// Whether the handler determined there was no blocker present.
+        /// If true, the test failure is genuine (not flaky) and should fail normally.
+        /// </summary>
+        public bool NoBlockerFound { get; set; }
+
+        /// <summary>Explanation of what was blocking and what was done to recover.</summary>
+        public string Explanation { get; set; }
+    }
+
+    /// <summary>
     /// Wrapper for navigating object properties via reflection.
     /// Supports fluent chaining and iteration over arrays/lists.
     /// </summary>
@@ -276,6 +313,325 @@ namespace ODDGames.UIAutomation
 
         static int EffectiveInterval => DebugMode ? (int)(Interval * DebugIntervalMultiplier) : Interval;
         static int EffectivePollInterval => DebugMode ? (int)(PollInterval * DebugIntervalMultiplier) : PollInterval;
+
+        /// <summary>
+        /// Optional callback that runs before each ActionExecutor action.
+        /// Use this to dismiss dialogs, handle popups, or perform other pre-action checks.
+        /// The callback receives the action name and should return quickly.
+        /// Set to null to disable.
+        /// </summary>
+        /// <example>
+        /// ActionExecutor.BeforeAction = async (actionName) =>
+        /// {
+        ///     // Dismiss any "Rate Us" dialog
+        ///     var rateDialog = Find(Name("RateUsDialog"));
+        ///     if (rateDialog != null)
+        ///         await Click(Name("CloseButton"));
+        /// };
+        /// </example>
+        public static System.Func<string, Task> BeforeAction { get; set; }
+
+        /// <summary>
+        /// Callback invoked when an action fails and recovery is enabled.
+        /// The handler should attempt to recover (dismiss dialogs, navigate, etc.) and return a result.
+        /// Set this to use AI recovery, coded recovery, or a custom implementation.
+        /// </summary>
+        /// <example>
+        /// // Use AI recovery (requires ODDGames.UIAutomation.AI namespace)
+        /// AINavigator.SetModelProvider(AITestSettings.Instance.CreateModelProvider());
+        /// ActionExecutor.RecoveryHandler = AINavigator.CreateRecoveryHandler();
+        ///
+        /// // Use coded recovery
+        /// ActionExecutor.RecoveryHandler = async (context) => {
+        ///     // Check for common dialogs
+        ///     var closeBtn = Find(Name("CloseButton"));
+        ///     if (closeBtn != null) {
+        ///         await Click(closeBtn);
+        ///         return new RecoveryResult { Success = true, Explanation = "Dismissed dialog" };
+        ///     }
+        ///     return new RecoveryResult { Success = false, NoBlockerFound = true };
+        /// };
+        /// </example>
+        public static System.Func<RecoveryContext, Task<RecoveryResult>> RecoveryHandler { get; set; }
+
+        /// <summary>
+        /// Set to true when recovery was used during the current test.
+        /// Check this in TearDown to mark the test as unstable/flaky.
+        /// Call <see cref="ResetRecoveryTracking"/> at the start of each test.
+        /// </summary>
+        public static bool RecoveryUsed { get; private set; } = false;
+
+        /// <summary>
+        /// Number of times recovery was invoked during the current test.
+        /// </summary>
+        public static int RecoveryCount { get; private set; } = 0;
+
+        /// <summary>
+        /// Explanation of what recovery actions were taken.
+        /// Contains details about what blockers were encountered and how they were resolved.
+        /// </summary>
+        public static string RecoveryExplanation { get; private set; } = "";
+
+        /// <summary>
+        /// Resets recovery tracking. Call at the start of each test.
+        /// </summary>
+        public static void ResetRecoveryTracking()
+        {
+            RecoveryUsed = false;
+            RecoveryCount = 0;
+            RecoveryExplanation = "";
+        }
+
+        /// <summary>
+        /// Records that recovery was used.
+        /// </summary>
+        internal static void RecordRecovery(string explanation)
+        {
+            RecoveryUsed = true;
+            RecoveryCount++;
+            if (!string.IsNullOrEmpty(RecoveryExplanation))
+                RecoveryExplanation += "\n---\n";
+            RecoveryExplanation += explanation;
+        }
+
+        // Legacy alias
+        internal static void RecordAINavigation(string explanation) => RecordRecovery(explanation);
+
+        /// <summary>
+        /// Whether recovery is enabled.
+        /// </summary>
+        internal static bool IsRecoveryEnabled => RecoveryHandler != null;
+
+        /// <summary>
+        /// Resolves a search query to a GameObject, with automatic recovery on timeout.
+        /// Polls for the element, and if not found within timeout, calls recovery handler
+        /// to clear obstacles (dialogs, etc.) then continues polling.
+        /// </summary>
+        /// <param name="search">Search query</param>
+        /// <param name="timeout">Total time to search</param>
+        /// <param name="index">Index when multiple elements match</param>
+        /// <param name="actionDescription">Description of the action (for recovery context)</param>
+        /// <returns>The found element, or null if not found</returns>
+        internal static async Task<GameObject> ResolveSearch(Search search, float timeout, int index, string actionDescription)
+        {
+            float startTime = Time.realtimeSinceStartup;
+            float recoveryAttemptedAt = -1f;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                if (results.Count > index)
+                    return results[index];
+
+                // Try recovery once after initial polling fails (at ~1/3 of timeout)
+                float elapsed = Time.realtimeSinceStartup - startTime;
+                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
+                {
+                    recoveryAttemptedAt = elapsed;
+
+                    var context = new RecoveryContext
+                    {
+                        FailedAction = actionDescription,
+                        ErrorMessage = $"Element not found: {search}",
+                        CancellationToken = default
+                    };
+
+                    var recoveryResult = await RecoveryHandler(context);
+                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
+
+                    // If recovery says no blocker found, don't waste remaining time
+                    if (recoveryResult.NoBlockerFound)
+                        break;
+
+                    // Otherwise continue polling - recovery may have cleared the way
+                }
+
+                await Task.Delay(100);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Resolves a search query to all matching GameObjects, with automatic recovery on timeout.
+        /// </summary>
+        internal static async Task<List<GameObject>> ResolveSearchAll(Search search, float timeout, string actionDescription)
+        {
+            float startTime = Time.realtimeSinceStartup;
+            float recoveryAttemptedAt = -1f;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                var results = search.FindAll();
+                if (results.Count > 0)
+                    return results;
+
+                float elapsed = Time.realtimeSinceStartup - startTime;
+                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
+                {
+                    recoveryAttemptedAt = elapsed;
+
+                    var context = new RecoveryContext
+                    {
+                        FailedAction = actionDescription,
+                        ErrorMessage = $"No elements found: {search}",
+                        CancellationToken = default
+                    };
+
+                    var recoveryResult = await RecoveryHandler(context);
+                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
+
+                    if (recoveryResult.NoBlockerFound)
+                        break;
+                }
+
+                await Task.Delay(100);
+            }
+
+            return new List<GameObject>();
+        }
+
+        /// <summary>
+        /// Resolves a search query to a Dropdown by label, with automatic recovery on timeout.
+        /// </summary>
+        internal static async Task<(GameObject element, RectTransform template, int optionIndex)> ResolveDropdownByLabel(Search search, string optionLabel, float timeout, string actionDescription)
+        {
+            float startTime = Time.realtimeSinceStartup;
+            float recoveryAttemptedAt = -1f;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                foreach (var go in search.FindAll())
+                {
+                    var legacy = go.GetComponent<Dropdown>();
+                    if (legacy != null)
+                    {
+                        int idx = legacy.options.FindIndex(o => o.text == optionLabel);
+                        if (idx >= 0)
+                            return (go, legacy.template, idx);
+                    }
+
+                    var tmp = go.GetComponent<TMPro.TMP_Dropdown>();
+                    if (tmp != null)
+                    {
+                        int idx = tmp.options.FindIndex(o => o.text == optionLabel);
+                        if (idx >= 0)
+                            return (go, tmp.template, idx);
+                    }
+                }
+
+                float elapsed = Time.realtimeSinceStartup - startTime;
+                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
+                {
+                    recoveryAttemptedAt = elapsed;
+
+                    var context = new RecoveryContext
+                    {
+                        FailedAction = actionDescription,
+                        ErrorMessage = $"Dropdown with option '{optionLabel}' not found: {search}",
+                        CancellationToken = default
+                    };
+
+                    var recoveryResult = await RecoveryHandler(context);
+                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
+
+                    if (recoveryResult.NoBlockerFound)
+                        break;
+                }
+
+                await Task.Delay(100);
+            }
+
+            return (null, null, -1);
+        }
+
+        /// <summary>
+        /// Resolves a search query to a Dropdown (legacy or TMP), with automatic recovery on timeout.
+        /// </summary>
+        internal static async Task<(GameObject element, RectTransform template)> ResolveDropdown(Search search, float timeout, string actionDescription)
+        {
+            float startTime = Time.realtimeSinceStartup;
+            float recoveryAttemptedAt = -1f;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                foreach (var go in search.FindAll())
+                {
+                    var legacy = go.GetComponent<Dropdown>();
+                    if (legacy != null)
+                        return (go, legacy.template);
+
+                    var tmp = go.GetComponent<TMPro.TMP_Dropdown>();
+                    if (tmp != null)
+                        return (go, tmp.template);
+                }
+
+                float elapsed = Time.realtimeSinceStartup - startTime;
+                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
+                {
+                    recoveryAttemptedAt = elapsed;
+
+                    var context = new RecoveryContext
+                    {
+                        FailedAction = actionDescription,
+                        ErrorMessage = $"Dropdown not found: {search}",
+                        CancellationToken = default
+                    };
+
+                    var recoveryResult = await RecoveryHandler(context);
+                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
+
+                    if (recoveryResult.NoBlockerFound)
+                        break;
+                }
+
+                await Task.Delay(100);
+            }
+
+            return (null, null);
+        }
+
+        /// <summary>
+        /// Resolves a search query to a component of type T, with automatic recovery on timeout.
+        /// </summary>
+        internal static async Task<T> ResolveSearch<T>(Search search, float timeout, string actionDescription) where T : Component
+        {
+            float startTime = Time.realtimeSinceStartup;
+            float recoveryAttemptedAt = -1f;
+
+            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            {
+                foreach (var go in search.FindAll())
+                {
+                    var component = go.GetComponent<T>();
+                    if (component != null)
+                        return component;
+                }
+
+                float elapsed = Time.realtimeSinceStartup - startTime;
+                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
+                {
+                    recoveryAttemptedAt = elapsed;
+
+                    var context = new RecoveryContext
+                    {
+                        FailedAction = actionDescription,
+                        ErrorMessage = $"Element with {typeof(T).Name} not found: {search}",
+                        CancellationToken = default
+                    };
+
+                    var recoveryResult = await RecoveryHandler(context);
+                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
+
+                    if (recoveryResult.NoBlockerFound)
+                        break;
+                }
+
+                await Task.Delay(100);
+            }
+
+            return null;
+        }
 
 #if UNITY_INCLUDE_TESTS
         private static readonly System.Collections.Generic.List<Exception> _capturedExceptions = new System.Collections.Generic.List<Exception>();
@@ -1105,20 +1461,15 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> Click(Search search, float searchTime = 10f, int index = 0)
         {
             await using var action = await RunAction($"Click({search})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var element = await ResolveSearch(search, searchTime, index, $"Click({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                {
-                    var target = results[index];
-                    var screenPos = InputInjector.GetScreenPosition(target);
-                    await InputInjector.InjectPointerTap(screenPos);
-                    action.SetResult($"'{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
-                    return true;
-                }
-                await Task.Delay(100);
+                var screenPos = InputInjector.GetScreenPosition(element);
+                await InputInjector.InjectPointerTap(screenPos);
+                action.SetResult($"'{element.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
+                return true;
             }
 
             action.Fail($"Element not found within {searchTime}s");
@@ -1126,16 +1477,12 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Clicks on a target GameObject. Internal use only - prefer Search-based overloads.
+        /// Private helper to click at a screen position. Used internally when we already have a position.
         /// </summary>
-        /// <param name="target">The GameObject to click on</param>
-        internal static async Task Click(GameObject target)
+        private static async Task ClickAtPosition(Vector2 screenPos, string logName = null)
         {
-            if (target == null)
-                throw new UIAutomationException("Click target cannot be null");
-
-            var screenPos = InputInjector.GetScreenPosition(target);
-            Log($"Click '{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
+            if (logName != null)
+                Log($"Click '{logName}' at ({screenPos.x:F0},{screenPos.y:F0})");
             await InputInjector.InjectPointerTap(screenPos);
         }
 
@@ -1172,38 +1519,19 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> DoubleClick(Search search, float searchTime = 10f, int index = 0)
         {
             await using var action = await RunAction($"DoubleClick({search})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var element = await ResolveSearch(search, searchTime, index, $"DoubleClick({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                {
-                    var target = results[index];
-                    var screenPos = InputInjector.GetScreenPosition(target);
-                    await InputInjector.InjectPointerDoubleTap(screenPos);
-                    action.SetResult($"'{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
-                    return true;
-                }
-                await Task.Delay(100);
+                var screenPos = InputInjector.GetScreenPosition(element);
+                await InputInjector.InjectPointerDoubleTap(screenPos);
+                action.SetResult($"'{element.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
+                return true;
             }
 
             action.Fail($"Element not found within {searchTime}s");
             return false;
-        }
-
-        /// <summary>
-        /// Double-clicks on a target GameObject. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">The GameObject to double-click on</param>
-        internal static async Task DoubleClick(GameObject target)
-        {
-            if (target == null)
-                throw new UIAutomationException("DoubleClick target cannot be null");
-
-            var screenPos = InputInjector.GetScreenPosition(target);
-            Log($"DoubleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
-            await InputInjector.InjectPointerDoubleTap(screenPos);
         }
 
         /// <summary>
@@ -1229,39 +1557,19 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> TripleClick(Search search, float searchTime = 10f, int index = 0)
         {
             await using var action = await RunAction($"TripleClick({search})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var element = await ResolveSearch(search, searchTime, index, $"TripleClick({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                {
-                    var target = results[index];
-                    var screenPos = InputInjector.GetScreenPosition(target);
-                    await InputInjector.InjectPointerTripleTap(screenPos);
-                    action.SetResult($"'{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
-                    return true;
-                }
-                await Task.Delay(100);
+                var screenPos = InputInjector.GetScreenPosition(element);
+                await InputInjector.InjectPointerTripleTap(screenPos);
+                action.SetResult($"'{element.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
+                return true;
             }
 
             action.Fail($"Element not found within {searchTime}s");
             return false;
-        }
-
-        /// <summary>
-        /// Triple-clicks on a target GameObject. Internal use only - prefer Search-based overloads.
-        /// Performs three rapid clicks in succession.
-        /// </summary>
-        /// <param name="target">The GameObject to triple-click on</param>
-        internal static async Task TripleClick(GameObject target)
-        {
-            if (target == null)
-                throw new UIAutomationException("TripleClick target cannot be null");
-
-            var screenPos = InputInjector.GetScreenPosition(target);
-            Log($"TripleClick at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}'");
-            await InputInjector.InjectPointerTripleTap(screenPos);
         }
 
         /// <summary>
@@ -1288,39 +1596,19 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> Hold(Search search, float seconds, float searchTime = 10f, int index = 0)
         {
             await using var action = await RunAction($"Hold({search}, {seconds}s)");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var element = await ResolveSearch(search, searchTime, index, $"Hold({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                {
-                    var target = results[index];
-                    var screenPos = InputInjector.GetScreenPosition(target);
-                    await InputInjector.InjectPointerHold(screenPos, seconds);
-                    action.SetResult($"'{target.name}' at ({screenPos.x:F0}, {screenPos.y:F0})");
-                    return true;
-                }
-                await Task.Delay(100);
+                var screenPos = InputInjector.GetScreenPosition(element);
+                await InputInjector.InjectPointerHold(screenPos, seconds);
+                action.SetResult($"'{element.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
+                return true;
             }
 
-            action.Fail($"element not found within {searchTime}s");
+            action.Fail($"Element not found within {searchTime}s");
             return false;
-        }
-
-        /// <summary>
-        /// Holds/long-presses on a target GameObject. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">The GameObject to hold on</param>
-        /// <param name="seconds">Duration of the hold in seconds</param>
-        internal static async Task Hold(GameObject target, float seconds)
-        {
-            if (target == null)
-                throw new UIAutomationException("Hold target cannot be null");
-
-            var screenPos = InputInjector.GetScreenPosition(target);
-            Log($"Hold at ({screenPos.x:F0}, {screenPos.y:F0}) on '{target.name}' for {seconds}s");
-            await InputInjector.InjectPointerHold(screenPos, seconds);
         }
 
         /// <summary>
@@ -1353,22 +1641,17 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> Type(Search search, string text, bool clearFirst = true, bool pressEnter = false, float searchTime = 10f, int index = 0)
         {
             await using var action = await RunAction($"Type({search}, \"{text}\")");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var element = await ResolveSearch(search, searchTime, index, $"Type({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                {
-                    var target = results[index];
-                    await InputInjector.TypeIntoField(target, text, clearFirst, pressEnter);
-                    action.SetResult($"'{target.name}' (clear={clearFirst}, enter={pressEnter})");
-                    return true;
-                }
-                await Task.Delay(100);
+                await InputInjector.TypeIntoField(element, text, clearFirst, pressEnter);
+                action.SetResult($"'{element.name}' (clear={clearFirst}, enter={pressEnter})");
+                return true;
             }
 
-            action.Fail($"element not found within {searchTime}s");
+            action.Fail($"Element not found within {searchTime}s");
             return false;
         }
 
@@ -1379,15 +1662,6 @@ namespace ODDGames.UIAutomation
         /// <param name="text">The text to type</param>
         /// <param name="clearFirst">Whether to clear existing text first</param>
         /// <param name="pressEnter">Whether to press Enter after typing</param>
-        internal static async Task Type(GameObject inputField, string text, bool clearFirst = true, bool pressEnter = false)
-        {
-            if (inputField == null)
-                throw new UIAutomationException("Type target cannot be null");
-
-            Log($"Type \"{text}\" into '{inputField.name}' (clear={clearFirst}, enter={pressEnter})");
-            await InputInjector.TypeIntoField(inputField, text, clearFirst, pressEnter);
-        }
-
         /// <summary>
         /// Types text without targeting a specific input field (assumes something is focused).
         /// </summary>
@@ -1418,24 +1692,19 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> Drag(Search search, Vector2 direction, float duration = 0.3f, float searchTime = 10f, int index = 0, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             await using var action = await RunAction($"Drag({search}, direction=({direction.x:F0},{direction.y:F0}))");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var element = await ResolveSearch(search, searchTime, index, $"Drag({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                {
-                    var target = results[index];
-                    var screenPos = InputInjector.GetScreenPosition(target);
-                    var endPos = screenPos + direction;
-                    await InputInjector.InjectPointerDrag(screenPos, endPos, duration, holdTime, button);
-                    action.SetResult($"'{target.name}' from ({screenPos.x:F0},{screenPos.y:F0}) by ({direction.x:F0},{direction.y:F0})");
-                    return true;
-                }
-                await Task.Delay(100);
+                var screenPos = InputInjector.GetScreenPosition(element);
+                var endPos = screenPos + direction;
+                await InputInjector.InjectPointerDrag(screenPos, endPos, duration, holdTime, button);
+                action.SetResult($"'{element.name}' from ({screenPos.x:F0},{screenPos.y:F0}) by ({direction.x:F0},{direction.y:F0})");
+                return true;
             }
 
-            action.Fail($"element not found within {searchTime}s");
+            action.Fail($"Element not found within {searchTime}s");
             return false;
         }
 
@@ -1452,103 +1721,26 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> DragTo(Search fromSearch, Search toSearch, float duration = 0.3f, float searchTime = 10f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             await using var action = await RunAction($"DragTo({fromSearch} -> {toSearch})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var fromElement = await ResolveSearch(fromSearch, searchTime, 0, $"DragTo({fromSearch} -> ...)");
+            if (fromElement == null)
             {
-                var fromResults = fromSearch.FindAll();
-                var toResults = toSearch.FindAll();
-                if (fromResults.Count > 0 && toResults.Count > 0)
-                {
-                    var fromTarget = fromResults[0];
-                    var toTarget = toResults[0];
-                    var fromPos = InputInjector.GetScreenPosition(fromTarget);
-                    var toPos = InputInjector.GetScreenPosition(toTarget);
-                    await InputInjector.InjectPointerDrag(fromPos, toPos, duration, holdTime, button);
-                    action.SetResult($"'{fromTarget.name}' to '{toTarget.name}'");
-                    return true;
-                }
-                await Task.Delay(100);
+                action.Fail($"Source element not found within {searchTime}s");
+                return false;
             }
 
-            action.Fail($"elements not found within {searchTime}s");
-            return false;
-        }
+            var toElement = await ResolveSearch(toSearch, searchTime, 0, $"DragTo(... -> {toSearch})");
+            if (toElement == null)
+            {
+                action.Fail($"Target element not found within {searchTime}s");
+                return false;
+            }
 
-        /// <summary>
-        /// Drags from a source GameObject in a direction. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="source">The GameObject to drag from</param>
-        /// <param name="direction">The direction to drag (pixel offset)</param>
-        /// <param name="duration">Duration of the drag in seconds</param>
-        /// <param name="holdTime">Time to hold at start position before dragging</param>
-        /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async Task Drag(GameObject source, Vector2 direction, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
-        {
-            if (source == null)
-                throw new UIAutomationException("Drag source cannot be null");
-
-            var startPos = InputInjector.GetScreenPosition(source);
-            var endPos = startPos + direction;
-            Log($"Drag from ({startPos.x:F0}, {startPos.y:F0}) by ({direction.x:F0}, {direction.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
-            await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime, button);
-        }
-
-        /// <summary>
-        /// Drags from a source GameObject in a named direction. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="source">The GameObject to drag from</param>
-        /// <param name="direction">Direction name: "up", "down", "left", "right"</param>
-        /// <param name="normalizedDistance">Distance as fraction of screen height (0-1)</param>
-        /// <param name="duration">Duration of the drag in seconds</param>
-        /// <param name="holdTime">Time to hold at start position before dragging</param>
-        /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async Task Drag(GameObject source, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
-        {
-            if (source == null)
-                throw new UIAutomationException("Drag source cannot be null");
-
-            var offset = InputInjector.GetDirectionOffset(direction, normalizedDistance);
-            await Drag(source, offset, duration, holdTime, button);
-        }
-
-        /// <summary>
-        /// Drags from a source GameObject to a target GameObject. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="source">The GameObject to drag from</param>
-        /// <param name="target">The GameObject to drag to</param>
-        /// <param name="duration">Duration of the drag in seconds</param>
-        /// <param name="holdTime">Time to hold at start position before dragging</param>
-        /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async Task DragTo(GameObject source, GameObject target, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
-        {
-            if (source == null)
-                throw new UIAutomationException("Drag source cannot be null");
-            if (target == null)
-                throw new UIAutomationException("Drag target cannot be null");
-
-            var startPos = InputInjector.GetScreenPosition(source);
-            var endPos = InputInjector.GetScreenPosition(target);
-            Log($"Drag from '{source.name}' to '{target.name}' over {duration}s (hold={holdTime}s, button={button})");
-            await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime, button);
-        }
-
-        /// <summary>
-        /// Drags from a source GameObject to a target screen position. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="source">The GameObject to drag from</param>
-        /// <param name="targetPosition">The screen position to drag to</param>
-        /// <param name="duration">Duration of the drag in seconds</param>
-        /// <param name="holdTime">Time to hold at start position before dragging</param>
-        /// <param name="button">Which mouse button to use for dragging</param>
-        internal static async Task DragTo(GameObject source, Vector2 targetPosition, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
-        {
-            if (source == null)
-                throw new UIAutomationException("Drag source cannot be null");
-
-            var startPos = InputInjector.GetScreenPosition(source);
-            Log($"Drag from '{source.name}' to ({targetPosition.x:F0}, {targetPosition.y:F0}) over {duration}s (hold={holdTime}s, button={button})");
-            await InputInjector.InjectPointerDrag(startPos, targetPosition, duration, holdTime, button);
+            var fromPos = InputInjector.GetScreenPosition(fromElement);
+            var toPos = InputInjector.GetScreenPosition(toElement);
+            await InputInjector.InjectPointerDrag(fromPos, toPos, duration, holdTime, button);
+            action.SetResult($"'{fromElement.name}' to '{toElement.name}'");
+            return true;
         }
 
         /// <summary>
@@ -1570,37 +1762,6 @@ namespace ODDGames.UIAutomation
         #endregion
 
         #region Scroll Actions
-
-        /// <summary>
-        /// Scrolls on a target GameObject. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">The GameObject to scroll on</param>
-        /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
-        internal static async Task Scroll(GameObject target, float delta)
-        {
-            if (target == null)
-                throw new UIAutomationException("Scroll target cannot be null");
-
-            var screenPos = InputInjector.GetScreenPosition(target);
-            Log($"Scroll on '{target.name}' delta={delta}");
-            await InputInjector.InjectScroll(screenPos, delta);
-        }
-
-        /// <summary>
-        /// Scrolls on a target GameObject in a named direction. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">The GameObject to scroll on</param>
-        /// <param name="direction">Direction: "up", "down", "left", "right"</param>
-        /// <param name="amount">Scroll amount (0-1 normalized)</param>
-        internal static async Task Scroll(GameObject target, string direction, float amount = 0.3f)
-        {
-            if (target == null)
-                throw new UIAutomationException("Scroll target cannot be null");
-
-            LogStart($"Scroll(target=\"{target.name}\", {direction}, amount={amount})");
-            await InputInjector.ScrollElement(target, direction, amount);
-            LogComplete($"Scroll(target=\"{target.name}\", {direction})");
-        }
 
         /// <summary>
         /// Scrolls at a specific screen position.
@@ -1626,23 +1787,18 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> Scroll(Search search, float delta, float searchTime = 10f, int index = 0)
         {
             await using var action = await RunAction($"Scroll({search}, delta={delta})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var element = await ResolveSearch(search, searchTime, index, $"Scroll({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                {
-                    var target = results[index];
-                    var screenPos = InputInjector.GetScreenPosition(target);
-                    await InputInjector.InjectScroll(screenPos, delta);
-                    action.SetResult($"'{target.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
-                    return true;
-                }
-                await Task.Delay(100);
+                var screenPos = InputInjector.GetScreenPosition(element);
+                await InputInjector.InjectScroll(screenPos, delta);
+                action.SetResult($"'{element.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
+                return true;
             }
 
-            action.Fail($"element not found within {searchTime}s");
+            action.Fail($"Element not found within {searchTime}s");
             return false;
         }
 
@@ -1658,131 +1814,23 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> Scroll(Search search, string direction, float amount = 0.3f, float searchTime = 10f, int index = 0)
         {
             await using var action = await RunAction($"Scroll({search}, {direction}, amount={amount})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var element = await ResolveSearch(search, searchTime, index, $"Scroll({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                {
-                    var target = results[index];
-                    await InputInjector.ScrollElement(target, direction, amount);
-                    action.SetResult($"'{target.name}'");
-                    return true;
-                }
-                await Task.Delay(100);
+                await InputInjector.ScrollElement(element, direction, amount);
+                action.SetResult($"'{element.name}'");
+                return true;
             }
 
-            action.Fail($"element not found within {searchTime}s");
+            action.Fail($"Element not found within {searchTime}s");
             return false;
         }
 
         #endregion
 
         #region Slider/Scrollbar Actions
-
-        /// <summary>
-        /// Sets a slider to a specific value by clicking.
-        /// </summary>
-        /// <param name="slider">The Slider component</param>
-        /// <param name="normalizedValue">Target value (0-1)</param>
-        internal static async Task SetSlider(Slider slider, float normalizedValue)
-        {
-            if (slider == null)
-                throw new UIAutomationException("Slider cannot be null");
-
-            await using (await RunAction($"SetSlider(\"{slider.name}\", {normalizedValue:F2})"))
-            {
-                await InputInjector.SetSlider(slider, normalizedValue);
-            }
-        }
-
-        /// <summary>
-        /// Sets a slider to a specific value by clicking (finds Slider on GameObject). Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">GameObject with Slider component</param>
-        /// <param name="normalizedValue">Target value (0-1)</param>
-        internal static async Task SetSlider(GameObject target, float normalizedValue)
-        {
-            if (target == null)
-                throw new UIAutomationException("Slider target cannot be null");
-
-            var slider = target.GetComponent<Slider>();
-            if (slider == null)
-                throw new UIAutomationException($"GameObject '{target.name}' does not have a Slider component");
-
-            await SetSlider(slider, normalizedValue);
-        }
-
-        /// <summary>
-        /// Sets a scrollbar to a specific value by clicking.
-        /// </summary>
-        /// <param name="scrollbar">The Scrollbar component</param>
-        /// <param name="normalizedValue">Target value (0-1)</param>
-        internal static async Task SetScrollbar(Scrollbar scrollbar, float normalizedValue)
-        {
-            if (scrollbar == null)
-                throw new UIAutomationException("Scrollbar cannot be null");
-
-            await using (await RunAction($"SetScrollbar(\"{scrollbar.name}\", {normalizedValue:F2})"))
-            {
-                await InputInjector.SetScrollbar(scrollbar, normalizedValue);
-            }
-        }
-
-        /// <summary>
-        /// Sets a scrollbar to a specific value by clicking (finds Scrollbar on GameObject). Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">GameObject with Scrollbar component</param>
-        /// <param name="normalizedValue">Target value (0-1)</param>
-        internal static async Task SetScrollbar(GameObject target, float normalizedValue)
-        {
-            if (target == null)
-                throw new UIAutomationException("Scrollbar target cannot be null");
-
-            var scrollbar = target.GetComponent<Scrollbar>();
-            if (scrollbar == null)
-                throw new UIAutomationException($"GameObject '{target.name}' does not have a Scrollbar component");
-
-            await SetScrollbar(scrollbar, normalizedValue);
-        }
-
-        /// <summary>
-        /// Clicks on a slider at a specific position to set its value.
-        /// </summary>
-        /// <param name="slider">The Slider component</param>
-        /// <param name="normalizedValue">Target value (0-1)</param>
-        internal static async Task ClickSlider(Slider slider, float normalizedValue)
-        {
-            if (slider == null)
-                throw new UIAutomationException("Slider cannot be null");
-
-            var clickPos = InputInjector.GetSliderClickPosition(slider, normalizedValue);
-            await using (await RunAction($"ClickSlider(\"{slider.name}\", {normalizedValue:F2})"))
-            {
-                await InputInjector.InjectPointerTap(clickPos);
-            }
-        }
-
-        /// <summary>
-        /// Drags a slider from one value to another.
-        /// </summary>
-        /// <param name="slider">The Slider component</param>
-        /// <param name="fromValue">Starting value (0-1)</param>
-        /// <param name="toValue">Ending value (0-1)</param>
-        /// <param name="duration">Duration of the drag</param>
-        internal static async Task DragSlider(Slider slider, float fromValue, float toValue, float duration = 0.3f, float holdTime = 0.05f)
-        {
-            if (slider == null)
-                throw new UIAutomationException("Slider cannot be null");
-
-            var startPos = InputInjector.GetSliderClickPosition(slider, fromValue);
-            var endPos = InputInjector.GetSliderClickPosition(slider, toValue);
-            await using (await RunAction($"DragSlider(\"{slider.name}\", {fromValue:F2} -> {toValue:F2})"))
-            {
-                await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime);
-            }
-        }
 
         /// <summary>
         /// Clicks on a slider at a specific position matching the search query.
@@ -1794,26 +1842,18 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> ClickSlider(Search search, float normalizedValue, float searchTime = 10f)
         {
             await using var action = await RunAction($"ClickSlider({search}, {normalizedValue:F2})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var slider = await ResolveSearch<Slider>(search, searchTime, $"ClickSlider({search})");
+
+            if (slider != null)
             {
-                var results = search.FindAll();
-                foreach (var go in results)
-                {
-                    var slider = go.GetComponent<Slider>();
-                    if (slider != null)
-                    {
-                        var clickPos = InputInjector.GetSliderClickPosition(slider, normalizedValue);
-                        await InputInjector.InjectPointerTap(clickPos);
-                        action.SetResult($"'{go.name}'");
-                        return true;
-                    }
-                }
-                await Task.Delay(100);
+                var clickPos = InputInjector.GetSliderClickPosition(slider, normalizedValue);
+                await InputInjector.InjectPointerTap(clickPos);
+                action.SetResult($"'{slider.name}'");
+                return true;
             }
 
-            action.Fail($"slider not found within {searchTime}s");
+            action.Fail($"Slider not found within {searchTime}s");
             return false;
         }
 
@@ -1829,27 +1869,19 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> DragSlider(Search search, float fromValue, float toValue, float duration = 0.3f, float searchTime = 10f, float holdTime = 0.05f)
         {
             await using var action = await RunAction($"DragSlider({search}, {fromValue:F2} -> {toValue:F2})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var slider = await ResolveSearch<Slider>(search, searchTime, $"DragSlider({search})");
+
+            if (slider != null)
             {
-                var results = search.FindAll();
-                foreach (var go in results)
-                {
-                    var slider = go.GetComponent<Slider>();
-                    if (slider != null)
-                    {
-                        var startPos = InputInjector.GetSliderClickPosition(slider, fromValue);
-                        var endPos = InputInjector.GetSliderClickPosition(slider, toValue);
-                        await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime);
-                        action.SetResult($"'{go.name}'");
-                        return true;
-                    }
-                }
-                await Task.Delay(100);
+                var startPos = InputInjector.GetSliderClickPosition(slider, fromValue);
+                var endPos = InputInjector.GetSliderClickPosition(slider, toValue);
+                await InputInjector.InjectPointerDrag(startPos, endPos, duration, holdTime);
+                action.SetResult($"'{slider.name}'");
+                return true;
             }
 
-            action.Fail($"slider not found within {searchTime}s");
+            action.Fail($"Slider not found within {searchTime}s");
             return false;
         }
 
@@ -1863,25 +1895,17 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> SetSlider(Search search, float normalizedValue, float searchTime = 10f)
         {
             await using var action = await RunAction($"SetSlider({search}, {normalizedValue:F2})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var slider = await ResolveSearch<Slider>(search, searchTime, $"SetSlider({search})");
+
+            if (slider != null)
             {
-                var results = search.FindAll();
-                foreach (var go in results)
-                {
-                    var slider = go.GetComponent<Slider>();
-                    if (slider != null)
-                    {
-                        await InputInjector.SetSlider(slider, normalizedValue);
-                        action.SetResult($"'{go.name}'");
-                        return true;
-                    }
-                }
-                await Task.Delay(100);
+                await InputInjector.SetSlider(slider, normalizedValue);
+                action.SetResult($"'{slider.name}'");
+                return true;
             }
 
-            action.Fail($"slider not found within {searchTime}s");
+            action.Fail($"Slider not found within {searchTime}s");
             return false;
         }
 
@@ -1895,47 +1919,23 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> SetScrollbar(Search search, float normalizedValue, float searchTime = 10f)
         {
             await using var action = await RunAction($"SetScrollbar({search}, {normalizedValue:F2})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var scrollbar = await ResolveSearch<Scrollbar>(search, searchTime, $"SetScrollbar({search})");
+
+            if (scrollbar != null)
             {
-                var results = search.FindAll();
-                foreach (var go in results)
-                {
-                    var scrollbar = go.GetComponent<Scrollbar>();
-                    if (scrollbar != null)
-                    {
-                        await InputInjector.SetScrollbar(scrollbar, normalizedValue);
-                        action.SetResult($"'{go.name}'");
-                        return true;
-                    }
-                }
-                await Task.Delay(100);
+                await InputInjector.SetScrollbar(scrollbar, normalizedValue);
+                action.SetResult($"'{scrollbar.name}'");
+                return true;
             }
 
-            action.Fail($"scrollbar not found within {searchTime}s");
+            action.Fail($"Scrollbar not found within {searchTime}s");
             return false;
         }
 
         #endregion
 
         #region Gesture Actions
-
-        /// <summary>
-        /// Performs a swipe gesture on a target GameObject. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">The GameObject to swipe on</param>
-        /// <param name="direction">Direction: "up", "down", "left", "right"</param>
-        /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
-        /// <param name="duration">Duration of the swipe</param>
-        internal static async Task Swipe(GameObject target, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
-        {
-            if (target == null)
-                throw new UIAutomationException("Swipe target cannot be null");
-
-            Log($"Swipe on '{target.name}' {direction} distance={normalizedDistance} duration={duration}s");
-            await InputInjector.Swipe(target, direction, normalizedDistance, duration);
-        }
 
         /// <summary>
         /// Performs a swipe gesture at a specific screen position.
@@ -1965,18 +1965,6 @@ namespace ODDGames.UIAutomation
             {
                 await SwipeAtInternal(position, direction, normalizedDistance, duration);
             }
-        }
-
-        /// <summary>
-        /// Performs a pinch gesture on a target GameObject. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">The GameObject to pinch on</param>
-        /// <param name="scale">Scale factor (less than 1 = zoom out, greater than 1 = zoom in)</param>
-        /// <param name="duration">Duration of the pinch</param>
-        internal static async Task Pinch(GameObject target, float scale, float duration = 0.3f)
-        {
-            Log($"Pinch on '{target?.name ?? "screen center"}' scale={scale} duration={duration}s");
-            await InputInjector.Pinch(target, scale, duration);
         }
 
         /// <summary>
@@ -2036,20 +2024,6 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Performs a two-finger swipe gesture on a target GameObject. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">The GameObject to swipe on</param>
-        /// <param name="direction">Direction: "up", "down", "left", "right"</param>
-        /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
-        /// <param name="duration">Duration of the swipe</param>
-        /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
-        internal static async Task TwoFingerSwipe(GameObject target, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
-        {
-            Log($"TwoFingerSwipe on '{target?.name ?? "screen center"}' {direction}");
-            await InputInjector.TwoFingerSwipe(target, direction, normalizedDistance, duration, fingerSpacing);
-        }
-
-        /// <summary>
         /// Performs a two-finger swipe gesture at a specific screen position.
         /// </summary>
         /// <param name="position">Screen position for the swipe center</param>
@@ -2094,20 +2068,6 @@ namespace ODDGames.UIAutomation
         {
             var position = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
             await TwoFingerSwipeAt(position, direction.ToString().ToLower(), normalizedDistance, duration, fingerSpacing);
-        }
-
-        /// <summary>
-        /// Performs a rotation gesture on a target GameObject. Internal use only - prefer Search-based overloads.
-        /// </summary>
-        /// <param name="target">The GameObject to rotate on</param>
-        /// <param name="degrees">Rotation angle (positive = clockwise, negative = counter-clockwise)</param>
-        /// <param name="duration">Duration of the rotation</param>
-        /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
-        internal static async Task Rotate(GameObject target, float degrees, float duration = 0.3f, float fingerDistance = 0.05f)
-        {
-            LogStart($"Rotate(target=\"{target?.name ?? "null"}\", {degrees}°, {duration}s)");
-            await InputInjector.Rotate(target, degrees, duration, fingerDistance);
-            LogComplete($"Rotate(target=\"{target?.name ?? "null"}\", {degrees}°)");
         }
 
         /// <summary>
@@ -2199,35 +2159,17 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> ClickDropdown(Search search, int optionIndex, float searchTime = 10f)
         {
             await using var action = await RunAction($"ClickDropdown({search}, index={optionIndex})");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var (element, template) = await ResolveDropdown(search, searchTime, $"ClickDropdown({search})");
+
+            if (element != null)
             {
-                var results = search.FindAll();
-                foreach (var go in results)
-                {
-                    // Try legacy Dropdown
-                    var legacyDropdown = go.GetComponent<Dropdown>();
-                    if (legacyDropdown != null)
-                    {
-                        await ClickDropdownItem(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
-                        action.SetResult($"'{go.name}' index={optionIndex}");
-                        return true;
-                    }
-
-                    // Try TMP_Dropdown
-                    var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
-                    if (tmpDropdown != null)
-                    {
-                        await ClickDropdownItem(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
-                        action.SetResult($"'{go.name}' index={optionIndex}");
-                        return true;
-                    }
-                }
-                await Task.Delay(100);
+                await ClickDropdownItem(element, template, optionIndex);
+                action.SetResult($"'{element.name}' index={optionIndex}");
+                return true;
             }
 
-            action.Fail($"dropdown not found within {searchTime}s");
+            action.Fail($"Dropdown not found within {searchTime}s");
             return false;
         }
 
@@ -2241,43 +2183,17 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> ClickDropdown(Search search, string optionLabel, float searchTime = 10f)
         {
             await using var action = await RunAction($"ClickDropdown({search}, label=\"{optionLabel}\")");
-            float startTime = Time.realtimeSinceStartup;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var (element, template, optionIndex) = await ResolveDropdownByLabel(search, optionLabel, searchTime, $"ClickDropdown({search})");
+
+            if (element != null && optionIndex >= 0)
             {
-                var results = search.FindAll();
-                foreach (var go in results)
-                {
-                    // Try legacy Dropdown
-                    var legacyDropdown = go.GetComponent<Dropdown>();
-                    if (legacyDropdown != null)
-                    {
-                        int optionIndex = legacyDropdown.options.FindIndex(o => o.text == optionLabel);
-                        if (optionIndex >= 0)
-                        {
-                            await ClickDropdownItem(legacyDropdown.gameObject, legacyDropdown.template, optionIndex);
-                            action.SetResult($"'{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
-                            return true;
-                        }
-                    }
-
-                    // Try TMP_Dropdown
-                    var tmpDropdown = go.GetComponent<TMPro.TMP_Dropdown>();
-                    if (tmpDropdown != null)
-                    {
-                        int optionIndex = tmpDropdown.options.FindIndex(o => o.text == optionLabel);
-                        if (optionIndex >= 0)
-                        {
-                            await ClickDropdownItem(tmpDropdown.gameObject, tmpDropdown.template, optionIndex);
-                            action.SetResult($"'{go.name}' label=\"{optionLabel}\" (index={optionIndex})");
-                            return true;
-                        }
-                    }
-                }
-                await Task.Delay(100);
+                await ClickDropdownItem(element, template, optionIndex);
+                action.SetResult($"'{element.name}' label=\"{optionLabel}\" (index={optionIndex})");
+                return true;
             }
 
-            action.Fail($"dropdown or option not found within {searchTime}s");
+            action.Fail($"Dropdown or option '{optionLabel}' not found within {searchTime}s");
             return false;
         }
 
@@ -2291,7 +2207,8 @@ namespace ODDGames.UIAutomation
                 UnityEngine.Object.FindObjectsByType<Toggle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
 
             // Click the dropdown to open it
-            await Click(dropdownGO);
+            var dropdownPos = InputInjector.GetScreenPosition(dropdownGO);
+            await ClickAtPosition(dropdownPos, dropdownGO.name);
 
             // Wait for new toggles to appear (the dropdown items)
             Toggle[] newToggles = null;
@@ -2316,7 +2233,8 @@ namespace ODDGames.UIAutomation
                 {
                     var targetToggle = newToggles[optionIndex];
                     LogDebug($"ClickDropdown selecting option {optionIndex}: '{targetToggle.name}'");
-                    await Click(targetToggle.gameObject);
+                    var togglePos = InputInjector.GetScreenPosition(targetToggle.gameObject);
+                    await ClickAtPosition(togglePos, targetToggle.name);
                     return;
                 }
 
@@ -2340,25 +2258,21 @@ namespace ODDGames.UIAutomation
         public static async Task<bool> ClickAny(Search search, float searchTime = 10f)
         {
             await using var action = await RunAction($"ClickAny({search})");
-            float startTime = Time.realtimeSinceStartup;
             var rnd = new System.Random((int)System.DateTime.Now.Millisecond);
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            var elements = await ResolveSearchAll(search, searchTime, $"ClickAny({search})");
+
+            if (elements.Count > 0)
             {
-                var results = search.FindAll();
-                if (results.Count > 0)
-                {
-                    // Randomly select one
-                    var target = results.OrderBy(_ => rnd.Next()).First();
-                    var screenPos = InputInjector.GetScreenPosition(target);
-                    await Click(target);
-                    action.SetResult($"'{target.name}' at ({screenPos.x:F0},{screenPos.y:F0}) from {results.Count} matches");
-                    return true;
-                }
-                await Task.Delay(100);
+                // Randomly select one
+                var target = elements.OrderBy(_ => rnd.Next()).First();
+                var screenPos = InputInjector.GetScreenPosition(target);
+                await ClickAtPosition(screenPos, target.name);
+                action.SetResult($"'{target.name}' at ({screenPos.x:F0},{screenPos.y:F0}) from {elements.Count} matches");
+                return true;
             }
 
-            action.Fail($"no elements found within {searchTime}s");
+            action.Fail($"No elements found within {searchTime}s");
             return false;
         }
 
@@ -3507,7 +3421,8 @@ namespace ODDGames.UIAutomation
                 return false;
             }
 
-            await Click(target);
+            var screenPos = InputInjector.GetScreenPosition(target);
+            await ClickAtPosition(screenPos, target.name);
             action.SetResult($"clicked '{target.name}'");
             return true;
         }
@@ -3692,7 +3607,8 @@ namespace ODDGames.UIAutomation
             }
 
             var target = clickables.ElementAt(RandomGenerator.Next(clickables.Count()));
-            await Click(target.gameObject);
+            var screenPos = InputInjector.GetScreenPosition(target.gameObject);
+            await ClickAtPosition(screenPos, target.gameObject.name);
             action.SetResult($"'{target.gameObject.name}'");
             return target;
         }
@@ -3718,7 +3634,8 @@ namespace ODDGames.UIAutomation
             }
 
             var target = filtered.ElementAt(RandomGenerator.Next(filtered.Count()));
-            await Click(target.gameObject);
+            var screenPos = InputInjector.GetScreenPosition(target.gameObject);
+            await ClickAtPosition(screenPos, target.gameObject.name);
             action.SetResult($"'{target.gameObject.name}'");
             return target;
         }
