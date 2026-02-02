@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.15] - 2026-02-02
+
+### Added
+- **`InputVisualizer`** - GL-based input visualization overlay that works over entire screen
+  - Shows clicks, drags, scrolls, and key presses with visual feedback
+  - Enable via `ActionExecutor.ShowInputOverlay = true`
+  - Works regardless of canvas setup, UI layers, or camera configuration
+- **`DialogDismissal`** - Fast recovery handler for dismissing common dialog patterns
+  - Looks for buttons matching patterns like "Close", "Cancel", "OK", "Skip", etc.
+  - Use as standalone or chain with other recovery handlers
+  - Configurable button name and text patterns
+- **`ActionExecutor.ChainRecoveryHandlers()`** - Combine multiple recovery handlers in waterfall pattern
+  - Each handler tried in order until one succeeds
+  - Example: `ChainRecoveryHandlers(DialogDismissal.CreateHandler(), AINavigator.CreateRecoveryHandler())`
+- **`ActionExecutor.DetectedRecoveryHandler()`** - Register handlers that run when a Search is detected (preemptive recovery)
+- **`ActionExecutor.FailureRecoveryHandler()`** - Register handlers that run when actions fail (fallback recovery)
+- **Button click tracking** - Debug which buttons receive click events
+  - `ActionExecutor.EnableButtonClickTracking()` / `DisableButtonClickTracking()`
+  - `ActionExecutor.LastClickedButton` - Name of last clicked button
+- **Virtual input devices** - InputInjector creates virtual devices when hardware unavailable
+  - `GetMouse()`, `GetKeyboard()`, `GetTouchscreen()` create devices on demand
+  - `InputInjector.CleanupVirtualDevices()` - Remove virtual devices when done
+- **Hardware input isolation** - Prevent real input from interfering with tests
+  - `InputInjector.DisableHardwareInput()` - Disable all hardware devices
+  - `InputInjector.EnableHardwareInput()` - Re-enable hardware devices
+- **`TestDataCapture`** - Editor window to capture game state for test fixtures
+  - Captures persistent data files and PlayerPrefs to a zip
+  - Menu: `Window > UI Automation > Capture Test Data`
+
+### Changed
+- **`UITestBase` simplified** - Removed automatic scene loading, now uses explicit `LoadScene()` and `RestoreGameState()` calls
+  - `DisableHardwareInput` property (default: true) controls whether hardware input is disabled during tests
+  - `TryRecover` method for custom recovery logic
+  - `TestMustExpectAllLogs(false)` attribute applied automatically
+- **VisualTestRunner refactored** - Significant simplification and cleanup
+
 ## [1.1.14] - 2026-01-30
 
 ### Fixed

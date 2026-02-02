@@ -323,7 +323,7 @@ namespace ODDGames.UIAutomation.Editor
             }
             if (GUILayout.Button("Generate Sample Scene", GUILayout.Height(25)))
             {
-                EditorApplication.ExecuteMenuItem("Window/Analysis/UI Automation/Generate Sample Scene");
+                EditorApplication.ExecuteMenuItem("Window/UI Automation/Generate Sample Scene");
             }
             EditorGUILayout.EndHorizontal();
 

@@ -277,33 +277,28 @@ namespace ODDGames.UIAutomation.AI
                 var minimalPng = Convert.FromBase64String(
                     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==");
 
-                // Build a request that tests vision, tools, and structured output
+                // Build a request that tests vision and structured JSON output
+                // Note: Cannot use function calling (tools) with responseMimeType - they're mutually exclusive
                 var requestBody = $@"{{
                     ""contents"": [{{
                         ""parts"": [
-                            {{""text"": ""What color is this image? Call the report_color function.""}},
+                            {{""text"": ""What color is this 1x1 pixel image? Respond with JSON containing a 'color' field.""}},
                             {{""inline_data"": {{
                                 ""mime_type"": ""image/png"",
                                 ""data"": ""{Convert.ToBase64String(minimalPng)}""
                             }}}}
                         ]
                     }}],
-                    ""tools"": [{{
-                        ""functionDeclarations"": [{{
-                            ""name"": ""report_color"",
-                            ""description"": ""Report the detected color"",
-                            ""parameters"": {{
-                                ""type"": ""OBJECT"",
-                                ""properties"": {{
-                                    ""color"": {{""type"": ""STRING"", ""description"": ""The color""}}
-                                }},
-                                ""required"": [""color""]
-                            }}
-                        }}]
-                    }}],
                     ""generationConfig"": {{
                         ""maxOutputTokens"": 50,
-                        ""responseMimeType"": ""application/json""
+                        ""responseMimeType"": ""application/json"",
+                        ""responseSchema"": {{
+                            ""type"": ""OBJECT"",
+                            ""properties"": {{
+                                ""color"": {{""type"": ""STRING"", ""description"": ""The detected color""}}
+                            }},
+                            ""required"": [""color""]
+                        }}
                     }}
                 }}";
 
@@ -342,16 +337,11 @@ namespace ODDGames.UIAutomation.AI
                         return $"Model does not support image input: {errorMessage}";
                     }
 
-                    if (responseBody.Contains("functionDeclarations") ||
-                        responseBody.Contains("tools"))
-                    {
-                        return $"Model does not support function calling: {errorMessage}";
-                    }
-
                     if (responseBody.Contains("responseMimeType") ||
+                        responseBody.Contains("responseSchema") ||
                         responseBody.Contains("JSON"))
                     {
-                        return $"Model does not support structured output: {errorMessage}";
+                        return $"Model does not support structured JSON output: {errorMessage}";
                     }
 
                     return $"Validation failed: {errorMessage}";

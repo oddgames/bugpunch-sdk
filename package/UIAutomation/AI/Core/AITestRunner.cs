@@ -7,6 +7,9 @@ using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
+#if UNITY_INCLUDE_TESTS
+using UnityEngine.TestTools;
+#endif
 
 namespace ODDGames.UIAutomation.AI
 {
@@ -36,8 +39,11 @@ namespace ODDGames.UIAutomation.AI
         {
             if (state == PlayModeStateChange.ExitingPlayMode)
             {
-                Debug.Log("[AITest] Exiting play mode - cancelling any running tests");
-                CancelAll();
+                if (currentRunner != null && currentRunner.isRunning)
+                {
+                    Debug.Log("[AITest] Exiting play mode - cancelling running AI test");
+                    CancelAll();
+                }
             }
         }
 
@@ -176,6 +182,14 @@ namespace ODDGames.UIAutomation.AI
 
             cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
             var ct = cts.Token;
+
+            // Suppress error logs from failing the test (game code may log errors we don't care about)
+#if UNITY_INCLUDE_TESTS
+            if (config.SuppressErrorLogs)
+            {
+                LogAssert.ignoreFailingMessages = true;
+            }
+#endif
 
             try
             {
@@ -448,6 +462,13 @@ namespace ODDGames.UIAutomation.AI
                 currentRunner = null;
                 try { cts?.Dispose(); } catch { }
                 cts = null;
+
+#if UNITY_INCLUDE_TESTS
+                if (config.SuppressErrorLogs)
+                {
+                    LogAssert.ignoreFailingMessages = false;
+                }
+#endif
             }
         }
 
@@ -670,6 +691,9 @@ namespace ODDGames.UIAutomation.AI
 
         /// <summary>Whether to log debug data (screenshots, prompts, responses) to AIDebug folder</summary>
         public bool EnableDebugLogging = false;
+
+        /// <summary>Whether to suppress error logs from failing the test (default: false)</summary>
+        public bool SuppressErrorLogs = false;
 
         /// <summary>The model provider to use for AI test execution</summary>
         public IModelProvider ModelProvider;

@@ -14,7 +14,7 @@ namespace ODDGames.UIAutomation.Samples.Editor
     /// </summary>
     public static class SampleSceneGenerator
     {
-        [MenuItem("Window/Analysis/UI Automation/Generate Sample Scene")]
+        [MenuItem("Window/UI Automation/Generate Sample Scene")]
         public static void GenerateComprehensiveSampleScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);

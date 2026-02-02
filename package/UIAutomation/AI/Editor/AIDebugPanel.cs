@@ -22,7 +22,7 @@ namespace ODDGames.UIAutomation.AI.Editor
         private int lastActionCount;
         private List<string> logs = new List<string>();
 
-        [MenuItem("Window/Analysis/UI Automation/AI Debug Panel")]
+        [MenuItem("Window/UI Automation/AI Debug Panel")]
         public static void ShowWindow()
         {
             var window = GetWindow<AIDebugPanel>("AI Debug");

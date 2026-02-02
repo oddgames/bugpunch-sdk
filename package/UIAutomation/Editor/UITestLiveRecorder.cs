@@ -56,7 +56,7 @@ namespace ODDGames.UIAutomation.Editor
         }
 
 #if UNITY_EDITOR
-        [MenuItem("Window/Analysis/UI Automation/Live Recorder #r")] // Shift+R
+        [MenuItem("Window/UI Automation/Live Recorder #r")] // Shift+R
         public static void ToggleRecorder()
         {
             _isEnabled = !_isEnabled;
@@ -82,10 +82,10 @@ namespace ODDGames.UIAutomation.Editor
             }
         }
 
-        [MenuItem("Window/Analysis/UI Automation/Live Recorder")]
+        [MenuItem("Window/UI Automation/Live Recorder", true)]
         public static bool ToggleRecorderValidate()
         {
-            Menu.SetChecked("Window/Analysis/UI Automation/Live Recorder", _isEnabled);
+            Menu.SetChecked("Window/UI Automation/Live Recorder", _isEnabled);
             return true;
         }
 

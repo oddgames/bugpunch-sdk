@@ -12,8 +12,8 @@ namespace ODDGames.UIAutomation
 {
     /// <summary>
     /// Base class for UI automation tests. Provides:
-    /// - Automatic scene loading with error log suppression
-    /// - Configurable recovery handlers (AI or coded) for handling dialogs/obstacles
+    /// - Test data restoration via RestoreGameState()
+    /// - Configurable recovery for handling dialogs/obstacles
     /// - Unobserved exception capture
     /// - Automatic test instability detection when recovery was needed
     ///
@@ -21,39 +21,23 @@ namespace ODDGames.UIAutomation
     /// <code>
     /// public class MyTests : UITestBase
     /// {
-    ///     protected override string SceneName => "MainMenu";
     ///     protected override bool EnableRecovery => true;
     ///
     ///     [Test]
     ///     public async Task TestSomething()
     ///     {
+    ///         await RestoreGameState("TestData/SaveGame");
+    ///         await LoadScene("MainMenu");
     ///         await Click(Name("StartButton"));
     ///     }
     /// }
     /// </code>
-    ///
-    /// Recovery uses AITestSettings for AI mode. Configure in:
-    /// - Editor: Project Settings > UI Automation > AI Testing
-    /// - Runtime: AITestSettings.SetInstance() or place in Resources folder
     /// </summary>
+#if UNITY_INCLUDE_TESTS
+    [TestMustExpectAllLogs(false)]
+#endif
     public abstract class UITestBase
     {
-        /// <summary>
-        /// Override to specify the scene to load before each test.
-        /// Return null to skip scene loading.
-        /// </summary>
-        protected virtual string SceneName => null;
-
-        /// <summary>
-        /// Override to specify timeout for scene loading in seconds.
-        /// </summary>
-        protected virtual float SceneLoadTimeout => 30f;
-
-        /// <summary>
-        /// Override to return false if you want error logs to fail tests.
-        /// Default is true (errors are ignored).
-        /// </summary>
-        protected virtual bool SuppressErrorLogs => true;
 
         /// <summary>
         /// Override to return false if you don't want to capture unobserved exceptions.
@@ -63,7 +47,7 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Override to enable recovery mode.
-        /// When true, the RecoveryHandler will be invoked when actions fail.
+        /// When true, TryRecover will be called when actions fail.
         /// If recovery was needed, the test will be marked as unstable.
         /// Default is false.
         /// </summary>
@@ -75,57 +59,53 @@ namespace ODDGames.UIAutomation
         /// </summary>
         protected virtual bool FailOnRecovery => false;
 
-        // Legacy aliases
-        protected virtual bool EnableAINavigation => EnableRecovery;
-        protected virtual bool FailOnAINavigation => FailOnRecovery;
+        /// <summary>
+        /// Override to keep hardware input enabled during tests.
+        /// Default is true (hardware input is disabled, only simulated input works).
+        /// </summary>
+        protected virtual bool DisableHardwareInput => true;
 
         [SetUp]
-        public virtual async Task SetUp()
+        public virtual void SetUp()
         {
-#if UNITY_INCLUDE_TESTS
-            // Suppress error logs (must be set within test context)
-            if (SuppressErrorLogs)
-            {
-                LogAssert.ignoreFailingMessages = true;
-            }
-#endif
+            // Disable profiler to avoid "Non-matching Profiler.EndSample" errors
+            // caused by async operations crossing frame boundaries (UniTask issue)
+            UnityEngine.Profiling.Profiler.enabled = false;
 
-            // Enable unobserved exception capture
+            Debug.Log($"[UITestBase] SetUp starting (frame {Time.frameCount})");
+
             if (CaptureUnobservedException)
             {
                 ActionExecutor.CaptureUnobservedExceptions = true;
                 ActionExecutor.ClearCapturedExceptions();
             }
 
-            // Configure recovery
             ActionExecutor.ResetRecoveryTracking();
+            ActionExecutor.ClearRecoveryFlows();
 
             if (EnableRecovery)
             {
-                ConfigureRecoveryHandler();
+                ActionExecutor.RecoveryHandler = TryRecover;
+                Debug.Log("[UITestBase] Recovery enabled");
             }
             else
             {
                 ActionExecutor.RecoveryHandler = null;
             }
 
-            // Load scene if specified
-            if (!string.IsNullOrEmpty(SceneName))
+            if (DisableHardwareInput)
             {
-                await ActionExecutor.EnsureSceneLoaded(SceneName, SceneLoadTimeout);
-
-                // Wait a frame for scene to stabilize
-                await Task.Yield();
-
-                // Dismiss any dialogs that appeared during load
-                await DismissDialogs();
+                InputInjector.DisableHardwareInput();
             }
+
+            Debug.Log("[UITestBase] SetUp complete");
         }
 
         [TearDown]
         public virtual void TearDown()
         {
-            // Check if recovery was used
+            Debug.Log($"[UITestBase] TearDown starting (frame {Time.frameCount})");
+
             if (ActionExecutor.RecoveryUsed)
             {
                 var message = $"[UNSTABLE TEST] Recovery was used {ActionExecutor.RecoveryCount} time(s).\n" +
@@ -137,85 +117,161 @@ namespace ODDGames.UIAutomation
                 }
                 else
                 {
-                    // Log warning but let test pass
                     Debug.LogWarning(message);
 #if UNITY_INCLUDE_TESTS
-                    // Add to test result output
                     TestContext.WriteLine(message);
 #endif
                 }
             }
 
-#if UNITY_INCLUDE_TESTS
-            // Restore error log behavior
-            if (SuppressErrorLogs)
-            {
-                LogAssert.ignoreFailingMessages = false;
-            }
-#endif
-
-            // Disable exception capture
             if (CaptureUnobservedException)
             {
                 ActionExecutor.CaptureUnobservedExceptions = false;
             }
 
-            // Clear recovery handler
             ActionExecutor.RecoveryHandler = null;
+
+            if (DisableHardwareInput)
+            {
+                InputInjector.EnableHardwareInput();
+            }
+
+            // Re-enable profiler
+            UnityEngine.Profiling.Profiler.enabled = true;
+
+            Debug.Log("[UITestBase] TearDown complete");
         }
 
+
         /// <summary>
-        /// Override to dismiss any dialogs that appear during scene load.
-        /// Default implementation does nothing.
+        /// Loads a scene by name and waits for it to complete.
+        /// Waits a few frames after loading for the scene to initialize.
         /// </summary>
-        protected virtual Task DismissDialogs()
+        /// <param name="sceneName">The scene name to load</param>
+        protected async Task LoadScene(string sceneName)
         {
-            return Task.CompletedTask;
+            Debug.Log($"[UITestBase] LoadScene({sceneName}) starting (frame {Time.frameCount})");
+            var op = UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(sceneName);
+            while (!op.isDone)
+            {
+                await Task.Yield();
+            }
+            Debug.Log($"[UITestBase] LoadScene({sceneName}) scene loaded (frame {Time.frameCount})");
+            // Wait a few frames for scene initialization
+            for (int i = 0; i < 3; i++)
+            {
+                await Task.Yield();
+            }
+            Debug.Log($"[UITestBase] LoadScene({sceneName}) complete (frame {Time.frameCount})");
         }
 
         /// <summary>
-        /// Configures the recovery handler. Override to provide a custom handler.
-        /// Default implementation uses AI recovery via AITestSettings.
+        /// Restores game state from a test data zip file.
+        /// The zip can contain:
+        /// - files/ folder: extracted to persistentDataPath
+        /// - playerprefs.json: restored to PlayerPrefs
         ///
-        /// Example custom handler:
+        /// Call this BEFORE loading the scene to ensure state is restored before scene initialization.
+        /// </summary>
+        /// <param name="resourcePath">Path relative to Resources folder, without extension (e.g., "TestData/SaveGame")</param>
+        /// <param name="clearExistingFiles">If true, clears existing files in persistentDataPath before loading (default true)</param>
+        protected async Task RestoreGameState(string resourcePath, bool clearExistingFiles = true)
+        {
+            await ActionExecutor.LoadTestData(resourcePath, clearExistingFiles);
+            LogPersistentDataState();
+        }
+
+        /// <summary>
+        /// Clears all files in Application.persistentDataPath.
+        /// Does not clear PlayerPrefs (to avoid breaking Unity systems like Addressables).
+        /// </summary>
+        protected void ClearPersistentFiles()
+        {
+            var path = Application.persistentDataPath;
+            Debug.Log($"[UITestBase] Clearing persistent data: {path}");
+            if (System.IO.Directory.Exists(path))
+            {
+                foreach (var file in System.IO.Directory.GetFiles(path, "*", System.IO.SearchOption.AllDirectories))
+                {
+                    try { System.IO.File.Delete(file); }
+                    catch (Exception ex) { Debug.LogWarning($"[UITestBase] Failed to delete {file}: {ex.Message}"); }
+                }
+                foreach (var dir in System.IO.Directory.GetDirectories(path))
+                {
+                    try { System.IO.Directory.Delete(dir, true); }
+                    catch (Exception ex) { Debug.LogWarning($"[UITestBase] Failed to delete {dir}: {ex.Message}"); }
+                }
+            }
+            Debug.Log("[UITestBase] Persistent data files cleared");
+        }
+
+        /// <summary>
+        /// Called when an action fails and recovery is enabled.
+        /// Override to customize recovery behavior.
+        ///
+        /// Default implementation:
+        /// 1. Tries DialogDismissal to click common close/cancel buttons
+        /// 2. Falls back to AI recovery if configured
+        ///
+        /// Example override:
         /// <code>
-        /// protected override void ConfigureRecoveryHandler()
+        /// protected override async Task&lt;RecoveryResult&gt; TryRecover(RecoveryContext context)
         /// {
-        ///     ActionExecutor.RecoveryHandler = async (context) =>
-        ///     {
-        ///         // Check for common dialogs
-        ///         var closeBtn = Search.Name("CloseButton").FindFirst();
-        ///         if (closeBtn != null)
-        ///         {
-        ///             await ActionExecutor.Click(Search.Name("CloseButton"));
-        ///             return new RecoveryResult { Success = true, Explanation = "Closed dialog" };
-        ///         }
-        ///         return new RecoveryResult { Success = false, NoBlockerFound = true };
-        ///     };
+        ///     // Try your custom recovery first
+        ///     if (await TryClickCloseButton())
+        ///         return new RecoveryResult { Success = true, Explanation = "Clicked close" };
+        ///
+        ///     // Fall back to base implementation
+        ///     return await base.TryRecover(context);
         /// }
         /// </code>
         /// </summary>
-        protected virtual void ConfigureRecoveryHandler()
+        protected virtual async Task<RecoveryResult> TryRecover(RecoveryContext context)
         {
-            var settings = AITestSettings.Instance;
-            if (settings == null)
+            Debug.Log($"[UITestBase] TryRecover: {context.FailedAction}");
+
+            // 1. Try registered detected flows (in case something just appeared)
+            await ActionExecutor.RunDetectedFlows();
+
+            // 2. Try dialog dismissal
+            if (await DialogDismissal.TryDismiss())
             {
-                Debug.LogWarning("[UITestBase] Recovery enabled but AITestSettings not found. " +
-                    "Configure in Project Settings or call AITestSettings.SetInstance().");
-                return;
+                return new RecoveryResult
+                {
+                    Success = true,
+                    Explanation = "Dismissed dialog"
+                };
             }
 
-            var provider = settings.CreateModelProvider();
-            if (provider != null)
+            // 3. Try failure flows
+            if (await ActionExecutor.RunFailureFlows())
             {
-                AINavigator.SetModelProvider(provider);
-                ActionExecutor.RecoveryHandler = AINavigator.CreateRecoveryHandler();
-                Debug.Log($"[UITestBase] AI recovery configured with model: {settings.GetEffectiveModel()}");
+                return new RecoveryResult
+                {
+                    Success = true,
+                    Explanation = "Ran fallback recovery flow"
+                };
             }
-            else
+
+            // 4. Try AI recovery if configured
+            var settings = AITestSettings.Instance;
+            if (settings != null)
             {
-                Debug.LogWarning("[UITestBase] Recovery enabled but no API key configured in AITestSettings.");
+                var provider = settings.CreateModelProvider();
+                if (provider != null)
+                {
+                    AINavigator.SetModelProvider(provider);
+                    var aiHandler = AINavigator.CreateRecoveryHandler();
+                    return await aiHandler(context);
+                }
             }
+
+            return new RecoveryResult
+            {
+                Success = false,
+                NoBlockerFound = true,
+                Explanation = "No recovery method succeeded"
+            };
         }
 
         /// <summary>
@@ -234,8 +290,89 @@ namespace ODDGames.UIAutomation
         /// </summary>
         protected string RecoveryReason => ActionExecutor.RecoveryExplanation;
 
-        // Legacy aliases
-        protected bool WasAINavigationUsed => WasRecoveryUsed;
-        protected string AINavigationReason => RecoveryReason;
+        /// <summary>
+        /// Logs the current persistent data state (files and PlayerPrefs).
+        /// </summary>
+        private void LogPersistentDataState()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("[UITestBase] === Persistent Data State ===");
+
+            // Log files
+            var path = Application.persistentDataPath;
+            sb.AppendLine($"Path: {path}");
+
+            if (System.IO.Directory.Exists(path))
+            {
+                var files = System.IO.Directory.GetFiles(path, "*", System.IO.SearchOption.AllDirectories);
+                sb.AppendLine($"Files ({files.Length}):");
+                foreach (var file in files)
+                {
+                    var info = new System.IO.FileInfo(file);
+                    var relativePath = file.Replace(path, "").TrimStart('\\', '/');
+                    var size = FormatFileSize(info.Length);
+                    sb.AppendLine($"  {relativePath} ({size})");
+                }
+            }
+            else
+            {
+                sb.AppendLine("  (directory does not exist)");
+            }
+
+            // Note: Unity doesn't provide a way to enumerate all PlayerPrefs keys
+            sb.AppendLine("PlayerPrefs: (cannot enumerate - use Editor menu to capture known keys)");
+
+            Debug.Log(sb.ToString());
+        }
+
+        private static string FormatFileSize(long bytes)
+        {
+            if (bytes < 1024) return $"{bytes} B";
+            if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+            return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        }
+
+        /// <summary>
+        /// Gets the persistent data path for the current platform.
+        /// </summary>
+        protected static string PersistentDataPath => Application.persistentDataPath;
+
+        /// <summary>
+        /// Checks if a file exists in persistent data.
+        /// </summary>
+        protected static bool PersistentFileExists(string relativePath)
+        {
+            return System.IO.File.Exists(System.IO.Path.Combine(Application.persistentDataPath, relativePath));
+        }
+
+        /// <summary>
+        /// Reads a file from persistent data as text.
+        /// </summary>
+        protected static string ReadPersistentFile(string relativePath)
+        {
+            return System.IO.File.ReadAllText(System.IO.Path.Combine(Application.persistentDataPath, relativePath));
+        }
+
+        /// <summary>
+        /// Writes text to a file in persistent data.
+        /// </summary>
+        protected static void WritePersistentFile(string relativePath, string content)
+        {
+            var fullPath = System.IO.Path.Combine(Application.persistentDataPath, relativePath);
+            var dir = System.IO.Path.GetDirectoryName(fullPath);
+            if (!System.IO.Directory.Exists(dir))
+                System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.WriteAllText(fullPath, content);
+        }
+
+        /// <summary>
+        /// Deletes a file from persistent data.
+        /// </summary>
+        protected static void DeletePersistentFile(string relativePath)
+        {
+            var fullPath = System.IO.Path.Combine(Application.persistentDataPath, relativePath);
+            if (System.IO.File.Exists(fullPath))
+                System.IO.File.Delete(fullPath);
+        }
     }
 }

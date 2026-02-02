@@ -76,6 +76,27 @@ namespace ODDGames.UIAutomation.AI
             return query;
         }
 
+        /// <summary>
+        /// Converts a SearchQuery to a Search, throwing if invalid or null.
+        /// </summary>
+        private static Search RequireSearch(SearchQuery query, string actionName)
+        {
+            if (query == null)
+                throw new InvalidOperationException($"{actionName} requires a search query");
+            var search = query.ToSearch();
+            if (search == null)
+                throw new InvalidOperationException($"{actionName} has invalid search query");
+            return search;
+        }
+
+        /// <summary>
+        /// Converts a SearchQuery to a Search, returning null if query is null.
+        /// </summary>
+        private static Search OptionalSearch(SearchQuery query)
+        {
+            return query?.ToSearch();
+        }
+
         private static ClickAction ParseClickAction(ToolCall call)
         {
             var searchQuery = GetSearchQueryOrThrow(call, "search");
@@ -374,73 +395,185 @@ namespace ODDGames.UIAutomation.AI
                 switch (action)
                 {
                     case ClickAction click:
-                        await ExecuteClickAsync(click, ct);
+                        if (click.ScreenPosition.HasValue)
+                            await ActionExecutor.ClickAt(click.ScreenPosition.Value);
+                        else
+                            await ActionExecutor.Click(RequireSearch(click.Search, "Click"), searchTime: DefaultSearchTime);
+                        break;
+
+                    case DoubleClickAction doubleClick:
+                        if (doubleClick.ScreenPosition.HasValue)
+                        {
+                            var pos = doubleClick.ScreenPosition.Value;
+                            await ActionExecutor.DoubleClickAt(new Vector2(pos.x * Screen.width, pos.y * Screen.height));
+                        }
+                        else
+                            await ActionExecutor.DoubleClick(RequireSearch(doubleClick.Search, "DoubleClick"), searchTime: DefaultSearchTime);
+                        break;
+
+                    case TripleClickAction tripleClick:
+                        if (tripleClick.ScreenPosition.HasValue)
+                        {
+                            var pos = tripleClick.ScreenPosition.Value;
+                            await ActionExecutor.TripleClickAt(new Vector2(pos.x * Screen.width, pos.y * Screen.height));
+                        }
+                        else
+                            await ActionExecutor.TripleClick(RequireSearch(tripleClick.Search, "TripleClick"), searchTime: DefaultSearchTime);
+                        break;
+
+                    case HoldAction hold:
+                        await ActionExecutor.Hold(RequireSearch(hold.Search, "Hold"), hold.Duration, searchTime: DefaultSearchTime);
                         break;
 
                     case TypeAction type:
-                        await ExecuteTypeAsync(type, ct);
+                        var typeSearch = OptionalSearch(type.Search);
+                        if (typeSearch != null)
+                        {
+                            await ActionExecutor.Type(typeSearch, type.Text, clearFirst: type.ClearFirst, searchTime: DefaultSearchTime);
+                            if (type.PressEnter)
+                            {
+                                await DelaySafe(50, ct);
+                                await ActionExecutor.PressKey(Key.Enter);
+                            }
+                        }
+                        else
+                        {
+                            await ActionExecutor.TypeText(type.Text);
+                            if (type.PressEnter)
+                            {
+                                await DelaySafe(50, ct);
+                                await ActionExecutor.PressKey(Key.Enter);
+                            }
+                        }
                         break;
 
                     case DragAction drag:
-                        await ExecuteDragAsync(drag, ct);
+                        {
+                            var fromSearch = RequireSearch(drag.FromSearch, "Drag");
+                            var fromResult = await fromSearch.Resolve(DefaultSearchTime);
+                            if (!fromResult.Found)
+                                throw new InvalidOperationException("Could not find element for 'from' search");
+                            var startPos = InputInjector.GetScreenPosition(fromResult.Element);
+
+                            if (drag.ToSearch != null)
+                            {
+                                var toSearch = drag.ToSearch.ToSearch();
+                                if (toSearch == null)
+                                    throw new InvalidOperationException("Invalid 'to' search query");
+                                var toResult = await toSearch.Resolve(DefaultSearchTime);
+                                if (!toResult.Found)
+                                    throw new InvalidOperationException("Could not find element for 'to' search");
+                                var endPos = InputInjector.GetScreenPosition(toResult.Element);
+                                await ActionExecutor.DragFromTo(startPos, endPos, drag.Duration);
+                            }
+                            else if (!string.IsNullOrEmpty(drag.Direction))
+                            {
+                                var offset = InputInjector.GetDirectionOffset(drag.Direction, drag.Distance / Screen.height);
+                                var endPos = startPos + offset;
+                                await ActionExecutor.DragFromTo(startPos, endPos, drag.Duration);
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException("Drag action has no 'to' search or direction");
+                            }
+                        }
                         break;
 
                     case ScrollAction scroll:
-                        await ExecuteScrollAsync(scroll, ct);
+                        {
+                            var scrollSearch = RequireSearch(scroll.Search, "Scroll");
+                            var result = await scrollSearch.Resolve(DefaultSearchTime);
+                            if (!result.Found)
+                                throw new InvalidOperationException("Could not find element for scroll");
+                            var screenPos = InputInjector.GetScreenPosition(result.Element);
+                            float delta = scroll.Direction.ToLower() == "up" ? scroll.Amount : -scroll.Amount;
+                            await ActionExecutor.ScrollAt(screenPos, delta);
+                        }
+                        break;
+
+                    case SwipeAction swipe:
+                        {
+                            var direction = ParseSwipeDirection(swipe.Direction);
+                            await ActionExecutor.Swipe(RequireSearch(swipe.Search, "Swipe"), direction, swipe.Distance, swipe.Duration, throwIfMissing: true, searchTime: DefaultSearchTime);
+                        }
+                        break;
+
+                    case PinchAction pinch:
+                        {
+                            var pinchSearch = OptionalSearch(pinch.Search);
+                            if (pinchSearch != null)
+                                await ActionExecutor.Pinch(pinchSearch, pinch.Scale, pinch.Duration, searchTime: DefaultSearchTime);
+                            else
+                                await ActionExecutor.Pinch(pinch.Scale, pinch.Duration);
+                        }
+                        break;
+
+                    case TwoFingerSwipeAction twoFingerSwipe:
+                        {
+                            var swipeSearch = OptionalSearch(twoFingerSwipe.Search);
+                            var direction = twoFingerSwipe.Direction ?? "up";
+                            if (swipeSearch != null)
+                                await ActionExecutor.TwoFingerSwipe(swipeSearch, direction, twoFingerSwipe.Distance, twoFingerSwipe.Duration, twoFingerSwipe.FingerSpacing, searchTime: DefaultSearchTime);
+                            else
+                                await ActionExecutor.TwoFingerSwipeAt(new Vector2(Screen.width / 2f, Screen.height / 2f), direction, twoFingerSwipe.Distance, twoFingerSwipe.Duration, twoFingerSwipe.FingerSpacing);
+                        }
+                        break;
+
+                    case RotateAction rotate:
+                        {
+                            var rotateSearch = OptionalSearch(rotate.Search);
+                            if (rotateSearch != null)
+                                await ActionExecutor.Rotate(rotateSearch, rotate.Degrees, rotate.Duration, rotate.FingerDistance, searchTime: DefaultSearchTime);
+                            else
+                                await ActionExecutor.Rotate(rotate.Degrees, rotate.Duration, rotate.FingerDistance);
+                        }
+                        break;
+
+                    case SetSliderAction setSlider:
+                        await ActionExecutor.SetSlider(RequireSearch(setSlider.Search, "SetSlider"), setSlider.Value, searchTime: DefaultSearchTime);
+                        break;
+
+                    case SetScrollbarAction setScrollbar:
+                        await ActionExecutor.SetScrollbar(RequireSearch(setScrollbar.Search, "SetScrollbar"), setScrollbar.Value, searchTime: DefaultSearchTime);
+                        break;
+
+                    case ClickDropdownAction clickDropdown:
+                        {
+                            var dropdownSearch = RequireSearch(clickDropdown.Search, "ClickDropdown");
+                            if (clickDropdown.OptionIndex >= 0)
+                                await ActionExecutor.ClickDropdown(dropdownSearch, clickDropdown.OptionIndex, searchTime: DefaultSearchTime);
+                            else if (!string.IsNullOrEmpty(clickDropdown.OptionLabel))
+                                await ActionExecutor.ClickDropdown(dropdownSearch, clickDropdown.OptionLabel, searchTime: DefaultSearchTime);
+                            else
+                                throw new InvalidOperationException("ClickDropdown requires either index or label");
+                        }
+                        break;
+
+                    case KeyPressAction keyPress:
+                        if (Enum.TryParse<Key>(keyPress.Key, true, out var key))
+                            await ActionExecutor.PressKey(key);
+                        else
+                            Debug.LogWarning($"[AITest] Unknown key: {keyPress.Key}");
+                        break;
+
+                    case KeyHoldAction keyHold:
+                        {
+                            var keys = new List<Key>();
+                            foreach (var keyName in keyHold.Keys)
+                            {
+                                if (Enum.TryParse<Key>(keyName.Trim(), true, out var k))
+                                    keys.Add(k);
+                            }
+                            if (keys.Count > 0)
+                                await ActionExecutor.HoldKeys(keyHold.Duration, keys.ToArray());
+                        }
                         break;
 
                     case WaitAction wait:
                         await DelaySafe((int)(wait.Seconds * 1000), ct);
                         break;
 
-                    case DoubleClickAction doubleClick:
-                        await ExecuteDoubleClickAsync(doubleClick, ct);
-                        break;
-
-                    case TripleClickAction tripleClick:
-                        await ExecuteTripleClickAsync(tripleClick, ct);
-                        break;
-
-                    case HoldAction hold:
-                        await ExecuteHoldAsync(hold, ct);
-                        break;
-
-                    case SwipeAction swipe:
-                        await ExecuteSwipeAsync(swipe, ct);
-                        break;
-
-                    case PinchAction pinch:
-                        await ExecutePinchAsync(pinch, ct);
-                        break;
-
-                    case TwoFingerSwipeAction twoFingerSwipe:
-                        await ExecuteTwoFingerSwipeAsync(twoFingerSwipe, ct);
-                        break;
-
-                    case RotateAction rotate:
-                        await ExecuteRotateAsync(rotate, ct);
-                        break;
-
-                    case SetSliderAction setSlider:
-                        await ExecuteSetSliderAsync(setSlider, ct);
-                        break;
-
-                    case SetScrollbarAction setScrollbar:
-                        await ExecuteSetScrollbarAsync(setScrollbar, ct);
-                        break;
-
-                    case ClickDropdownAction clickDropdown:
-                        await ExecuteClickDropdownAsync(clickDropdown, ct);
-                        break;
-
-                    case KeyPressAction keyPress:
-                        await ExecuteKeyPressAsync(keyPress, ct);
-                        break;
-
-                    case KeyHoldAction keyHold:
-                        await ExecuteKeyHoldAsync(keyHold, ct);
-                        break;
-
+                    case GetHierarchyAction:
                     case PassAction:
                     case FailAction:
                     case ScreenshotAction:
@@ -485,195 +618,6 @@ namespace ODDGames.UIAutomation.AI
             }
         }
 
-        private static async Task ExecuteClickAsync(ClickAction action, CancellationToken ct)
-        {
-            if (action.ScreenPosition.HasValue)
-            {
-                // ScreenPosition is normalized (0-1)
-                await ActionExecutor.ClickAt(action.ScreenPosition.Value);
-            }
-            else if (action.Search != null)
-            {
-                // Use Search-based Click - same as code tests
-                var search = action.Search.ToSearch();
-                if (search == null)
-                    throw new InvalidOperationException("Invalid search query");
-                await ActionExecutor.Click(search, searchTime: DefaultSearchTime);
-            }
-            else
-            {
-                throw new InvalidOperationException("Click action has no search or screen position");
-            }
-        }
-
-        private static async Task ExecuteTypeAsync(TypeAction action, CancellationToken ct)
-        {
-            if (action.Search != null)
-            {
-                // Use Search-based Type - same as code tests
-                var search = action.Search.ToSearch();
-                if (search == null)
-                    throw new InvalidOperationException("Invalid search query");
-
-                await ActionExecutor.Type(
-                    search,
-                    action.Text,
-                    clearFirst: action.ClearFirst,
-                    searchTime: DefaultSearchTime);
-
-                if (action.PressEnter)
-                {
-                    await DelaySafe(50, ct);
-                    await ActionExecutor.PressKey(Key.Enter);
-                }
-            }
-            else
-            {
-                // No target, just type text directly
-                await ActionExecutor.TypeText(action.Text);
-                if (action.PressEnter)
-                {
-                    await DelaySafe(50, ct);
-                    await ActionExecutor.PressKey(Key.Enter);
-                }
-            }
-        }
-
-        private static async Task ExecuteDragAsync(DragAction action, CancellationToken ct)
-        {
-            if (action.FromSearch == null)
-                throw new InvalidOperationException("Drag action has no 'from' search");
-
-            var fromSearch = action.FromSearch.ToSearch();
-            if (fromSearch == null)
-                throw new InvalidOperationException("Invalid 'from' search query");
-
-            // Resolve the from element
-            var fromResult = await fromSearch.Resolve(DefaultSearchTime);
-            if (!fromResult.Found)
-                throw new InvalidOperationException($"Could not find element for 'from' search");
-
-            var startPos = InputInjector.GetScreenPosition(fromResult.Element);
-
-            if (action.ToSearch != null)
-            {
-                var toSearch = action.ToSearch.ToSearch();
-                if (toSearch == null)
-                    throw new InvalidOperationException("Invalid 'to' search query");
-
-                var toResult = await toSearch.Resolve(DefaultSearchTime);
-                if (!toResult.Found)
-                    throw new InvalidOperationException($"Could not find element for 'to' search");
-
-                var endPos = InputInjector.GetScreenPosition(toResult.Element);
-                await ActionExecutor.DragFromTo(startPos, endPos, action.Duration);
-            }
-            else if (!string.IsNullOrEmpty(action.Direction))
-            {
-                var offset = InputInjector.GetDirectionOffset(action.Direction, action.Distance / Screen.height);
-                var endPos = startPos + offset;
-                await ActionExecutor.DragFromTo(startPos, endPos, action.Duration);
-            }
-            else
-            {
-                throw new InvalidOperationException("Drag action has no 'to' search or direction");
-            }
-        }
-
-        private static async Task ExecuteScrollAsync(ScrollAction action, CancellationToken ct)
-        {
-            if (action.Search == null)
-                throw new InvalidOperationException("Scroll action has no search");
-
-            var search = action.Search.ToSearch();
-            if (search == null)
-                throw new InvalidOperationException("Invalid search query");
-
-            var result = await search.Resolve(DefaultSearchTime);
-            if (!result.Found)
-                throw new InvalidOperationException($"Could not find element for scroll");
-
-            var screenPos = InputInjector.GetScreenPosition(result.Element);
-            float delta = action.Direction.ToLower() switch
-            {
-                "up" => action.Amount,
-                "down" => -action.Amount,
-                _ => 0
-            };
-            await ActionExecutor.ScrollAt(screenPos, delta);
-        }
-
-        private static async Task ExecuteDoubleClickAsync(DoubleClickAction action, CancellationToken ct)
-        {
-            if (action.ScreenPosition.HasValue)
-            {
-                var screenPos = new Vector2(
-                    action.ScreenPosition.Value.x * Screen.width,
-                    action.ScreenPosition.Value.y * Screen.height
-                );
-                await ActionExecutor.DoubleClickAt(screenPos);
-            }
-            else if (action.Search != null)
-            {
-                var search = action.Search.ToSearch();
-                if (search == null)
-                    throw new InvalidOperationException("Invalid search query");
-                await ActionExecutor.DoubleClick(search, searchTime: DefaultSearchTime);
-            }
-            else
-            {
-                throw new InvalidOperationException("Double-click action has no search or screen position");
-            }
-        }
-
-        private static async Task ExecuteTripleClickAsync(TripleClickAction action, CancellationToken ct)
-        {
-            if (action.ScreenPosition.HasValue)
-            {
-                var screenPos = new Vector2(
-                    action.ScreenPosition.Value.x * Screen.width,
-                    action.ScreenPosition.Value.y * Screen.height
-                );
-                await ActionExecutor.TripleClickAt(screenPos);
-            }
-            else if (action.Search != null)
-            {
-                var search = action.Search.ToSearch();
-                if (search == null)
-                    throw new InvalidOperationException("Invalid search query");
-                await ActionExecutor.TripleClick(search, searchTime: DefaultSearchTime);
-            }
-            else
-            {
-                throw new InvalidOperationException("Triple-click action has no search or screen position");
-            }
-        }
-
-        private static async Task ExecuteHoldAsync(HoldAction action, CancellationToken ct)
-        {
-            if (action.Search == null)
-                throw new InvalidOperationException("Hold action has no search");
-
-            var search = action.Search.ToSearch();
-            if (search == null)
-                throw new InvalidOperationException("Invalid search query");
-
-            await ActionExecutor.Hold(search, action.Duration, searchTime: DefaultSearchTime);
-        }
-
-        private static async Task ExecuteSwipeAsync(SwipeAction action, CancellationToken ct)
-        {
-            if (action.Search == null)
-                throw new InvalidOperationException("Swipe action has no search");
-
-            var search = action.Search.ToSearch();
-            if (search == null)
-                throw new InvalidOperationException("Invalid search query");
-
-            var direction = ParseSwipeDirection(action.Direction);
-            await ActionExecutor.Swipe(search, direction, action.Distance, action.Duration, throwIfMissing: true, searchTime: DefaultSearchTime);
-        }
-
         private static SwipeDirection ParseSwipeDirection(string direction)
         {
             return direction?.ToLower() switch
@@ -684,185 +628,6 @@ namespace ODDGames.UIAutomation.AI
                 "right" => SwipeDirection.Right,
                 _ => SwipeDirection.Up
             };
-        }
-
-        private static async Task ExecutePinchAsync(PinchAction action, CancellationToken ct)
-        {
-            if (action.Search != null)
-            {
-                var search = action.Search.ToSearch();
-                if (search == null)
-                    throw new InvalidOperationException("Invalid search query");
-
-                // No Search-based Pinch, so resolve element and use PinchAt
-                var result = await search.Resolve(DefaultSearchTime);
-                if (!result.Found)
-                    throw new InvalidOperationException("Could not find element for pinch");
-
-                var screenPos = InputInjector.GetScreenPosition(result.Element);
-                await ActionExecutor.PinchAt(screenPos, action.Scale, action.Duration);
-            }
-            else
-            {
-                // No search - pinch at screen center
-                var centerPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
-                await ActionExecutor.PinchAt(centerPos, action.Scale, action.Duration);
-            }
-        }
-
-        private static async Task ExecuteTwoFingerSwipeAsync(TwoFingerSwipeAction action, CancellationToken ct)
-        {
-            // TwoFingerSwipeAt(Vector2, ...) takes string direction
-            var direction = action.Direction ?? "up";
-
-            if (action.Search != null)
-            {
-                var search = action.Search.ToSearch();
-                if (search == null)
-                    throw new InvalidOperationException("Invalid search query");
-
-                // No Search-based TwoFingerSwipe, so resolve element and use TwoFingerSwipeAt
-                var result = await search.Resolve(DefaultSearchTime);
-                if (!result.Found)
-                    throw new InvalidOperationException("Could not find element for two-finger swipe");
-
-                var screenPos = InputInjector.GetScreenPosition(result.Element);
-                await ActionExecutor.TwoFingerSwipeAt(
-                    screenPos,
-                    direction,
-                    action.Distance,
-                    action.Duration,
-                    action.FingerSpacing);
-            }
-            else
-            {
-                // No search - swipe at screen center
-                var centerPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
-                await ActionExecutor.TwoFingerSwipeAt(
-                    centerPos,
-                    direction,
-                    action.Distance,
-                    action.Duration,
-                    action.FingerSpacing);
-            }
-        }
-
-        private static async Task ExecuteRotateAsync(RotateAction action, CancellationToken ct)
-        {
-            if (action.Search != null)
-            {
-                var search = action.Search.ToSearch();
-                if (search == null)
-                    throw new InvalidOperationException("Invalid search query");
-
-                // No Search-based Rotate, so resolve element and use RotateAt
-                var result = await search.Resolve(DefaultSearchTime);
-                if (!result.Found)
-                    throw new InvalidOperationException("Could not find element for rotate");
-
-                var screenPos = InputInjector.GetScreenPosition(result.Element);
-                await ActionExecutor.RotateAt(
-                    screenPos,
-                    action.Degrees,
-                    action.Duration,
-                    action.FingerDistance);
-            }
-            else
-            {
-                // No search - rotate at screen center
-                var centerPos = new Vector2(Screen.width / 2f, Screen.height / 2f);
-                await ActionExecutor.RotateAt(
-                    centerPos,
-                    action.Degrees,
-                    action.Duration,
-                    action.FingerDistance);
-            }
-        }
-
-        private static async Task ExecuteSetSliderAsync(SetSliderAction action, CancellationToken ct)
-        {
-            if (action.Search == null)
-                throw new InvalidOperationException("SetSlider action has no search");
-
-            var search = action.Search.ToSearch();
-            if (search == null)
-                throw new InvalidOperationException("Invalid search query");
-
-            await ActionExecutor.SetSlider(search, action.Value, searchTime: DefaultSearchTime);
-        }
-
-        private static async Task ExecuteSetScrollbarAsync(SetScrollbarAction action, CancellationToken ct)
-        {
-            if (action.Search == null)
-                throw new InvalidOperationException("SetScrollbar action has no search");
-
-            var search = action.Search.ToSearch();
-            if (search == null)
-                throw new InvalidOperationException("Invalid search query");
-
-            await ActionExecutor.SetScrollbar(search, action.Value, searchTime: DefaultSearchTime);
-        }
-
-        private static async Task ExecuteClickDropdownAsync(ClickDropdownAction action, CancellationToken ct)
-        {
-            if (action.Search == null)
-                throw new InvalidOperationException("ClickDropdown action has no search");
-
-            var search = action.Search.ToSearch();
-            if (search == null)
-                throw new InvalidOperationException("Invalid search query");
-
-            bool found;
-            if (action.OptionIndex >= 0)
-            {
-                found = await ActionExecutor.ClickDropdown(search, action.OptionIndex, searchTime: DefaultSearchTime);
-            }
-            else if (!string.IsNullOrEmpty(action.OptionLabel))
-            {
-                found = await ActionExecutor.ClickDropdown(search, action.OptionLabel, searchTime: DefaultSearchTime);
-            }
-            else
-            {
-                throw new InvalidOperationException("ClickDropdown requires either index or label");
-            }
-
-            if (!found)
-            {
-                throw new InvalidOperationException($"Dropdown option not found");
-            }
-        }
-
-        private static async Task ExecuteKeyPressAsync(KeyPressAction action, CancellationToken ct)
-        {
-            if (Enum.TryParse<Key>(action.Key, true, out var key))
-            {
-                await ActionExecutor.PressKey(key);
-            }
-            else
-            {
-                Debug.LogWarning($"[AITest] Unknown key: {action.Key}");
-            }
-        }
-
-        private static async Task ExecuteKeyHoldAsync(KeyHoldAction action, CancellationToken ct)
-        {
-            var keys = new List<Key>();
-            foreach (var keyName in action.Keys)
-            {
-                if (Enum.TryParse<Key>(keyName.Trim(), true, out var key))
-                {
-                    keys.Add(key);
-                }
-                else
-                {
-                    Debug.LogWarning($"[AITest] Unknown key: {keyName}");
-                }
-            }
-
-            if (keys.Count > 0)
-            {
-                await ActionExecutor.HoldKeys(action.Duration, keys.ToArray());
-            }
         }
 
         /// <summary>
