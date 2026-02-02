@@ -3,11 +3,13 @@ using System.Runtime.CompilerServices;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 
 using TMPro;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -326,6 +328,11 @@ namespace ODDGames.UIAutomation
         static int EffectivePollInterval => DebugMode ? (int)(PollInterval * DebugIntervalMultiplier) : PollInterval;
 
         /// <summary>
+        /// Gets the current time in seconds using system time (unaffected by Unity timeScale).
+        /// </summary>
+        static float Now => (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
+
+        /// <summary>
         /// Optional callback that runs before each ActionExecutor action.
         /// Use this to dismiss dialogs, handle popups, or perform other pre-action checks.
         /// The callback receives the action name and should return quickly.
@@ -594,17 +601,17 @@ namespace ODDGames.UIAutomation
         /// <returns>The found element, or null if not found</returns>
         internal static async Task<GameObject> ResolveSearch(Search search, float timeout, int index, string actionDescription)
         {
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             float recoveryAttemptedAt = -1f;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 var results = search.FindAll();
                 if (results.Count > index)
                     return results[index];
 
                 // Try recovery once after initial polling fails (at ~1/3 of timeout)
-                float elapsed = Time.realtimeSinceStartup - startTime;
+                float elapsed = Now - startTime;
                 if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
                 {
                     recoveryAttemptedAt = elapsed;
@@ -637,16 +644,16 @@ namespace ODDGames.UIAutomation
         /// </summary>
         internal static async Task<List<GameObject>> ResolveSearchAll(Search search, float timeout, string actionDescription)
         {
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             float recoveryAttemptedAt = -1f;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 var results = search.FindAll();
                 if (results.Count > 0)
                     return results;
 
-                float elapsed = Time.realtimeSinceStartup - startTime;
+                float elapsed = Now - startTime;
                 if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
                 {
                     recoveryAttemptedAt = elapsed;
@@ -676,10 +683,10 @@ namespace ODDGames.UIAutomation
         /// </summary>
         internal static async Task<(GameObject element, RectTransform template, int optionIndex)> ResolveDropdownByLabel(Search search, string optionLabel, float timeout, string actionDescription)
         {
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             float recoveryAttemptedAt = -1f;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 foreach (var go in search.FindAll())
                 {
@@ -700,7 +707,7 @@ namespace ODDGames.UIAutomation
                     }
                 }
 
-                float elapsed = Time.realtimeSinceStartup - startTime;
+                float elapsed = Now - startTime;
                 if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
                 {
                     recoveryAttemptedAt = elapsed;
@@ -730,10 +737,10 @@ namespace ODDGames.UIAutomation
         /// </summary>
         internal static async Task<(GameObject element, RectTransform template)> ResolveDropdown(Search search, float timeout, string actionDescription)
         {
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             float recoveryAttemptedAt = -1f;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 foreach (var go in search.FindAll())
                 {
@@ -746,7 +753,7 @@ namespace ODDGames.UIAutomation
                         return (go, tmp.template);
                 }
 
-                float elapsed = Time.realtimeSinceStartup - startTime;
+                float elapsed = Now - startTime;
                 if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
                 {
                     recoveryAttemptedAt = elapsed;
@@ -776,10 +783,10 @@ namespace ODDGames.UIAutomation
         /// </summary>
         internal static async Task<T> ResolveSearch<T>(Search search, float timeout, string actionDescription) where T : Component
         {
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             float recoveryAttemptedAt = -1f;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 foreach (var go in search.FindAll())
                 {
@@ -788,7 +795,7 @@ namespace ODDGames.UIAutomation
                         return component;
                 }
 
-                float elapsed = Time.realtimeSinceStartup - startTime;
+                float elapsed = Now - startTime;
                 if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
                 {
                     recoveryAttemptedAt = elapsed;
@@ -1223,8 +1230,8 @@ namespace ODDGames.UIAutomation
             await using var action = await RunAction($"EnsureSceneLoaded(\"{sceneName}\", timeout={timeout}s)");
             var asyncOp = SceneManager.LoadSceneAsync(sceneName);
 
-            float startTime = Time.realtimeSinceStartup;
-            while (!asyncOp.isDone && (Time.realtimeSinceStartup - startTime) < timeout)
+            float startTime = Now;
+            while (!asyncOp.isDone && (Now - startTime) < timeout)
             {
                 await Task.Yield();
             }
@@ -1246,9 +1253,9 @@ namespace ODDGames.UIAutomation
         {
             string startScene = SceneManager.GetActiveScene().name;
             await using var action = await RunAction($"SceneChange(from=\"{startScene}\", timeout={seconds}s)");
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying)
+            while ((Now - startTime) < seconds && Application.isPlaying)
             {
                 if (SceneManager.GetActiveScene().name != startScene)
                 {
@@ -1275,10 +1282,10 @@ namespace ODDGames.UIAutomation
             await using var action = await RunAction($"NavigateToMainMenu({mainMenuIdentifier})");
             backButtonPatterns ??= new[] { "Back", "Close", "Exit", "Return", "*Back*", "*Close*", "*Exit*", "X" };
 
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             int attempts = 0;
 
-            while (attempts < maxAttempts && (Time.realtimeSinceStartup - startTime) < timeout)
+            while (attempts < maxAttempts && (Now - startTime) < timeout)
             {
                 // Check if we've reached main menu
                 var mainMenuElement = await Find<Transform>(mainMenuIdentifier, throwIfMissing: false, seconds: 0.5f);
@@ -1351,13 +1358,13 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"WaitFor(\"{description}\", timeout={seconds}s)");
 
-            var startTime = Time.realtimeSinceStartup;
+            var startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying)
+            while ((Now - startTime) < seconds && Application.isPlaying)
             {
                 if (condition())
                 {
-                    float elapsed = Time.realtimeSinceStartup - startTime;
+                    float elapsed = Now - startTime;
                     action.SetResult($"satisfied after {elapsed:F2}s");
                     return;
                 }
@@ -1375,20 +1382,20 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"WaitFramerate(target={averageFps}fps, timeout={timeout}s)");
 
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
-                float sampleStart = Time.realtimeSinceStartup;
+                float sampleStart = Now;
                 int frameCount = 0;
 
-                while ((Time.realtimeSinceStartup - sampleStart) < sampleDuration && Application.isPlaying)
+                while ((Now - sampleStart) < sampleDuration && Application.isPlaying)
                 {
                     await Task.Yield();
                     frameCount++;
                 }
 
-                float currentFps = frameCount / (Time.realtimeSinceStartup - sampleStart);
+                float currentFps = frameCount / (Now - sampleStart);
 
                 if (currentFps >= averageFps)
                 {
@@ -1435,9 +1442,9 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"Find<{typeof(T).Name}>({search})");
 
-            var startTime = Time.realtimeSinceStartup;
+            var startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying)
+            while ((Now - startTime) < seconds && Application.isPlaying)
             {
                 var result = search.FindFirst();
                 if (result != null)
@@ -1469,10 +1476,10 @@ namespace ODDGames.UIAutomation
         {
             LogDebug($"FindAll<{typeof(T).Name}> search={search}");
 
-            var startTime = Time.realtimeSinceStartup;
+            var startTime = Now;
             IEnumerable<T> results = Enumerable.Empty<T>();
 
-            while ((Time.realtimeSinceStartup - startTime) < seconds && Application.isPlaying)
+            while ((Now - startTime) < seconds && Application.isPlaying)
             {
                 var gameObjects = search.FindAll();
                 results = gameObjects
@@ -1770,10 +1777,10 @@ namespace ODDGames.UIAutomation
 
             await using var action = await RunAction($"Click({search})");
 
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             bool recoveryAttempted = false;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            while ((Now - startTime) < searchTime && Application.isPlaying)
             {
                 var element = search.FindAll().ElementAtOrDefault(index);
 
@@ -1819,7 +1826,7 @@ namespace ODDGames.UIAutomation
                     }
                 }
                 else if (!recoveryAttempted && RecoveryHandler != null &&
-                         (Time.realtimeSinceStartup - startTime) > searchTime * 0.3f)
+                         (Now - startTime) > searchTime * 0.3f)
                 {
                     // Element not found - try recovery at 30% timeout
                     recoveryAttempted = true;
@@ -1892,10 +1899,10 @@ namespace ODDGames.UIAutomation
 
             await using var action = await RunAction($"DoubleClick({search})");
 
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             bool recoveryAttempted = false;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            while ((Now - startTime) < searchTime && Application.isPlaying)
             {
                 var element = search.FindAll().ElementAtOrDefault(index);
 
@@ -1932,7 +1939,7 @@ namespace ODDGames.UIAutomation
                     }
                 }
                 else if (!recoveryAttempted && RecoveryHandler != null &&
-                         (Time.realtimeSinceStartup - startTime) > searchTime * 0.3f)
+                         (Now - startTime) > searchTime * 0.3f)
                 {
                     recoveryAttempted = true;
                     var context = new RecoveryContext
@@ -1982,10 +1989,10 @@ namespace ODDGames.UIAutomation
 
             await using var action = await RunAction($"TripleClick({search})");
 
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             bool recoveryAttempted = false;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            while ((Now - startTime) < searchTime && Application.isPlaying)
             {
                 var element = search.FindAll().ElementAtOrDefault(index);
 
@@ -2022,7 +2029,7 @@ namespace ODDGames.UIAutomation
                     }
                 }
                 else if (!recoveryAttempted && RecoveryHandler != null &&
-                         (Time.realtimeSinceStartup - startTime) > searchTime * 0.3f)
+                         (Now - startTime) > searchTime * 0.3f)
                 {
                     recoveryAttempted = true;
                     var context = new RecoveryContext
@@ -2734,10 +2741,10 @@ namespace ODDGames.UIAutomation
             await using var action = await RunAction($"ClickAny({search})");
             var rnd = new System.Random((int)System.DateTime.Now.Millisecond);
 
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
             bool recoveryAttempted = false;
 
-            while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+            while ((Now - startTime) < searchTime && Application.isPlaying)
             {
                 var elements = search.FindAll();
 
@@ -2787,7 +2794,7 @@ namespace ODDGames.UIAutomation
                     }
                 }
                 else if (!recoveryAttempted && RecoveryHandler != null &&
-                         (Time.realtimeSinceStartup - startTime) > searchTime * 0.3f)
+                         (Now - startTime) > searchTime * 0.3f)
                 {
                     // No elements found - try recovery at 30% timeout
                     recoveryAttempted = true;
@@ -3006,9 +3013,9 @@ namespace ODDGames.UIAutomation
         public static async Task WaitFor(Search search, float timeout = 10f)
         {
             await using var action = await RunAction($"WaitFor({search}, timeout={timeout}s)");
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 var result = search.FindFirst();
                 if (result != null)
@@ -3032,9 +3039,9 @@ namespace ODDGames.UIAutomation
         public static async Task WaitFor(Search search, string expectedText, float timeout = 10f)
         {
             await using var action = await RunAction($"WaitFor({search}, text=\"{expectedText}\", timeout={timeout}s)");
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 var go = search.FindFirst();
                 if (go != null)
@@ -3052,7 +3059,7 @@ namespace ODDGames.UIAutomation
 
                     if (actual == expectedText)
                     {
-                        float elapsed = Time.realtimeSinceStartup - startTime;
+                        float elapsed = Now - startTime;
                         action.SetResult($"satisfied after {elapsed:F2}s");
                         return;
                     }
@@ -3072,14 +3079,14 @@ namespace ODDGames.UIAutomation
         public static async Task WaitForNot(Search search, float timeout = 10f)
         {
             await using var action = await RunAction($"WaitForNot({search}, timeout={timeout}s)");
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 var result = search.FindFirst();
                 if (result == null)
                 {
-                    float elapsed = Time.realtimeSinceStartup - startTime;
+                    float elapsed = Now - startTime;
                     action.SetResult($"satisfied after {elapsed:F2}s");
                     return;
                 }
@@ -3098,16 +3105,16 @@ namespace ODDGames.UIAutomation
         public static async Task WaitFor(string path, float timeout = 10f)
         {
             await using var action = await RunAction($"WaitFor(path=\"{path}\", timeout={timeout}s)");
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 try
                 {
                     var value = ResolveStaticPath(path);
                     if (IsTruthy(value))
                     {
-                        float elapsed = Time.realtimeSinceStartup - startTime;
+                        float elapsed = Now - startTime;
                         action.SetResult($"satisfied after {elapsed:F2}s");
                         return;
                     }
@@ -3134,16 +3141,16 @@ namespace ODDGames.UIAutomation
         public static async Task WaitFor<T>(string path, T expected, float timeout = 10f)
         {
             await using var action = await RunAction($"WaitFor(path=\"{path}\", expected={expected}, timeout={timeout}s)");
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = Now;
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while ((Now - startTime) < timeout && Application.isPlaying)
             {
                 try
                 {
                     var value = ResolveStaticPath(path);
                     if (value is T typedValue && Equals(typedValue, expected))
                     {
-                        float elapsed = Time.realtimeSinceStartup - startTime;
+                        float elapsed = Now - startTime;
                         action.SetResult($"satisfied after {elapsed:F2}s");
                         return;
                     }
@@ -3155,7 +3162,7 @@ namespace ODDGames.UIAutomation
                             var converted = (T)Convert.ChangeType(value, typeof(T));
                             if (Equals(converted, expected))
                             {
-                                float elapsed = Time.realtimeSinceStartup - startTime;
+                                float elapsed = Now - startTime;
                                 action.SetResult($"satisfied after {elapsed:F2}s");
                                 return;
                             }
@@ -4291,14 +4298,14 @@ namespace ODDGames.UIAutomation
                 SetRandomSeed(seed.Value);
 
             var result = new SimpleExploreResult();
-            var startTime = Time.realtimeSinceStartup;
+            var startTime = Now;
             int consecutiveNoClick = 0;
 
             await using var action = await RunAction($"AutoExplore(condition={stopCondition}, value={value})");
 
             while (Application.isPlaying)
             {
-                result.TimeElapsed = Time.realtimeSinceStartup - startTime;
+                result.TimeElapsed = Now - startTime;
 
                 switch (stopCondition)
                 {

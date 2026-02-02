@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.16] - 2026-02-02
+
+### Changed
+- **TimeScale-independent waits** - All timeout and polling operations now use `System.Diagnostics.Stopwatch` instead of Unity's `Time.realtimeSinceStartup`
+  - Enables running tests at higher game speeds (e.g., `Time.timeScale = 3`) while keeping real-time waits
+  - `ActionExecutor` wait loops use new `Now` property based on `Stopwatch.GetTimestamp()`
+  - `Search.Resolve()` timeout checks use `Stopwatch` for consistent behavior
+- **Virtual device naming** - Virtual input devices now use `UIAutomation_` prefix for easier identification
+  - `UIAutomation_Mouse`, `UIAutomation_Keyboard`, `UIAutomation_Touchscreen`
+  - Prevents accumulation of orphaned devices between test runs
+
+### Fixed
+- **Domain reload cleanup** - `InputInjector.OnDomainReload()` now cleans up orphaned virtual devices
+- **Input timing at high timeScale** - `InputInjector` now uses `Time.unscaledDeltaTime` for frame timing
+
 ## [1.1.15] - 2026-02-02
 
 ### Added

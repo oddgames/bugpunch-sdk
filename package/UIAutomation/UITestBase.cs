@@ -136,6 +136,9 @@ namespace ODDGames.UIAutomation
                 InputInjector.EnableHardwareInput();
             }
 
+            // Clean up any virtual devices created during the test
+            InputInjector.CleanupVirtualDevices();
+
             // Re-enable profiler
             UnityEngine.Profiling.Profiler.enabled = true;
 
