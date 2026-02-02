@@ -24,7 +24,7 @@ namespace ODDGames.UIAutomation.Editor
             _api.RegisterCallbacks(callbacks);
         }
 
-        [MenuItem("Window/General/Copy Failed Tests to Clipboard %#c")] // Ctrl+Shift+C (Cmd+Shift+C on Mac)
+        [MenuItem("Window/UI Automation/Copy Failed Tests %#c")] // Ctrl+Shift+C (Cmd+Shift+C on Mac)
         public static void CopyFailedTests()
         {
             if (_lastRunResult == null)

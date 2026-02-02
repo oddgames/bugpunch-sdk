@@ -62,7 +62,7 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
         private int aiActionCount;
 
 
-        [MenuItem("Window/Analysis/UI Automation/Test Builder")]
+        [MenuItem("Window/UI Automation/Test Builder")]
         public static TestBuilder ShowWindow()
         {
             var window = GetWindow<TestBuilder>();

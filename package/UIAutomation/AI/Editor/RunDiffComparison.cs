@@ -25,7 +25,7 @@ namespace ODDGames.UIAutomation.AI.Editor
         private bool syncNavigation = true;
         private float splitPosition = 0.5f;
 
-        [MenuItem("Window/Analysis/UI Automation/Run Diff Comparison")]
+        [MenuItem("Window/UI Automation/Run Diff Comparison")]
         public static void ShowWindow()
         {
             var window = GetWindow<RunDiffComparison>("Run Comparison");

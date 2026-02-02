@@ -22,7 +22,7 @@ namespace ODDGames.UIAutomation.Editor
         enum ApiKeyStatus { Unknown, Valid, Invalid }
         ApiKeyStatus apiKeyStatus = ApiKeyStatus.Unknown;
 
-        [MenuItem("Window/Analysis/UI Automation/Generate Test from Recording")]
+        [MenuItem("Window/UI Automation/Generate Test from Recording")]
         public static void ShowWindow()
         {
             var window = GetWindow<UITestGeneratorWindow>("UI Automation Generator");

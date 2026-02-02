@@ -235,6 +235,124 @@ namespace ODDGames.UIAutomation
     /// </summary>
     public static class InputInjector
     {
+        private static List<InputDevice> _disabledDevices = new List<InputDevice>();
+        private static Mouse _virtualMouse;
+        private static Keyboard _virtualKeyboard;
+        private static Touchscreen _virtualTouchscreen;
+
+        /// <summary>
+        /// Gets a working mouse device, creating a virtual one if necessary.
+        /// </summary>
+        private static Mouse GetMouse()
+        {
+            var mouse = Mouse.current;
+            if (mouse != null && mouse.enabled) return mouse;
+
+            // Create virtual mouse if none available
+            if (_virtualMouse == null || !_virtualMouse.added)
+            {
+                _virtualMouse = InputSystem.AddDevice<Mouse>("VirtualMouse");
+            }
+            return _virtualMouse ?? Mouse.current;
+        }
+
+        /// <summary>
+        /// Gets a working keyboard device, creating a virtual one if necessary.
+        /// </summary>
+        private static Keyboard GetKeyboard()
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.enabled) return keyboard;
+
+            // Create virtual keyboard if none available
+            if (_virtualKeyboard == null || !_virtualKeyboard.added)
+            {
+                _virtualKeyboard = InputSystem.AddDevice<Keyboard>("VirtualKeyboard");
+                if (_virtualKeyboard != null)
+                    Debug.Log("[InputInjector] Created virtual keyboard device");
+            }
+            return _virtualKeyboard ?? Keyboard.current;
+        }
+
+        /// <summary>
+        /// Gets a working touchscreen device, creating a virtual one if necessary.
+        /// </summary>
+        private static Touchscreen GetTouchscreen()
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen != null && touchscreen.enabled) return touchscreen;
+
+            // Create virtual touchscreen if none available
+            if (_virtualTouchscreen == null || !_virtualTouchscreen.added)
+            {
+                _virtualTouchscreen = InputSystem.AddDevice<Touchscreen>("VirtualTouchscreen");
+                if (_virtualTouchscreen != null)
+                    Debug.Log("[InputInjector] Created virtual touchscreen device");
+            }
+            return _virtualTouchscreen ?? Touchscreen.current;
+        }
+
+        /// <summary>
+        /// Cleans up any virtual devices created by InputInjector.
+        /// Call this when done with testing to avoid device accumulation.
+        /// </summary>
+        public static void CleanupVirtualDevices()
+        {
+            if (_virtualMouse != null && _virtualMouse.added)
+            {
+                InputSystem.RemoveDevice(_virtualMouse);
+                _virtualMouse = null;
+            }
+            if (_virtualKeyboard != null && _virtualKeyboard.added)
+            {
+                InputSystem.RemoveDevice(_virtualKeyboard);
+                _virtualKeyboard = null;
+            }
+            if (_virtualTouchscreen != null && _virtualTouchscreen.added)
+            {
+                InputSystem.RemoveDevice(_virtualTouchscreen);
+                _virtualTouchscreen = null;
+            }
+        }
+
+        /// <summary>
+        /// Disables all hardware input devices (mouse, keyboard, gamepad, touchscreen).
+        /// Only simulated input will work after calling this.
+        /// Call EnableHardwareInput() to restore.
+        /// </summary>
+        public static void DisableHardwareInput()
+        {
+            _disabledDevices.Clear();
+            foreach (var device in InputSystem.devices)
+            {
+                // Skip our virtual devices
+                if (device.description.interfaceName == "Virtual") continue;
+
+                if (device.enabled)
+                {
+                    _disabledDevices.Add(device);
+                    InputSystem.DisableDevice(device);
+                    Debug.Log($"[InputInjector] Disabled hardware device: {device.name}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Re-enables all hardware input devices that were disabled by DisableHardwareInput().
+        /// </summary>
+        public static void EnableHardwareInput()
+        {
+            foreach (var device in _disabledDevices)
+            {
+                if (device != null && !device.enabled)
+                {
+                    InputSystem.EnableDevice(device);
+                    Debug.Log($"[InputInjector] Re-enabled hardware device: {device.name}");
+                }
+            }
+            _disabledDevices.Clear();
+        }
+
         /// <summary>
         /// Logs a debug message only when ActionExecutor.DebugMode is enabled.
         /// </summary>
@@ -504,7 +622,7 @@ namespace ODDGames.UIAutomation
         {
             await EnsureGameViewFocusAsync();
 
-            var keyboard = Keyboard.current;
+            var keyboard = GetKeyboard();
             if (keyboard == null)
             {
                 Debug.LogWarning("[InputInjector] PressKeyWithModifier - No keyboard device found");
@@ -546,6 +664,7 @@ namespace ODDGames.UIAutomation
         {
             var screenPos = GetScreenPosition(inputFieldGO);
             LogDebug($"TypeIntoField '{inputFieldGO.name}' at ({screenPos.x:F0},{screenPos.y:F0}) text='{text}'");
+            InputVisualizer.RecordText(text ?? "", screenPos);
 
             // Click to focus the field
             await InjectPointerTap(screenPos);
@@ -727,6 +846,68 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
+        /// Scales screen coordinates to match the actual Game View window size in the Editor.
+        /// In builds, returns the coordinates unchanged.
+        /// </summary>
+        /// <param name="screenPos">Position in Screen.width/height coordinate space</param>
+        /// <returns>Position scaled to actual Game View window coordinates</returns>
+        public static Vector2 ScaleToGameViewWindow(Vector2 screenPos)
+        {
+#if UNITY_EDITOR
+            // Get the actual Game View render area size
+            var gameViewType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
+            if (gameViewType != null)
+            {
+                var gameView = UnityEditor.EditorWindow.GetWindow(gameViewType, false, null, false);
+                if (gameView != null)
+                {
+                    // Try to get the actual viewport rect (the area where the game renders)
+                    // This accounts for letterboxing, toolbar, etc.
+                    var viewportProperty = gameViewType.GetProperty("targetRenderSize",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+                    Vector2 viewportSize = Vector2.zero;
+
+                    if (viewportProperty != null)
+                    {
+                        viewportSize = (Vector2)viewportProperty.GetValue(gameView);
+                    }
+                    else
+                    {
+                        // Fallback: try GetMainGameViewTargetSize
+                        var getSizeOfMainGameView = gameViewType.GetMethod("GetMainGameViewTargetSize",
+                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+                        if (getSizeOfMainGameView != null)
+                        {
+                            viewportSize = (Vector2)getSizeOfMainGameView.Invoke(null, null);
+                        }
+                    }
+
+                    if (viewportSize.x > 0 && viewportSize.y > 0)
+                    {
+                        // If viewport matches Screen size, no scaling needed
+                        if (Mathf.Approximately(viewportSize.x, Screen.width) &&
+                            Mathf.Approximately(viewportSize.y, Screen.height))
+                        {
+                            return screenPos;
+                        }
+
+                        // Scale from Screen coordinates to viewport coordinates
+                        float scaleX = viewportSize.x / Screen.width;
+                        float scaleY = viewportSize.y / Screen.height;
+
+                        var scaled = new Vector2(screenPos.x * scaleX, screenPos.y * scaleY);
+                        LogDebug($"ScaleToGameViewWindow: ({screenPos.x:F0},{screenPos.y:F0}) -> ({scaled.x:F0},{scaled.y:F0}) scale=({scaleX:F3},{scaleY:F3}) viewport={viewportSize} screen={Screen.width}x{Screen.height}");
+                        return scaled;
+                    }
+                }
+            }
+#endif
+            return screenPos;
+        }
+
+        /// <summary>
         /// Returns true if we should use touch input instead of mouse.
         /// On mobile platforms or when no mouse is available but touchscreen is.
         /// </summary>
@@ -747,16 +928,20 @@ namespace ODDGames.UIAutomation
         public static async Task InjectPointerTap(Vector2 screenPosition)
         {
             LogDebug($"InjectPointerTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
+            InputVisualizer.RecordClick(screenPosition, 1);
             await EnsureGameViewFocusAsync();
+
+            // Scale to actual Game View window coordinates in Editor
+            var scaledPosition = ScaleToGameViewWindow(screenPosition);
 
             if (ShouldUseTouchInput())
             {
                 LogDebug("Using touch input");
-                await InjectTouchTap(screenPosition);
+                await InjectTouchTap(scaledPosition);
                 return;
             }
 
-            var mouse = Mouse.current;
+            var mouse = GetMouse();
             if (mouse == null)
             {
                 Debug.LogWarning("[InputInjector] Click - No mouse device found, cannot inject click");
@@ -766,7 +951,7 @@ namespace ODDGames.UIAutomation
             LogDebug($"Using mouse input, device={mouse.deviceId}");
 
             // Use MouseState struct for complete state control
-            var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+            var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
 
             // Move mouse to position
             InputSystem.QueueStateEvent(mouse, mouseState);
@@ -793,6 +978,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectPointerDoubleTap(Vector2 screenPosition)
         {
+            InputVisualizer.RecordClick(screenPosition, 2);
             await EnsureGameViewFocusAsync();
 
             if (ShouldUseTouchInput())
@@ -801,7 +987,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            var mouse = Mouse.current;
+            var mouse = GetMouse();
             if (mouse == null)
             {
                 Debug.LogWarning("[InputInjector] DoubleClick - No mouse device found");
@@ -873,6 +1059,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectPointerTripleTap(Vector2 screenPosition)
         {
+            InputVisualizer.RecordClick(screenPosition, 3);
             await EnsureGameViewFocusAsync();
 
             if (ShouldUseTouchInput())
@@ -881,7 +1068,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            var mouse = Mouse.current;
+            var mouse = GetMouse();
             if (mouse == null)
             {
                 Debug.LogWarning("[InputInjector] TripleClick - No mouse device found");
@@ -939,15 +1126,11 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectTouchTap(Vector2 screenPosition)
         {
-            var touchscreen = Touchscreen.current;
+            var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[InputInjector] TouchTap - Could not create touchscreen device");
-                    return;
-                }
+                Debug.LogWarning("[InputInjector] TouchTap - Could not create touchscreen device");
+                return;
             }
 
             const int touchId = 1; // Touch IDs must be non-zero
@@ -992,15 +1175,18 @@ namespace ODDGames.UIAutomation
         /// <param name="button">Which mouse button to use for dragging (ignored on touch devices)</param>
         public static async Task InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
+            InputVisualizer.RecordDragStart(startPos);
             await EnsureGameViewFocusAsync();
 
             if (ShouldUseTouchInput())
             {
                 await InjectTouchDrag(startPos, endPos, duration, holdTime);
+                InputVisualizer.RecordDragEnd(endPos);
                 return;
             }
 
             await InjectMouseDrag(startPos, endPos, duration, holdTime, button);
+            InputVisualizer.RecordDragEnd(endPos);
         }
 
         /// <summary>
@@ -1014,7 +1200,7 @@ namespace ODDGames.UIAutomation
         /// <param name="button">Which mouse button to use for dragging</param>
         internal static async Task InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
-            var mouse = Mouse.current;
+            var mouse = GetMouse();
             if (mouse == null)
             {
                 Debug.LogWarning("[InputInjector] MouseDrag - No mouse device found, cannot inject drag");
@@ -1167,15 +1353,11 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         internal static async Task InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f)
         {
-            var touchscreen = Touchscreen.current;
+            var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[InputInjector] TouchDrag - Could not create touchscreen device");
-                    return;
-                }
+                Debug.LogWarning("[InputInjector] TouchDrag - Could not create touchscreen device");
+                return;
             }
 
             // Wait for any previous input state to settle before starting new drag
@@ -1285,9 +1467,10 @@ namespace ODDGames.UIAutomation
         /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
         public static async Task InjectScroll(Vector2 position, float delta)
         {
+            InputVisualizer.RecordScroll(position, new Vector2(0, delta));
             await EnsureGameViewFocusAsync();
 
-            var mouse = Mouse.current;
+            var mouse = GetMouse();
             if (mouse == null)
             {
                 Debug.LogWarning("[InputInjector] Scroll - No mouse device found");
@@ -1331,9 +1514,10 @@ namespace ODDGames.UIAutomation
         /// <param name="scrollDelta">Scroll delta vector (for horizontal and vertical scrolling)</param>
         public static async Task InjectScroll(Vector2 position, Vector2 scrollDelta)
         {
+            InputVisualizer.RecordScroll(position, scrollDelta);
             await EnsureGameViewFocusAsync();
 
-            var mouse = Mouse.current;
+            var mouse = GetMouse();
             if (mouse == null)
             {
                 Debug.LogWarning("[InputInjector] Scroll - No mouse device found");
@@ -1381,7 +1565,7 @@ namespace ODDGames.UIAutomation
         {
             LogDebug($"TypeText '{text}' ({text?.Length ?? 0} chars)");
 
-            var keyboard = Keyboard.current;
+            var keyboard = GetKeyboard();
             if (keyboard == null)
             {
                 Debug.LogWarning("[InputInjector] TypeText - No keyboard device found");
@@ -1407,7 +1591,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task SelectAllText()
         {
-            var keyboard = Keyboard.current;
+            var keyboard = GetKeyboard();
             if (keyboard == null)
             {
                 Debug.LogWarning("[InputInjector] SelectAllText - No keyboard device found");
@@ -1439,9 +1623,10 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task PressKey(Key key)
         {
+            InputVisualizer.RecordKeyPress(key.ToString());
             await EnsureGameViewFocusAsync();
 
-            var keyboard = Keyboard.current;
+            var keyboard = GetKeyboard();
             if (keyboard == null)
             {
                 Debug.LogWarning("[InputInjector] PressKey - No keyboard device found");
@@ -1464,12 +1649,14 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">How long to hold the key in seconds</param>
         public static async Task HoldKey(Key key, float duration)
         {
+            InputVisualizer.RecordKeyHoldStart(key.ToString());
             await EnsureGameViewFocusAsync();
 
-            var keyboard = Keyboard.current;
+            var keyboard = GetKeyboard();
             if (keyboard == null)
             {
                 Debug.LogWarning("[InputInjector] HoldKey - No keyboard device found");
+                InputVisualizer.RecordKeyHoldEnd();
                 return;
             }
 
@@ -1493,6 +1680,7 @@ namespace ODDGames.UIAutomation
             // Key up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
+            InputVisualizer.RecordKeyHoldEnd();
             await Async.DelayFrames(1);
         }
 
@@ -1506,12 +1694,15 @@ namespace ODDGames.UIAutomation
             if (keys == null || keys.Length == 0)
                 return;
 
+            string keyNames = string.Join("+", System.Array.ConvertAll(keys, k => k.ToString()));
+            InputVisualizer.RecordKeyHoldStart(keyNames);
             await EnsureGameViewFocusAsync();
 
-            var keyboard = Keyboard.current;
+            var keyboard = GetKeyboard();
             if (keyboard == null)
             {
                 Debug.LogWarning("[InputInjector] HoldKeys - No keyboard device found");
+                InputVisualizer.RecordKeyHoldEnd();
                 return;
             }
 
@@ -1535,6 +1726,7 @@ namespace ODDGames.UIAutomation
             // Keys up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
+            InputVisualizer.RecordKeyHoldEnd();
             await Async.DelayFrames(1);
         }
 
@@ -1544,6 +1736,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectPointerHold(Vector2 screenPosition, float holdSeconds)
         {
+            InputVisualizer.RecordHoldStart(screenPosition);
             await EnsureGameViewFocusAsync();
 
             if (ShouldUseTouchInput())
@@ -1552,7 +1745,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            var mouse = Mouse.current;
+            var mouse = GetMouse();
             if (mouse == null)
             {
                 Debug.LogWarning("[InputInjector] Hold - No mouse device found, cannot inject hold");
@@ -1587,6 +1780,7 @@ namespace ODDGames.UIAutomation
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
+            InputVisualizer.RecordHoldEnd();
             await Async.DelayFrames(1);
         }
 
@@ -1596,15 +1790,11 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectTouchHold(Vector2 screenPosition, float holdSeconds)
         {
-            var touchscreen = Touchscreen.current;
+            var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[InputInjector] TouchHold - Could not create touchscreen device");
-                    return;
-                }
+                Debug.LogWarning("[InputInjector] TouchHold - Could not create touchscreen device");
+                return;
             }
 
             const int touchId = 1; // Touch IDs must be non-zero
@@ -1662,20 +1852,17 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the pinch gesture</param>
         public static async Task InjectPinch(Vector2 centerPosition, float scale, float duration)
         {
+            const float startOffset = 100f; // Initial distance from center
+            InputVisualizer.RecordPinchStart(centerPosition, startOffset * 2f);
             await EnsureGameViewFocusAsync();
-            var touchscreen = Touchscreen.current;
+            var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[InputInjector] Pinch - Could not create touchscreen device");
-                    return;
-                }
+                Debug.LogWarning("[InputInjector] Pinch - Could not create touchscreen device");
+                return;
             }
 
             // Calculate start and end offsets based on scale
-            float startOffset = 100f; // Initial distance from center
             float endOffset = startOffset * scale;
 
             // Two touch points that move symmetrically
@@ -1747,6 +1934,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
+            InputVisualizer.RecordPinchEnd(endOffset * 2f);
             await Async.DelayFrames(1);
         }
 
@@ -1759,15 +1947,12 @@ namespace ODDGames.UIAutomation
         /// <param name="fingerDistancePixels">Initial distance of each finger from center in pixels</param>
         public static async Task InjectPinch(Vector2 centerPosition, float scale, float duration, float fingerDistancePixels)
         {
-            var touchscreen = Touchscreen.current;
+            InputVisualizer.RecordPinchStart(centerPosition, fingerDistancePixels * 2f);
+            var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[InputInjector] Pinch - Could not create touchscreen device");
-                    return;
-                }
+                Debug.LogWarning("[InputInjector] Pinch - Could not create touchscreen device");
+                return;
             }
 
             // Calculate start and end offsets based on scale and finger distance
@@ -1843,6 +2028,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
+            InputVisualizer.RecordPinchEnd(endOffset * 2f);
             await Async.DelayFrames(1);
         }
 
@@ -1851,16 +2037,13 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectTwoFingerDrag(Vector2 start1, Vector2 end1, Vector2 start2, Vector2 end2, float duration)
         {
+            InputVisualizer.RecordTwoFingerStart(start1, start2);
             await EnsureGameViewFocusAsync();
-            var touchscreen = Touchscreen.current;
+            var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[InputInjector] TwoFingerDrag - Could not create touchscreen device");
-                    return;
-                }
+                Debug.LogWarning("[InputInjector] TwoFingerDrag - Could not create touchscreen device");
+                return;
             }
 
             const int touchId1 = 1;
@@ -1926,6 +2109,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
+            InputVisualizer.RecordTwoFingerEnd(end1, end2);
             await Async.DelayFrames(1);
         }
 
@@ -1938,10 +2122,12 @@ namespace ODDGames.UIAutomation
         /// <param name="fingerDistance">Normalized distance from center (0-1) for finger positions.</param>
         public static async Task InjectRotate(Vector2 centerPosition, float degrees, float duration, float fingerDistance = 0.05f)
         {
-            await EnsureGameViewFocusAsync();
             // Calculate the radius based on screen size and finger distance
             float radiusPixels = fingerDistance * Mathf.Min(Screen.width, Screen.height);
+            InputVisualizer.RecordRotateStart(centerPosition, radiusPixels);
+            await EnsureGameViewFocusAsync();
             await InjectRotatePixels(centerPosition, degrees, duration, radiusPixels);
+            InputVisualizer.RecordRotateEnd(degrees);
         }
 
         /// <summary>
@@ -1953,15 +2139,11 @@ namespace ODDGames.UIAutomation
         /// <param name="radiusPixels">Distance from center in pixels for finger positions.</param>
         public static async Task InjectRotatePixels(Vector2 centerPosition, float degrees, float duration, float radiusPixels)
         {
-            var touchscreen = Touchscreen.current;
+            var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
-                touchscreen = InputSystem.AddDevice<Touchscreen>();
-                if (touchscreen == null)
-                {
-                    Debug.LogWarning("[InputInjector] Rotate - Could not create touchscreen device");
-                    return;
-                }
+                Debug.LogWarning("[InputInjector] Rotate - Could not create touchscreen device");
+                return;
             }
 
             float radius = radiusPixels;

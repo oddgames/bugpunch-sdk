@@ -29,7 +29,7 @@ namespace ODDGames.UIAutomation.AI.Editor
         private bool showStatistics = true;
         private bool showFilters = true;
 
-        [MenuItem("Window/Analysis/UI Automation/AI Test Results")]
+        [MenuItem("Window/UI Automation/AI Test Results")]
         public static void ShowWindow()
         {
             var window = GetWindow<AIResultsWindow>("AI Test Results");
