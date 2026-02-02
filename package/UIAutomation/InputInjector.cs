@@ -241,6 +241,38 @@ namespace ODDGames.UIAutomation
         private static Touchscreen _virtualTouchscreen;
 
         /// <summary>
+        /// Clean up any orphaned virtual devices on domain reload.
+        /// This handles devices that persist in InputSystem after our static references are lost.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void OnDomainReload()
+        {
+            // Clear our static references (they may point to invalid devices)
+            _virtualMouse = null;
+            _virtualKeyboard = null;
+            _virtualTouchscreen = null;
+            _disabledDevices = new List<InputDevice>();
+
+            // Remove any orphaned virtual devices from previous runs
+            var devicesToRemove = new List<InputDevice>();
+            foreach (var device in InputSystem.devices)
+            {
+                if (device.name.StartsWith("UIAutomation_Mouse") ||
+                    device.name.StartsWith("UIAutomation_Keyboard") ||
+                    device.name.StartsWith("UIAutomation_Touchscreen"))
+                {
+                    devicesToRemove.Add(device);
+                }
+            }
+
+            foreach (var device in devicesToRemove)
+            {
+                Debug.Log($"[InputInjector] Cleaning up orphaned device from previous run: {device.name}");
+                InputSystem.RemoveDevice(device);
+            }
+        }
+
+        /// <summary>
         /// Gets a working mouse device, creating a virtual one if necessary.
         /// </summary>
         private static Mouse GetMouse()
@@ -251,7 +283,7 @@ namespace ODDGames.UIAutomation
             // Create virtual mouse if none available
             if (_virtualMouse == null || !_virtualMouse.added)
             {
-                _virtualMouse = InputSystem.AddDevice<Mouse>("VirtualMouse");
+                _virtualMouse = InputSystem.AddDevice<Mouse>("UIAutomation_Mouse");
             }
             return _virtualMouse ?? Mouse.current;
         }
@@ -267,7 +299,7 @@ namespace ODDGames.UIAutomation
             // Create virtual keyboard if none available
             if (_virtualKeyboard == null || !_virtualKeyboard.added)
             {
-                _virtualKeyboard = InputSystem.AddDevice<Keyboard>("VirtualKeyboard");
+                _virtualKeyboard = InputSystem.AddDevice<Keyboard>("UIAutomation_Keyboard");
                 if (_virtualKeyboard != null)
                     Debug.Log("[InputInjector] Created virtual keyboard device");
             }
@@ -285,7 +317,7 @@ namespace ODDGames.UIAutomation
             // Create virtual touchscreen if none available
             if (_virtualTouchscreen == null || !_virtualTouchscreen.added)
             {
-                _virtualTouchscreen = InputSystem.AddDevice<Touchscreen>("VirtualTouchscreen");
+                _virtualTouchscreen = InputSystem.AddDevice<Touchscreen>("UIAutomation_Touchscreen");
                 if (_virtualTouchscreen != null)
                     Debug.Log("[InputInjector] Created virtual touchscreen device");
             }
@@ -322,11 +354,14 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static void DisableHardwareInput()
         {
+            // First, clean up any orphaned virtual devices from previous runs
+            CleanupOrphanedVirtualDevices();
+
             _disabledDevices.Clear();
             foreach (var device in InputSystem.devices)
             {
                 // Skip our virtual devices
-                if (device.description.interfaceName == "Virtual") continue;
+                if (device.name.StartsWith("UIAutomation_")) continue;
 
                 if (device.enabled)
                 {
@@ -334,6 +369,35 @@ namespace ODDGames.UIAutomation
                     InputSystem.DisableDevice(device);
                     Debug.Log($"[InputInjector] Disabled hardware device: {device.name}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// Removes any orphaned virtual devices that may have accumulated from previous test runs.
+        /// This handles the case where domain reload loses our static references but devices persist.
+        /// </summary>
+        private static void CleanupOrphanedVirtualDevices()
+        {
+            var devicesToRemove = new List<InputDevice>();
+            foreach (var device in InputSystem.devices)
+            {
+                // Find devices with names like UIAutomation_Mouse, UIAutomation_Mouse1, UIAutomation_Keyboard2, etc.
+                if (device.name.StartsWith("UIAutomation_Mouse") ||
+                    device.name.StartsWith("UIAutomation_Keyboard") ||
+                    device.name.StartsWith("UIAutomation_Touchscreen"))
+                {
+                    // Skip if it's our current tracked device
+                    if (device == _virtualMouse || device == _virtualKeyboard || device == _virtualTouchscreen)
+                        continue;
+
+                    devicesToRemove.Add(device);
+                }
+            }
+
+            foreach (var device in devicesToRemove)
+            {
+                Debug.Log($"[InputInjector] Removing orphaned virtual device: {device.name}");
+                InputSystem.RemoveDevice(device);
             }
         }
 
@@ -1674,7 +1738,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueStateEvent(keyboard, keyState);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
-                elapsed += Time.deltaTime;
+                elapsed += Time.unscaledDeltaTime;
             }
 
             // Key up
@@ -1720,7 +1784,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueStateEvent(keyboard, keyState);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
-                elapsed += Time.deltaTime;
+                elapsed += Time.unscaledDeltaTime;
             }
 
             // Keys up
@@ -1773,7 +1837,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
-                elapsed += Time.deltaTime;
+                elapsed += Time.unscaledDeltaTime;
             }
 
             // Mouse button up
@@ -1827,7 +1891,7 @@ namespace ODDGames.UIAutomation
                 }
                 InputSystem.Update();
                 await Async.DelayFrames(1);
-                elapsed += Time.deltaTime;
+                elapsed += Time.unscaledDeltaTime;
             }
 
             // Touch ended

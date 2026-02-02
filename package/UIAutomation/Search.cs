@@ -1,12 +1,14 @@
 using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Text;
 
 using TMPro;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 using UnityEngine.UI;
 
 namespace ODDGames.UIAutomation
@@ -1464,10 +1466,10 @@ namespace ODDGames.UIAutomation
         /// </example>
         public async Task<ResolveResult> Resolve(float timeout = 10f, int index = 0)
         {
-            float startTime = Time.realtimeSinceStartup;
+            float startTime = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
             var searchDescription = ToString();
 
-            while ((Time.realtimeSinceStartup - startTime) < timeout && Application.isPlaying)
+            while (((float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime) < timeout && Application.isPlaying)
             {
                 var results = FindAll();
                 if (results.Count > index)
@@ -3470,8 +3472,8 @@ namespace ODDGames.UIAutomation
                 if (includeInactive)
                     IncludeInactive();
 
-                float startTime = Time.realtimeSinceStartup;
-                while ((Time.realtimeSinceStartup - startTime) < searchTime && Application.isPlaying)
+                float startTime = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
+                while (((float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime) < searchTime && Application.isPlaying)
                 {
                     var result = FindFirst();
                     if (result != null)
