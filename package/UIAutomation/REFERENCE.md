@@ -180,14 +180,14 @@ await SceneChange(seconds: 30);                        // Wait for scene load
 ### Static Path Access
 
 ```csharp
-// Read values
-var score = Search.Reflect("GameManager.Instance.Score").IntValue;
-var health = Search.Reflect("Player.Instance.Health").FloatValue;
-var ready = Search.Reflect("GameManager.Instance.IsReady").BoolValue;
-var name = Search.Reflect("Player.Instance.Name").StringValue;
+// Read values using GetValue<T>()
+var score = Search.Reflect("GameManager.Instance.Score").GetValue<int>();
+var health = Search.Reflect("Player.Instance.Health").GetValue<float>();
+var ready = Search.Reflect("GameManager.Instance.IsReady").GetValue<bool>();
+var name = Search.Reflect("Player.Instance.Name").GetValue<string>();
 
-// Value properties: .Value, .StringValue, .BoolValue, .IntValue, .FloatValue
-//                   .Vector3Value, .Vector2Value, .ColorValue, .QuaternionValue, .ArrayValue
+// Also supports: Vector3, Vector2, Color, Quaternion, arrays
+var position = Search.Reflect("Player.Instance.Position").GetValue<Vector3>();
 ```
 
 ### Property Navigation
@@ -197,23 +197,23 @@ Search.Reflect("Player.Instance")
     .Property("Inventory")
     .Property("EquippedWeapon")
     .Property("Damage")
-    .FloatValue;
+    .GetValue<float>();
 ```
 
 ### Indexers
 
 ```csharp
 // Method syntax
-Search.Reflect("Game.Players").Index(0).Property("Name").StringValue;
-Search.Reflect("Config.Settings").Index("volume").FloatValue;
+Search.Reflect("Game.Players").Index(0).Property("Name").GetValue<string>();
+Search.Reflect("Config.Settings").Index("volume").GetValue<float>();
 
 // C# indexer syntax
-Search.Reflect("Game.Players")[0].Property("Name").StringValue;
-Search.Reflect("Config")["settings"]["audio"].FloatValue;
+Search.Reflect("Game.Players")[0].Property("Name").GetValue<string>();
+Search.Reflect("Config")["settings"]["audio"].GetValue<float>();
 
 // Inline in path
-Search.Reflect("Game.Players[0].Name").StringValue;
-Search.Reflect("Config.Settings[\"volume\"]").FloatValue;
+Search.Reflect("Game.Players[0].Name").GetValue<string>();
+Search.Reflect("Config.Settings[\"volume\"]").GetValue<float>();
 ```
 
 ### Array Iteration
@@ -221,12 +221,12 @@ Search.Reflect("Config.Settings[\"volume\"]").FloatValue;
 ```csharp
 foreach (var item in Search.Reflect("Inventory.Items"))
 {
-    var name = item.Property("Name").StringValue;
-    var count = item.Property("Count").IntValue;
+    var name = item.Property("Name").GetValue<string>();
+    var count = item.Property("Count").GetValue<int>();
 }
 ```
 
-### Component Access
+### Component Access (Static Paths Only)
 
 ```csharp
 Search.Reflect("Player.Instance")
@@ -234,10 +234,9 @@ Search.Reflect("Player.Instance")
     .Property("isKinematic")
     .SetValue(true);
 
-new Search().Name("Player")
-    .Component("PlayerStats")
-    .Property("health")
-    .SetValue(100f);
+// For UI element searches, use Find() first:
+var go = await new Search().Name("Player").Find();
+go.GetComponent<PlayerStats>().health = 100f;
 ```
 
 ### Method Invocation
@@ -341,9 +340,9 @@ Assert.AreEqual(0.5f, await GetValue<float>(Name("Slider")), 0.01f);
 ### With Static Paths
 
 ```csharp
-Assert.IsTrue(Search.Reflect("GameManager.Instance.IsReady").BoolValue);
-Assert.Greater(Search.Reflect("Player.Score").IntValue, 0);
-Assert.AreEqual("MainLevel", Search.Reflect("LevelManager.CurrentLevel.Name").StringValue);
+Assert.IsTrue(Search.Reflect("GameManager.Instance.IsReady").GetValue<bool>());
+Assert.Greater(Search.Reflect("Player.Score").GetValue<int>(), 0);
+Assert.AreEqual("MainLevel", Search.Reflect("LevelManager.CurrentLevel.Name").GetValue<string>());
 ```
 
 ---
@@ -368,7 +367,7 @@ public class CoinCollectionTest : UITestBehaviour
         await WaitFor(Search.Reflect("Player.Instance"));
 
         // Assert
-        Assert.Greater(Search.Reflect("Player.Score").IntValue, 0);
+        Assert.Greater(Search.Reflect("Player.Score").GetValue<int>(), 0);
     }
 }
 ```

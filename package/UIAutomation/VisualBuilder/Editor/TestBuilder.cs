@@ -172,7 +172,12 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
                 return;
             }
 
-            // Evaluate the Search to find the target element
+            // Fire and forget async overlay update
+            _ = UpdateTargetOverlayAsync(block);
+        }
+
+        private async Task UpdateTargetOverlayAsync(VisualBlock block)
+        {
             try
             {
                 var search = block.target.ToSearch();
@@ -182,7 +187,8 @@ namespace ODDGames.UIAutomation.VisualBuilder.Editor
                     return;
                 }
 
-                var target = search.FindFirst();
+                // Use async Find with short timeout for responsive preview
+                var target = await search.Find(0.5f);
                 if (target == null)
                 {
                     TargetOverlay.Hide();

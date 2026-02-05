@@ -1,9 +1,7 @@
-using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
-using Cysharp.Threading.Tasks;
 using ODDGames.UIAutomation;
 
 namespace ODDGames.UIAutomation.Tests
@@ -56,119 +54,98 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Index() Method Tests
 
-        [UnityTest]
-        public IEnumerator Index_AccessesArrayElement()
+        [Test]
+        public async Task Index_AccessesArrayElement()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
+            var value = Search.Reflect("SearchIndexerTests+TestData.StringArray")
+                .Index(1)
+                .GetValue<string>();
+
+            Assert.AreEqual("one", value);
+        }
+
+        [Test]
+        public async Task Index_AccessesListElement()
+        {
+            await Async.DelayFrames(1);
+
+            var value = Search.Reflect("SearchIndexerTests+TestData.IntList")
+                .Index(2)
+                .GetValue<int>();
+
+            Assert.AreEqual(30, value);
+        }
+
+        [Test]
+        public async Task Index_AccessesDictionaryByKey()
+        {
+            await Async.DelayFrames(1);
+
+            var value = Search.Reflect("SearchIndexerTests+TestData.StringDict")
+                .Index("name")
+                .GetValue<string>();
+
+            Assert.AreEqual("TestPlayer", value);
+        }
+
+        [Test]
+        public async Task Index_ChainsWithProperty()
+        {
+            await Async.DelayFrames(1);
+
+            var name = Search.Reflect("SearchIndexerTests+TestData.Players")
+                .Index(0)
+                .Property("Name")
+                .GetValue<string>();
+
+            Assert.AreEqual("Alice", name);
+
+            var score = Search.Reflect("SearchIndexerTests+TestData.Players")
+                .Index(1)
+                .Property("Score")
+                .GetValue<int>();
+
+            Assert.AreEqual(200, score);
+        }
+
+        [Test]
+        public async Task Index_DictionaryThenProperty()
+        {
+            await Async.DelayFrames(1);
+
+            var name = Search.Reflect("SearchIndexerTests+TestData.PlayersByName")
+                .Index("bob")
+                .Property("Name")
+                .GetValue<string>();
+
+            Assert.AreEqual("Bob", name);
+        }
+
+        [Test]
+        public async Task Index_ThrowsOnOutOfRange()
+        {
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.IndexOutOfRangeException>(() =>
+            {
                 var value = Search.Reflect("SearchIndexerTests+TestData.StringArray")
-                    .Index(1)
-                    .StringValue;
-
-                Assert.AreEqual("one", value);
+                    .Index(100)
+                    .GetValue<string>();
             });
         }
 
-        [UnityTest]
-        public IEnumerator Index_AccessesListElement()
+        [Test]
+        public async Task Index_ThrowsOnMissingKey()
         {
-            return UniTask.ToCoroutine(async () =>
+            await Async.DelayFrames(1);
+
+            Assert.Throws<KeyNotFoundException>(() =>
             {
-                await UniTask.Yield();
-
-                var value = Search.Reflect("SearchIndexerTests+TestData.IntList")
-                    .Index(2)
-                    .IntValue;
-
-                Assert.AreEqual(30, value);
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator Index_AccessesDictionaryByKey()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
                 var value = Search.Reflect("SearchIndexerTests+TestData.StringDict")
-                    .Index("name")
-                    .StringValue;
-
-                Assert.AreEqual("TestPlayer", value);
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator Index_ChainsWithProperty()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                var name = Search.Reflect("SearchIndexerTests+TestData.Players")
-                    .Index(0)
-                    .Property("Name")
-                    .StringValue;
-
-                Assert.AreEqual("Alice", name);
-
-                var score = Search.Reflect("SearchIndexerTests+TestData.Players")
-                    .Index(1)
-                    .Property("Score")
-                    .IntValue;
-
-                Assert.AreEqual(200, score);
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator Index_DictionaryThenProperty()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                var name = Search.Reflect("SearchIndexerTests+TestData.PlayersByName")
-                    .Index("bob")
-                    .Property("Name")
-                    .StringValue;
-
-                Assert.AreEqual("Bob", name);
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator Index_ThrowsOnOutOfRange()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<System.IndexOutOfRangeException>(() =>
-                {
-                    var value = Search.Reflect("SearchIndexerTests+TestData.StringArray")
-                        .Index(100)
-                        .StringValue;
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator Index_ThrowsOnMissingKey()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<KeyNotFoundException>(() =>
-                {
-                    var value = Search.Reflect("SearchIndexerTests+TestData.StringDict")
-                        .Index("nonexistent")
-                        .StringValue;
-                });
+                    .Index("nonexistent")
+                    .GetValue<string>();
             });
         }
 
@@ -176,365 +153,302 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Inline Indexer Syntax Tests
 
-        [UnityTest]
-        public IEnumerator InlineSyntax_ArrayIndex()
+        [Test]
+        public async Task InlineSyntax_ArrayIndex()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var value = Search.Reflect("SearchIndexerTests+TestData.StringArray[2]")
-                    .StringValue;
+            var value = Search.Reflect("SearchIndexerTests+TestData.StringArray[2]")
+                .GetValue<string>();
 
-                Assert.AreEqual("two", value);
-            });
+            Assert.AreEqual("two", value);
         }
 
-        [UnityTest]
-        public IEnumerator InlineSyntax_ListIndex()
+        [Test]
+        public async Task InlineSyntax_ListIndex()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var value = Search.Reflect("SearchIndexerTests+TestData.IntList[4]")
-                    .IntValue;
+            var value = Search.Reflect("SearchIndexerTests+TestData.IntList[4]")
+                .GetValue<int>();
 
-                Assert.AreEqual(50, value);
-            });
+            Assert.AreEqual(50, value);
         }
 
-        [UnityTest]
-        public IEnumerator InlineSyntax_DictionaryKey()
+        [Test]
+        public async Task InlineSyntax_DictionaryKey()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var value = Search.Reflect("SearchIndexerTests+TestData.StringDict[\"level\"]")
-                    .StringValue;
+            var value = Search.Reflect("SearchIndexerTests+TestData.StringDict[\"level\"]")
+                .GetValue<string>();
 
-                Assert.AreEqual("5", value);
-            });
+            Assert.AreEqual("5", value);
         }
 
-        [UnityTest]
-        public IEnumerator InlineSyntax_SingleQuotedKey()
+        [Test]
+        public async Task InlineSyntax_SingleQuotedKey()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var value = Search.Reflect("SearchIndexerTests+TestData.StringDict['score']")
-                    .StringValue;
+            var value = Search.Reflect("SearchIndexerTests+TestData.StringDict['score']")
+                .GetValue<string>();
 
-                Assert.AreEqual("1000", value);
-            });
+            Assert.AreEqual("1000", value);
         }
 
-        [UnityTest]
-        public IEnumerator InlineSyntax_IndexThenProperty()
+        [Test]
+        public async Task InlineSyntax_IndexThenProperty()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var name = Search.Reflect("SearchIndexerTests+TestData.Players[2].Name")
-                    .StringValue;
+            var name = Search.Reflect("SearchIndexerTests+TestData.Players[2].Name")
+                .GetValue<string>();
 
-                Assert.AreEqual("Charlie", name);
-            });
+            Assert.AreEqual("Charlie", name);
         }
 
-        [UnityTest]
-        public IEnumerator InlineSyntax_DictKeyThenProperty()
+        [Test]
+        public async Task InlineSyntax_DictKeyThenProperty()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var score = Search.Reflect("SearchIndexerTests+TestData.PlayersByName[\"alice\"].Score")
-                    .IntValue;
+            var score = Search.Reflect("SearchIndexerTests+TestData.PlayersByName[\"alice\"].Score")
+                .GetValue<int>();
 
-                Assert.AreEqual(100, score);
-            });
+            Assert.AreEqual(100, score);
         }
 
-        [UnityTest]
-        public IEnumerator InlineSyntax_ChainedIndexers()
+        [Test]
+        public async Task InlineSyntax_ChainedIndexers()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // NestedArray[1][2] should be 6
-                var value = Search.Reflect("SearchIndexerTests+TestData.NestedArray[1][2]")
-                    .IntValue;
+            // NestedArray[1][2] should be 6
+            var value = Search.Reflect("SearchIndexerTests+TestData.NestedArray[1][2]")
+                .GetValue<int>();
 
-                Assert.AreEqual(6, value);
-            });
+            Assert.AreEqual(6, value);
         }
 
         #endregion
 
         #region Property() with Indexer Syntax Tests
 
-        [UnityTest]
-        public IEnumerator Property_WithIndexerSyntax()
+        [Test]
+        public async Task Property_WithIndexerSyntax()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Use Property() to navigate to collection then use inline indexer
-                var value = Search.Reflect("SearchIndexerTests+TestData")
-                    .Property("StringArray[0]")
-                    .StringValue;
+            // Use Property() to navigate to collection then use inline indexer
+            var value = Search.Reflect("SearchIndexerTests+TestData")
+                .Property("StringArray[0]")
+                .GetValue<string>();
 
-                Assert.AreEqual("zero", value);
-            });
+            Assert.AreEqual("zero", value);
         }
 
-        [UnityTest]
-        public IEnumerator Property_WithDictIndexerSyntax()
+        [Test]
+        public async Task Property_WithDictIndexerSyntax()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var value = Search.Reflect("SearchIndexerTests+TestData")
-                    .Property("StringDict[\"name\"]")
-                    .StringValue;
+            var value = Search.Reflect("SearchIndexerTests+TestData")
+                .Property("StringDict[\"name\"]")
+                .GetValue<string>();
 
-                Assert.AreEqual("TestPlayer", value);
-            });
+            Assert.AreEqual("TestPlayer", value);
         }
 
         #endregion
 
         #region C# Indexer Syntax Tests (this[])
 
-        [UnityTest]
-        public IEnumerator CSharpIndexer_IntegerAccess()
+        [Test]
+        public async Task CSharpIndexer_IntegerAccess()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Use C# indexer syntax instead of .Index()
-                var value = Search.Reflect("SearchIndexerTests+TestData.StringArray")[1]
-                    .StringValue;
+            // Use C# indexer syntax instead of .Index()
+            var value = Search.Reflect("SearchIndexerTests+TestData.StringArray")[1]
+                .GetValue<string>();
 
-                Assert.AreEqual("one", value);
-            });
+            Assert.AreEqual("one", value);
         }
 
-        [UnityTest]
-        public IEnumerator CSharpIndexer_StringKeyAccess()
+        [Test]
+        public async Task CSharpIndexer_StringKeyAccess()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Use C# indexer syntax for dictionary
-                var value = Search.Reflect("SearchIndexerTests+TestData.StringDict")["name"]
-                    .StringValue;
+            // Use C# indexer syntax for dictionary
+            var value = Search.Reflect("SearchIndexerTests+TestData.StringDict")["name"]
+                .GetValue<string>();
 
-                Assert.AreEqual("TestPlayer", value);
-            });
+            Assert.AreEqual("TestPlayer", value);
         }
 
-        [UnityTest]
-        public IEnumerator CSharpIndexer_ChainedWithProperty()
+        [Test]
+        public async Task CSharpIndexer_ChainedWithProperty()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Chain indexer with property access
-                var name = Search.Reflect("SearchIndexerTests+TestData")
-                    .Property("Players")[1]
-                    .Property("Name")
-                    .StringValue;
+            // Chain indexer with property access
+            var name = Search.Reflect("SearchIndexerTests+TestData")
+                .Property("Players")[1]
+                .Property("Name")
+                .GetValue<string>();
 
-                Assert.AreEqual("Bob", name);
-            });
+            Assert.AreEqual("Bob", name);
         }
 
-        [UnityTest]
-        public IEnumerator CSharpIndexer_NestedAccess()
+        [Test]
+        public async Task CSharpIndexer_NestedAccess()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Use indexer syntax for nested array access
-                var value = Search.Reflect("SearchIndexerTests+TestData")
-                    .Property("NestedArray")[2][0]
-                    .IntValue;
+            // Use indexer syntax for nested array access
+            var value = Search.Reflect("SearchIndexerTests+TestData")
+                .Property("NestedArray")[2][0]
+                .GetValue<int>();
 
-                Assert.AreEqual(7, value);
-            });
+            Assert.AreEqual(7, value);
         }
 
         #endregion
 
         #region Nested Type Syntax Tests (dot instead of +)
 
-        [UnityTest]
-        public IEnumerator NestedType_DotSyntax_AccessesArray()
+        [Test]
+        public async Task NestedType_DotSyntax_AccessesArray()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Use dot instead of + for nested type
-                var value = Search.Reflect("SearchIndexerTests.TestData.StringArray[0]")
-                    .StringValue;
+            // Use dot instead of + for nested type
+            var value = Search.Reflect("SearchIndexerTests.TestData.StringArray[0]")
+                .GetValue<string>();
 
-                Assert.AreEqual("zero", value);
-            });
+            Assert.AreEqual("zero", value);
         }
 
-        [UnityTest]
-        public IEnumerator NestedType_DotSyntax_WithIndexMethod()
+        [Test]
+        public async Task NestedType_DotSyntax_WithIndexMethod()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Use dot instead of + with Index() method
-                var value = Search.Reflect("SearchIndexerTests.TestData.IntList")
-                    .Index(3)
-                    .IntValue;
+            // Use dot instead of + with Index() method
+            var value = Search.Reflect("SearchIndexerTests.TestData.IntList")
+                .Index(3)
+                .GetValue<int>();
 
-                Assert.AreEqual(40, value);
-            });
+            Assert.AreEqual(40, value);
         }
 
-        [UnityTest]
-        public IEnumerator NestedType_DotSyntax_ChainedAccess()
+        [Test]
+        public async Task NestedType_DotSyntax_ChainedAccess()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Use dot syntax with chained property and indexer
-                var name = Search.Reflect("SearchIndexerTests.TestData.Players[1].Name")
-                    .StringValue;
+            // Use dot syntax with chained property and indexer
+            var name = Search.Reflect("SearchIndexerTests.TestData.Players[1].Name")
+                .GetValue<string>();
 
-                Assert.AreEqual("Bob", name);
-            });
+            Assert.AreEqual("Bob", name);
         }
 
         #endregion
 
         #region SetValue Tests
 
-        [UnityTest]
-        public IEnumerator SetValue_SetsFieldViaProperty()
+        [Test]
+        public async Task SetValue_SetsFieldViaProperty()
         {
-            return UniTask.ToCoroutine(async () =>
+            await Async.DelayFrames(1);
+
+            // Save original value
+            var originalScore = TestData.Players[0].Score;
+
+            // Set value via Property chain
+            Search.Reflect("SearchIndexerTests.TestData.Players[0]")
+                .Property("Score")
+                .SetValue(999);
+
+            Assert.AreEqual(999, TestData.Players[0].Score);
+
+            // Restore
+            TestData.Players[0].Score = originalScore;
+        }
+
+        [Test]
+        public async Task SetValue_SetsFieldViaIndexAndProperty()
+        {
+            await Async.DelayFrames(1);
+
+            // Save original value
+            var originalName = TestData.Players[1].Name;
+
+            // Set value via Index() then Property()
+            Search.Reflect("SearchIndexerTests.TestData.Players")
+                .Index(1)
+                .Property("Name")
+                .SetValue("Modified");
+
+            Assert.AreEqual("Modified", TestData.Players[1].Name);
+
+            // Restore
+            TestData.Players[1].Name = originalName;
+        }
+
+        [Test]
+        public async Task SetValue_SetsFieldViaInlineIndexer()
+        {
+            await Async.DelayFrames(1);
+
+            // Save original value
+            var originalScore = TestData.Players[2].Score;
+
+            // Set value via inline indexer in path
+            Search.Reflect("SearchIndexerTests.TestData.Players[2]")
+                .Property("Score")
+                .SetValue(777);
+
+            Assert.AreEqual(777, TestData.Players[2].Score);
+
+            // Restore
+            TestData.Players[2].Score = originalScore;
+        }
+
+        [Test]
+        public async Task SetValue_ThrowsOnDirectStaticPath()
+        {
+            await Async.DelayFrames(1);
+
+            // Attempting to set value directly on Static() result should fail
+            Assert.Throws<System.InvalidOperationException>(() =>
             {
-                await UniTask.Yield();
-
-                // Save original value
-                var originalScore = TestData.Players[0].Score;
-
-                // Set value via Property chain
                 Search.Reflect("SearchIndexerTests.TestData.Players[0]")
-                    .Property("Score")
-                    .SetValue(999);
-
-                Assert.AreEqual(999, TestData.Players[0].Score);
-
-                // Restore
-                TestData.Players[0].Score = originalScore;
+                    .SetValue(null);
             });
         }
 
-        [UnityTest]
-        public IEnumerator SetValue_SetsFieldViaIndexAndProperty()
+        [Test]
+        public async Task SetValue_ChainedPropertyAccess()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Save original value
-                var originalName = TestData.Players[1].Name;
+            // Save original
+            var originalName = TestData.PlayersByName["alice"].Name;
 
-                // Set value via Index() then Property()
-                Search.Reflect("SearchIndexerTests.TestData.Players")
-                    .Index(1)
-                    .Property("Name")
-                    .SetValue("Modified");
+            // Set via dictionary index and property
+            Search.Reflect("SearchIndexerTests.TestData.PlayersByName")
+                .Index("alice")
+                .Property("Name")
+                .SetValue("Alicia");
 
-                Assert.AreEqual("Modified", TestData.Players[1].Name);
+            Assert.AreEqual("Alicia", TestData.PlayersByName["alice"].Name);
 
-                // Restore
-                TestData.Players[1].Name = originalName;
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator SetValue_SetsFieldViaInlineIndexer()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                // Save original value
-                var originalScore = TestData.Players[2].Score;
-
-                // Set value via inline indexer in path
-                Search.Reflect("SearchIndexerTests.TestData.Players[2]")
-                    .Property("Score")
-                    .SetValue(777);
-
-                Assert.AreEqual(777, TestData.Players[2].Score);
-
-                // Restore
-                TestData.Players[2].Score = originalScore;
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator SetValue_ThrowsOnDirectStaticPath()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                // Attempting to set value directly on Static() result should fail
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    Search.Reflect("SearchIndexerTests.TestData.Players[0]")
-                        .SetValue(null);
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator SetValue_ChainedPropertyAccess()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                // Save original
-                var originalName = TestData.PlayersByName["alice"].Name;
-
-                // Set via dictionary index and property
-                Search.Reflect("SearchIndexerTests.TestData.PlayersByName")
-                    .Index("alice")
-                    .Property("Name")
-                    .SetValue("Alicia");
-
-                Assert.AreEqual("Alicia", TestData.PlayersByName["alice"].Name);
-
-                // Restore
-                TestData.PlayersByName["alice"].Name = originalName;
-            });
+            // Restore
+            TestData.PlayersByName["alice"].Name = originalName;
         }
 
         #endregion

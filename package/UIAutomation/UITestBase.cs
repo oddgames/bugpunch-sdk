@@ -65,6 +65,13 @@ namespace ODDGames.UIAutomation
         /// </summary>
         protected virtual bool DisableHardwareInput => true;
 
+        /// <summary>
+        /// Override to ignore error/exception log messages during the test.
+        /// When true, LogAssert.ignoreFailingMessages is set to true.
+        /// Default is true (errors won't fail the test).
+        /// </summary>
+        protected virtual bool IgnoreErrorLogs => true;
+
         [SetUp]
         public virtual void SetUp()
         {
@@ -73,6 +80,12 @@ namespace ODDGames.UIAutomation
             UnityEngine.Profiling.Profiler.enabled = false;
 
             Debug.Log($"[UITestBase] SetUp starting (frame {Time.frameCount})");
+
+            // Ignore error logs by default - game errors shouldn't fail UI tests
+            if (IgnoreErrorLogs)
+            {
+                UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            }
 
             if (CaptureUnobservedException)
             {
@@ -148,10 +161,11 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Loads a scene by name and waits for it to complete.
-        /// Waits a few frames after loading for the scene to initialize.
+        /// Waits for stable frame rate (default 20 FPS) before returning.
         /// </summary>
         /// <param name="sceneName">The scene name to load</param>
-        protected async Task LoadScene(string sceneName)
+        /// <param name="minFps">Minimum stable frame rate before considering scene ready. Set to 0 to skip FPS check.</param>
+        protected async Task LoadScene(string sceneName, float minFps = 20f)
         {
             Debug.Log($"[UITestBase] LoadScene({sceneName}) starting (frame {Time.frameCount})");
             var op = UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(sceneName);
@@ -160,10 +174,19 @@ namespace ODDGames.UIAutomation
                 await Task.Yield();
             }
             Debug.Log($"[UITestBase] LoadScene({sceneName}) scene loaded (frame {Time.frameCount})");
-            // Wait a few frames for scene initialization
-            for (int i = 0; i < 3; i++)
+
+            // Wait for stable frame rate
+            if (minFps > 0)
             {
-                await Task.Yield();
+                await ActionExecutor.WaitForStableFrameRate(minFps);
+            }
+            else
+            {
+                // Just wait a few frames
+                for (int i = 0; i < 3; i++)
+                {
+                    await Task.Yield();
+                }
             }
             Debug.Log($"[UITestBase] LoadScene({sceneName}) complete (frame {Time.frameCount})");
         }

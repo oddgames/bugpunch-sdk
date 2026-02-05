@@ -1,14 +1,14 @@
-using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
-using UnityEngine.TestTools;
-using Cysharp.Threading.Tasks;
+
 using ODDGames.UIAutomation;
-using static ODDGames.UIAutomation.UIAutomation;
+
+using static ODDGames.UIAutomation.ActionExecutor;
 
 namespace ODDGames.UIAutomation.Tests
 {
@@ -68,36 +68,36 @@ namespace ODDGames.UIAutomation.Tests
 
             for (int x = -2; x <= 2; x++)
             {
-                for (int y = -2; y <= 2; y++)
-                {
-                    if (x == 0 && y == 0) continue; // Skip center
+            for (int y = -2; y <= 2; y++)
+            {
+                if (x == 0 && y == 0) continue; // Skip center
 
-                    var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    cube.name = $"Cube_{x}_{y}";
-                    cube.transform.position = new Vector3(x * 2f, y * 2f, 0);
-                    cube.transform.localScale = Vector3.one * 0.5f;
-                    cube.GetComponent<Renderer>().material.color = colors[colorIndex % colors.Length];
-                    _createdObjects.Add(cube);
-                    colorIndex++;
-                }
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                cube.name = $"Cube_{x}_{y}";
+                cube.transform.position = new Vector3(x * 2f, y * 2f, 0);
+                cube.transform.localScale = Vector3.one * 0.5f;
+                cube.GetComponent<Renderer>().material.color = colors[colorIndex % colors.Length];
+                _createdObjects.Add(cube);
+                colorIndex++;
+            }
             }
 
             // Create corner markers (spheres) at the edges
             var corners = new[]
             {
-                (new Vector3(-6, 6, 0), "TopLeft", Color.red),
-                (new Vector3(6, 6, 0), "TopRight", Color.green),
-                (new Vector3(-6, -6, 0), "BottomLeft", Color.blue),
-                (new Vector3(6, -6, 0), "BottomRight", Color.yellow)
+            (new Vector3(-6, 6, 0), "TopLeft", Color.red),
+            (new Vector3(6, 6, 0), "TopRight", Color.green),
+            (new Vector3(-6, -6, 0), "BottomLeft", Color.blue),
+            (new Vector3(6, -6, 0), "BottomRight", Color.yellow)
             };
 
             foreach (var (pos, name, color) in corners)
             {
-                var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                sphere.name = name;
-                sphere.transform.position = pos;
-                sphere.GetComponent<Renderer>().material.color = color;
-                _createdObjects.Add(sphere);
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = name;
+            sphere.transform.position = pos;
+            sphere.GetComponent<Renderer>().material.color = color;
+            _createdObjects.Add(sphere);
             }
 
             // Add a floor plane for better depth perception (behind the cubes, facing camera)
@@ -114,417 +114,351 @@ namespace ODDGames.UIAutomation.Tests
         {
             foreach (var obj in _createdObjects)
             {
-                if (obj != null)
-                    Object.Destroy(obj);
+            if (obj != null)
+                Object.Destroy(obj);
             }
             _createdObjects.Clear();
         }
 
         #region Swipe Tests
 
-        [UnityTest]
-        public IEnumerator Swipe_Left_MovesCameraRight()
+        [Test]
+        public async Task Swipe_Left_MovesCameraRight()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var initialPos = _camera.transform.position;
-                await UniTask.Yield();
+            var initialPos = _camera.transform.position;
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
-                await helper.TestSwipe(SwipeDirection.Left, distance: 0.3f, duration: 0.3f);
+            var helper = CreateGestureHelper();
+            await helper.TestSwipe(SwipeDirection.Left, distance: 0.3f, duration: 0.3f);
 
-                // Swiping left should pan camera right (opposite direction)
-                Assert.Greater(_cameraController.TotalPanDelta.x, 0,
-                    "Swiping left should result in positive pan delta (camera moves right)");
-            });
+            // Swiping left should pan camera right (opposite direction)
+            Assert.Greater(_cameraController.TotalPanDelta.x, 0,
+                "Swiping left should result in positive pan delta (camera moves right)");
         }
 
-        [UnityTest]
-        public IEnumerator Swipe_Right_MovesCameraLeft()
+        [Test]
+        public async Task Swipe_Right_MovesCameraLeft()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
-                await helper.TestSwipe(SwipeDirection.Right, distance: 0.3f, duration: 0.3f);
+            var helper = CreateGestureHelper();
+            await helper.TestSwipe(SwipeDirection.Right, distance: 0.3f, duration: 0.3f);
 
-                Assert.Less(_cameraController.TotalPanDelta.x, 0,
-                    "Swiping right should result in negative pan delta (camera moves left)");
-            });
+            Assert.Less(_cameraController.TotalPanDelta.x, 0,
+                "Swiping right should result in negative pan delta (camera moves left)");
         }
 
-        [UnityTest]
-        public IEnumerator Swipe_Up_MovesCameraDown()
+        [Test]
+        public async Task Swipe_Up_MovesCameraDown()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
-                await helper.TestSwipe(SwipeDirection.Up, distance: 0.3f, duration: 0.3f);
+            var helper = CreateGestureHelper();
+            await helper.TestSwipe(SwipeDirection.Up, distance: 0.3f, duration: 0.3f);
 
-                Assert.Less(_cameraController.TotalPanDelta.y, 0,
-                    "Swiping up should result in negative pan delta (camera moves down)");
-            });
+            Assert.Less(_cameraController.TotalPanDelta.y, 0,
+                "Swiping up should result in negative pan delta (camera moves down)");
         }
 
-        [UnityTest]
-        public IEnumerator Swipe_Down_MovesCameraUp()
+        [Test]
+        public async Task Swipe_Down_MovesCameraUp()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
-                await helper.TestSwipe(SwipeDirection.Down, distance: 0.3f, duration: 0.3f);
+            var helper = CreateGestureHelper();
+            await helper.TestSwipe(SwipeDirection.Down, distance: 0.3f, duration: 0.3f);
 
-                Assert.Greater(_cameraController.TotalPanDelta.y, 0,
-                    "Swiping down should result in positive pan delta (camera moves up)");
-            });
+            Assert.Greater(_cameraController.TotalPanDelta.y, 0,
+                "Swiping down should result in positive pan delta (camera moves up)");
         }
 
-        [UnityTest]
-        public IEnumerator Swipe_Diagonal_MovesCameraDiagonally()
+        [Test]
+        public async Task Swipe_Diagonal_MovesCameraDiagonally()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Swipe left then down for diagonal movement
-                await helper.TestSwipe(SwipeDirection.Left, distance: 0.2f, duration: 0.2f);
-                await helper.TestSwipe(SwipeDirection.Down, distance: 0.2f, duration: 0.2f);
+            // Swipe left then down for diagonal movement
+            await helper.TestSwipe(SwipeDirection.Left, distance: 0.2f, duration: 0.2f);
+            await helper.TestSwipe(SwipeDirection.Down, distance: 0.2f, duration: 0.2f);
 
-                Assert.Greater(_cameraController.TotalPanDelta.x, 0, "Should have positive X pan");
-                Assert.Greater(_cameraController.TotalPanDelta.y, 0, "Should have positive Y pan");
-            });
+            Assert.Greater(_cameraController.TotalPanDelta.x, 0, "Should have positive X pan");
+            Assert.Greater(_cameraController.TotalPanDelta.y, 0, "Should have positive Y pan");
         }
 
-        [UnityTest]
-        public IEnumerator SwipeAt_CornerPosition_Works()
+        [Test]
+        public async Task SwipeAt_CornerPosition_Works()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Swipe from top-left corner
-                await helper.TestSwipeAt(0.1f, 0.9f, SwipeDirection.Right, distance: 0.2f, duration: 0.3f);
+            // Swipe from top-left corner
+            await helper.TestSwipeAt(0.1f, 0.9f, SwipeDirection.Right, distance: 0.2f, duration: 0.3f);
 
-                Assert.Less(_cameraController.TotalPanDelta.x, 0,
-                    "SwipeAt should work from corner positions");
-            });
+            Assert.Less(_cameraController.TotalPanDelta.x, 0,
+                "SwipeAt should work from corner positions");
         }
 
-        [UnityTest]
-        public IEnumerator Swipe_MultipleInSequence_AccumulatesPan()
+        [Test]
+        public async Task Swipe_MultipleInSequence_AccumulatesPan()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Multiple swipes in same direction
-                await helper.TestSwipe(SwipeDirection.Left, distance: 0.1f, duration: 0.15f);
-                var firstPan = _cameraController.TotalPanDelta.x;
+            // Multiple swipes in same direction
+            await helper.TestSwipe(SwipeDirection.Left, distance: 0.1f, duration: 0.15f);
+            var firstPan = _cameraController.TotalPanDelta.x;
 
-                await helper.TestSwipe(SwipeDirection.Left, distance: 0.1f, duration: 0.15f);
-                var secondPan = _cameraController.TotalPanDelta.x;
+            await helper.TestSwipe(SwipeDirection.Left, distance: 0.1f, duration: 0.15f);
+            var secondPan = _cameraController.TotalPanDelta.x;
 
-                Assert.Greater(secondPan, firstPan,
-                    "Multiple swipes should accumulate pan movement");
-            });
+            Assert.Greater(secondPan, firstPan,
+                "Multiple swipes should accumulate pan movement");
         }
 
         #endregion
 
         #region Pinch/Zoom Tests
 
-        [UnityTest]
-        public IEnumerator Pinch_In_ZoomsOut()
+        [Test]
+        public async Task Pinch_In_ZoomsOut()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Pinch in (scale < 1) = zoom out
-                await helper.TestPinch(0.5f, duration: 0.4f);
+            // Pinch in (scale < 1) = zoom out
+            await helper.TestPinch(0.5f, duration: 0.4f);
 
-                Assert.Less(_cameraController.TotalZoomDelta, 0,
-                    "Pinch in (scale < 1) should result in negative zoom delta (zoom out)");
-            });
+            Assert.Less(_cameraController.TotalZoomDelta, 0,
+                "Pinch in (scale < 1) should result in negative zoom delta (zoom out)");
         }
 
-        [UnityTest]
-        public IEnumerator Pinch_Out_ZoomsIn()
+        [Test]
+        public async Task Pinch_Out_ZoomsIn()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Pinch out (scale > 1) = zoom in
-                await helper.TestPinch(2.0f, duration: 0.4f);
+            // Pinch out (scale > 1) = zoom in
+            await helper.TestPinch(2.0f, duration: 0.4f);
 
-                Assert.Greater(_cameraController.TotalZoomDelta, 0,
-                    "Pinch out (scale > 1) should result in positive zoom delta (zoom in)");
-            });
+            Assert.Greater(_cameraController.TotalZoomDelta, 0,
+                "Pinch out (scale > 1) should result in positive zoom delta (zoom in)");
         }
 
-        [UnityTest]
-        public IEnumerator PinchAt_OffCenter_Works()
+        [Test]
+        public async Task PinchAt_OffCenter_Works()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                // Wait a few frames to ensure clean state from any previous touch gestures
-                await UniTask.Yield();
-                await UniTask.Yield();
-                await UniTask.Yield();
+            // Wait a few frames to ensure clean state from any previous touch gestures
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
-                // Reset tracking to ensure we only measure this gesture
-                _cameraController.ResetTracking();
+            // Reset tracking to ensure we only measure this gesture
+            _cameraController.ResetTracking();
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Pinch at bottom-right area
-                await helper.TestPinchAt(0.75f, 0.25f, 1.5f, duration: 0.4f);
+            // Pinch at bottom-right area
+            await helper.TestPinchAt(0.75f, 0.25f, 1.5f, duration: 0.4f);
 
-                Assert.Greater(_cameraController.TotalZoomDelta, 0,
-                    "PinchAt should work at off-center positions");
-            });
+            Assert.Greater(_cameraController.TotalZoomDelta, 0,
+                "PinchAt should work at off-center positions");
         }
 
         #endregion
 
         #region Rotation Tests
 
-        [UnityTest]
-        public IEnumerator Rotate_Clockwise_RotatesCamera()
+        [Test]
+        public async Task Rotate_Clockwise_RotatesCamera()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Rotate 45 degrees clockwise
-                await helper.TestRotate(45f, duration: 0.4f);
+            // Rotate 45 degrees clockwise
+            await helper.TestRotate(45f, duration: 0.4f);
 
-                Assert.Greater(_cameraController.TotalRotationDelta, 0,
-                    "Clockwise rotation should result in positive rotation delta");
-                Assert.Greater(_cameraController.TotalRotationDelta, 30f,
-                    "Rotation should be close to requested angle");
-            });
+            Assert.Greater(_cameraController.TotalRotationDelta, 0,
+                "Clockwise rotation should result in positive rotation delta");
+            Assert.Greater(_cameraController.TotalRotationDelta, 30f,
+                "Rotation should be close to requested angle");
         }
 
-        [UnityTest]
-        public IEnumerator Rotate_CounterClockwise_RotatesCamera()
+        [Test]
+        public async Task Rotate_CounterClockwise_RotatesCamera()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Rotate 45 degrees counter-clockwise
-                await helper.TestRotate(-45f, duration: 0.4f);
+            // Rotate 45 degrees counter-clockwise
+            await helper.TestRotate(-45f, duration: 0.4f);
 
-                Assert.Less(_cameraController.TotalRotationDelta, 0,
-                    "Counter-clockwise rotation should result in negative rotation delta");
-            });
+            Assert.Less(_cameraController.TotalRotationDelta, 0,
+                "Counter-clockwise rotation should result in negative rotation delta");
         }
 
-        [UnityTest]
-        public IEnumerator Rotate_FullCircle_Works()
+        [Test]
+        public async Task Rotate_FullCircle_Works()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Rotate in increments (full rotation at once may not work well)
-                await helper.TestRotate(90f, duration: 0.3f);
-                await helper.TestRotate(90f, duration: 0.3f);
-                await helper.TestRotate(90f, duration: 0.3f);
-                await helper.TestRotate(90f, duration: 0.3f);
+            // Rotate in increments (full rotation at once may not work well)
+            await helper.TestRotate(90f, duration: 0.3f);
+            await helper.TestRotate(90f, duration: 0.3f);
+            await helper.TestRotate(90f, duration: 0.3f);
+            await helper.TestRotate(90f, duration: 0.3f);
 
-                Assert.Greater(_cameraController.TotalRotationDelta, 300f,
-                    "Multiple rotations should accumulate to near 360 degrees");
-            });
+            Assert.Greater(_cameraController.TotalRotationDelta, 300f,
+                "Multiple rotations should accumulate to near 360 degrees");
         }
 
-        [UnityTest]
-        public IEnumerator RotateAt_CustomPosition_Works()
+        [Test]
+        public async Task RotateAt_CustomPosition_Works()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Rotate at top-left quadrant
-                await helper.TestRotateAt(0.25f, 0.75f, 30f, duration: 0.4f);
+            // Rotate at top-left quadrant
+            await helper.TestRotateAt(0.25f, 0.75f, 30f, duration: 0.4f);
 
-                Assert.Greater(_cameraController.TotalRotationDelta, 0,
-                    "RotateAt should work at custom positions");
-            });
+            Assert.Greater(_cameraController.TotalRotationDelta, 0,
+                "RotateAt should work at custom positions");
         }
 
         #endregion
 
         #region Two-Finger Swipe Tests
 
-        [UnityTest]
-        public IEnumerator TwoFingerSwipe_Left_PansCamera()
+        [Test]
+        public async Task TwoFingerSwipe_Left_PansCamera()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
-                await helper.TestTwoFingerSwipe(SwipeDirection.Left, distance: 0.25f, duration: 0.3f);
+            var helper = CreateGestureHelper();
+            await helper.TestTwoFingerSwipe(SwipeDirection.Left, distance: 0.25f, duration: 0.3f);
 
-                Assert.Greater(_cameraController.TotalTwoFingerPanDelta.x, 0,
-                    "Two-finger swipe left should pan camera right");
-            });
+            Assert.Greater(_cameraController.TotalTwoFingerPanDelta.x, 0,
+                "Two-finger swipe left should pan camera right");
         }
 
-        [UnityTest]
-        public IEnumerator TwoFingerSwipe_Right_PansCamera()
+        [Test]
+        public async Task TwoFingerSwipe_Right_PansCamera()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
-                await helper.TestTwoFingerSwipe(SwipeDirection.Right, distance: 0.25f, duration: 0.3f);
+            var helper = CreateGestureHelper();
+            await helper.TestTwoFingerSwipe(SwipeDirection.Right, distance: 0.25f, duration: 0.3f);
 
-                Assert.Less(_cameraController.TotalTwoFingerPanDelta.x, 0,
-                    "Two-finger swipe right should pan camera left");
-            });
+            Assert.Less(_cameraController.TotalTwoFingerPanDelta.x, 0,
+                "Two-finger swipe right should pan camera left");
         }
 
-        [UnityTest]
-        public IEnumerator TwoFingerSwipe_Up_PansCamera()
+        [Test]
+        public async Task TwoFingerSwipe_Up_PansCamera()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
-                await helper.TestTwoFingerSwipe(SwipeDirection.Up, distance: 0.25f, duration: 0.3f);
+            var helper = CreateGestureHelper();
+            await helper.TestTwoFingerSwipe(SwipeDirection.Up, distance: 0.25f, duration: 0.3f);
 
-                Assert.Less(_cameraController.TotalTwoFingerPanDelta.y, 0,
-                    "Two-finger swipe up should pan camera down");
-            });
+            Assert.Less(_cameraController.TotalTwoFingerPanDelta.y, 0,
+                "Two-finger swipe up should pan camera down");
         }
 
-        [UnityTest]
-        public IEnumerator TwoFingerSwipe_Down_PansCamera()
+        [Test]
+        public async Task TwoFingerSwipe_Down_PansCamera()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
-                await helper.TestTwoFingerSwipe(SwipeDirection.Down, distance: 0.25f, duration: 0.3f);
+            var helper = CreateGestureHelper();
+            await helper.TestTwoFingerSwipe(SwipeDirection.Down, distance: 0.25f, duration: 0.3f);
 
-                Assert.Greater(_cameraController.TotalTwoFingerPanDelta.y, 0,
-                    "Two-finger swipe down should pan camera up");
-            });
+            Assert.Greater(_cameraController.TotalTwoFingerPanDelta.y, 0,
+                "Two-finger swipe down should pan camera up");
         }
 
-        [UnityTest]
-        public IEnumerator TwoFingerSwipeAt_Works()
+        [Test]
+        public async Task TwoFingerSwipeAt_Works()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Two-finger swipe from right side of screen
-                await helper.TestTwoFingerSwipeAt(0.8f, 0.5f, SwipeDirection.Left, distance: 0.2f, duration: 0.3f);
+            // Two-finger swipe from right side of screen
+            await helper.TestTwoFingerSwipeAt(0.8f, 0.5f, SwipeDirection.Left, distance: 0.2f, duration: 0.3f);
 
-                Assert.Greater(_cameraController.TotalTwoFingerPanDelta.x, 0,
-                    "TwoFingerSwipeAt should work at custom positions");
-            });
+            Assert.Greater(_cameraController.TotalTwoFingerPanDelta.x, 0,
+                "TwoFingerSwipeAt should work at custom positions");
         }
 
         #endregion
 
         #region Combined Gesture Tests
 
-        [UnityTest]
-        public IEnumerator Combined_PanAndZoom_BothWork()
+        [Test]
+        public async Task Combined_PanAndZoom_BothWork()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Pan first
-                await helper.TestSwipe(SwipeDirection.Left, distance: 0.2f, duration: 0.2f);
-                var panAfterSwipe = _cameraController.TotalPanDelta.x;
+            // Pan first
+            await helper.TestSwipe(SwipeDirection.Left, distance: 0.2f, duration: 0.2f);
+            var panAfterSwipe = _cameraController.TotalPanDelta.x;
 
-                // Then zoom
-                await helper.TestPinch(1.5f, duration: 0.3f);
+            // Then zoom
+            await helper.TestPinch(1.5f, duration: 0.3f);
 
-                Assert.Greater(panAfterSwipe, 0, "Pan should have occurred");
-                Assert.Greater(_cameraController.TotalZoomDelta, 0, "Zoom should have occurred");
-            });
+            Assert.Greater(panAfterSwipe, 0, "Pan should have occurred");
+            Assert.Greater(_cameraController.TotalZoomDelta, 0, "Zoom should have occurred");
         }
 
-        [UnityTest]
-        public IEnumerator Combined_PanAndRotate_BothWork()
+        [Test]
+        public async Task Combined_PanAndRotate_BothWork()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Pan first
-                await helper.TestSwipe(SwipeDirection.Up, distance: 0.2f, duration: 0.2f);
+            // Pan first
+            await helper.TestSwipe(SwipeDirection.Up, distance: 0.2f, duration: 0.2f);
 
-                // Then rotate
-                await helper.TestRotate(30f, duration: 0.3f);
+            // Then rotate
+            await helper.TestRotate(30f, duration: 0.3f);
 
-                Assert.Less(_cameraController.TotalPanDelta.y, 0, "Pan should have occurred");
-                Assert.Greater(_cameraController.TotalRotationDelta, 0, "Rotation should have occurred");
-            });
+            Assert.Less(_cameraController.TotalPanDelta.y, 0, "Pan should have occurred");
+            Assert.Greater(_cameraController.TotalRotationDelta, 0, "Rotation should have occurred");
         }
 
-        [UnityTest]
-        public IEnumerator Combined_AllGestures_Work()
+        [Test]
+        public async Task Combined_AllGestures_Work()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var helper = CreateGestureHelper();
+            var helper = CreateGestureHelper();
 
-                // Perform all gesture types
-                await helper.TestSwipe(SwipeDirection.Right, distance: 0.15f, duration: 0.2f);
-                await helper.TestPinch(1.3f, duration: 0.25f);
-                await helper.TestRotate(20f, duration: 0.25f);
-                await helper.TestTwoFingerSwipe(SwipeDirection.Down, distance: 0.15f, duration: 0.2f);
+            // Perform all gesture types
+            await helper.TestSwipe(SwipeDirection.Right, distance: 0.15f, duration: 0.2f);
+            await helper.TestPinch(1.3f, duration: 0.25f);
+            await helper.TestRotate(20f, duration: 0.25f);
+            await helper.TestTwoFingerSwipe(SwipeDirection.Down, distance: 0.15f, duration: 0.2f);
 
-                // All gesture types should have registered
-                Assert.AreNotEqual(0, _cameraController.TotalPanDelta.x, "Single-finger pan should register");
-                Assert.Greater(_cameraController.TotalZoomDelta, 0, "Pinch zoom should register");
-                Assert.Greater(_cameraController.TotalRotationDelta, 0, "Rotation should register");
-                Assert.Greater(_cameraController.TotalTwoFingerPanDelta.y, 0, "Two-finger pan should register");
-            });
+            // All gesture types should have registered
+            Assert.AreNotEqual(0, _cameraController.TotalPanDelta.x, "Single-finger pan should register");
+            Assert.Greater(_cameraController.TotalZoomDelta, 0, "Pinch zoom should register");
+            Assert.Greater(_cameraController.TotalRotationDelta, 0, "Rotation should register");
+            Assert.Greater(_cameraController.TotalTwoFingerPanDelta.y, 0, "Two-finger pan should register");
         }
 
         #endregion
@@ -578,7 +512,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             _camera = GetComponent<Camera>();
             if (_camera != null)
-                _initialOrthoSize = _camera.orthographicSize;
+            _initialOrthoSize = _camera.orthographicSize;
         }
 
         private void OnEnable()
@@ -631,30 +565,30 @@ namespace ODDGames.UIAutomation.Tests
 
             if (isPressed)
             {
-                if (_lastMousePosition.HasValue)
+            if (_lastMousePosition.HasValue)
+            {
+                var delta = currentPos - _lastMousePosition.Value;
+                // Invert delta for camera panning (drag left = camera moves right)
+                var panDelta = new Vector2(-delta.x, -delta.y);
+                TotalPanDelta += panDelta;
+
+                // Debug: Log significant movements
+                if (delta.sqrMagnitude > 1f)
                 {
-                    var delta = currentPos - _lastMousePosition.Value;
-                    // Invert delta for camera panning (drag left = camera moves right)
-                    var panDelta = new Vector2(-delta.x, -delta.y);
-                    TotalPanDelta += panDelta;
-
-                    // Debug: Log significant movements
-                    if (delta.sqrMagnitude > 1f)
-                    {
-                        Debug.Log($"[CameraController] Mouse: last={_lastMousePosition.Value} curr={currentPos} delta={delta} panDelta={panDelta} total={TotalPanDelta}");
-                    }
-
-                    // Actually move the camera so it's visible
-                    if (_camera != null)
-                    {
-                        transform.position += new Vector3(panDelta.x * PanSensitivity, panDelta.y * PanSensitivity, 0);
-                    }
+                    Debug.Log($"[CameraController] Mouse: last={_lastMousePosition.Value} curr={currentPos} delta={delta} panDelta={panDelta} total={TotalPanDelta}");
                 }
-                _lastMousePosition = currentPos;
+
+                // Actually move the camera so it's visible
+                if (_camera != null)
+                {
+                    transform.position += new Vector3(panDelta.x * PanSensitivity, panDelta.y * PanSensitivity, 0);
+                }
+            }
+            _lastMousePosition = currentPos;
             }
             else
             {
-                _lastMousePosition = null;
+            _lastMousePosition = null;
             }
         }
 
@@ -671,76 +605,76 @@ namespace ODDGames.UIAutomation.Tests
 
             foreach (var touch in touches)
             {
-                var phase = touch.phase.ReadValue();
-                if (phase == UnityEngine.InputSystem.TouchPhase.Began ||
-                    phase == UnityEngine.InputSystem.TouchPhase.Moved ||
-                    phase == UnityEngine.InputSystem.TouchPhase.Stationary)
-                {
-                    if (!touch0Pos.HasValue)
-                        touch0Pos = touch.position.ReadValue();
-                    else if (!touch1Pos.HasValue)
-                        touch1Pos = touch.position.ReadValue();
-                }
+            var phase = touch.phase.ReadValue();
+            if (phase == UnityEngine.InputSystem.TouchPhase.Began ||
+                phase == UnityEngine.InputSystem.TouchPhase.Moved ||
+                phase == UnityEngine.InputSystem.TouchPhase.Stationary)
+            {
+                if (!touch0Pos.HasValue)
+                    touch0Pos = touch.position.ReadValue();
+                else if (!touch1Pos.HasValue)
+                    touch1Pos = touch.position.ReadValue();
+            }
             }
 
             if (touch0Pos.HasValue && touch1Pos.HasValue)
             {
-                // Two-finger gestures
-                var currentDistance = Vector2.Distance(touch0Pos.Value, touch1Pos.Value);
-                var currentCenter = (touch0Pos.Value + touch1Pos.Value) / 2f;
-                var currentAngle = Mathf.Atan2(touch1Pos.Value.y - touch0Pos.Value.y, touch1Pos.Value.x - touch0Pos.Value.x) * Mathf.Rad2Deg;
+            // Two-finger gestures
+            var currentDistance = Vector2.Distance(touch0Pos.Value, touch1Pos.Value);
+            var currentCenter = (touch0Pos.Value + touch1Pos.Value) / 2f;
+            var currentAngle = Mathf.Atan2(touch1Pos.Value.y - touch0Pos.Value.y, touch1Pos.Value.x - touch0Pos.Value.x) * Mathf.Rad2Deg;
 
-                // Debug: log when we first detect both touches
-                if (!_lastTouchDistance.HasValue)
-                {
-                    Debug.Log($"[CameraController] Two touches started: t0={touch0Pos.Value} t1={touch1Pos.Value} angle={currentAngle:F1}");
-                }
+            // Debug: log when we first detect both touches
+            if (!_lastTouchDistance.HasValue)
+            {
+                Debug.Log($"[CameraController] Two touches started: t0={touch0Pos.Value} t1={touch1Pos.Value} angle={currentAngle:F1}");
+            }
 
-                if (_lastTouchDistance.HasValue && _lastTouch0Position.HasValue && _lastTouch1Position.HasValue)
+            if (_lastTouchDistance.HasValue && _lastTouch0Position.HasValue && _lastTouch1Position.HasValue)
+            {
+                // Pinch zoom
+                var distanceDelta = currentDistance - _lastTouchDistance.Value;
+                TotalZoomDelta += distanceDelta * 0.01f; // Scale factor
+
+                // Rotation
+                var angleDelta = Mathf.DeltaAngle(_lastTouchAngle.Value, currentAngle);
+                TotalRotationDelta += angleDelta;
+
+                Debug.Log($"[CameraController] Rotation: lastAngle={_lastTouchAngle.Value:F1} currentAngle={currentAngle:F1} delta={angleDelta:F1} total={TotalRotationDelta:F1}");
+
+                // Two-finger pan
+                var lastCenter = (_lastTouch0Position.Value + _lastTouch1Position.Value) / 2f;
+                var panDelta = currentCenter - lastCenter;
+                TotalTwoFingerPanDelta += new Vector2(-panDelta.x, -panDelta.y);
+
+                // Actually apply visual changes to the camera
+                if (_camera != null)
                 {
-                    // Pinch zoom
-                    var distanceDelta = currentDistance - _lastTouchDistance.Value;
-                    TotalZoomDelta += distanceDelta * 0.01f; // Scale factor
+                    // Zoom (change orthographic size)
+                    _camera.orthographicSize = Mathf.Clamp(
+                        _camera.orthographicSize - distanceDelta * ZoomSensitivity * 0.01f,
+                        1f, 20f);
 
                     // Rotation
-                    var angleDelta = Mathf.DeltaAngle(_lastTouchAngle.Value, currentAngle);
-                    TotalRotationDelta += angleDelta;
-
-                    Debug.Log($"[CameraController] Rotation: lastAngle={_lastTouchAngle.Value:F1} currentAngle={currentAngle:F1} delta={angleDelta:F1} total={TotalRotationDelta:F1}");
+                    transform.Rotate(0, 0, -angleDelta * RotationSensitivity);
 
                     // Two-finger pan
-                    var lastCenter = (_lastTouch0Position.Value + _lastTouch1Position.Value) / 2f;
-                    var panDelta = currentCenter - lastCenter;
-                    TotalTwoFingerPanDelta += new Vector2(-panDelta.x, -panDelta.y);
-
-                    // Actually apply visual changes to the camera
-                    if (_camera != null)
-                    {
-                        // Zoom (change orthographic size)
-                        _camera.orthographicSize = Mathf.Clamp(
-                            _camera.orthographicSize - distanceDelta * ZoomSensitivity * 0.01f,
-                            1f, 20f);
-
-                        // Rotation
-                        transform.Rotate(0, 0, -angleDelta * RotationSensitivity);
-
-                        // Two-finger pan
-                        transform.position += new Vector3(-panDelta.x * PanSensitivity, -panDelta.y * PanSensitivity, 0);
-                    }
+                    transform.position += new Vector3(-panDelta.x * PanSensitivity, -panDelta.y * PanSensitivity, 0);
                 }
+            }
 
-                _lastTouch0Position = touch0Pos.Value;
-                _lastTouch1Position = touch1Pos.Value;
-                _lastTouchDistance = currentDistance;
-                _lastTouchAngle = currentAngle;
+            _lastTouch0Position = touch0Pos.Value;
+            _lastTouch1Position = touch1Pos.Value;
+            _lastTouchDistance = currentDistance;
+            _lastTouchAngle = currentAngle;
             }
             else
             {
-                // Reset two-finger tracking when not in two-finger mode
-                _lastTouch0Position = null;
-                _lastTouch1Position = null;
-                _lastTouchDistance = null;
-                _lastTouchAngle = null;
+            // Reset two-finger tracking when not in two-finger mode
+            _lastTouch0Position = null;
+            _lastTouch1Position = null;
+            _lastTouchDistance = null;
+            _lastTouchAngle = null;
             }
         }
 
@@ -759,9 +693,9 @@ namespace ODDGames.UIAutomation.Tests
             // Reset camera position/rotation
             if (_camera != null)
             {
-                transform.position = new Vector3(0, 0, -10);
-                transform.rotation = Quaternion.identity;
-                _camera.orthographicSize = _initialOrthoSize;
+            transform.position = new Vector3(0, 0, -10);
+            transform.rotation = Quaternion.identity;
+            _camera.orthographicSize = _initialOrthoSize;
             }
         }
     }
@@ -771,52 +705,52 @@ namespace ODDGames.UIAutomation.Tests
     /// </summary>
     public class TestGestureHelper
     {
-        public async UniTask TestSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        public async Task TestSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
         {
             await Swipe(direction, distance, duration);
         }
 
-        public async UniTask TestSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        public async Task TestSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
         {
             await SwipeAt(xPercent, yPercent, direction, distance, duration);
         }
 
-        public async UniTask TestPinch(float scale, float duration = 0.5f)
+        public async Task TestPinch(float scale, float duration = 0.5f)
         {
             await Pinch(scale, duration);
         }
 
-        public async UniTask TestPinchAt(float xPercent, float yPercent, float scale, float duration = 0.5f)
+        public async Task TestPinchAt(float xPercent, float yPercent, float scale, float duration = 0.5f)
         {
             await PinchAt(xPercent, yPercent, scale, duration);
         }
 
-        public async UniTask TestRotate(float degrees, float duration = 0.5f)
+        public async Task TestRotate(float degrees, float duration = 0.5f)
         {
             await Rotate(degrees, duration);
         }
 
-        public async UniTask TestRotateAt(float xPercent, float yPercent, float degrees, float duration = 0.5f)
+        public async Task TestRotateAt(float xPercent, float yPercent, float degrees, float duration = 0.5f)
         {
             await RotateAt(xPercent, yPercent, degrees, duration);
         }
 
-        public async UniTask TestTwoFingerSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        public async Task TestTwoFingerSwipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             await TwoFingerSwipe(direction, distance, duration, fingerSpacing);
         }
 
-        public async UniTask TestTwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        public async Task TestTwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             await TwoFingerSwipeAt(xPercent, yPercent, direction, distance, duration, fingerSpacing);
         }
 
-        public async UniTask TestDrag(Vector2 direction, float duration = 0.5f)
+        public async Task TestDrag(Vector2 direction, float duration = 0.5f)
         {
             await Drag(direction, duration);
         }
 
-        public async UniTask TestDragFromTo(Vector2 startPos, Vector2 endPos, float duration = 0.5f)
+        public async Task TestDragFromTo(Vector2 startPos, Vector2 endPos, float duration = 0.5f)
         {
             await DragFromTo(startPos, endPos, duration);
         }

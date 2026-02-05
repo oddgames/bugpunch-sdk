@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace ODDGames.UIAutomation
 {
@@ -219,6 +220,8 @@ namespace ODDGames.UIAutomation
             if (!_enabled) return;
             EnsureInstance();
             if (_instance == null) return;
+
+
             _instance._clicks.Add(new ClickEvent
             {
                 Position = screenPosition,
@@ -452,17 +455,26 @@ namespace ODDGames.UIAutomation
 
         private void OnEnable()
         {
+            // Built-in render pipeline
             Camera.onPostRender += OnCameraPostRender;
+            // Scriptable render pipeline (URP/HDRP)
+            RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
         }
 
         private void OnDisable()
         {
             Camera.onPostRender -= OnCameraPostRender;
+            RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
             if (_glMaterial != null)
             {
                 DestroyImmediate(_glMaterial);
                 _glMaterial = null;
             }
+        }
+
+        private void OnEndCameraRendering(ScriptableRenderContext context, Camera cam)
+        {
+            OnCameraPostRender(cam);
         }
 
         private void Update()
@@ -511,7 +523,24 @@ namespace ODDGames.UIAutomation
         {
             if (cam.cameraType != CameraType.Game) return;
 
+            // Skip if no events to draw
+            bool hasEvents = _clicks.Count > 0 || _drags.Count > 0 || _activeDrag.HasValue ||
+                _scrolls.Count > 0 || _keys.Count > 0 || _activeKeyHold.HasValue ||
+                _holds.Count > 0 || _activeHold.HasValue ||
+                _pinches.Count > 0 || _activePinch.HasValue ||
+                _rotates.Count > 0 || _activeRotate.HasValue ||
+                _twoFingers.Count > 0 || _activeTwoFinger.HasValue ||
+                _texts.Count > 0;
+
+            if (!hasEvents) return;
+
             var mat = GetMaterial();
+            if (mat == null)
+            {
+                Debug.LogWarning("[InputVisualizer] Material is null!");
+                return;
+            }
+
             mat.SetPass(0);
 
             GL.PushMatrix();

@@ -9,17 +9,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 09783df770baee741ad7277d6ba46eae, type: 3}
+  m_Script: {fileID: 11500000, guid: 87ff61a8828c8244aaaa1e1be124496c, type: 3}
   m_Name: AITestSettings
   m_EditorClassIdentifier: 
-  geminiApiKey: REDACTED_GEMINI_KEY_2
-  defaultModel: gemini-2.5-flash-lite
+  geminiApiKey: REDACTED_GEMINI_KEY_1
+  defaultModel: gemini-3-flash-preview
   defaultTimeout: 180
   defaultMaxActions: 50
   defaultActionDelay: 0.3
   globalKnowledge: 
   commonPatterns: []
-  sendScreenshotsToAI: 0
+  sendScreenshotsToAI: 1
   preferTextOnlyMode: 0
   showDebugPanel: 1
   saveScreenshots: 1

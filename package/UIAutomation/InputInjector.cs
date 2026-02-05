@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.UI;
@@ -270,7 +271,28 @@ namespace ODDGames.UIAutomation
                 Debug.Log($"[InputInjector] Cleaning up orphaned device from previous run: {device.name}");
                 InputSystem.RemoveDevice(device);
             }
+
+#if UNITY_EDITOR
+            // Safety: re-enable hardware input when exiting play mode (in case test crashed)
+            UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            UnityEditor.EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+#endif
         }
+
+#if UNITY_EDITOR
+        private static void OnPlayModeStateChanged(UnityEditor.PlayModeStateChange state)
+        {
+            if (state == UnityEditor.PlayModeStateChange.ExitingPlayMode)
+            {
+                // Re-enable any hardware devices that were disabled during testing
+                if (_disabledDevices.Count > 0)
+                {
+                    Debug.Log("[InputInjector] Exiting play mode - restoring hardware input devices");
+                    EnableHardwareInput();
+                }
+            }
+        }
+#endif
 
         /// <summary>
         /// Gets a working mouse device, creating a virtual one if necessary.
@@ -448,7 +470,8 @@ namespace ODDGames.UIAutomation
                 else
                 {
                     // World space or camera space canvas
-                    Camera cam = canvas?.worldCamera ?? Camera.main;
+                    Camera cam = (canvas != null) ? canvas.worldCamera : null;
+                    if (cam == null) cam = Camera.main;
                     return cam != null ? RectTransformUtility.WorldToScreenPoint(cam, center) : (Vector2)center;
                 }
             }
@@ -529,6 +552,20 @@ namespace ODDGames.UIAutomation
             }
 
             return Rect.zero;
+        }
+
+        /// <summary>
+        /// Gets a screen position on the GameObject that is not occluded by other UI elements.
+        /// Currently returns center position - occlusion detection is planned for future versions.
+        /// </summary>
+        /// <param name="go">The target GameObject to click</param>
+        /// <param name="gridSize">Number of sample points per axis (unused, reserved for future)</param>
+        /// <returns>A screen position that should successfully hit the target element</returns>
+        public static Vector2 GetClearClickPosition(GameObject go, int gridSize = 5)
+        {
+            // TODO: Implement occlusion detection
+            // For now, just return center position
+            return GetScreenPosition(go);
         }
 
         #region High-Level Action Helpers
@@ -1017,23 +1054,23 @@ namespace ODDGames.UIAutomation
             // Use MouseState struct for complete state control
             var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
 
-            // Move mouse to position
+            // Move mouse to position first (2 frames to ensure UI updates)
             InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update(); // Force event processing
-            await Async.DelayFrames(1);
+            InputSystem.Update();
+            await Async.DelayFrames(2);
 
-            // Mouse button down
+            // Mouse button down - hold for 2 frames to ensure registration
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update(); // Force event processing
-            await Async.DelayFrames(1);
+            InputSystem.Update();
+            await Async.DelayFrames(2);
 
             // Mouse button up
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update(); // Force event processing
+            InputSystem.Update();
             LogDebug("InjectPointerTap complete");
-            await Async.DelayFrames(1);
+            await Async.DelayFrames(2);
         }
 
         /// <summary>
@@ -1209,9 +1246,10 @@ namespace ODDGames.UIAutomation
                 touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
                 InputSystem.QueueEvent(beginPtr);
             }
-            InputSystem.Update(); // Force event processing
+            InputSystem.Update();
 
-            await Async.DelayFrames(1);
+            // Hold touch for 2 frames to ensure UI registers it
+            await Async.DelayFrames(2);
 
             // Touch ended (tap is just began + ended at same position)
             using (StateEvent.From(touchscreen, out var endPtr))
@@ -1223,9 +1261,10 @@ namespace ODDGames.UIAutomation
                 touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
                 InputSystem.QueueEvent(endPtr);
             }
-            InputSystem.Update(); // Force event processing
+            InputSystem.Update();
 
-            await Async.DelayFrames(1);
+            // Wait for UI to process the click
+            await Async.DelayFrames(2);
         }
 
         /// <summary>
