@@ -12,7 +12,6 @@ namespace ODDGames.UIAutomation
 {
     /// <summary>
     /// Base class for UI automation tests. Provides:
-    /// - Test data restoration via RestoreGameState()
     /// - Configurable recovery for handling dialogs/obstacles
     /// - Unobserved exception capture
     /// - Automatic test instability detection when recovery was needed
@@ -26,7 +25,7 @@ namespace ODDGames.UIAutomation
     ///     [Test]
     ///     public async Task TestSomething()
     ///     {
-    ///         await RestoreGameState("TestData/SaveGame");
+    ///         await LoadTestData("TestData/SaveGame");
     ///         await LoadScene("MainMenu");
     ///         await Click(Name("StartButton"));
     ///     }
@@ -192,22 +191,6 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Restores game state from a test data zip file.
-        /// The zip can contain:
-        /// - files/ folder: extracted to persistentDataPath
-        /// - playerprefs.json: restored to PlayerPrefs
-        ///
-        /// Call this BEFORE loading the scene to ensure state is restored before scene initialization.
-        /// </summary>
-        /// <param name="resourcePath">Path relative to Resources folder, without extension (e.g., "TestData/SaveGame")</param>
-        /// <param name="clearExistingFiles">If true, clears existing files in persistentDataPath before loading (default true)</param>
-        protected async Task RestoreGameState(string resourcePath, bool clearExistingFiles = true)
-        {
-            await ActionExecutor.LoadTestData(resourcePath, clearExistingFiles);
-            LogPersistentDataState();
-        }
-
-        /// <summary>
         /// Clears all files in Application.persistentDataPath.
         /// Does not clear PlayerPrefs (to avoid breaking Unity systems like Addressables).
         /// </summary>
@@ -315,48 +298,6 @@ namespace ODDGames.UIAutomation
         /// Gets the explanation of what recovery actions were taken.
         /// </summary>
         protected string RecoveryReason => ActionExecutor.RecoveryExplanation;
-
-        /// <summary>
-        /// Logs the current persistent data state (files and PlayerPrefs).
-        /// </summary>
-        private void LogPersistentDataState()
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("[UITestBase] === Persistent Data State ===");
-
-            // Log files
-            var path = Application.persistentDataPath;
-            sb.AppendLine($"Path: {path}");
-
-            if (System.IO.Directory.Exists(path))
-            {
-                var files = System.IO.Directory.GetFiles(path, "*", System.IO.SearchOption.AllDirectories);
-                sb.AppendLine($"Files ({files.Length}):");
-                foreach (var file in files)
-                {
-                    var info = new System.IO.FileInfo(file);
-                    var relativePath = file.Replace(path, "").TrimStart('\\', '/');
-                    var size = FormatFileSize(info.Length);
-                    sb.AppendLine($"  {relativePath} ({size})");
-                }
-            }
-            else
-            {
-                sb.AppendLine("  (directory does not exist)");
-            }
-
-            // Note: Unity doesn't provide a way to enumerate all PlayerPrefs keys
-            sb.AppendLine("PlayerPrefs: (cannot enumerate - use Editor menu to capture known keys)");
-
-            Debug.Log(sb.ToString());
-        }
-
-        private static string FormatFileSize(long bytes)
-        {
-            if (bytes < 1024) return $"{bytes} B";
-            if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-            return $"{bytes / (1024.0 * 1024.0):F1} MB";
-        }
 
         /// <summary>
         /// Gets the persistent data path for the current platform.
