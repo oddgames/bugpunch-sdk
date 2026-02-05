@@ -1,11 +1,9 @@
-using System.Collections;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
-using UnityEngine.TestTools;
 using UnityEngine.UI;
-using Cysharp.Threading.Tasks;
 using TMPro;
 using ODDGames.UIAutomation;
 
@@ -61,135 +59,108 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Unity Type Value Properties
 
-        [UnityTest]
-        public IEnumerator Vector3Value_ReturnsAnchoredPosition3D()
+        [Test]
+        public async Task Vector3Value_ReturnsAnchoredPosition3D()
         {
-            return UniTask.ToCoroutine(async () =>
+            var btn = CreateButton("TestBtn", new Vector2(100, 50));
+
+            await Async.DelayFrames(1);
+
+            var value = new Search().Name("TestBtn").Vector3Value;
+            Assert.AreEqual(100, value.x, 0.1f, "X should match");
+            Assert.AreEqual(50, value.y, 0.1f, "Y should match");
+        }
+
+        [Test]
+        public async Task Vector3Value_ThrowsWhenNotFound()
+        {
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.InvalidOperationException>(() =>
             {
-                var btn = CreateButton("TestBtn", new Vector2(100, 50));
-
-                await UniTask.Yield();
-
-                var value = new Search().Name("TestBtn").Vector3Value;
-                Assert.AreEqual(100, value.x, 0.1f, "X should match");
-                Assert.AreEqual(50, value.y, 0.1f, "Y should match");
+                var _ = new Search().Name("NonExistent").Vector3Value;
             });
         }
 
-        [UnityTest]
-        public IEnumerator Vector3Value_ThrowsWhenNotFound()
+        [Test]
+        public async Task Vector2Value_ReturnsAnchoredPosition()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            var btn = CreateButton("TestBtn2", new Vector2(-75, 120));
 
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    var _ = new Search().Name("NonExistent").Vector3Value;
-                });
+            await Async.DelayFrames(1);
+
+            var value = new Search().Name("TestBtn2").Vector2Value;
+            Assert.AreEqual(-75, value.x, 0.1f, "X should match");
+            Assert.AreEqual(120, value.y, 0.1f, "Y should match");
+        }
+
+        [Test]
+        public async Task Vector2Value_ThrowsWhenNotFound()
+        {
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.InvalidOperationException>(() =>
+            {
+                var _ = new Search().Name("NonExistent").Vector2Value;
             });
         }
 
-        [UnityTest]
-        public IEnumerator Vector2Value_ReturnsAnchoredPosition()
+        [Test]
+        public async Task ColorValue_ReturnsImageColor()
         {
-            return UniTask.ToCoroutine(async () =>
+            var btn = CreateButton("ColorBtn", Vector2.zero);
+            var image = btn.GetComponent<Image>();
+            image.color = Color.red;
+
+            await Async.DelayFrames(1);
+
+            var value = new Search().Name("ColorBtn").ColorValue;
+            Assert.AreEqual(Color.red, value, "Should return image color");
+        }
+
+        [Test]
+        public async Task ColorValue_ReturnsTextColor()
+        {
+            var text = CreateTMPText("ColorText", "Hello", Vector2.zero);
+            text.color = Color.blue;
+
+            await Async.DelayFrames(1);
+
+            var value = new Search().Name("ColorText").ColorValue;
+            Assert.AreEqual(Color.blue, value, "Should return text color");
+        }
+
+        [Test]
+        public async Task ColorValue_ThrowsWhenNotFound()
+        {
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.InvalidOperationException>(() =>
             {
-                var btn = CreateButton("TestBtn2", new Vector2(-75, 120));
-
-                await UniTask.Yield();
-
-                var value = new Search().Name("TestBtn2").Vector2Value;
-                Assert.AreEqual(-75, value.x, 0.1f, "X should match");
-                Assert.AreEqual(120, value.y, 0.1f, "Y should match");
+                var _ = new Search().Name("NonExistent").ColorValue;
             });
         }
 
-        [UnityTest]
-        public IEnumerator Vector2Value_ThrowsWhenNotFound()
+        [Test]
+        public async Task QuaternionValue_ReturnsRotation()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            var btn = CreateButton("RotatedBtn", Vector2.zero);
+            btn.transform.rotation = Quaternion.Euler(0, 0, 45);
 
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    var _ = new Search().Name("NonExistent").Vector2Value;
-                });
-            });
+            await Async.DelayFrames(1);
+
+            var value = new Search().Name("RotatedBtn").QuaternionValue;
+            Assert.AreEqual(45, value.eulerAngles.z, 0.1f, "Z rotation should be 45 degrees");
         }
 
-        [UnityTest]
-        public IEnumerator ColorValue_ReturnsImageColor()
+        [Test]
+        public async Task QuaternionValue_ThrowsWhenNotFound()
         {
-            return UniTask.ToCoroutine(async () =>
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.InvalidOperationException>(() =>
             {
-                var btn = CreateButton("ColorBtn", Vector2.zero);
-                var image = btn.GetComponent<Image>();
-                image.color = Color.red;
-
-                await UniTask.Yield();
-
-                var value = new Search().Name("ColorBtn").ColorValue;
-                Assert.AreEqual(Color.red, value, "Should return image color");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator ColorValue_ReturnsTextColor()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var text = CreateTMPText("ColorText", "Hello", Vector2.zero);
-                text.color = Color.blue;
-
-                await UniTask.Yield();
-
-                var value = new Search().Name("ColorText").ColorValue;
-                Assert.AreEqual(Color.blue, value, "Should return text color");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator ColorValue_ThrowsWhenNotFound()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    var _ = new Search().Name("NonExistent").ColorValue;
-                });
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator QuaternionValue_ReturnsRotation()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn = CreateButton("RotatedBtn", Vector2.zero);
-                btn.transform.rotation = Quaternion.Euler(0, 0, 45);
-
-                await UniTask.Yield();
-
-                var value = new Search().Name("RotatedBtn").QuaternionValue;
-                Assert.AreEqual(45, value.eulerAngles.z, 0.1f, "Z rotation should be 45 degrees");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator QuaternionValue_ThrowsWhenNotFound()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    var _ = new Search().Name("NonExistent").QuaternionValue;
-                });
+                var _ = new Search().Name("NonExistent").QuaternionValue;
             });
         }
 
@@ -197,62 +168,50 @@ namespace ODDGames.UIAutomation.Tests
 
         #region ScreenCenter and ScreenBounds
 
-        [UnityTest]
-        public IEnumerator ScreenCenter_ReturnsValidPosition()
+        [Test]
+        public async Task ScreenCenter_ReturnsValidPosition()
         {
-            return UniTask.ToCoroutine(async () =>
+            var btn = CreateButton("CenterBtn", Vector2.zero);
+
+            await Async.DelayFrames(1);
+
+            var center = new Search().Name("CenterBtn").ScreenCenter;
+            Assert.Greater(center.x, 0, "X should be positive");
+            Assert.Greater(center.y, 0, "Y should be positive");
+        }
+
+        [Test]
+        public async Task ScreenCenter_ThrowsWhenNotFound()
+        {
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.InvalidOperationException>(() =>
             {
-                var btn = CreateButton("CenterBtn", Vector2.zero);
-
-                await UniTask.Yield();
-
-                var center = new Search().Name("CenterBtn").ScreenCenter;
-                Assert.Greater(center.x, 0, "X should be positive");
-                Assert.Greater(center.y, 0, "Y should be positive");
+                var _ = new Search().Name("NonExistent").ScreenCenter;
             });
         }
 
-        [UnityTest]
-        public IEnumerator ScreenCenter_ThrowsWhenNotFound()
+        [Test]
+        public async Task ScreenBounds_ReturnsValidRect()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            var btn = CreateButton("BoundsBtn", Vector2.zero);
+            btn.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 50);
 
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    var _ = new Search().Name("NonExistent").ScreenCenter;
-                });
-            });
+            await Async.DelayFrames(1);
+
+            var bounds = new Search().Name("BoundsBtn").ScreenBounds;
+            Assert.Greater(bounds.width, 0, "Width should be positive");
+            Assert.Greater(bounds.height, 0, "Height should be positive");
         }
 
-        [UnityTest]
-        public IEnumerator ScreenBounds_ReturnsValidRect()
+        [Test]
+        public async Task ScreenBounds_ThrowsWhenNotFound()
         {
-            return UniTask.ToCoroutine(async () =>
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.InvalidOperationException>(() =>
             {
-                var btn = CreateButton("BoundsBtn", Vector2.zero);
-                btn.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 50);
-
-                await UniTask.Yield();
-
-                var bounds = new Search().Name("BoundsBtn").ScreenBounds;
-                Assert.Greater(bounds.width, 0, "Width should be positive");
-                Assert.Greater(bounds.height, 0, "Height should be positive");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator ScreenBounds_ThrowsWhenNotFound()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    var _ = new Search().Name("NonExistent").ScreenBounds;
-                });
+                var _ = new Search().Name("NonExistent").ScreenBounds;
             });
         }
 
@@ -260,61 +219,49 @@ namespace ODDGames.UIAutomation.Tests
 
         #region WorldPosition and WorldBounds
 
-        [UnityTest]
-        public IEnumerator WorldPosition_ReturnsTransformPosition()
+        [Test]
+        public async Task WorldPosition_ReturnsTransformPosition()
         {
-            return UniTask.ToCoroutine(async () =>
+            var btn = CreateButton("WorldBtn", Vector2.zero);
+
+            await Async.DelayFrames(1);
+
+            var pos = new Search().Name("WorldBtn").WorldPosition;
+            // In screen space overlay, world position is based on canvas transform
+            Assert.IsNotNull(pos, "Should return a position");
+        }
+
+        [Test]
+        public async Task WorldPosition_ThrowsWhenNotFound()
+        {
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.InvalidOperationException>(() =>
             {
-                var btn = CreateButton("WorldBtn", Vector2.zero);
-
-                await UniTask.Yield();
-
-                var pos = new Search().Name("WorldBtn").WorldPosition;
-                // In screen space overlay, world position is based on canvas transform
-                Assert.IsNotNull(pos, "Should return a position");
+                var _ = new Search().Name("NonExistent").WorldPosition;
             });
         }
 
-        [UnityTest]
-        public IEnumerator WorldPosition_ThrowsWhenNotFound()
+        [Test]
+        public async Task WorldBounds_ReturnsZeroSizeForUIElements()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            var btn = CreateButton("WorldBoundsBtn", Vector2.zero);
 
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    var _ = new Search().Name("NonExistent").WorldPosition;
-                });
-            });
+            await Async.DelayFrames(1);
+
+            // UI elements without Renderer/Collider return zero-size bounds at position
+            var bounds = new Search().Name("WorldBoundsBtn").WorldBounds;
+            Assert.AreEqual(Vector3.zero, bounds.size, "UI elements without Renderer should have zero size bounds");
         }
 
-        [UnityTest]
-        public IEnumerator WorldBounds_ReturnsZeroSizeForUIElements()
+        [Test]
+        public async Task WorldBounds_ThrowsWhenNotFound()
         {
-            return UniTask.ToCoroutine(async () =>
+            await Async.DelayFrames(1);
+
+            Assert.Throws<System.InvalidOperationException>(() =>
             {
-                var btn = CreateButton("WorldBoundsBtn", Vector2.zero);
-
-                await UniTask.Yield();
-
-                // UI elements without Renderer/Collider return zero-size bounds at position
-                var bounds = new Search().Name("WorldBoundsBtn").WorldBounds;
-                Assert.AreEqual(Vector3.zero, bounds.size, "UI elements without Renderer should have zero size bounds");
-            });
-        }
-
-        [UnityTest]
-        public IEnumerator WorldBounds_ThrowsWhenNotFound()
-        {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
-
-                Assert.Throws<System.InvalidOperationException>(() =>
-                {
-                    var _ = new Search().Name("NonExistent").WorldBounds;
-                });
+                var _ = new Search().Name("NonExistent").WorldBounds;
             });
         }
 
@@ -322,360 +269,306 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Relative Position Tests (IsAbove, IsBelow, IsLeftOf, IsRightOf)
 
-        [UnityTest]
-        public IEnumerator IsAbove_ReturnsCorrectly()
+        [Test]
+        public async Task IsAbove_ReturnsCorrectly()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("TopBtn", new Vector2(0, 100));
-                CreateButton("BottomBtn", new Vector2(0, -100));
+            CreateButton("TopBtn", new Vector2(0, 100));
+            CreateButton("BottomBtn", new Vector2(0, -100));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var topSearch = new Search().Name("TopBtn");
-                var bottomSearch = new Search().Name("BottomBtn");
+            var topSearch = new Search().Name("TopBtn");
+            var bottomSearch = new Search().Name("BottomBtn");
 
-                Assert.IsTrue(topSearch.IsAbove(bottomSearch), "Top should be above bottom");
-                Assert.IsFalse(bottomSearch.IsAbove(topSearch), "Bottom should not be above top");
-            });
+            Assert.IsTrue(topSearch.IsAbove(bottomSearch), "Top should be above bottom");
+            Assert.IsFalse(bottomSearch.IsAbove(topSearch), "Bottom should not be above top");
         }
 
-        [UnityTest]
-        public IEnumerator IsBelow_ReturnsCorrectly()
+        [Test]
+        public async Task IsBelow_ReturnsCorrectly()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("TopBtn2", new Vector2(0, 100));
-                CreateButton("BottomBtn2", new Vector2(0, -100));
+            CreateButton("TopBtn2", new Vector2(0, 100));
+            CreateButton("BottomBtn2", new Vector2(0, -100));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var topSearch = new Search().Name("TopBtn2");
-                var bottomSearch = new Search().Name("BottomBtn2");
+            var topSearch = new Search().Name("TopBtn2");
+            var bottomSearch = new Search().Name("BottomBtn2");
 
-                Assert.IsTrue(bottomSearch.IsBelow(topSearch), "Bottom should be below top");
-                Assert.IsFalse(topSearch.IsBelow(bottomSearch), "Top should not be below bottom");
-            });
+            Assert.IsTrue(bottomSearch.IsBelow(topSearch), "Bottom should be below top");
+            Assert.IsFalse(topSearch.IsBelow(bottomSearch), "Top should not be below bottom");
         }
 
-        [UnityTest]
-        public IEnumerator IsLeftOf_ReturnsCorrectly()
+        [Test]
+        public async Task IsLeftOf_ReturnsCorrectly()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("LeftBtn", new Vector2(-100, 0));
-                CreateButton("RightBtn", new Vector2(100, 0));
+            CreateButton("LeftBtn", new Vector2(-100, 0));
+            CreateButton("RightBtn", new Vector2(100, 0));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var leftSearch = new Search().Name("LeftBtn");
-                var rightSearch = new Search().Name("RightBtn");
+            var leftSearch = new Search().Name("LeftBtn");
+            var rightSearch = new Search().Name("RightBtn");
 
-                Assert.IsTrue(leftSearch.IsLeftOf(rightSearch), "Left should be left of right");
-                Assert.IsFalse(rightSearch.IsLeftOf(leftSearch), "Right should not be left of left");
-            });
+            Assert.IsTrue(leftSearch.IsLeftOf(rightSearch), "Left should be left of right");
+            Assert.IsFalse(rightSearch.IsLeftOf(leftSearch), "Right should not be left of left");
         }
 
-        [UnityTest]
-        public IEnumerator IsRightOf_ReturnsCorrectly()
+        [Test]
+        public async Task IsRightOf_ReturnsCorrectly()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("LeftBtn2", new Vector2(-100, 0));
-                CreateButton("RightBtn2", new Vector2(100, 0));
+            CreateButton("LeftBtn2", new Vector2(-100, 0));
+            CreateButton("RightBtn2", new Vector2(100, 0));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var leftSearch = new Search().Name("LeftBtn2");
-                var rightSearch = new Search().Name("RightBtn2");
+            var leftSearch = new Search().Name("LeftBtn2");
+            var rightSearch = new Search().Name("RightBtn2");
 
-                Assert.IsTrue(rightSearch.IsRightOf(leftSearch), "Right should be right of left");
-                Assert.IsFalse(leftSearch.IsRightOf(rightSearch), "Left should not be right of right");
-            });
+            Assert.IsTrue(rightSearch.IsRightOf(leftSearch), "Right should be right of left");
+            Assert.IsFalse(leftSearch.IsRightOf(rightSearch), "Left should not be right of right");
         }
 
         #endregion
 
         #region Distance Tests
 
-        [UnityTest]
-        public IEnumerator DistanceTo_ReturnsScreenSpaceDistance()
+        [Test]
+        public async Task DistanceTo_ReturnsScreenSpaceDistance()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("DistBtn1", new Vector2(0, 0));
-                CreateButton("DistBtn2", new Vector2(100, 0));
+            CreateButton("DistBtn1", new Vector2(0, 0));
+            CreateButton("DistBtn2", new Vector2(100, 0));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("DistBtn1");
-                var search2 = new Search().Name("DistBtn2");
+            var search1 = new Search().Name("DistBtn1");
+            var search2 = new Search().Name("DistBtn2");
 
-                var distance = search1.DistanceTo(search2);
-                Assert.Greater(distance, 0, "Distance should be positive");
-                // In screen space overlay, the distance should be roughly 100 pixels
-                Assert.AreEqual(100, distance, 10f, "Distance should be approximately 100");
-            });
+            var distance = search1.DistanceTo(search2);
+            Assert.Greater(distance, 0, "Distance should be positive");
+            // In screen space overlay, the distance should be roughly 100 pixels
+            Assert.AreEqual(100, distance, 10f, "Distance should be approximately 100");
         }
 
-        [UnityTest]
-        public IEnumerator WorldDistanceTo_ReturnsWorldSpaceDistance()
+        [Test]
+        public async Task WorldDistanceTo_ReturnsWorldSpaceDistance()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("WorldDistBtn1", new Vector2(0, 0));
-                CreateButton("WorldDistBtn2", new Vector2(100, 0));
+            CreateButton("WorldDistBtn1", new Vector2(0, 0));
+            CreateButton("WorldDistBtn2", new Vector2(100, 0));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("WorldDistBtn1");
-                var search2 = new Search().Name("WorldDistBtn2");
+            var search1 = new Search().Name("WorldDistBtn1");
+            var search2 = new Search().Name("WorldDistBtn2");
 
-                var distance = search1.WorldDistanceTo(search2);
-                Assert.Greater(distance, 0, "World distance should be positive");
-            });
+            var distance = search1.WorldDistanceTo(search2);
+            Assert.Greater(distance, 0, "World distance should be positive");
         }
 
         #endregion
 
         #region Overlap and Contains Tests
 
-        [UnityTest]
-        public IEnumerator Overlaps_ReturnsTrueForOverlappingElements()
+        [Test]
+        public async Task Overlaps_ReturnsTrueForOverlappingElements()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn1 = CreateButton("OverlapBtn1", new Vector2(0, 0));
-                btn1.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 100);
+            var btn1 = CreateButton("OverlapBtn1", new Vector2(0, 0));
+            btn1.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 100);
 
-                var btn2 = CreateButton("OverlapBtn2", new Vector2(50, 0));
-                btn2.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 100);
+            var btn2 = CreateButton("OverlapBtn2", new Vector2(50, 0));
+            btn2.GetComponent<RectTransform>().sizeDelta = new Vector2(100, 100);
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("OverlapBtn1");
-                var search2 = new Search().Name("OverlapBtn2");
+            var search1 = new Search().Name("OverlapBtn1");
+            var search2 = new Search().Name("OverlapBtn2");
 
-                Assert.IsTrue(search1.Overlaps(search2), "Elements should overlap");
-                Assert.IsTrue(search2.Overlaps(search1), "Overlap should be symmetric");
-            });
+            Assert.IsTrue(search1.Overlaps(search2), "Elements should overlap");
+            Assert.IsTrue(search2.Overlaps(search1), "Overlap should be symmetric");
         }
 
-        [UnityTest]
-        public IEnumerator Overlaps_ReturnsFalseForSeparateElements()
+        [Test]
+        public async Task Overlaps_ReturnsFalseForSeparateElements()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn1 = CreateButton("SepBtn1", new Vector2(-200, 0));
-                btn1.GetComponent<RectTransform>().sizeDelta = new Vector2(50, 50);
+            var btn1 = CreateButton("SepBtn1", new Vector2(-200, 0));
+            btn1.GetComponent<RectTransform>().sizeDelta = new Vector2(50, 50);
 
-                var btn2 = CreateButton("SepBtn2", new Vector2(200, 0));
-                btn2.GetComponent<RectTransform>().sizeDelta = new Vector2(50, 50);
+            var btn2 = CreateButton("SepBtn2", new Vector2(200, 0));
+            btn2.GetComponent<RectTransform>().sizeDelta = new Vector2(50, 50);
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("SepBtn1");
-                var search2 = new Search().Name("SepBtn2");
+            var search1 = new Search().Name("SepBtn1");
+            var search2 = new Search().Name("SepBtn2");
 
-                Assert.IsFalse(search1.Overlaps(search2), "Elements should not overlap");
-            });
+            Assert.IsFalse(search1.Overlaps(search2), "Elements should not overlap");
         }
 
-        [UnityTest]
-        public IEnumerator Contains_ReturnsTrueWhenFullyContained()
+        [Test]
+        public async Task Contains_ReturnsTrueWhenFullyContained()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var outer = CreateButton("OuterBtn", new Vector2(0, 0));
-                outer.GetComponent<RectTransform>().sizeDelta = new Vector2(200, 200);
+            var outer = CreateButton("OuterBtn", new Vector2(0, 0));
+            outer.GetComponent<RectTransform>().sizeDelta = new Vector2(200, 200);
 
-                var inner = CreateButton("InnerBtn", new Vector2(0, 0));
-                inner.GetComponent<RectTransform>().sizeDelta = new Vector2(50, 50);
+            var inner = CreateButton("InnerBtn", new Vector2(0, 0));
+            inner.GetComponent<RectTransform>().sizeDelta = new Vector2(50, 50);
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var outerSearch = new Search().Name("OuterBtn");
-                var innerSearch = new Search().Name("InnerBtn");
+            var outerSearch = new Search().Name("OuterBtn");
+            var innerSearch = new Search().Name("InnerBtn");
 
-                Assert.IsTrue(outerSearch.Contains(innerSearch), "Outer should contain inner");
-                Assert.IsFalse(innerSearch.Contains(outerSearch), "Inner should not contain outer");
-            });
+            Assert.IsTrue(outerSearch.Contains(innerSearch), "Outer should contain inner");
+            Assert.IsFalse(innerSearch.Contains(outerSearch), "Inner should not contain outer");
         }
 
-        [UnityTest]
-        public IEnumerator WorldIntersects_ReturnsTrueForIntersectingBounds()
+        [Test]
+        public async Task WorldIntersects_ReturnsTrueForIntersectingBounds()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                // UI elements without Renderer have zero-size world bounds at their position
-                // Both at same position means they intersect
-                var btn1 = CreateButton("WorldIntBtn1", new Vector2(0, 0));
-                var btn2 = CreateButton("WorldIntBtn2", new Vector2(0, 0));
+            // UI elements without Renderer have zero-size world bounds at their position
+            // Both at same position means they intersect
+            var btn1 = CreateButton("WorldIntBtn1", new Vector2(0, 0));
+            var btn2 = CreateButton("WorldIntBtn2", new Vector2(0, 0));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("WorldIntBtn1");
-                var search2 = new Search().Name("WorldIntBtn2");
+            var search1 = new Search().Name("WorldIntBtn1");
+            var search2 = new Search().Name("WorldIntBtn2");
 
-                // Zero-size bounds at same position still intersect
-                Assert.IsTrue(search1.WorldIntersects(search2), "Bounds at same position should intersect");
-            });
+            // Zero-size bounds at same position still intersect
+            Assert.IsTrue(search1.WorldIntersects(search2), "Bounds at same position should intersect");
         }
 
-        [UnityTest]
-        public IEnumerator WorldContains_ReturnsTrueWhenFullyContained()
+        [Test]
+        public async Task WorldContains_ReturnsTrueWhenFullyContained()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                // For UI elements without Renderer, WorldBounds returns zero-size at position
-                // A point contains itself
-                var btn1 = CreateButton("WorldContBtn1", new Vector2(0, 0));
-                var btn2 = CreateButton("WorldContBtn2", new Vector2(0, 0));
+            // For UI elements without Renderer, WorldBounds returns zero-size at position
+            // A point contains itself
+            var btn1 = CreateButton("WorldContBtn1", new Vector2(0, 0));
+            var btn2 = CreateButton("WorldContBtn2", new Vector2(0, 0));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("WorldContBtn1");
-                var search2 = new Search().Name("WorldContBtn2");
+            var search1 = new Search().Name("WorldContBtn1");
+            var search2 = new Search().Name("WorldContBtn2");
 
-                // Zero-size bounds at same point - they contain each other
-                Assert.IsTrue(search1.WorldContains(search2), "Point should contain point at same location");
-            });
+            // Zero-size bounds at same point - they contain each other
+            Assert.IsTrue(search1.WorldContains(search2), "Point should contain point at same location");
         }
 
         #endregion
 
         #region Alignment Tests
 
-        [UnityTest]
-        public IEnumerator IsHorizontallyAligned_ReturnsTrueForSameY()
+        [Test]
+        public async Task IsHorizontallyAligned_ReturnsTrueForSameY()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("HAlignBtn1", new Vector2(-100, 50));
-                CreateButton("HAlignBtn2", new Vector2(100, 50));
+            CreateButton("HAlignBtn1", new Vector2(-100, 50));
+            CreateButton("HAlignBtn2", new Vector2(100, 50));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("HAlignBtn1");
-                var search2 = new Search().Name("HAlignBtn2");
+            var search1 = new Search().Name("HAlignBtn1");
+            var search2 = new Search().Name("HAlignBtn2");
 
-                Assert.IsTrue(search1.IsHorizontallyAligned(search2), "Elements at same Y should be horizontally aligned");
-            });
+            Assert.IsTrue(search1.IsHorizontallyAligned(search2), "Elements at same Y should be horizontally aligned");
         }
 
-        [UnityTest]
-        public IEnumerator IsHorizontallyAligned_ReturnsFalseForDifferentY()
+        [Test]
+        public async Task IsHorizontallyAligned_ReturnsFalseForDifferentY()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("HMisalignBtn1", new Vector2(-100, 100));
-                CreateButton("HMisalignBtn2", new Vector2(100, -100));
+            CreateButton("HMisalignBtn1", new Vector2(-100, 100));
+            CreateButton("HMisalignBtn2", new Vector2(100, -100));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("HMisalignBtn1");
-                var search2 = new Search().Name("HMisalignBtn2");
+            var search1 = new Search().Name("HMisalignBtn1");
+            var search2 = new Search().Name("HMisalignBtn2");
 
-                Assert.IsFalse(search1.IsHorizontallyAligned(search2), "Elements at different Y should not be horizontally aligned");
-            });
+            Assert.IsFalse(search1.IsHorizontallyAligned(search2), "Elements at different Y should not be horizontally aligned");
         }
 
-        [UnityTest]
-        public IEnumerator IsVerticallyAligned_ReturnsTrueForSameX()
+        [Test]
+        public async Task IsVerticallyAligned_ReturnsTrueForSameX()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("VAlignBtn1", new Vector2(50, 100));
-                CreateButton("VAlignBtn2", new Vector2(50, -100));
+            CreateButton("VAlignBtn1", new Vector2(50, 100));
+            CreateButton("VAlignBtn2", new Vector2(50, -100));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("VAlignBtn1");
-                var search2 = new Search().Name("VAlignBtn2");
+            var search1 = new Search().Name("VAlignBtn1");
+            var search2 = new Search().Name("VAlignBtn2");
 
-                Assert.IsTrue(search1.IsVerticallyAligned(search2), "Elements at same X should be vertically aligned");
-            });
+            Assert.IsTrue(search1.IsVerticallyAligned(search2), "Elements at same X should be vertically aligned");
         }
 
-        [UnityTest]
-        public IEnumerator IsVerticallyAligned_ReturnsFalseForDifferentX()
+        [Test]
+        public async Task IsVerticallyAligned_ReturnsFalseForDifferentX()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("VMisalignBtn1", new Vector2(-100, 100));
-                CreateButton("VMisalignBtn2", new Vector2(100, -100));
+            CreateButton("VMisalignBtn1", new Vector2(-100, 100));
+            CreateButton("VMisalignBtn2", new Vector2(100, -100));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("VMisalignBtn1");
-                var search2 = new Search().Name("VMisalignBtn2");
+            var search1 = new Search().Name("VMisalignBtn1");
+            var search2 = new Search().Name("VMisalignBtn2");
 
-                Assert.IsFalse(search1.IsVerticallyAligned(search2), "Elements at different X should not be vertically aligned");
-            });
+            Assert.IsFalse(search1.IsVerticallyAligned(search2), "Elements at different X should not be vertically aligned");
         }
 
-        [UnityTest]
-        public IEnumerator IsHorizontallyAligned_RespectsCustomTolerance()
+        [Test]
+        public async Task IsHorizontallyAligned_RespectsCustomTolerance()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("TolBtn1", new Vector2(0, 50));
-                CreateButton("TolBtn2", new Vector2(0, 55));
+            CreateButton("TolBtn1", new Vector2(0, 50));
+            CreateButton("TolBtn2", new Vector2(0, 55));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("TolBtn1");
-                var search2 = new Search().Name("TolBtn2");
+            var search1 = new Search().Name("TolBtn1");
+            var search2 = new Search().Name("TolBtn2");
 
-                // Default tolerance is 10, so 5 pixel difference should pass
-                Assert.IsTrue(search1.IsHorizontallyAligned(search2, 10f), "Should be aligned with 10px tolerance");
-                // 2 pixel tolerance should fail for 5 pixel difference
-                Assert.IsFalse(search1.IsHorizontallyAligned(search2, 2f), "Should not be aligned with 2px tolerance");
-            });
+            // Default tolerance is 10, so 5 pixel difference should pass
+            Assert.IsTrue(search1.IsHorizontallyAligned(search2, 10f), "Should be aligned with 10px tolerance");
+            // 2 pixel tolerance should fail for 5 pixel difference
+            Assert.IsFalse(search1.IsHorizontallyAligned(search2, 2f), "Should not be aligned with 2px tolerance");
         }
 
         #endregion
 
         #region 3D Depth Tests (IsInFrontOf, IsBehind)
 
-        [UnityTest]
-        public IEnumerator IsInFrontOf_WithUIElements()
+        [Test]
+        public async Task IsInFrontOf_WithUIElements()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                // UI elements in screen space overlay are at same Z, so this tests the fallback behavior
-                CreateButton("FrontBtn", Vector2.zero);
-                CreateButton("BackBtn", Vector2.zero);
+            // UI elements in screen space overlay are at same Z, so this tests the fallback behavior
+            CreateButton("FrontBtn", Vector2.zero);
+            CreateButton("BackBtn", Vector2.zero);
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var frontSearch = new Search().Name("FrontBtn");
-                var backSearch = new Search().Name("BackBtn");
+            var frontSearch = new Search().Name("FrontBtn");
+            var backSearch = new Search().Name("BackBtn");
 
-                // Both at same position, so neither is in front
-                // This tests that the method doesn't throw
-                var result = frontSearch.IsInFrontOf(backSearch);
-                Assert.IsTrue(result || !result, "Should return a boolean value");
-            });
+            // Both at same position, so neither is in front
+            // This tests that the method doesn't throw
+            var result = frontSearch.IsInFrontOf(backSearch);
+            Assert.IsTrue(result || !result, "Should return a boolean value");
         }
 
-        [UnityTest]
-        public IEnumerator IsBehind_IsOppositeOfIsInFrontOf()
+        [Test]
+        public async Task IsBehind_IsOppositeOfIsInFrontOf()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                CreateButton("TestBtn1", new Vector2(-50, 0));
-                CreateButton("TestBtn2", new Vector2(50, 0));
+            CreateButton("TestBtn1", new Vector2(-50, 0));
+            CreateButton("TestBtn2", new Vector2(50, 0));
 
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var search1 = new Search().Name("TestBtn1");
-                var search2 = new Search().Name("TestBtn2");
+            var search1 = new Search().Name("TestBtn1");
+            var search2 = new Search().Name("TestBtn2");
 
-                // IsBehind should be opposite of IsInFrontOf
-                Assert.AreNotEqual(search1.IsInFrontOf(search2), search1.IsBehind(search2),
-                    "IsBehind should be opposite of IsInFrontOf");
-            });
+            // IsBehind should be opposite of IsInFrontOf
+            Assert.AreNotEqual(search1.IsInFrontOf(search2), search1.IsBehind(search2),
+                "IsBehind should be opposite of IsInFrontOf");
         }
 
         #endregion

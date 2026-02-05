@@ -450,20 +450,20 @@ namespace ODDGames.UIAutomation.AI
                     case DragAction drag:
                         {
                             var fromSearch = RequireSearch(drag.FromSearch, "Drag");
-                            var fromResult = await fromSearch.Resolve(DefaultSearchTime);
-                            if (!fromResult.Found)
+                            var fromElement = await fromSearch.Find(DefaultSearchTime);
+                            if (fromElement == null)
                                 throw new InvalidOperationException("Could not find element for 'from' search");
-                            var startPos = InputInjector.GetScreenPosition(fromResult.Element);
+                            var startPos = InputInjector.GetScreenPosition(fromElement);
 
                             if (drag.ToSearch != null)
                             {
                                 var toSearch = drag.ToSearch.ToSearch();
                                 if (toSearch == null)
                                     throw new InvalidOperationException("Invalid 'to' search query");
-                                var toResult = await toSearch.Resolve(DefaultSearchTime);
-                                if (!toResult.Found)
+                                var toElement = await toSearch.Find(DefaultSearchTime);
+                                if (toElement == null)
                                     throw new InvalidOperationException("Could not find element for 'to' search");
-                                var endPos = InputInjector.GetScreenPosition(toResult.Element);
+                                var endPos = InputInjector.GetScreenPosition(toElement);
                                 await ActionExecutor.DragFromTo(startPos, endPos, drag.Duration);
                             }
                             else if (!string.IsNullOrEmpty(drag.Direction))
@@ -482,10 +482,10 @@ namespace ODDGames.UIAutomation.AI
                     case ScrollAction scroll:
                         {
                             var scrollSearch = RequireSearch(scroll.Search, "Scroll");
-                            var result = await scrollSearch.Resolve(DefaultSearchTime);
-                            if (!result.Found)
+                            var scrollElement = await scrollSearch.Find(DefaultSearchTime);
+                            if (scrollElement == null)
                                 throw new InvalidOperationException("Could not find element for scroll");
-                            var screenPos = InputInjector.GetScreenPosition(result.Element);
+                            var screenPos = InputInjector.GetScreenPosition(scrollElement);
                             float delta = scroll.Direction.ToLower() == "up" ? scroll.Amount : -scroll.Amount;
                             await ActionExecutor.ScrollAt(screenPos, delta);
                         }

@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.17] - 2026-02-05
+
+### Changed
+- **Case-insensitive `Name()` and `Text()` matching** - Both methods now default to `ignoreCase: true`
+  - `Name("MainMenu")` matches "mainmenu", "MAINMENU", etc.
+  - `Text("Play")` matches "play", "PLAY", etc.
+  - Opt out with `ignoreCase: false` for exact-case matching
+- **Stability-checked `Search.Find()` and `Search.FindAll()`** - Results must be consistent for 3 consecutive frames before returning
+  - Replaces the old synchronous `FindFirst()`/`FindAll()` + separate `Resolve()` pattern
+  - Results are ordered: on-screen UI elements first, then on-screen non-UI, then off-screen
+  - Logs matched elements with positions on first match for debugging
+- **Simplified `ActionExecutor` internal search** - Removed `ResolveSearch()`, `ResolveSearchAll()`, `ResolveDropdown()`, `ResolveDropdownByLabel()`, `ResolveSearch<T>()` recovery-polling methods
+  - All search logic now delegates to `Search.Find()`/`Search.FindAll()` with built-in stability checking
+  - `Click()`, `Find<T>()`, `FindAll<T>()` are simpler and more reliable
+- **`ActionScope.Fail()` uses NUnit `Assert.Fail()`** instead of throwing `UIAutomationTimeoutException` when `UNITY_INCLUDE_TESTS` is defined
+  - Provides proper test failure reporting in Unity Test Runner
+- **`Exists()` is now async** - `Search.Exists(float timeout)` returns `Task<bool>` with timeout support
+- **`Value` property restricted to Reflect paths** - For UI element searches, use `await search.Find()` instead
+- **Removed typed value properties from UI element searches** - `StringValue`, `BoolValue`, `FloatValue`, `IntValue`, `Vector3Value`, `Vector2Value`, `ColorValue`, `QuaternionValue` on UI searches removed; use `GetValue<T>()` with `await Find()` instead (Reflect paths still support `GetValue<T>()`)
+- **`EnsureSceneLoaded()` waits for stable frame rate** - New `minFps` parameter (default 20 FPS) ensures scene is ready before continuing
+- **`LoadScene()` waits for stable frame rate** - New `minFps` parameter (default 20 FPS) on `UITestBase.LoadScene()`
+- **Removed `Search.Validate()`** - Use `Exists()` or `Find()` instead
+
+### Added
+- **`Search.OrderByName()`** - Sort matches alphabetically by GameObject name (A-Z)
+- **`Search.OrderByNameDescending()`** - Sort reverse-alphabetically by name (Z-A)
+- **`Search.OrderByInstanceId()`** - Sort by Unity instance ID (ascending)
+- **`Search.OrderByInstanceIdDescending()`** - Sort by instance ID (descending)
+- **`WaitForStableFrameRate()`** - Wait until frame rate stabilizes at target FPS
+  - Configurable `minFps` (default 20), `stableFrames` (default 5), `timeout` (default 10s)
+- **`InputInjector.GetClearClickPosition()`** - Placeholder for future occlusion-aware click targeting
+- **`UITestBase.IgnoreErrorLogs`** - Virtual property (default: `true`) to ignore error/exception logs during tests via `LogAssert.ignoreFailingMessages`
+- **Play mode exit safety** - `InputInjector` re-enables hardware input devices when exiting play mode if they were disabled during testing
+- **URP/HDRP `InputVisualizer` support** - Visualization now renders on both built-in and scriptable render pipelines via `RenderPipelineManager.endCameraRendering`
+- **`InputVisualizer` early-exit optimization** - Skips rendering when no events to draw
+- **Test Runner compact mode** - Toolbar buttons adapt to narrow window widths (< 450px)
+
+### Fixed
+- **Input click reliability** - `InjectPointerTap` and `InjectTouchTap` now hold each state for 2 frames instead of 1, improving click registration on complex UIs
+- **Camera fallback for world-space canvas** - `GetScreenPosition()` properly falls back to `Camera.main` when `canvas.worldCamera` is null
+- **Detected recovery flow** - `RunDetectedFlows()` now uses async `Exists(0.5f)` instead of synchronous check
+
 ## [1.1.16] - 2026-02-02
 
 ### Changed

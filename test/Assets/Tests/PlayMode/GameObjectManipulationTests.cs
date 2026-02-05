@@ -1,9 +1,9 @@
-using System.Collections;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
-using Cysharp.Threading.Tasks;
+
 using ODDGames.UIAutomation;
+
 
 namespace ODDGames.UIAutomation.Tests
 {
@@ -39,222 +39,189 @@ namespace ODDGames.UIAutomation.Tests
         public void TearDown()
         {
             if (_testObject != null)
-                Object.Destroy(_testObject);
+            Object.Destroy(_testObject);
         }
 
         #region Disable/Enable Tests
 
-        [UnityTest]
-        public IEnumerator Disable_DeactivatesGameObject()
+        [Test]
+        public async Task Disable_DeactivatesGameObject()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                Assert.IsTrue(_testObject.activeSelf);
+            Assert.IsTrue(_testObject.activeSelf);
 
-                await new Search().Name("TestObject").Disable();
+            await new Search().Name("TestObject").Disable();
 
-                Assert.IsFalse(_testObject.activeSelf);
-            });
+            Assert.IsFalse(_testObject.activeSelf);
         }
 
-        [UnityTest]
-        public IEnumerator Enable_ActivatesInactiveGameObject()
+        [Test]
+        public async Task Enable_ActivatesInactiveGameObject()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                _testObject.SetActive(false);
-                Assert.IsFalse(_testObject.activeSelf);
+            _testObject.SetActive(false);
+            Assert.IsFalse(_testObject.activeSelf);
 
-                await new Search().Name("TestObject").Enable();
+            await new Search().Name("TestObject").Enable();
 
-                Assert.IsTrue(_testObject.activeSelf);
-            });
+            Assert.IsTrue(_testObject.activeSelf);
         }
 
-        [UnityTest]
-        public IEnumerator Disable_ThenEnable_RestoresState()
+        [Test]
+        public async Task Disable_ThenEnable_RestoresState()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                Assert.IsTrue(_testObject.activeSelf);
+            Assert.IsTrue(_testObject.activeSelf);
 
-                await new Search().Name("TestObject").Disable();
-                Assert.IsFalse(_testObject.activeSelf);
+            await new Search().Name("TestObject").Disable();
+            Assert.IsFalse(_testObject.activeSelf);
 
-                await new Search().Name("TestObject").Enable();
-                Assert.IsTrue(_testObject.activeSelf);
-            });
+            await new Search().Name("TestObject").Enable();
+            Assert.IsTrue(_testObject.activeSelf);
         }
 
         #endregion
 
         #region Freeze Tests
 
-        [UnityTest]
-        public IEnumerator Freeze_SetsKinematicAndZerosVelocity()
+        [Test]
+        public async Task Freeze_SetsKinematicAndZerosVelocity()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var rb = _testObject.GetComponent<Rigidbody>();
-                rb.isKinematic = false;
-                rb.linearVelocity = new Vector3(10, 0, 0);
-                rb.angularVelocity = new Vector3(0, 5, 0);
+            var rb = _testObject.GetComponent<Rigidbody>();
+            rb.isKinematic = false;
+            rb.linearVelocity = new Vector3(10, 0, 0);
+            rb.angularVelocity = new Vector3(0, 5, 0);
 
-                var state = await new Search().Name("TestObject").Freeze(includeChildren: false);
+            var state = await new Search().Name("TestObject").Freeze(includeChildren: false);
 
-                Assert.AreEqual(1, state.Count);
-                Assert.IsTrue(rb.isKinematic);
-                Assert.AreEqual(Vector3.zero, rb.linearVelocity);
-                Assert.AreEqual(Vector3.zero, rb.angularVelocity);
-            });
+            Assert.AreEqual(1, state.Count);
+            Assert.IsTrue(rb.isKinematic);
+            Assert.AreEqual(Vector3.zero, rb.linearVelocity);
+            Assert.AreEqual(Vector3.zero, rb.angularVelocity);
         }
 
-        [UnityTest]
-        public IEnumerator Freeze_WithChildren_FreezesAllRigidbodies()
+        [Test]
+        public async Task Freeze_WithChildren_FreezesAllRigidbodies()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var parentRb = _testObject.GetComponent<Rigidbody>();
-                var childRb = _childObject.GetComponent<Rigidbody>();
-                parentRb.isKinematic = false;
-                childRb.isKinematic = false;
+            var parentRb = _testObject.GetComponent<Rigidbody>();
+            var childRb = _childObject.GetComponent<Rigidbody>();
+            parentRb.isKinematic = false;
+            childRb.isKinematic = false;
 
-                var state = await new Search().Name("TestObject").Freeze(includeChildren: true);
+            var state = await new Search().Name("TestObject").Freeze(includeChildren: true);
 
-                Assert.AreEqual(2, state.Count);
-                Assert.IsTrue(parentRb.isKinematic);
-                Assert.IsTrue(childRb.isKinematic);
-            });
+            Assert.AreEqual(2, state.Count);
+            Assert.IsTrue(parentRb.isKinematic);
+            Assert.IsTrue(childRb.isKinematic);
         }
 
         #endregion
 
         #region Teleport Tests
 
-        [UnityTest]
-        public IEnumerator Teleport_MovesToPosition()
+        [Test]
+        public async Task Teleport_MovesToPosition()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                _testObject.transform.position = Vector3.zero;
-                var targetPos = new Vector3(100, 50, 200);
+            _testObject.transform.position = Vector3.zero;
+            var targetPos = new Vector3(100, 50, 200);
 
-                await new Search().Name("TestObject").Teleport(targetPos);
+            await new Search().Name("TestObject").Teleport(targetPos);
 
-                Assert.AreEqual(targetPos, _testObject.transform.position);
-            });
+            Assert.AreEqual(targetPos, _testObject.transform.position);
         }
 
-        [UnityTest]
-        public IEnumerator Teleport_MovesChildrenToo()
+        [Test]
+        public async Task Teleport_MovesChildrenToo()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                _testObject.transform.position = Vector3.zero;
-                _childObject.transform.localPosition = new Vector3(1, 0, 0);
-                var targetPos = new Vector3(100, 0, 0);
+            _testObject.transform.position = Vector3.zero;
+            _childObject.transform.localPosition = new Vector3(1, 0, 0);
+            var targetPos = new Vector3(100, 0, 0);
 
-                await new Search().Name("TestObject").Teleport(targetPos);
+            await new Search().Name("TestObject").Teleport(targetPos);
 
-                // Child should be at parent position + local offset
-                Assert.AreEqual(new Vector3(101, 0, 0), _childObject.transform.position);
-            });
+            // Child should be at parent position + local offset
+            Assert.AreEqual(new Vector3(101, 0, 0), _childObject.transform.position);
         }
 
         #endregion
 
         #region NoClip/Clip Tests
 
-        [UnityTest]
-        public IEnumerator NoClip_DisablesAllColliders()
+        [Test]
+        public async Task NoClip_DisablesAllColliders()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var parentCol = _testObject.GetComponent<BoxCollider>();
-                var childCol = _childObject.GetComponent<SphereCollider>();
-                Assert.IsTrue(parentCol.enabled);
-                Assert.IsTrue(childCol.enabled);
+            var parentCol = _testObject.GetComponent<BoxCollider>();
+            var childCol = _childObject.GetComponent<SphereCollider>();
+            Assert.IsTrue(parentCol.enabled);
+            Assert.IsTrue(childCol.enabled);
 
-                var state = await new Search().Name("TestObject").NoClip();
+            var state = await new Search().Name("TestObject").NoClip();
 
-                Assert.AreEqual(2, state.Count);
-                Assert.IsFalse(parentCol.enabled);
-                Assert.IsFalse(childCol.enabled);
-            });
+            Assert.AreEqual(2, state.Count);
+            Assert.IsFalse(parentCol.enabled);
+            Assert.IsFalse(childCol.enabled);
         }
 
-        [UnityTest]
-        public IEnumerator NoClip_WithoutChildren_OnlyDisablesRoot()
+        [Test]
+        public async Task NoClip_WithoutChildren_OnlyDisablesRoot()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var parentCol = _testObject.GetComponent<BoxCollider>();
-                var childCol = _childObject.GetComponent<SphereCollider>();
+            var parentCol = _testObject.GetComponent<BoxCollider>();
+            var childCol = _childObject.GetComponent<SphereCollider>();
 
-                var state = await new Search().Name("TestObject").NoClip(includeChildren: false);
+            var state = await new Search().Name("TestObject").NoClip(includeChildren: false);
 
-                Assert.AreEqual(1, state.Count);
-                Assert.IsFalse(parentCol.enabled);
-                Assert.IsTrue(childCol.enabled); // Child unchanged
-            });
+            Assert.AreEqual(1, state.Count);
+            Assert.IsFalse(parentCol.enabled);
+            Assert.IsTrue(childCol.enabled); // Child unchanged
         }
 
-        [UnityTest]
-        public IEnumerator Clip_EnablesAllColliders()
+        [Test]
+        public async Task Clip_EnablesAllColliders()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var parentCol = _testObject.GetComponent<BoxCollider>();
-                var childCol = _childObject.GetComponent<SphereCollider>();
-                parentCol.enabled = false;
-                childCol.enabled = false;
+            var parentCol = _testObject.GetComponent<BoxCollider>();
+            var childCol = _childObject.GetComponent<SphereCollider>();
+            parentCol.enabled = false;
+            childCol.enabled = false;
 
-                var state = await new Search().Name("TestObject").Clip();
+            var state = await new Search().Name("TestObject").Clip();
 
-                Assert.AreEqual(2, state.Count);
-                Assert.IsTrue(parentCol.enabled);
-                Assert.IsTrue(childCol.enabled);
-            });
+            Assert.AreEqual(2, state.Count);
+            Assert.IsTrue(parentCol.enabled);
+            Assert.IsTrue(childCol.enabled);
         }
 
-        [UnityTest]
-        public IEnumerator NoClip_ThenClip_RestoresColliders()
+        [Test]
+        public async Task NoClip_ThenClip_RestoresColliders()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var parentCol = _testObject.GetComponent<BoxCollider>();
-                var childCol = _childObject.GetComponent<SphereCollider>();
+            var parentCol = _testObject.GetComponent<BoxCollider>();
+            var childCol = _childObject.GetComponent<SphereCollider>();
 
-                await new Search().Name("TestObject").NoClip();
-                Assert.IsFalse(parentCol.enabled);
-                Assert.IsFalse(childCol.enabled);
+            await new Search().Name("TestObject").NoClip();
+            Assert.IsFalse(parentCol.enabled);
+            Assert.IsFalse(childCol.enabled);
 
-                await new Search().Name("TestObject").Clip();
-                Assert.IsTrue(parentCol.enabled);
-                Assert.IsTrue(childCol.enabled);
-            });
+            await new Search().Name("TestObject").Clip();
+            Assert.IsTrue(parentCol.enabled);
+            Assert.IsTrue(childCol.enabled);
         }
 
         #endregion
@@ -267,255 +234,216 @@ namespace ODDGames.UIAutomation.Tests
             public static GameObject Player;
         }
 
-        [UnityTest]
-        public IEnumerator Static_Disable_WorksOnGameObject()
+        [Test]
+        public async Task Static_Disable_WorksOnGameObject()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                TestManager.Player = _testObject;
-                Assert.IsTrue(_testObject.activeSelf);
+            TestManager.Player = _testObject;
+            Assert.IsTrue(_testObject.activeSelf);
 
-                await Search.Reflect("GameObjectManipulationTests.TestManager.Player").Disable();
+            await Search.Reflect("GameObjectManipulationTests.TestManager.Player").Disable();
 
-                Assert.IsFalse(_testObject.activeSelf);
-            });
+            Assert.IsFalse(_testObject.activeSelf);
         }
 
-        [UnityTest]
-        public IEnumerator Static_Freeze_WorksOnGameObject()
+        [Test]
+        public async Task Static_Freeze_WorksOnGameObject()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                TestManager.Player = _testObject;
-                var rb = _testObject.GetComponent<Rigidbody>();
-                rb.isKinematic = false;
+            TestManager.Player = _testObject;
+            var rb = _testObject.GetComponent<Rigidbody>();
+            rb.isKinematic = false;
 
-                await Search.Reflect("GameObjectManipulationTests.TestManager.Player").Freeze();
+            await Search.Reflect("GameObjectManipulationTests.TestManager.Player").Freeze();
 
-                Assert.IsTrue(rb.isKinematic);
-            });
+            Assert.IsTrue(rb.isKinematic);
         }
 
-        [UnityTest]
-        public IEnumerator Static_NoClip_WorksOnGameObject()
+        [Test]
+        public async Task Static_NoClip_WorksOnGameObject()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                TestManager.Player = _testObject;
-                var col = _testObject.GetComponent<BoxCollider>();
-                Assert.IsTrue(col.enabled);
+            TestManager.Player = _testObject;
+            var col = _testObject.GetComponent<BoxCollider>();
+            Assert.IsTrue(col.enabled);
 
-                await Search.Reflect("GameObjectManipulationTests.TestManager.Player").NoClip();
+            await Search.Reflect("GameObjectManipulationTests.TestManager.Player").NoClip();
 
-                Assert.IsFalse(col.enabled);
-            });
+            Assert.IsFalse(col.enabled);
         }
 
         #endregion
 
         #region Restoration Token Tests
 
-        [UnityTest]
-        public IEnumerator Disable_RestoreToken_RestoresState()
+        [Test]
+        public async Task Disable_RestoreToken_RestoresState()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                Assert.IsTrue(_testObject.activeSelf);
+            Assert.IsTrue(_testObject.activeSelf);
 
-                var state = await new Search().Name("TestObject").Disable();
-                Assert.IsFalse(_testObject.activeSelf);
+            var state = await new Search().Name("TestObject").Disable();
+            Assert.IsFalse(_testObject.activeSelf);
 
-                state.Restore();
-                Assert.IsTrue(_testObject.activeSelf);
-            });
+            state.Restore();
+            Assert.IsTrue(_testObject.activeSelf);
         }
 
-        [UnityTest]
-        public IEnumerator Enable_RestoreToken_RestoresState()
+        [Test]
+        public async Task Enable_RestoreToken_RestoresState()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                _testObject.SetActive(false);
+            _testObject.SetActive(false);
 
-                var state = await new Search().Name("TestObject").Enable();
-                Assert.IsTrue(_testObject.activeSelf);
+            var state = await new Search().Name("TestObject").Enable();
+            Assert.IsTrue(_testObject.activeSelf);
 
-                state.Restore();
-                Assert.IsFalse(_testObject.activeSelf); // Back to original
-            });
+            state.Restore();
+            Assert.IsFalse(_testObject.activeSelf); // Back to original
         }
 
-        [UnityTest]
-        public IEnumerator Freeze_RestoreToken_RestoresVelocityAndKinematic()
+        [Test]
+        public async Task Freeze_RestoreToken_RestoresVelocityAndKinematic()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var rb = _testObject.GetComponent<Rigidbody>();
-                rb.isKinematic = false;
-                var originalVelocity = new Vector3(10, 5, 0);
-                rb.linearVelocity = originalVelocity;
+            var rb = _testObject.GetComponent<Rigidbody>();
+            rb.isKinematic = false;
+            var originalVelocity = new Vector3(10, 5, 0);
+            rb.linearVelocity = originalVelocity;
 
-                var state = await new Search().Name("TestObject").Freeze(includeChildren: false);
-                Assert.IsTrue(rb.isKinematic);
-                Assert.AreEqual(Vector3.zero, rb.linearVelocity);
+            var state = await new Search().Name("TestObject").Freeze(includeChildren: false);
+            Assert.IsTrue(rb.isKinematic);
+            Assert.AreEqual(Vector3.zero, rb.linearVelocity);
 
-                state.Restore();
-                Assert.IsFalse(rb.isKinematic);
-                Assert.AreEqual(originalVelocity, rb.linearVelocity);
-            });
+            state.Restore();
+            Assert.IsFalse(rb.isKinematic);
+            Assert.AreEqual(originalVelocity, rb.linearVelocity);
         }
 
-        [UnityTest]
-        public IEnumerator NoClip_RestoreToken_RestoresColliderState()
+        [Test]
+        public async Task NoClip_RestoreToken_RestoresColliderState()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var parentCol = _testObject.GetComponent<BoxCollider>();
-                var childCol = _childObject.GetComponent<SphereCollider>();
-                // Child already disabled before NoClip
-                childCol.enabled = false;
+            var parentCol = _testObject.GetComponent<BoxCollider>();
+            var childCol = _childObject.GetComponent<SphereCollider>();
+            // Child already disabled before NoClip
+            childCol.enabled = false;
 
-                var state = await new Search().Name("TestObject").NoClip();
-                Assert.IsFalse(parentCol.enabled);
-                Assert.IsFalse(childCol.enabled);
+            var state = await new Search().Name("TestObject").NoClip();
+            Assert.IsFalse(parentCol.enabled);
+            Assert.IsFalse(childCol.enabled);
 
-                state.Restore();
-                Assert.IsTrue(parentCol.enabled);   // Was enabled, restored to enabled
-                Assert.IsFalse(childCol.enabled);   // Was disabled, stays disabled
-            });
+            state.Restore();
+            Assert.IsTrue(parentCol.enabled);   // Was enabled, restored to enabled
+            Assert.IsFalse(childCol.enabled);   // Was disabled, stays disabled
         }
 
-        [UnityTest]
-        public IEnumerator Teleport_RestoreToken_RestoresPosition()
+        [Test]
+        public async Task Teleport_RestoreToken_RestoresPosition()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var originalPos = new Vector3(5, 10, 15);
-                _testObject.transform.position = originalPos;
+            var originalPos = new Vector3(5, 10, 15);
+            _testObject.transform.position = originalPos;
 
-                var state = await new Search().Name("TestObject").Teleport(new Vector3(100, 0, 0));
-                Assert.AreEqual(new Vector3(100, 0, 0), _testObject.transform.position);
+            var state = await new Search().Name("TestObject").Teleport(new Vector3(100, 0, 0));
+            Assert.AreEqual(new Vector3(100, 0, 0), _testObject.transform.position);
 
-                state.Restore();
-                Assert.AreEqual(originalPos, _testObject.transform.position);
-            });
+            state.Restore();
+            Assert.AreEqual(originalPos, _testObject.transform.position);
         }
 
-        [UnityTest]
-        public IEnumerator UsingPattern_AutoRestores()
+        [Test]
+        public async Task UsingPattern_AutoRestores()
         {
-            return UniTask.ToCoroutine(async () =>
+            await Async.DelayFrames(1);
+
+            var col = _testObject.GetComponent<BoxCollider>();
+            Assert.IsTrue(col.enabled);
+
+            using (await new Search().Name("TestObject").NoClip())
             {
-                await UniTask.Yield();
+                Assert.IsFalse(col.enabled);
+            }
 
-                var col = _testObject.GetComponent<BoxCollider>();
-                Assert.IsTrue(col.enabled);
-
-                using (await new Search().Name("TestObject").NoClip())
-                {
-                    Assert.IsFalse(col.enabled);
-                }
-
-                // Auto-restored after using block
-                Assert.IsTrue(col.enabled);
-            });
+            // Auto-restored after using block
+            Assert.IsTrue(col.enabled);
         }
 
-        [UnityTest]
-        public IEnumerator RestoreToken_OnlyRestoresOnce()
+        [Test]
+        public async Task RestoreToken_OnlyRestoresOnce()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                var state = await new Search().Name("TestObject").Disable();
-                Assert.IsFalse(_testObject.activeSelf);
+            var state = await new Search().Name("TestObject").Disable();
+            Assert.IsFalse(_testObject.activeSelf);
 
-                state.Restore();
-                Assert.IsTrue(_testObject.activeSelf);
+            state.Restore();
+            Assert.IsTrue(_testObject.activeSelf);
 
-                // Disable again manually
-                _testObject.SetActive(false);
+            // Disable again manually
+            _testObject.SetActive(false);
 
-                // Second restore should be no-op
-                state.Restore();
-                Assert.IsFalse(_testObject.activeSelf); // Still disabled
-            });
+            // Second restore should be no-op
+            state.Restore();
+            Assert.IsFalse(_testObject.activeSelf); // Still disabled
         }
 
         #endregion
 
         #region Error Handling Tests
 
-        [UnityTest]
-        public IEnumerator Disable_ThrowsOnNotFound()
+        [Test]
+        public async Task Disable_ThrowsOnNotFound()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                try
-                {
-                    await new Search().Name("NonExistentObject").Disable(searchTime: 0.1f);
-                    Assert.Fail("Expected TimeoutException");
-                }
-                catch (System.TimeoutException)
-                {
-                    // Expected
-                }
-            });
+            try
+            {
+                await new Search().Name("NonExistentObject").Disable(searchTime: 0.1f);
+                Assert.Fail("Expected TimeoutException");
+            }
+            catch (System.TimeoutException)
+            {
+                // Expected
+            }
         }
 
-        [UnityTest]
-        public IEnumerator Freeze_ReturnsZeroWhenNoRigidbodies()
+        [Test]
+        public async Task Freeze_ReturnsZeroWhenNoRigidbodies()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Remove rigidbodies
-                Object.Destroy(_testObject.GetComponent<Rigidbody>());
-                Object.Destroy(_childObject.GetComponent<Rigidbody>());
-                await UniTask.Yield(); // Wait for destroy
+            // Remove rigidbodies
+            Object.Destroy(_testObject.GetComponent<Rigidbody>());
+            Object.Destroy(_childObject.GetComponent<Rigidbody>());
+            await Async.DelayFrames(1); // Wait for destroy
 
-                var state = await new Search().Name("TestObject").Freeze();
+            var state = await new Search().Name("TestObject").Freeze();
 
-                Assert.AreEqual(0, state.Count);
-            });
+            Assert.AreEqual(0, state.Count);
         }
 
-        [UnityTest]
-        public IEnumerator NoClip_ReturnsZeroWhenNoColliders()
+        [Test]
+        public async Task NoClip_ReturnsZeroWhenNoColliders()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                await UniTask.Yield();
+            await Async.DelayFrames(1);
 
-                // Remove colliders
-                Object.Destroy(_testObject.GetComponent<BoxCollider>());
-                Object.Destroy(_childObject.GetComponent<SphereCollider>());
-                await UniTask.Yield(); // Wait for destroy
+            // Remove colliders
+            Object.Destroy(_testObject.GetComponent<BoxCollider>());
+            Object.Destroy(_childObject.GetComponent<SphereCollider>());
+            await Async.DelayFrames(1); // Wait for destroy
 
-                var state = await new Search().Name("TestObject").NoClip();
+            var state = await new Search().Name("TestObject").NoClip();
 
-                Assert.AreEqual(0, state.Count);
-            });
+            Assert.AreEqual(0, state.Count);
         }
 
         #endregion

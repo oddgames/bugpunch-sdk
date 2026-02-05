@@ -18,6 +18,10 @@ namespace ODDGames.UIAutomation.Editor
         private static EditorWindow _cachedWindow;
         private static bool _initialized;
         private static bool _buttonInjected;
+        private static UnityEngine.UIElements.IMGUIContainer _container;
+
+        // Threshold below which we use compact mode
+        private const float CompactModeThreshold = 450f;
 
         static TestRunnerWindowExtender()
         {
@@ -65,14 +69,13 @@ namespace ODDGames.UIAutomation.Editor
                     if (root != null && root.childCount == 0)
                     {
                         // The window uses IMGUI, add an overlay container using IMGUIContainer
-                        var container = new UnityEngine.UIElements.IMGUIContainer(DrawButtons);
-                        container.name = "uiautomation-buttons-container";
-                        container.style.position = UnityEngine.UIElements.Position.Absolute;
-                        container.style.top = 2;
-                        container.style.right = 5;
-                        container.style.width = 200;
-                        container.style.height = 20;
-                        root.Add(container);
+                        _container = new UnityEngine.UIElements.IMGUIContainer(DrawButtons);
+                        _container.name = "uiautomation-buttons-container";
+                        _container.style.position = UnityEngine.UIElements.Position.Absolute;
+                        _container.style.top = 2;
+                        _container.style.right = 5;
+                        _container.style.height = 20;
+                        root.Add(_container);
                         _buttonInjected = true;
                     }
                 }
@@ -81,27 +84,33 @@ namespace ODDGames.UIAutomation.Editor
             {
                 _cachedWindow = null;
                 _buttonInjected = false;
+                _container = null;
             }
         }
 
         private static void DrawButtons()
         {
+            if (_cachedWindow == null) return;
+
+            float windowWidth = _cachedWindow.position.width;
+            bool compactMode = windowWidth < CompactModeThreshold;
+
             GUILayout.BeginHorizontal();
 
-            // Refresh button
+            // Refresh button - always show
             if (GUILayout.Button("↻", GUILayout.Width(22)))
             {
                 RefreshTests();
             }
 
             // Copy Failed button
-            if (GUILayout.Button("Copy Failed", GUILayout.Width(70)))
+            if (GUILayout.Button(compactMode ? "Copy" : "Copy Failed", GUILayout.Width(compactMode ? 40 : 70)))
             {
                 CopyFailedTestsMenu.CopyFailedTests();
             }
 
             // New AI Test button - creates a ScriptableObject
-            if (GUILayout.Button("+ AI Test", GUILayout.Width(60)))
+            if (GUILayout.Button(compactMode ? "+AI" : "+ AI Test", GUILayout.Width(compactMode ? 32 : 60)))
             {
                 CreateNewAITest();
             }

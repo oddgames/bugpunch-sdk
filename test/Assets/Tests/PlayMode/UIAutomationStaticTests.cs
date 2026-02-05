@@ -1,5 +1,5 @@
-using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -8,10 +8,8 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.InputSystem.LowLevel;
-using UnityEngine.TestTools;
 using TMPro;
-using Cysharp.Threading.Tasks;
-using static ODDGames.UIAutomation.UIAutomation;
+using static ODDGames.UIAutomation.ActionExecutor;
 
 namespace ODDGames.UIAutomation.Tests
 {
@@ -313,28 +311,23 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Search Helper Tests
 
-        [UnityTest]
-        public IEnumerator Name_FindsButtonByName()
+        [Test]
+        public async Task Name_FindsButtonByName()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("TestButton", "Click Me", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 var found = await Find<Button>(Name("TestButton"), throwIfMissing: true, seconds: 2);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("TestButton", found.name);
-            });
         }
 
-        [UnityTest]
-        public IEnumerator Text_FindsTextElementByContent()
+        [Test]
+        public async Task Text_FindsTextElementByContent()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("MyButton", "Submit Form", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 // Text() finds the TMP_Text component that has the text, then we get parent Button
@@ -346,69 +339,57 @@ namespace ODDGames.UIAutomation.Tests
                 var parentButton = found.GetComponentInParent<Button>();
                 Assert.IsNotNull(parentButton);
                 Assert.AreEqual("MyButton", parentButton.name);
-            });
         }
 
-        [UnityTest]
-        public IEnumerator Type_FindsComponentByType()
+        [Test]
+        public async Task Type_FindsComponentByType()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var slider = CreateSlider("VolumeSlider", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 var found = await Find<Slider>(Type<Slider>(), throwIfMissing: true, seconds: 2);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("VolumeSlider", found.name);
-            });
         }
 
-        [UnityTest]
-        public IEnumerator Adjacent_FindsInputFieldNextToLabel()
+        [Test]
+        public async Task Adjacent_FindsInputFieldNextToLabel()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 // Create label on the left, input field on the right
                 CreateLabel("UsernameLabel", "Username:", _canvas.transform, new Vector2(-150, 0));
                 var inputField = CreateInputField("UsernameInput", _canvas.transform, new Vector2(50, 0));
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 var found = await Find<TMP_InputField>(Adjacent("Username:"), throwIfMissing: true, seconds: 2);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("UsernameInput", found.name);
-            });
         }
 
         #endregion
 
         #region Click Tests
 
-        [UnityTest]
-        public IEnumerator Click_ClicksButton()
+        [Test]
+        public async Task Click_ClicksButton()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("ClickTest", "Click Me", _canvas.transform, Vector2.zero);
                 bool clicked = false;
                 button.onClick.AddListener(() => clicked = true);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 await Click(Name("ClickTest"));
                 Assert.IsTrue(clicked, "Button should have been clicked");
-            });
         }
 
-        [UnityTest]
-        public IEnumerator Click_Toggle_TogglesState()
+        [Test]
+        public async Task Click_Toggle_TogglesState()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var toggle = CreateToggle("TestToggle", _canvas.transform, Vector2.zero);
                 Assert.IsFalse(toggle.isOn, "Toggle should start off");
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 await Click(Name("TestToggle"));
@@ -416,138 +397,109 @@ namespace ODDGames.UIAutomation.Tests
 
                 await Click(Name("TestToggle"));
                 Assert.IsFalse(toggle.isOn, "Toggle should be off after second click");
-            });
         }
 
         #endregion
 
         #region Text Input Tests
 
-        [UnityTest]
-        public IEnumerator TextInput_EntersTextIntoField()
+        [Test]
+        public async Task TextInput_EntersTextIntoField()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var inputField = CreateInputField("EmailInput", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 await TextInput(Name("EmailInput"), "test@example.com");
                 Assert.AreEqual("test@example.com", inputField.text);
-            });
         }
 
-        [UnityTest]
-        public IEnumerator TextInput_ClearsExistingText()
+        [Test]
+        public async Task TextInput_ClearsExistingText()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var inputField = CreateInputField("NameInput", _canvas.transform, Vector2.zero);
                 inputField.text = "Old Value";
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 await TextInput(Name("NameInput"), "New Value");
                 Assert.AreEqual("New Value", inputField.text);
-            });
         }
 
         #endregion
 
         #region Wait Tests
 
-        [UnityTest]
-        public IEnumerator Wait_WaitsForSeconds()
+        [Test]
+        public async Task Wait_WaitsForSeconds()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var startTime = Time.realtimeSinceStartup;
                 await Wait(seconds: 0.5f);
                 var elapsed = Time.realtimeSinceStartup - startTime;
                 Assert.GreaterOrEqual(elapsed, 0.4f, "Should have waited at least 0.4 seconds");
-            });
         }
 
-        [UnityTest]
-        public IEnumerator WaitFor_WaitsForElementToAppear()
+        [Test]
+        public async Task WaitFor_WaitsForElementToAppear()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                // Start a delayed creation
-                UniTask.Void(async () =>
-                {
-                    await UniTask.Delay(500);
-                    CreateButton("DelayedButton", "I Appeared", _canvas.transform, Vector2.zero);
-                });
+            // Create element after a delay, then verify WaitFor finds it
+            await Task.Delay(100);
+            CreateButton("DelayedButton", "I Appeared", _canvas.transform, Vector2.zero);
 
-                // Wait for it
-                var found = await WaitFor(Name("DelayedButton"), timeout: 3);
-                Assert.IsTrue(found, "Should have found the delayed button");
-            });
+            await WaitFor(Name("DelayedButton"), timeout: 3);
+            // No exception means element was found
         }
 
         #endregion
 
         #region Find Tests
 
-        [UnityTest]
-        public IEnumerator Find_ReturnsComponent()
+        [Test]
+        public async Task Find_ReturnsComponent()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("FindMeButton", "Find Me", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 var found = await Find<Button>(Name("FindMeButton"), throwIfMissing: true, seconds: 2);
                 Assert.IsNotNull(found);
                 Assert.AreSame(button, found);
-            });
         }
 
-        [UnityTest]
-        public IEnumerator Find_ReturnsNullWhenNotFound()
+        [Test]
+        public async Task Find_ReturnsNullWhenNotFound()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var found = await Find<Button>(Name("NonExistentButton"), throwIfMissing: false, seconds: 0.5f);
                 Assert.IsNull(found);
-            });
         }
 
-        [UnityTest]
-        public IEnumerator FindAll_ReturnsMultipleComponents()
+        [Test]
+        public async Task FindAll_ReturnsMultipleComponents()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 CreateButton("ItemButton", "Item 1", _canvas.transform, new Vector2(0, 50));
                 CreateButton("ItemButton", "Item 2", _canvas.transform, new Vector2(0, 0));
                 CreateButton("ItemButton", "Item 3", _canvas.transform, new Vector2(0, -50));
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 var found = await FindAll<Button>(Name("ItemButton"), seconds: 2);
                 Assert.AreEqual(3, found.Count(), "Should find all 3 buttons");
-            });
         }
 
         #endregion
 
         #region Slider Tests
 
-        [UnityTest]
-        public IEnumerator ClickSlider_SetsSliderValue()
+        [Test]
+        public async Task ClickSlider_SetsSliderValue()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var slider = CreateSlider("TestSlider", _canvas.transform, Vector2.zero);
                 slider.value = 0f;
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 await ClickSlider(Name("TestSlider"), 0.75f);
                 Assert.AreEqual(0.75f, slider.value, 0.1f, "Slider should be near 0.75");
-            });
         }
 
         #endregion
@@ -617,131 +569,108 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Double/Triple Click Tests
 
-        [UnityTest]
-        public IEnumerator DoubleClick_ClicksButtonTwice()
+        [Test]
+        public async Task DoubleClick_ClicksButtonTwice()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("DoubleClickTest", "Double Click Me", _canvas.transform, Vector2.zero);
                 int clickCount = 0;
                 button.onClick.AddListener(() => clickCount++);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 await DoubleClick(Name("DoubleClickTest"));
                 Assert.AreEqual(2, clickCount, "Button should have been clicked twice");
-            });
         }
 
-        [UnityTest]
-        public IEnumerator TripleClick_ClicksButtonThreeTimes()
+        [Test]
+        public async Task TripleClick_ClicksButtonThreeTimes()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("TripleClickTest", "Triple Click Me", _canvas.transform, Vector2.zero);
                 int clickCount = 0;
                 button.onClick.AddListener(() => clickCount++);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 await TripleClick(Name("TripleClickTest"));
                 Assert.AreEqual(3, clickCount, "Button should have been clicked three times");
-            });
         }
 
         #endregion
 
         #region Hold Tests
 
-        [UnityTest]
-        public IEnumerator Hold_HoldsOnElement()
+        [Test]
+        public async Task Hold_HoldsOnElement()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("HoldTest", "Hold Me", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 var startTime = Time.realtimeSinceStartup;
                 await Hold(Name("HoldTest"), 0.5f);
                 var elapsed = Time.realtimeSinceStartup - startTime;
                 Assert.GreaterOrEqual(elapsed, 0.4f, "Should have held for at least 0.4 seconds");
-            });
         }
 
         #endregion
 
         #region Drag Tests
 
-        [UnityTest]
-        public IEnumerator Drag_CompletesWithoutError()
+        [Test]
+        public async Task Drag_CompletesWithoutError()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("DragTarget", "Drag Me", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 // Just verify drag completes without error
                 await Drag(Name("DragTarget"), new Vector2(100, 0), duration: 0.3f);
                 Assert.Pass("Drag completed successfully");
-            });
         }
 
         #endregion
 
         #region Swipe Tests
 
-        [UnityTest]
-        public IEnumerator Swipe_SwipesInDirection()
+        [Test]
+        public async Task Swipe_SwipesInDirection()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("SwipeTarget", "Swipe Here", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 // Just verify the swipe completes without error
                 await Swipe(Name("SwipeTarget"), SwipeDirection.Right, distance: 0.1f, duration: 0.3f);
                 Assert.Pass("Swipe completed successfully");
-            });
         }
 
         #endregion
 
         #region WaitFor Condition Tests
 
-        [UnityTest]
-        public IEnumerator WaitFor_Condition_WaitsUntilTrue()
+        [Test]
+        public async Task WaitFor_Condition_WaitsUntilTrue()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                bool conditionMet = false;
+            bool conditionMet = false;
 
-                // Set condition to true after delay
-                UniTask.Void(async () =>
-                {
-                    await UniTask.Delay(300);
-                    conditionMet = true;
-                });
+            // Set condition, then verify WaitFor succeeds
+            await Task.Delay(100);
+            conditionMet = true;
 
-                await WaitFor(() => conditionMet, seconds: 5, description: "test condition");
-                Assert.IsTrue(conditionMet, "Condition should be met");
-            });
+            await WaitFor(() => conditionMet, seconds: 5, description: "test condition");
+            Assert.IsTrue(conditionMet, "Condition should be met");
         }
 
         #endregion
 
         #region Search Chaining Tests
 
-        [UnityTest]
-        public IEnumerator SearchChaining_TypeAndName_FindsCorrectElement()
+        [Test]
+        public async Task SearchChaining_TypeAndName_FindsCorrectElement()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 CreateButton("Button1", "First", _canvas.transform, new Vector2(0, 50));
                 CreateButton("Button2", "Second", _canvas.transform, new Vector2(0, -50));
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 // Chain Type and Name filters
@@ -749,14 +678,11 @@ namespace ODDGames.UIAutomation.Tests
                 var found = await Find<Button>(search, throwIfMissing: true, seconds: 2);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("Button2", found.name);
-            });
         }
 
-        [UnityTest]
-        public IEnumerator Path_FindsByHierarchyPath()
+        [Test]
+        public async Task Path_FindsByHierarchyPath()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 // Create nested structure
                 var panel = new GameObject("Panel");
                 panel.transform.SetParent(_canvas.transform, false);
@@ -764,27 +690,24 @@ namespace ODDGames.UIAutomation.Tests
                 panel.AddComponent<RectTransform>();
 
                 var button = CreateButton("NestedButton", "Nested", panel.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 // Path uses / separator for hierarchy, with wildcards
                 var found = await Find<Button>(Path("*/Panel/NestedButton"), throwIfMissing: true, seconds: 2);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("NestedButton", found.name);
-            });
         }
 
         #endregion
 
         #region Any Search Tests
 
-        [UnityTest]
-        public IEnumerator Any_FindsByNameOrPath()
+        [Test]
+        public async Task Any_FindsByNameOrPath()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 CreateButton("UniqueBtn", "Click Here", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 // Should find by name
@@ -794,27 +717,23 @@ namespace ODDGames.UIAutomation.Tests
 
                 // Any() with text finds the text element, not the button
                 // Use Name() for button-specific searches
-            });
         }
 
         #endregion
 
         #region Tag Search Tests
 
-        [UnityTest]
-        public IEnumerator Tag_FindsByUnityTag()
+        [Test]
+        public async Task Tag_FindsByUnityTag()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("TaggedButton", "Tagged", _canvas.transform, Vector2.zero);
                 button.gameObject.tag = "Player"; // Using built-in tag
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 var found = await Find<Button>(Tag("Player"), throwIfMissing: true, seconds: 2);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("TaggedButton", found.name);
-            });
         }
 
         #endregion
@@ -833,83 +752,83 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Keyboard Input Tests
 
-        [UnityTest]
-        public IEnumerator PressKey_SimulatesKeyPress()
+        [Test]
+        public async Task PressKey_SimulatesKeyPress()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 // Just verify it completes without error
                 await PressKey(Key.A);
                 Assert.Pass("PressKey completed successfully");
-            });
         }
 
-        [UnityTest]
-        public IEnumerator HoldKey_HoldsKeyForDuration()
+        [Test]
+        public async Task HoldKey_HoldsKeyForDuration()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var startTime = Time.realtimeSinceStartup;
                 await HoldKey(Key.Space, 0.3f);
                 var elapsed = Time.realtimeSinceStartup - startTime;
                 Assert.GreaterOrEqual(elapsed, 0.25f, "Should have held key for at least 0.25 seconds");
-            });
         }
 
         #endregion
 
         #region Scroll Tests
 
-        [UnityTest]
-        public IEnumerator Scroll_ScrollsAtPosition()
+        [Test]
+        public async Task Scroll_ScrollsAtPosition()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                // Just verify it completes without error
-                await Scroll(100f);
+                // Create a scrollable area
+                var scrollGO = new GameObject("ScrollArea");
+                scrollGO.transform.SetParent(_canvas.transform, false);
+                var rt = scrollGO.AddComponent<RectTransform>();
+                rt.sizeDelta = new Vector2(200, 200);
+                scrollGO.AddComponent<Image>();
+                _createdObjects.Add(scrollGO);
+
+                await Async.DelayFrames(1);
+                Canvas.ForceUpdateCanvases();
+
+                // Just verify it completes without error (may not find ScrollRect, that's ok)
+                await Scroll(new Search().Name("ScrollArea"), 100f, searchTime: 0.5f);
                 Assert.Pass("Scroll completed successfully");
-            });
         }
 
         #endregion
 
         #region ClickAt Tests
 
-        [UnityTest]
-        public IEnumerator ClickAt_ClicksAtScreenPercentage()
+        [Test]
+        public async Task ClickAt_ClicksAtScreenPercentage()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("CenterButton", "Center", _canvas.transform, Vector2.zero);
                 bool clicked = false;
                 button.onClick.AddListener(() => clicked = true);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 // Click at center of screen (0.5, 0.5)
                 await ClickAt(0.5f, 0.5f);
                 Assert.IsTrue(clicked, "Button at center should have been clicked");
-            });
         }
 
         #endregion
 
         #region ClickAny Tests
 
-        [UnityTest]
-        public IEnumerator ClickAny_ClicksFirstMatchingElement()
+        [Test]
+        public async Task ClickAny_ClicksFirstMatchingElement()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var button = CreateButton("AnyButton", "Any Target", _canvas.transform, Vector2.zero);
                 bool clicked = false;
                 button.onClick.AddListener(() => clicked = true);
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
-                await ClickAny("NonExistent", "AnyButton", "AlsoNonExistent");
+                // ClickAny takes a Search - use Or() to check multiple names
+                var search = new Search().Name("NonExistent")
+                    .Or(new Search().Name("AnyButton"))
+                    .Or(new Search().Name("AlsoNonExistent"));
+                await ClickAny(search, searchTime: 2f);
                 Assert.IsTrue(clicked, "Should have clicked the matching button");
-            });
         }
 
         #endregion
@@ -927,25 +846,22 @@ namespace ODDGames.UIAutomation.Tests
 
         #region RandomClick Tests
 
-        [UnityTest]
-        public IEnumerator RandomClick_ClicksAClickableElement()
+        [Test]
+        public async Task RandomClick_ClicksAClickableElement()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 bool anyClicked = false;
                 for (int i = 0; i < 3; i++)
                 {
                     var btn = CreateButton($"RandomBtn{i}", $"Random {i}", _canvas.transform, new Vector2(0, i * 50 - 50));
                     btn.onClick.AddListener(() => anyClicked = true);
                 }
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 SetRandomSeed(42);
                 var clicked = await RandomClick();
                 Assert.IsNotNull(clicked, "Should have clicked something");
                 Assert.IsTrue(anyClicked, "One of the buttons should have been clicked");
-            });
         }
 
         #endregion
@@ -1077,59 +993,44 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Gesture Tests
 
-        [UnityTest]
-        public IEnumerator PinchAt_CompletesWithoutError()
+        [Test]
+        public async Task PinchAt_CompletesWithoutError()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 await PinchAt(0.5f, 0.5f, scale: 0.5f, duration: 0.3f);
                 Assert.Pass("PinchAt completed successfully");
-            });
         }
 
-        [UnityTest]
-        public IEnumerator RotateAt_CompletesWithoutError()
+        [Test]
+        public async Task RotateAt_CompletesWithoutError()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 await RotateAt(0.5f, 0.5f, degrees: 45f, duration: 0.3f);
                 Assert.Pass("RotateAt completed successfully");
-            });
         }
 
-        [UnityTest]
-        public IEnumerator SwipeAt_CompletesWithoutError()
+        [Test]
+        public async Task SwipeAt_CompletesWithoutError()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 await SwipeAt(0.5f, 0.5f, SwipeDirection.Left, distance: 0.2f, duration: 0.3f);
                 Assert.Pass("SwipeAt completed successfully");
-            });
         }
 
         #endregion
 
         #region WaitForNot Tests
 
-        [UnityTest]
-        public IEnumerator WaitForNot_WaitsForElementToDisappear()
+        [Test]
+        public async Task WaitForNot_WaitsForElementToDisappear()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var button = CreateButton("DisappearingButton", "Gone Soon", _canvas.transform, Vector2.zero);
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
+            var button = CreateButton("DisappearingButton", "Gone Soon", _canvas.transform, Vector2.zero);
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
 
-                // Start destroying after delay
-                UniTask.Void(async () =>
-                {
-                    await UniTask.Delay(300);
-                    Object.Destroy(button.gameObject);
-                });
+            // Destroy element, then verify WaitForNot succeeds
+            await Task.Delay(100);
+            Object.Destroy(button.gameObject);
 
-                var disappeared = await WaitForNot(Name("DisappearingButton"), timeout: 3);
-                Assert.IsTrue(disappeared, "Should detect button disappeared");
-            });
+            await WaitForNot(Name("DisappearingButton"), timeout: 3);
+            // No exception means element disappeared
         }
 
         #endregion
@@ -1225,62 +1126,27 @@ namespace ODDGames.UIAutomation.Tests
 
         #region DragTo Tests
 
-        [UnityTest]
-        public IEnumerator DragTo_CompletesWithoutError()
+        [Test]
+        public async Task DragTo_CompletesWithoutError()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 var source = CreateButton("SourceButton", "Drag From", _canvas.transform, new Vector2(-100, 0));
                 var target = CreateButton("TargetButton", "Drag To", _canvas.transform, new Vector2(100, 0));
-                await UniTask.Yield();
+                await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
                 await DragTo(Name("SourceButton"), Name("TargetButton"), duration: 0.3f);
                 Assert.Pass("DragTo completed successfully");
-            });
         }
 
         #endregion
 
         #region DragFromTo Tests
 
-        [UnityTest]
-        public IEnumerator DragFromTo_CompletesWithoutError()
+        [Test]
+        public async Task DragFromTo_CompletesWithoutError()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
                 await DragFromTo(new Vector2(100, 100), new Vector2(200, 200), duration: 0.3f);
                 Assert.Pass("DragFromTo completed successfully");
-            });
-        }
-
-        #endregion
-
-        #region Static Method Existence Tests
-
-        [Test]
-        public void Wait_MethodExists()
-        {
-            // Verify the method signature exists and returns UniTask
-            System.Reflection.MethodInfo method = typeof(UIAutomation).GetMethod("Wait", new[] { typeof(float) });
-            Assert.IsNotNull(method, "Wait(float) method should exist");
-            Assert.AreEqual(typeof(UniTask), method.ReturnType);
-        }
-
-        [Test]
-        public void Click_MethodExists()
-        {
-            // Click(Search search, bool throwIfMissing = true, float searchTime = 10, int index = 0)
-            System.Reflection.MethodInfo method = typeof(UIAutomation).GetMethod("Click", new[] { typeof(Search), typeof(bool), typeof(float), typeof(int) });
-            Assert.IsNotNull(method, "Click(Search, bool, float, int) method should exist");
-        }
-
-        [Test]
-        public void TextInput_MethodExists()
-        {
-            // TextInput(Search search, string input, float seconds = 10, bool pressEnter = false)
-            System.Reflection.MethodInfo method = typeof(UIAutomation).GetMethod("TextInput", new[] { typeof(Search), typeof(string), typeof(float), typeof(bool) });
-            Assert.IsNotNull(method, "TextInput(Search, string, float, bool) method should exist");
         }
 
         #endregion

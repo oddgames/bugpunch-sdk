@@ -2,13 +2,14 @@ using System;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 using static ODDGames.UIAutomation.ActionExecutor;
 
 namespace ODDGames.UIAutomation.Tests
 {
     /// <summary>
-    /// Tests for IgnoreErrors and CaptureUnobservedExceptions.
+    /// Tests for CaptureUnobservedExceptions.
     /// </summary>
     [TestFixture]
     public class ErrorHandlingTests
@@ -16,50 +17,8 @@ namespace ODDGames.UIAutomation.Tests
         [TearDown]
         public void TearDown()
         {
-            // Reset to defaults after each test
-            IgnoreErrors = false;
             CaptureUnobservedExceptions = false;
         }
-
-        #region IgnoreErrors Tests
-
-        [Test]
-        public async Task IgnoreErrors_DoesNotFailOnDebugLogError()
-        {
-            IgnoreErrors = true;
-
-            await Task.Yield();
-            Debug.LogError("This error should be ignored");
-
-            Assert.Pass("Test completed without failing from error log");
-        }
-
-        [Test]
-        public async Task IgnoreErrors_DoesNotFailOnMultipleErrors()
-        {
-            IgnoreErrors = true;
-
-            await Task.Yield();
-
-            Debug.LogError("First error");
-            Debug.LogError("Second error");
-            Debug.LogError("Third error");
-
-            Assert.Pass("Test completed without failing from multiple error logs");
-        }
-
-        [Test]
-        public async Task IgnoreErrors_DoesNotFailOnException()
-        {
-            IgnoreErrors = true;
-
-            await Task.Yield();
-            Debug.LogException(new InvalidOperationException("Test exception"));
-
-            Assert.Pass("Test completed without failing from logged exception");
-        }
-
-        #endregion
 
         #region CaptureUnobservedExceptions Tests
 
@@ -69,7 +28,7 @@ namespace ODDGames.UIAutomation.Tests
             CaptureUnobservedExceptions = true;
             ClearCapturedExceptions();
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Fire-and-forget task that throws
             _ = ThrowAfterDelayAsync();
@@ -94,7 +53,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             CaptureUnobservedExceptions = true;
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             Assert.IsNotNull(CapturedExceptions);
             Assert.IsInstanceOf<System.Collections.Generic.IReadOnlyList<Exception>>(CapturedExceptions);
@@ -105,7 +64,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             CaptureUnobservedExceptions = true;
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             ClearCapturedExceptions();
 
@@ -116,32 +75,6 @@ namespace ODDGames.UIAutomation.Tests
         {
             await Task.Delay(10);
             throw new InvalidOperationException("Unobserved exception from fire-and-forget");
-        }
-
-        #endregion
-
-        #region Combined Usage Tests
-
-        [Test]
-        public async Task CombinedUsage_BothPropertiesWork()
-        {
-            IgnoreErrors = true;
-            CaptureUnobservedExceptions = true;
-            ClearCapturedExceptions();
-
-            await Task.Yield();
-
-            // Error log (ignored)
-            Debug.LogError("This error is ignored");
-
-            // Fire-and-forget (captured)
-            _ = ThrowAfterDelayAsync();
-
-            await Task.Delay(100);
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-
-            Assert.Pass("Both properties work together");
         }
 
         #endregion

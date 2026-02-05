@@ -649,41 +649,20 @@ namespace ODDGames.UIAutomation.VisualBuilder
             if (selector == null || !selector.IsValid())
                 return null;
 
-            var startTime = Time.realtimeSinceStartup;
-            var timeout = timeoutMs / 1000f;
-
-            while (Time.realtimeSinceStartup - startTime < timeout)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                var elements = ElementDiscovery.DiscoverElements();
-                var matched = FindMatchingElement(elements, selector);
-
-                if (matched != null)
-                    return matched;
-
-                await Task.Delay(ElementWaitDelayMs, cancellationToken: ct);
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Finds an element matching the selector from the discovered elements.
-        /// </summary>
-        private static ElementInfo FindMatchingElement(List<ElementInfo> elements, ElementSelector selector)
-        {
-            // Convert selector to Search and execute
+            // Convert selector to Search and use async Find with stability checking
             var search = selector.ToSearch();
             if (search == null)
                 return null;
 
-            // Find the first matching GameObject using the Search API
-            var go = search.FindFirst();
+            var timeout = timeoutMs / 1000f;
+            var go = await search.Find(timeout);
             if (go == null)
                 return null;
 
-            // Find the corresponding ElementInfo if it exists in discovered elements
+            ct.ThrowIfCancellationRequested();
+
+            // Check discovered elements first
+            var elements = ElementDiscovery.DiscoverElements();
             var existingElement = elements?.FirstOrDefault(e => e.gameObject == go);
             if (existingElement != null)
                 return existingElement;

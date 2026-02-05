@@ -6,8 +6,7 @@
         "Unity.TextMeshPro",
         "Unity.InputSystem",
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner",
-        "UniTask"
+        "UnityEditor.TestRunner"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

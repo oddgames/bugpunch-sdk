@@ -499,7 +499,7 @@ namespace ODDGames.UIAutomation
         {
             foreach (var (detect, recover) in _detectedFlows)
             {
-                if (detect.Exists())
+                if (await detect.Exists(0.5f))
                 {
                     Debug.Log($"[Recovery] Detected: {detect}");
                     await recover();
@@ -590,231 +590,64 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Resolves a search query to a GameObject, with automatic recovery on timeout.
-        /// Polls for the element, and if not found within timeout, calls recovery handler
-        /// to clear obstacles (dialogs, etc.) then continues polling.
+        /// Finds a Dropdown by option label.
         /// </summary>
-        /// <param name="search">Search query</param>
-        /// <param name="timeout">Total time to search</param>
-        /// <param name="index">Index when multiple elements match</param>
-        /// <param name="actionDescription">Description of the action (for recovery context)</param>
-        /// <returns>The found element, or null if not found</returns>
-        internal static async Task<GameObject> ResolveSearch(Search search, float timeout, int index, string actionDescription)
+        internal static async Task<(GameObject element, RectTransform template, int optionIndex)> FindDropdownByLabel(Search search, string optionLabel, float timeout)
         {
-            float startTime = Now;
-            float recoveryAttemptedAt = -1f;
-
-            while ((Now - startTime) < timeout && Application.isPlaying)
+            var elements = await search.FindAll(timeout);
+            foreach (var go in elements)
             {
-                var results = search.FindAll();
-                if (results.Count > index)
-                    return results[index];
-
-                // Try recovery once after initial polling fails (at ~1/3 of timeout)
-                float elapsed = Now - startTime;
-                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
+                var legacy = go.GetComponent<Dropdown>();
+                if (legacy != null)
                 {
-                    recoveryAttemptedAt = elapsed;
-
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = actionDescription,
-                        ErrorMessage = $"Element not found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    // If recovery says no blocker found, don't waste remaining time
-                    if (recoveryResult.NoBlockerFound)
-                        break;
-
-                    // Otherwise continue polling - recovery may have cleared the way
+                    int idx = legacy.options.FindIndex(o => o.text == optionLabel);
+                    if (idx >= 0)
+                        return (go, legacy.template, idx);
                 }
 
-                await Task.Delay(100);
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Resolves a search query to all matching GameObjects, with automatic recovery on timeout.
-        /// </summary>
-        internal static async Task<List<GameObject>> ResolveSearchAll(Search search, float timeout, string actionDescription)
-        {
-            float startTime = Now;
-            float recoveryAttemptedAt = -1f;
-
-            while ((Now - startTime) < timeout && Application.isPlaying)
-            {
-                var results = search.FindAll();
-                if (results.Count > 0)
-                    return results;
-
-                float elapsed = Now - startTime;
-                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
+                var tmp = go.GetComponent<TMPro.TMP_Dropdown>();
+                if (tmp != null)
                 {
-                    recoveryAttemptedAt = elapsed;
-
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = actionDescription,
-                        ErrorMessage = $"No elements found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    if (recoveryResult.NoBlockerFound)
-                        break;
+                    int idx = tmp.options.FindIndex(o => o.text == optionLabel);
+                    if (idx >= 0)
+                        return (go, tmp.template, idx);
                 }
-
-                await Task.Delay(100);
-            }
-
-            return new List<GameObject>();
-        }
-
-        /// <summary>
-        /// Resolves a search query to a Dropdown by label, with automatic recovery on timeout.
-        /// </summary>
-        internal static async Task<(GameObject element, RectTransform template, int optionIndex)> ResolveDropdownByLabel(Search search, string optionLabel, float timeout, string actionDescription)
-        {
-            float startTime = Now;
-            float recoveryAttemptedAt = -1f;
-
-            while ((Now - startTime) < timeout && Application.isPlaying)
-            {
-                foreach (var go in search.FindAll())
-                {
-                    var legacy = go.GetComponent<Dropdown>();
-                    if (legacy != null)
-                    {
-                        int idx = legacy.options.FindIndex(o => o.text == optionLabel);
-                        if (idx >= 0)
-                            return (go, legacy.template, idx);
-                    }
-
-                    var tmp = go.GetComponent<TMPro.TMP_Dropdown>();
-                    if (tmp != null)
-                    {
-                        int idx = tmp.options.FindIndex(o => o.text == optionLabel);
-                        if (idx >= 0)
-                            return (go, tmp.template, idx);
-                    }
-                }
-
-                float elapsed = Now - startTime;
-                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
-                {
-                    recoveryAttemptedAt = elapsed;
-
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = actionDescription,
-                        ErrorMessage = $"Dropdown with option '{optionLabel}' not found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    if (recoveryResult.NoBlockerFound)
-                        break;
-                }
-
-                await Task.Delay(100);
             }
 
             return (null, null, -1);
         }
 
         /// <summary>
-        /// Resolves a search query to a Dropdown (legacy or TMP), with automatic recovery on timeout.
+        /// Finds a Dropdown (legacy or TMP).
         /// </summary>
-        internal static async Task<(GameObject element, RectTransform template)> ResolveDropdown(Search search, float timeout, string actionDescription)
+        internal static async Task<(GameObject element, RectTransform template)> FindDropdown(Search search, float timeout)
         {
-            float startTime = Now;
-            float recoveryAttemptedAt = -1f;
-
-            while ((Now - startTime) < timeout && Application.isPlaying)
+            var elements = await search.FindAll(timeout);
+            foreach (var go in elements)
             {
-                foreach (var go in search.FindAll())
-                {
-                    var legacy = go.GetComponent<Dropdown>();
-                    if (legacy != null)
-                        return (go, legacy.template);
+                var legacy = go.GetComponent<Dropdown>();
+                if (legacy != null)
+                    return (go, legacy.template);
 
-                    var tmp = go.GetComponent<TMPro.TMP_Dropdown>();
-                    if (tmp != null)
-                        return (go, tmp.template);
-                }
-
-                float elapsed = Now - startTime;
-                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
-                {
-                    recoveryAttemptedAt = elapsed;
-
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = actionDescription,
-                        ErrorMessage = $"Dropdown not found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    if (recoveryResult.NoBlockerFound)
-                        break;
-                }
-
-                await Task.Delay(100);
+                var tmp = go.GetComponent<TMPro.TMP_Dropdown>();
+                if (tmp != null)
+                    return (go, tmp.template);
             }
 
             return (null, null);
         }
 
         /// <summary>
-        /// Resolves a search query to a component of type T, with automatic recovery on timeout.
+        /// Finds a component of type T on matching elements.
         /// </summary>
-        internal static async Task<T> ResolveSearch<T>(Search search, float timeout, string actionDescription) where T : Component
+        internal static async Task<T> FindComponent<T>(Search search, float timeout) where T : Component
         {
-            float startTime = Now;
-            float recoveryAttemptedAt = -1f;
-
-            while ((Now - startTime) < timeout && Application.isPlaying)
+            var elements = await search.FindAll(timeout);
+            foreach (var go in elements)
             {
-                foreach (var go in search.FindAll())
-                {
-                    var component = go.GetComponent<T>();
-                    if (component != null)
-                        return component;
-                }
-
-                float elapsed = Now - startTime;
-                if (recoveryAttemptedAt < 0 && elapsed > timeout * 0.3f && RecoveryHandler != null)
-                {
-                    recoveryAttemptedAt = elapsed;
-
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = actionDescription,
-                        ErrorMessage = $"Element with {typeof(T).Name} not found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    if (recoveryResult.NoBlockerFound)
-                        break;
-                }
-
-                await Task.Delay(100);
+                var component = go.GetComponent<T>();
+                if (component != null)
+                    return component;
             }
 
             return null;
@@ -995,12 +828,17 @@ namespace ODDGames.UIAutomation
                 Debug.LogWarning($"[UIAutomation] FAILED: {_action} - {reason}");
             }
 
-            /// <summary>Marks the action as failed with a reason. Logs warning and throws UIAutomationTimeoutException.</summary>
+            /// <summary>Marks the action as failed with a reason. Uses NUnit Assert.Fail for proper test failure reporting.</summary>
             public void Fail(string reason)
             {
                 _failed = true;
-                Debug.LogWarning($"[UIAutomation] FAILED: {_action} - {reason}");
-                throw new UIAutomationTimeoutException($"{_action} failed: {reason}");
+                var message = $"{_action} failed: {reason}";
+                Debug.LogWarning($"[UIAutomation] FAILED: {message}");
+#if UNITY_INCLUDE_TESTS
+                NUnit.Framework.Assert.Fail(message);
+#else
+                throw new UIAutomationTimeoutException(message);
+#endif
             }
 
             public async ValueTask DisposeAsync()
@@ -1217,8 +1055,12 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Ensures a specific scene is loaded. If not already loaded, loads it.
+        /// Waits for stable frame rate (default 20 FPS) before returning.
         /// </summary>
-        public static async Task EnsureSceneLoaded(string sceneName, float timeout = 30f)
+        /// <param name="sceneName">Name of the scene to load.</param>
+        /// <param name="timeout">Maximum time to wait for scene load.</param>
+        /// <param name="minFps">Minimum stable frame rate before considering scene ready. Set to 0 to skip FPS check.</param>
+        public static async Task EnsureSceneLoaded(string sceneName, float timeout = 30f, float minFps = 20f)
         {
             if (SceneManager.GetActiveScene().name == sceneName)
             {
@@ -1241,9 +1083,50 @@ namespace ODDGames.UIAutomation
                 action.Fail($"did not load within {timeout}s");
             }
 
-            // Let scene initialize
-            await Async.DelayFrames(3);
+            // Wait for stable frame rate if requested
+            if (minFps > 0)
+            {
+                await WaitForStableFrameRate(minFps, timeout: 10f);
+            }
+            else
+            {
+                // Just wait a few frames
+                await Async.DelayFrames(3);
+            }
             action.SetResult("loaded");
+        }
+
+        /// <summary>
+        /// Waits until the frame rate stabilizes at or above the specified FPS.
+        /// Useful after scene loads or heavy operations.
+        /// </summary>
+        /// <param name="minFps">Minimum FPS to consider stable (default 20).</param>
+        /// <param name="stableFrames">Number of consecutive frames at target FPS (default 5).</param>
+        /// <param name="timeout">Maximum time to wait (default 10 seconds).</param>
+        public static async Task WaitForStableFrameRate(float minFps = 20f, int stableFrames = 5, float timeout = 10f)
+        {
+            float startTime = Now;
+            int consecutiveStableFrames = 0;
+            float minDeltaTime = 1f / minFps;
+
+            while ((Now - startTime) < timeout && Application.isPlaying)
+            {
+                await Async.DelayFrames(1);
+
+                // Use unscaledDeltaTime to ignore TimeScale
+                if (Time.unscaledDeltaTime <= minDeltaTime)
+                {
+                    consecutiveStableFrames++;
+                    if (consecutiveStableFrames >= stableFrames)
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    consecutiveStableFrames = 0;
+                }
+            }
         }
 
         /// <summary>
@@ -1442,22 +1325,15 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"Find<{typeof(T).Name}>({search})");
 
-            var startTime = Now;
-
-            while ((Now - startTime) < seconds && Application.isPlaying)
+            var result = await search.Find(seconds);
+            if (result != null)
             {
-                var result = search.FindFirst();
-                if (result != null)
+                var component = result.GetComponent<T>() ?? result.GetComponentInChildren<T>() ?? result.GetComponentInParent<T>();
+                if (component != null)
                 {
-                    var component = result.GetComponent<T>() ?? result.GetComponentInChildren<T>() ?? result.GetComponentInParent<T>();
-                    if (component != null)
-                    {
-                        action.SetResult($"'{result.name}'");
-                        return component;
-                    }
+                    action.SetResult($"'{result.name}'");
+                    return component;
                 }
-
-                await Task.Delay(EffectivePollInterval);
             }
 
             if (throwIfMissing)
@@ -1476,25 +1352,12 @@ namespace ODDGames.UIAutomation
         {
             LogDebug($"FindAll<{typeof(T).Name}> search={search}");
 
-            var startTime = Now;
-            IEnumerable<T> results = Enumerable.Empty<T>();
+            var gameObjects = await search.FindAll(seconds);
+            var results = gameObjects
+                .Select(go => go.GetComponent<T>() ?? go.GetComponentInChildren<T>() ?? go.GetComponentInParent<T>())
+                .Where(c => c != null);
 
-            while ((Now - startTime) < seconds && Application.isPlaying)
-            {
-                var gameObjects = search.FindAll();
-                results = gameObjects
-                    .Select(go => go.GetComponent<T>() ?? go.GetComponentInChildren<T>() ?? go.GetComponentInParent<T>())
-                    .Where(c => c != null);
-
-                if (results.Any())
-                {
-                    LogDebug($"FindAll<{typeof(T).Name}> found {results.Count()} elements");
-                    return results;
-                }
-
-                await Task.Delay(EffectivePollInterval);
-            }
-
+            LogDebug($"FindAll<{typeof(T).Name}> found {results.Count()} elements");
             return results;
         }
 
@@ -1777,79 +1640,25 @@ namespace ODDGames.UIAutomation
 
             await using var action = await RunAction($"Click({search})");
 
-            float startTime = Now;
-            bool recoveryAttempted = false;
+            var element = await search.Find(searchTime, index);
 
-            while ((Now - startTime) < searchTime && Application.isPlaying)
+            if (element != null)
             {
-                var element = search.FindAll().ElementAtOrDefault(index);
+                var elementName = element.name;
+                var screenPos = InputInjector.GetScreenPosition(element);
 
-                if (element != null)
+                if (IsScreenPositionClickable(screenPos))
                 {
-                    // Capture name before any async operations - element may be destroyed by click handler
-                    var elementName = element.name;
-                    var screenPos = InputInjector.GetScreenPosition(element);
-
-                    // Check if element is actually visible on screen
-                    if (IsScreenPositionClickable(screenPos))
-                    {
-                        await InputInjector.InjectPointerTap(screenPos);
-                        action.SetResult($"'{elementName}' at ({screenPos.x:F0},{screenPos.y:F0})");
-                        return;
-                    }
-
-                    // Element found but off-screen - try recovery once
-                    if (!recoveryAttempted && RecoveryHandler != null)
-                    {
-                        recoveryAttempted = true;
-                        Debug.Log($"[ActionExecutor] Recovery triggered: element '{elementName}' off-screen at ({screenPos.x:F0},{screenPos.y:F0})");
-                        var context = new RecoveryContext
-                        {
-                            FailedAction = $"Click({search})",
-                            ErrorMessage = $"Element '{elementName}' found but off-screen at ({screenPos.x:F0},{screenPos.y:F0})",
-                            CancellationToken = default
-                        };
-
-                        var recoveryResult = await RecoveryHandler(context);
-                        Debug.Log($"[ActionExecutor] Recovery result: Success={recoveryResult.Success}, NoBlocker={recoveryResult.NoBlockerFound}");
-                        RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted for off-screen element");
-
-                        if (recoveryResult.NoBlockerFound)
-                            break;
-
-                        // Continue polling after recovery
-                        continue;
-                    }
-                    else if (!recoveryAttempted && RecoveryHandler == null)
-                    {
-                        Debug.LogWarning($"[ActionExecutor] Element '{elementName}' off-screen but RecoveryHandler is null - skipping recovery");
-                    }
-                }
-                else if (!recoveryAttempted && RecoveryHandler != null &&
-                         (Now - startTime) > searchTime * 0.3f)
-                {
-                    // Element not found - try recovery at 30% timeout
-                    recoveryAttempted = true;
-                    Debug.Log($"[ActionExecutor] Recovery triggered: element not found after {searchTime * 0.3f:F1}s");
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = $"Click({search})",
-                        ErrorMessage = $"Element not found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    Debug.Log($"[ActionExecutor] Recovery result: Success={recoveryResult.Success}, NoBlocker={recoveryResult.NoBlockerFound}");
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    if (recoveryResult.NoBlockerFound)
-                        break;
+                    await InputInjector.InjectPointerTap(screenPos);
+                    action.SetResult($"'{elementName}' at ({screenPos.x:F0},{screenPos.y:F0})");
+                    return;
                 }
 
-                await Task.Delay(100);
+                action.Fail($"Element '{elementName}' found but off-screen at ({screenPos.x:F0},{screenPos.y:F0})");
+                return;
             }
 
-            action.Fail($"Element not found or not clickable within {searchTime}s");
+            action.Fail($"Element not found within {searchTime}s");
         }
 
         /// <summary>
@@ -1899,67 +1708,25 @@ namespace ODDGames.UIAutomation
 
             await using var action = await RunAction($"DoubleClick({search})");
 
-            float startTime = Now;
-            bool recoveryAttempted = false;
+            var element = await search.Find(searchTime, index);
 
-            while ((Now - startTime) < searchTime && Application.isPlaying)
+            if (element != null)
             {
-                var element = search.FindAll().ElementAtOrDefault(index);
+                var elementName = element.name;
+                var screenPos = InputInjector.GetScreenPosition(element);
 
-                if (element != null)
+                if (IsScreenPositionClickable(screenPos))
                 {
-                    // Capture name before any async operations - element may be destroyed by click handler
-                    var elementName = element.name;
-                    var screenPos = InputInjector.GetScreenPosition(element);
-
-                    if (IsScreenPositionClickable(screenPos))
-                    {
-                        await InputInjector.InjectPointerDoubleTap(screenPos);
-                        action.SetResult($"'{elementName}' at ({screenPos.x:F0},{screenPos.y:F0})");
-                        return;
-                    }
-
-                    if (!recoveryAttempted && RecoveryHandler != null)
-                    {
-                        recoveryAttempted = true;
-                        var context = new RecoveryContext
-                        {
-                            FailedAction = $"DoubleClick({search})",
-                            ErrorMessage = $"Element '{elementName}' found but off-screen at ({screenPos.x:F0},{screenPos.y:F0})",
-                            CancellationToken = default
-                        };
-
-                        var recoveryResult = await RecoveryHandler(context);
-                        RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted for off-screen element");
-
-                        if (recoveryResult.NoBlockerFound)
-                            break;
-
-                        continue;
-                    }
-                }
-                else if (!recoveryAttempted && RecoveryHandler != null &&
-                         (Now - startTime) > searchTime * 0.3f)
-                {
-                    recoveryAttempted = true;
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = $"DoubleClick({search})",
-                        ErrorMessage = $"Element not found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    if (recoveryResult.NoBlockerFound)
-                        break;
+                    await InputInjector.InjectPointerDoubleTap(screenPos);
+                    action.SetResult($"'{elementName}' at ({screenPos.x:F0},{screenPos.y:F0})");
+                    return;
                 }
 
-                await Task.Delay(100);
+                action.Fail($"Element '{elementName}' found but off-screen at ({screenPos.x:F0},{screenPos.y:F0})");
+                return;
             }
 
-            action.Fail($"Element not found or not clickable within {searchTime}s");
+            action.Fail($"Element not found within {searchTime}s");
         }
 
         /// <summary>
@@ -1989,67 +1756,25 @@ namespace ODDGames.UIAutomation
 
             await using var action = await RunAction($"TripleClick({search})");
 
-            float startTime = Now;
-            bool recoveryAttempted = false;
+            var element = await search.Find(searchTime, index);
 
-            while ((Now - startTime) < searchTime && Application.isPlaying)
+            if (element != null)
             {
-                var element = search.FindAll().ElementAtOrDefault(index);
+                var elementName = element.name;
+                var screenPos = InputInjector.GetScreenPosition(element);
 
-                if (element != null)
+                if (IsScreenPositionClickable(screenPos))
                 {
-                    // Capture name before any async operations - element may be destroyed by click handler
-                    var elementName = element.name;
-                    var screenPos = InputInjector.GetScreenPosition(element);
-
-                    if (IsScreenPositionClickable(screenPos))
-                    {
-                        await InputInjector.InjectPointerTripleTap(screenPos);
-                        action.SetResult($"'{elementName}' at ({screenPos.x:F0},{screenPos.y:F0})");
-                        return;
-                    }
-
-                    if (!recoveryAttempted && RecoveryHandler != null)
-                    {
-                        recoveryAttempted = true;
-                        var context = new RecoveryContext
-                        {
-                            FailedAction = $"TripleClick({search})",
-                            ErrorMessage = $"Element '{elementName}' found but off-screen at ({screenPos.x:F0},{screenPos.y:F0})",
-                            CancellationToken = default
-                        };
-
-                        var recoveryResult = await RecoveryHandler(context);
-                        RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted for off-screen element");
-
-                        if (recoveryResult.NoBlockerFound)
-                            break;
-
-                        continue;
-                    }
-                }
-                else if (!recoveryAttempted && RecoveryHandler != null &&
-                         (Now - startTime) > searchTime * 0.3f)
-                {
-                    recoveryAttempted = true;
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = $"TripleClick({search})",
-                        ErrorMessage = $"Element not found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    if (recoveryResult.NoBlockerFound)
-                        break;
+                    await InputInjector.InjectPointerTripleTap(screenPos);
+                    action.SetResult($"'{elementName}' at ({screenPos.x:F0},{screenPos.y:F0})");
+                    return;
                 }
 
-                await Task.Delay(100);
+                action.Fail($"Element '{elementName}' found but off-screen at ({screenPos.x:F0},{screenPos.y:F0})");
+                return;
             }
 
-            action.Fail($"Element not found or not clickable within {searchTime}s");
+            action.Fail($"Element not found within {searchTime}s");
         }
 
         /// <summary>
@@ -2077,7 +1802,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"Hold({search}, {seconds}s)");
 
-            var element = await ResolveSearch(search, searchTime, index, $"Hold({search})");
+            var element = await search.Find(searchTime, index);
 
             if (element != null)
             {
@@ -2123,7 +1848,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"Type({search}, \"{text}\")");
 
-            var element = await ResolveSearch(search, searchTime, index, $"Type({search})");
+            var element = await search.Find(searchTime, index);
 
             if (element != null)
             {
@@ -2175,7 +1900,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"Drag({search}, direction=({direction.x:F0},{direction.y:F0}))");
 
-            var element = await ResolveSearch(search, searchTime, index, $"Drag({search})");
+            var element = await search.Find(searchTime, index);
 
             if (element != null)
             {
@@ -2205,11 +1930,11 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"DragTo({fromSearch} -> {toSearch})");
 
-            var fromElement = await ResolveSearch(fromSearch, searchTime, 0, $"DragTo({fromSearch} -> ...)");
+            var fromElement = await fromSearch.Find(searchTime);
             if (fromElement == null)
                 action.Fail($"Source element not found within {searchTime}s");
 
-            var toElement = await ResolveSearch(toSearch, searchTime, 0, $"DragTo(... -> {toSearch})");
+            var toElement = await toSearch.Find(searchTime);
             if (toElement == null)
                 action.Fail($"Target element not found within {searchTime}s");
 
@@ -2264,7 +1989,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"Scroll({search}, delta={delta})");
 
-            var element = await ResolveSearch(search, searchTime, index, $"Scroll({search})");
+            var element = await search.Find(searchTime, index);
 
             if (element != null)
             {
@@ -2292,7 +2017,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"Scroll({search}, {direction}, amount={amount})");
 
-            var element = await ResolveSearch(search, searchTime, index, $"Scroll({search})");
+            var element = await search.Find(searchTime, index);
 
             if (element != null)
             {
@@ -2321,7 +2046,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"ClickSlider({search}, {normalizedValue:F2})");
 
-            var slider = await ResolveSearch<Slider>(search, searchTime, $"ClickSlider({search})");
+            var slider = await FindComponent<Slider>(search, searchTime);
 
             if (slider != null)
             {
@@ -2347,7 +2072,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"DragSlider({search}, {fromValue:F2} -> {toValue:F2})");
 
-            var slider = await ResolveSearch<Slider>(search, searchTime, $"DragSlider({search})");
+            var slider = await FindComponent<Slider>(search, searchTime);
 
             if (slider != null)
             {
@@ -2372,7 +2097,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"SetSlider({search}, {normalizedValue:F2})");
 
-            var slider = await ResolveSearch<Slider>(search, searchTime, $"SetSlider({search})");
+            var slider = await FindComponent<Slider>(search, searchTime);
 
             if (slider != null)
             {
@@ -2395,7 +2120,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"SetScrollbar({search}, {normalizedValue:F2})");
 
-            var scrollbar = await ResolveSearch<Scrollbar>(search, searchTime, $"SetScrollbar({search})");
+            var scrollbar = await FindComponent<Scrollbar>(search, searchTime);
 
             if (scrollbar != null)
             {
@@ -2634,7 +2359,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"ClickDropdown({search}, index={optionIndex})");
 
-            var (element, template) = await ResolveDropdown(search, searchTime, $"ClickDropdown({search})");
+            var (element, template) = await FindDropdown(search, searchTime);
 
             if (element != null)
             {
@@ -2659,7 +2384,7 @@ namespace ODDGames.UIAutomation
         {
             await using var action = await RunAction($"ClickDropdown({search}, label=\"{optionLabel}\")");
 
-            var (element, template, optionIndex) = await ResolveDropdownByLabel(search, optionLabel, searchTime, $"ClickDropdown({search})");
+            var (element, template, optionIndex) = await FindDropdownByLabel(search, optionLabel, searchTime);
 
             if (element != null && optionIndex >= 0)
             {
@@ -2723,105 +2448,6 @@ namespace ODDGames.UIAutomation
 
         #endregion
 
-        #region Utility Actions
-
-        /// <summary>
-        /// Clicks any one of the elements matching the search query.
-        /// Prefers elements that are visible on screen.
-        /// </summary>
-        /// <param name="search">The search query to find elements</param>
-        /// <param name="searchTime">Maximum time to search for elements</param>
-        /// <exception cref="UIAutomationTimeoutException">Thrown when no clickable elements are found within searchTime</exception>
-        public static async Task ClickAny(Search search, float searchTime = 10f)
-        {
-            // Run preemptive flows before action
-            if (IsRecoveryEnabled)
-                await RunDetectedFlows();
-
-            await using var action = await RunAction($"ClickAny({search})");
-            var rnd = new System.Random((int)System.DateTime.Now.Millisecond);
-
-            float startTime = Now;
-            bool recoveryAttempted = false;
-
-            while ((Now - startTime) < searchTime && Application.isPlaying)
-            {
-                var elements = search.FindAll();
-
-                if (elements.Count > 0)
-                {
-                    // Prefer elements that are actually visible on screen
-                    var clickableElements = elements
-                        .Select(e => new { Element = e, ScreenPos = InputInjector.GetScreenPosition(e) })
-                        .Where(e => IsScreenPositionClickable(e.ScreenPos))
-                        .ToList();
-
-                    if (clickableElements.Count > 0)
-                    {
-                        // Randomly select one clickable element
-                        var target = clickableElements.OrderBy(_ => rnd.Next()).First();
-                        await ClickAtPosition(target.ScreenPos, target.Element.name);
-                        action.SetResult($"'{target.Element.name}' at ({target.ScreenPos.x:F0},{target.ScreenPos.y:F0}) from {clickableElements.Count} clickable/{elements.Count} total matches");
-                        return;
-                    }
-
-                    // Elements found but all off-screen - try recovery once
-                    if (!recoveryAttempted && RecoveryHandler != null)
-                    {
-                        recoveryAttempted = true;
-                        var firstElement = elements[0];
-                        var screenPos = InputInjector.GetScreenPosition(firstElement);
-                        Debug.Log($"[ActionExecutor] ClickAny recovery triggered: {elements.Count} element(s) all off-screen. First: '{firstElement.name}' at ({screenPos.x:F0},{screenPos.y:F0})");
-                        var context = new RecoveryContext
-                        {
-                            FailedAction = $"ClickAny({search})",
-                            ErrorMessage = $"Found {elements.Count} element(s) but all off-screen. First: '{firstElement.name}' at ({screenPos.x:F0},{screenPos.y:F0})",
-                            CancellationToken = default
-                        };
-
-                        var recoveryResult = await RecoveryHandler(context);
-                        Debug.Log($"[ActionExecutor] ClickAny recovery result: Success={recoveryResult.Success}, NoBlocker={recoveryResult.NoBlockerFound}");
-                        RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted for off-screen elements");
-
-                        if (recoveryResult.NoBlockerFound)
-                            break;
-
-                        continue;
-                    }
-                    else if (!recoveryAttempted && RecoveryHandler == null)
-                    {
-                        Debug.LogWarning($"[ActionExecutor] ClickAny: {elements.Count} element(s) all off-screen but RecoveryHandler is null");
-                    }
-                }
-                else if (!recoveryAttempted && RecoveryHandler != null &&
-                         (Now - startTime) > searchTime * 0.3f)
-                {
-                    // No elements found - try recovery at 30% timeout
-                    recoveryAttempted = true;
-                    Debug.Log($"[ActionExecutor] ClickAny recovery triggered: no elements found after {searchTime * 0.3f:F1}s");
-                    var context = new RecoveryContext
-                    {
-                        FailedAction = $"ClickAny({search})",
-                        ErrorMessage = $"No elements found: {search}",
-                        CancellationToken = default
-                    };
-
-                    var recoveryResult = await RecoveryHandler(context);
-                    Debug.Log($"[ActionExecutor] ClickAny recovery result: Success={recoveryResult.Success}, NoBlocker={recoveryResult.NoBlockerFound}");
-                    RecordRecovery(recoveryResult.Explanation ?? "Recovery attempted");
-
-                    if (recoveryResult.NoBlockerFound)
-                        break;
-                }
-
-                await Task.Delay(100);
-            }
-
-            action.Fail($"No clickable elements found within {searchTime}s");
-        }
-
-        #endregion
-
         #region GetValue Methods
 
         /// <summary>
@@ -2830,16 +2456,17 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <typeparam name="T">Type of value to get: string, bool, float, int, or T[]</typeparam>
         /// <param name="search">The search query to find the element</param>
+        /// <param name="timeout">Maximum time to search for the element</param>
         /// <returns>The value from the element</returns>
         /// <example>
-        /// var text = GetValue&lt;string&gt;(Name("ScoreLabel"));
-        /// var isOn = GetValue&lt;bool&gt;(Name("SoundToggle"));
-        /// var volume = GetValue&lt;float&gt;(Name("VolumeSlider"));
-        /// var items = GetValue&lt;string[]&gt;(Name("Dropdown"));
+        /// var text = await GetValue&lt;string&gt;(Name("ScoreLabel"));
+        /// var isOn = await GetValue&lt;bool&gt;(Name("SoundToggle"));
+        /// var volume = await GetValue&lt;float&gt;(Name("VolumeSlider"));
+        /// var items = await GetValue&lt;string[]&gt;(Name("Dropdown"));
         /// </example>
-        public static T GetValue<T>(Search search)
+        public static async Task<T> GetValue<T>(Search search, float timeout = 10f)
         {
-            var go = search.FindFirst();
+            var go = await search.Find(timeout);
             if (go == null)
                 throw new InvalidOperationException($"GetValue failed: element not found - Search: {search}");
 
@@ -3013,17 +2640,12 @@ namespace ODDGames.UIAutomation
         public static async Task WaitFor(Search search, float timeout = 10f)
         {
             await using var action = await RunAction($"WaitFor({search}, timeout={timeout}s)");
-            float startTime = Now;
 
-            while ((Now - startTime) < timeout && Application.isPlaying)
+            var result = await search.Find(timeout);
+            if (result != null)
             {
-                var result = search.FindFirst();
-                if (result != null)
-                {
-                    action.SetResult($"found '{result.name}'");
-                    return;
-                }
-                await Task.Delay(100);
+                action.SetResult($"found '{result.name}'");
+                return;
             }
 
             action.Fail($"timed out after {timeout}s");
@@ -3043,7 +2665,7 @@ namespace ODDGames.UIAutomation
 
             while ((Now - startTime) < timeout && Application.isPlaying)
             {
-                var go = search.FindFirst();
+                var go = await search.Find(0.5f); // Short timeout per attempt
                 if (go != null)
                 {
                     string actual = null;
@@ -3064,7 +2686,6 @@ namespace ODDGames.UIAutomation
                         return;
                     }
                 }
-                await Task.Delay(100);
             }
 
             action.Fail($"timed out after {timeout}s");
@@ -3083,14 +2704,13 @@ namespace ODDGames.UIAutomation
 
             while ((Now - startTime) < timeout && Application.isPlaying)
             {
-                var result = search.FindFirst();
+                var result = await search.Find(0.5f); // Short timeout per attempt
                 if (result == null)
                 {
                     float elapsed = Now - startTime;
                     action.SetResult($"satisfied after {elapsed:F2}s");
                     return;
                 }
-                await Task.Delay(100);
             }
 
             action.Fail($"timed out after {timeout}s");
@@ -3833,7 +3453,7 @@ namespace ODDGames.UIAutomation
             LogDebug($"ScrollTo: found scroll view '{scrollRect.name}', horizontal={canScrollHorizontal}, vertical={canScrollVertical}");
 
             // First check if target is already visible
-            var target = targetSearch.FindFirst();
+            var target = await targetSearch.Find(0.5f);
             if (target != null)
             {
                 var targetRect = target.GetComponent<RectTransform>();
@@ -3858,7 +3478,7 @@ namespace ODDGames.UIAutomation
 
             // Determine initial scroll direction based on target position relative to viewport
             // Try to find target (even if not visible) to determine direction
-            target = targetSearch.FindFirst();
+            target = await targetSearch.Find(0.5f);
             int verticalDir = 1;  // 1 = scroll down (reveal below), -1 = scroll up (reveal above)
             int horizontalDir = 1; // 1 = scroll right (reveal right), -1 = scroll left (reveal left)
 
@@ -3892,7 +3512,7 @@ namespace ODDGames.UIAutomation
             while (attempts < maxScrollAttempts)
             {
                 // Check for target before each drag
-                target = targetSearch.FindFirst();
+                target = await targetSearch.Find(0.5f);
                 if (target != null)
                 {
                     var targetRect = target.GetComponent<RectTransform>();
@@ -3986,7 +3606,7 @@ namespace ODDGames.UIAutomation
             }
 
             // Final check after all attempts
-            target = targetSearch.FindFirst();
+            target = await targetSearch.Find(0.5f);
             if (target != null)
             {
                 var targetRect = target.GetComponent<RectTransform>();

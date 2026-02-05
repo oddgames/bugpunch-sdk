@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,10 +8,10 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.InputSystem.LowLevel;
-using UnityEngine.TestTools;
 using TMPro;
-using Cysharp.Threading.Tasks;
+
 using ODDGames.UIAutomation;
+
 using static ODDGames.UIAutomation.ActionExecutor;
 
 namespace ODDGames.UIAutomation.Tests
@@ -38,7 +37,7 @@ namespace ODDGames.UIAutomation.Tests
             var existingEventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None);
             foreach (var es in existingEventSystems)
             {
-                Object.DestroyImmediate(es.gameObject);
+            Object.DestroyImmediate(es.gameObject);
             }
 
             // Reset Input System state to clear any leftover mouse button/touch states
@@ -46,17 +45,17 @@ namespace ODDGames.UIAutomation.Tests
             var mouse = Mouse.current;
             if (mouse != null)
             {
-                // Reset mouse state by queueing a clean state event
-                using (StateEvent.From(mouse, out var statePtr))
-                {
-                    mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
-                    mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
-                    mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
-                    mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
-                    mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
-                    InputSystem.QueueEvent(statePtr);
-                }
-                InputSystem.Update();
+            // Reset mouse state by queueing a clean state event
+            using (StateEvent.From(mouse, out var statePtr))
+            {
+                mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
+                mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
+                mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
+                mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
+                InputSystem.QueueEvent(statePtr);
+            }
+            InputSystem.Update();
             }
 
             // Create EventSystem
@@ -84,24 +83,24 @@ namespace ODDGames.UIAutomation.Tests
             var mouse = Mouse.current;
             if (mouse != null)
             {
-                using (StateEvent.From(mouse, out var statePtr))
-                {
-                    mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
-                    mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
-                    mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
-                    mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
-                    mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
-                    InputSystem.QueueEvent(statePtr);
-                }
-                InputSystem.Update();
+            using (StateEvent.From(mouse, out var statePtr))
+            {
+                mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
+                mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
+                mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
+                mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
+                InputSystem.QueueEvent(statePtr);
+            }
+            InputSystem.Update();
             }
 
             // Destroy in reverse order (children before parents for safety)
             for (int i = _createdObjects.Count - 1; i >= 0; i--)
             {
-                var obj = _createdObjects[i];
-                if (obj != null)
-                    Object.DestroyImmediate(obj);
+            var obj = _createdObjects[i];
+            if (obj != null)
+                Object.DestroyImmediate(obj);
             }
             _createdObjects.Clear();
 
@@ -114,135 +113,135 @@ namespace ODDGames.UIAutomation.Tests
             var orphans = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
             foreach (var go in orphans)
             {
-                if (go != null && (go.name.StartsWith("Test") || go.name.StartsWith("Diag") ||
-                    go.name == "EventSystem" || go.name == "TestCanvas" ||
-                    go.name.Contains("Helper") || go.name.Contains("Debugger")))
-                {
-                    Object.DestroyImmediate(go);
-                }
+            if (go != null && (go.name.StartsWith("Test") || go.name.StartsWith("Diag") ||
+                go.name == "EventSystem" || go.name == "TestCanvas" ||
+                go.name.Contains("Helper") || go.name.Contains("Debugger")))
+            {
+                Object.DestroyImmediate(go);
+            }
             }
         }
 
         #region Static Factory Tests - ByName
 
-        [UnityTest]
-        public IEnumerator ByName_ExactMatch_ReturnsTrue()
+        [Test]
+        public async Task ByName_ExactMatch_ReturnsTrue()
         {
             var go = CreateTestObject("ExactButton");
-            yield return null;
+            
             var search = new Search().Name("ExactButton");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_ExactMatch_WrongName_ReturnsFalse()
+        [Test]
+        public async Task ByName_ExactMatch_WrongName_ReturnsFalse()
         {
             var go = CreateTestObject("OtherButton");
-            yield return null;
+            
             var search = new Search().Name("ExactButton");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_WildcardPrefix_ReturnsTrue()
+        [Test]
+        public async Task ByName_WildcardPrefix_ReturnsTrue()
         {
             var go = CreateTestObject("PrefixButton");
-            yield return null;
+            
             var search = new Search().Name("Prefix*");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_WildcardSuffix_ReturnsTrue()
+        [Test]
+        public async Task ByName_WildcardSuffix_ReturnsTrue()
         {
             var go = CreateTestObject("ButtonSuffix");
-            yield return null;
+            
             var search = new Search().Name("*Suffix");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_WildcardContains_ReturnsTrue()
+        [Test]
+        public async Task ByName_WildcardContains_ReturnsTrue()
         {
             var go = CreateTestObject("SomeMiddleText");
-            yield return null;
+            
             var search = new Search().Name("*Middle*");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_GlobPattern_ReturnsTrue()
+        [Test]
+        public async Task ByName_GlobPattern_ReturnsTrue()
         {
             var go = CreateTestObject("btn_play_icon");
-            yield return null;
+            
             var search = new Search().Name("btn_*_icon");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_GlobPattern_WrongPattern_ReturnsFalse()
+        [Test]
+        public async Task ByName_GlobPattern_WrongPattern_ReturnsFalse()
         {
             var go = CreateTestObject("btn_play_button");
-            yield return null;
+            
             var search = new Search().Name("btn_*_icon");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_SpecialCharacters_MatchesExactly()
+        [Test]
+        public async Task ByName_SpecialCharacters_MatchesExactly()
         {
             var go = CreateTestObject("Button (1)");
-            yield return null;
+            
             Assert.IsTrue(new Search().Name("Button (1)").Matches(go));
             Assert.IsTrue(new Search().Name("Button (*)").Matches(go));
             Assert.IsTrue(new Search().Name("*(*)*").Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_UnicodeCharacters_Matches()
+        [Test]
+        public async Task ByName_UnicodeCharacters_Matches()
         {
             var go = CreateTestObject("Кнопка_按钮_ボタン");
-            yield return null;
+            
             Assert.IsTrue(new Search().Name("Кнопка_按钮_ボタン").Matches(go));
             Assert.IsTrue(new Search().Name("*按钮*").Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_CaseInsensitive_Matches()
+        [Test]
+        public async Task ByName_CaseInsensitive_Matches()
         {
             var go = CreateTestObject("MyButton");
-            yield return null;
+            
             Assert.IsTrue(new Search().Name("mybutton").Matches(go));
             Assert.IsTrue(new Search().Name("MYBUTTON").Matches(go));
             Assert.IsTrue(new Search().Name("MyBuTtOn").Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_MultipleWildcards_Matches()
+        [Test]
+        public async Task ByName_MultipleWildcards_Matches()
         {
             var go = CreateTestObject("Prefix_Middle_Suffix");
-            yield return null;
+            
             Assert.IsTrue(new Search().Name("*_*_*").Matches(go));
             Assert.IsTrue(new Search().Name("Prefix*Suffix").Matches(go));
             Assert.IsTrue(new Search().Name("*Middle*").Matches(go));
             Assert.IsFalse(new Search().Name("*Other*").Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_ConsecutiveWildcards_Matches()
+        [Test]
+        public async Task ByName_ConsecutiveWildcards_Matches()
         {
             var go = CreateTestObject("TestButton");
-            yield return null;
+            
             Assert.IsTrue(new Search().Name("**Button").Matches(go));
             Assert.IsTrue(new Search().Name("Test**").Matches(go));
             Assert.IsTrue(new Search().Name("***").Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByName_OnlyWildcard_MatchesAny()
+        [Test]
+        public async Task ByName_OnlyWildcard_MatchesAny()
         {
             var go = CreateTestObject("AnyName");
-            yield return null;
+            
             Assert.IsTrue(new Search().Name("*").Matches(go));
         }
 
@@ -250,50 +249,50 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Static Factory Tests - ByType
 
-        [UnityTest]
-        public IEnumerator ByType_Generic_WithComponent_ReturnsTrue()
+        [Test]
+        public async Task ByType_Generic_WithComponent_ReturnsTrue()
         {
             var go = CreateTestObject("ButtonObj");
             go.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>();
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByType_Generic_WithoutComponent_ReturnsFalse()
+        [Test]
+        public async Task ByType_Generic_WithoutComponent_ReturnsFalse()
         {
             var go = CreateTestObject("EmptyObj");
-            yield return null;
+            
             var search = new Search().Type<Button>();
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByType_String_WithComponent_ReturnsTrue()
+        [Test]
+        public async Task ByType_String_WithComponent_ReturnsTrue()
         {
             var go = CreateTestObject("ToggleObj");
             go.AddComponent<Toggle>();
-            yield return null;
+            
             var search = new Search().Type("Toggle");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByType_String_WithoutComponent_ReturnsFalse()
+        [Test]
+        public async Task ByType_String_WithoutComponent_ReturnsFalse()
         {
             var go = CreateTestObject("EmptyObj");
-            yield return null;
+            
             var search = new Search().Type("Toggle");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByType_InheritedTypes_Matches()
+        [Test]
+        public async Task ByType_InheritedTypes_Matches()
         {
             var go = CreateTestObject("GraphicObj");
             go.AddComponent<Image>(); // Image inherits from Graphic
-            yield return null;
+            
             Assert.IsTrue(new Search().Type<Graphic>().Matches(go));
             Assert.IsTrue(new Search().Type<Image>().Matches(go));
             Assert.IsFalse(new Search().Type<RawImage>().Matches(go));
@@ -303,49 +302,49 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Static Factory Tests - ByText
 
-        [UnityTest]
-        public IEnumerator ByText_ExactMatch_ReturnsTrue()
+        [Test]
+        public async Task ByText_ExactMatch_ReturnsTrue()
         {
             // Text() matches only the actual text element, not the parent button
             var go = CreateButtonWithText("Btn", "Click Me");
             var textElement = go.transform.GetChild(0).gameObject;
-            yield return null;
+            
             var search = new Search().Text("Click Me");
             Assert.IsTrue(search.Matches(textElement), "Text() should match the text element");
             Assert.IsFalse(search.Matches(go), "Text() should NOT match the parent button");
         }
 
-        [UnityTest]
-        public IEnumerator ByText_WildcardPrefix_ReturnsTrue()
+        [Test]
+        public async Task ByText_WildcardPrefix_ReturnsTrue()
         {
             var go = CreateButtonWithText("Btn", "Click Me");
             var textElement = go.transform.GetChild(0).gameObject;
-            yield return null;
+            
             var search = new Search().Text("Click*");
             Assert.IsTrue(search.Matches(textElement));
         }
 
-        [UnityTest]
-        public IEnumerator ByText_WildcardSuffix_ReturnsTrue()
+        [Test]
+        public async Task ByText_WildcardSuffix_ReturnsTrue()
         {
             var go = CreateButtonWithText("Btn", "Click Me");
             var textElement = go.transform.GetChild(0).gameObject;
-            yield return null;
+            
             var search = new Search().Text("*Me");
             Assert.IsTrue(search.Matches(textElement));
         }
 
-        [UnityTest]
-        public IEnumerator ByText_NoTextComponent_ReturnsFalse()
+        [Test]
+        public async Task ByText_NoTextComponent_ReturnsFalse()
         {
             var go = CreateTestObject("NoText");
-            yield return null;
+            
             var search = new Search().Text("Click Me");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByText_NestedTextComponents_UseHasChild()
+        [Test]
+        public async Task ByText_NestedTextComponents_UseHasChild()
         {
             // Text() only matches the actual text element
             // Use HasChild(Text()) to match parent that contains text
@@ -355,7 +354,7 @@ namespace ODDGames.UIAutomation.Tests
             var tmp = child.AddComponent<TextMeshProUGUI>();
             tmp.text = "Nested Text";
             _createdObjects.Add(child);
-            yield return null;
+            
             // Text() matches the child, not the parent
             Assert.IsTrue(new Search().Text("Nested Text").Matches(child));
             Assert.IsFalse(new Search().Text("Nested Text").Matches(parent));
@@ -363,8 +362,8 @@ namespace ODDGames.UIAutomation.Tests
             Assert.IsTrue(new Search().HasChild(new Search().Text("Nested Text")).Matches(parent));
         }
 
-        [UnityTest]
-        public IEnumerator ByText_MultipleTextComponents_MatchesDirectOnly()
+        [Test]
+        public async Task ByText_MultipleTextComponents_MatchesDirectOnly()
         {
             // Text() only matches the actual text elements, not the parent
             var go = CreateTestObject("MultiText");
@@ -378,7 +377,7 @@ namespace ODDGames.UIAutomation.Tests
             var tmp2 = child2.AddComponent<TextMeshProUGUI>();
             tmp2.text = "Second";
             _createdObjects.Add(child2);
-            yield return null;
+            
             // Text() matches the children directly
             Assert.IsTrue(new Search().Text("First").Matches(child1));
             Assert.IsTrue(new Search().Text("Second").Matches(child2));
@@ -394,34 +393,34 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Static Factory Tests - ByPath
 
-        [UnityTest]
-        public IEnumerator ByPath_MatchesHierarchy_ReturnsTrue()
+        [Test]
+        public async Task ByPath_MatchesHierarchy_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Path("*Parent*/*Child*");
             Assert.IsTrue(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator ByPath_WrongHierarchy_ReturnsFalse()
+        [Test]
+        public async Task ByPath_WrongHierarchy_ReturnsFalse()
         {
             var parent = CreateTestObject("OtherPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Path("*Parent*/*Child*");
             Assert.IsFalse(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator ByPath_DeepHierarchy_Matches()
+        [Test]
+        public async Task ByPath_DeepHierarchy_Matches()
         {
             var root = CreateTestObject("Canvas");
             var panel1 = CreateTestObject("MainPanel", root.transform);
             var panel2 = CreateTestObject("SubPanel", panel1.transform);
             var button = CreateTestObject("ActionButton", panel2.transform);
-            yield return null;
+            
             Assert.IsTrue(new Search().Path("*Canvas*/*MainPanel*/*SubPanel*/*ActionButton*").Matches(button));
             Assert.IsTrue(new Search().Path("*/*/*/*ActionButton*").Matches(button));
             Assert.IsFalse(new Search().Path("*WrongPanel*/*ActionButton*").Matches(button));
@@ -431,22 +430,22 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Static Factory Tests - ByTag
 
-        [UnityTest]
-        public IEnumerator ByTag_MatchingTag_ReturnsTrue()
+        [Test]
+        public async Task ByTag_MatchingTag_ReturnsTrue()
         {
             var go = CreateTestObject("TaggedObj");
             go.tag = "Untagged";
-            yield return null;
+            
             var search = new Search().Tag("Untagged");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByTag_DifferentTag_ReturnsFalse()
+        [Test]
+        public async Task ByTag_DifferentTag_ReturnsFalse()
         {
             var go = CreateTestObject("TaggedObj");
             go.tag = "Untagged";
-            yield return null;
+            
             var search = new Search().Tag("MainCamera");
             Assert.IsFalse(search.Matches(go));
         }
@@ -455,8 +454,8 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Static Factory Tests - BySprite
 
-        [UnityTest]
-        public IEnumerator BySprite_MatchingSpriteName_ReturnsTrue()
+        [Test]
+        public async Task BySprite_MatchingSpriteName_ReturnsTrue()
         {
             var go = CreateTestObject("SpriteObj");
             var image = go.AddComponent<Image>();
@@ -464,25 +463,25 @@ namespace ODDGames.UIAutomation.Tests
             var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
             sprite.name = "btn_play_icon";
             image.sprite = sprite;
-            yield return null;
+            
             var search = new Search().Texture("btn_*_icon");
             Assert.IsTrue(search.Matches(go));
             Object.Destroy(sprite);
             Object.Destroy(texture);
         }
 
-        [UnityTest]
-        public IEnumerator BySprite_NoSprite_ReturnsFalse()
+        [Test]
+        public async Task BySprite_NoSprite_ReturnsFalse()
         {
             var go = CreateTestObject("NoSpriteObj");
             go.AddComponent<Image>();
-            yield return null;
+            
             var search = new Search().Texture("any_sprite");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator BySprite_WrongSpriteName_ReturnsFalse()
+        [Test]
+        public async Task BySprite_WrongSpriteName_ReturnsFalse()
         {
             var go = CreateTestObject("SpriteObj");
             var image = go.AddComponent<Image>();
@@ -490,7 +489,7 @@ namespace ODDGames.UIAutomation.Tests
             var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
             sprite.name = "other_sprite";
             image.sprite = sprite;
-            yield return null;
+            
             var search = new Search().Texture("btn_*_icon");
             Assert.IsFalse(search.Matches(go));
             Object.Destroy(sprite);
@@ -501,31 +500,31 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Static Factory Tests - ByAny
 
-        [UnityTest]
-        public IEnumerator ByAny_MatchesName_ReturnsTrue()
+        [Test]
+        public async Task ByAny_MatchesName_ReturnsTrue()
         {
             var go = CreateTestObject("TargetName");
-            yield return null;
+            
             var search = new Search().Any("TargetName");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator ByAny_MatchesText_ReturnsTrue()
+        [Test]
+        public async Task ByAny_MatchesText_ReturnsTrue()
         {
             // Any() only matches text on the element itself (like Text()), not in children
             var go = CreateButtonWithText("SomeButton", "TargetText");
             var textElement = go.transform.GetChild(0).gameObject;
-            yield return null;
+            
             var search = new Search().Any("TargetText");
             Assert.IsTrue(search.Matches(textElement), "Any() should match the text element");
         }
 
-        [UnityTest]
-        public IEnumerator ByAny_NoMatch_ReturnsFalse()
+        [Test]
+        public async Task ByAny_NoMatch_ReturnsFalse()
         {
             var go = CreateButtonWithText("OtherButton", "OtherText");
-            yield return null;
+            
             var search = new Search().Any("Target");
             Assert.IsFalse(search.Matches(go));
         }
@@ -534,59 +533,59 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Chaining Tests
 
-        [UnityTest]
-        public IEnumerator Chain_TypeAndName_BothMatch_ReturnsTrue()
+        [Test]
+        public async Task Chain_TypeAndName_BothMatch_ReturnsTrue()
         {
             var go = CreateTestObject("SpecificButton");
             go.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>().Name("Specific*");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Chain_TypeAndName_TypeMismatch_ReturnsFalse()
+        [Test]
+        public async Task Chain_TypeAndName_TypeMismatch_ReturnsFalse()
         {
             var go = CreateTestObject("SpecificButton");
             go.AddComponent<Toggle>();
-            yield return null;
+            
             var search = new Search().Type<Button>().Name("Specific*");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Chain_TypeAndName_NameMismatch_ReturnsFalse()
+        [Test]
+        public async Task Chain_TypeAndName_NameMismatch_ReturnsFalse()
         {
             var go = CreateTestObject("OtherButton");
             go.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>().Name("Specific*");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Chain_NameAndText_BothMatch_ReturnsTrue()
+        [Test]
+        public async Task Chain_NameAndText_BothMatch_ReturnsTrue()
         {
             // Use HasChild(Text()) to match parent by child's text
             var go = CreateButtonWithText("SubmitBtn", "Submit");
-            yield return null;
+            
             var search = new Search().Name("*Btn").HasChild(new Search().Text("Submit"));
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Chain_TypeTextName_AllMatch_ReturnsTrue()
+        [Test]
+        public async Task Chain_TypeTextName_AllMatch_ReturnsTrue()
         {
             // Use HasChild(Text()) to match parent by child's text
             var go = CreateButtonWithText("ConfirmButton", "OK");
             go.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>().HasChild(new Search().Text("OK")).Name("*Confirm*");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Chain_TypeAndSprite_BothMatch_ReturnsTrue()
+        [Test]
+        public async Task Chain_TypeAndSprite_BothMatch_ReturnsTrue()
         {
             var go = CreateTestObject("ImageObj");
             var image = go.AddComponent<Image>();
@@ -594,15 +593,15 @@ namespace ODDGames.UIAutomation.Tests
             var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
             sprite.name = "icon_settings";
             image.sprite = sprite;
-            yield return null;
+            
             var search = new Search().Type<Image>().Texture("icon_*");
             Assert.IsTrue(search.Matches(go));
             Object.Destroy(sprite);
             Object.Destroy(texture);
         }
 
-        [UnityTest]
-        public IEnumerator Chain_FiveConditions_AllMustMatch()
+        [Test]
+        public async Task Chain_FiveConditions_AllMustMatch()
         {
             // Use HasChild(Text()) to match parent by child's text
             var go = CreateTestObject("SubmitButton");
@@ -616,23 +615,23 @@ namespace ODDGames.UIAutomation.Tests
             var tmp = textChild.AddComponent<TextMeshProUGUI>();
             tmp.text = "Submit";
             _createdObjects.Add(textChild);
-            yield return null;
+            
             var search = new Search()
-                .Type<Button>()
-                .Name("*Button")
-                .HasChild(new Search().Text("Submit"))
-                .Tag("Untagged")
-                .With<Button>(b => b.interactable);
+            .Type<Button>()
+            .Name("*Button")
+            .HasChild(new Search().Text("Submit"))
+            .Tag("Untagged")
+            .With<Button>(b => b.interactable);
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Chain_OrderIndependence()
+        [Test]
+        public async Task Chain_OrderIndependence()
         {
             // Use HasChild(Text()) to match parent by child's text
             var go = CreateButtonWithText("TestButton", "Click");
             go.AddComponent<Button>();
-            yield return null;
+            
             var search1 = new Search().Name("TestButton").HasChild(new Search().Text("Click")).Type<Button>();
             var search2 = new Search().Type<Button>().Name("TestButton").HasChild(new Search().Text("Click"));
             var search3 = new Search().HasChild(new Search().Text("Click")).Type<Button>().Name("TestButton");
@@ -645,63 +644,63 @@ namespace ODDGames.UIAutomation.Tests
 
         #region With Predicate Tests
 
-        [UnityTest]
-        public IEnumerator With_PredicateTrue_ReturnsTrue()
+        [Test]
+        public async Task With_PredicateTrue_ReturnsTrue()
         {
             var go = CreateTestObject("InteractableBtn");
             var button = go.AddComponent<Button>();
             button.interactable = true;
-            yield return null;
+            
             var search = new Search().Type<Button>().With<Button>(b => b.interactable);
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator With_PredicateFalse_ReturnsFalse()
+        [Test]
+        public async Task With_PredicateFalse_ReturnsFalse()
         {
             var go = CreateTestObject("DisabledBtn");
             var button = go.AddComponent<Button>();
             button.interactable = false;
-            yield return null;
+            
             var search = new Search().Type<Button>().With<Button>(b => b.interactable);
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator With_Toggle_IsOnTrue_ReturnsTrue()
+        [Test]
+        public async Task With_Toggle_IsOnTrue_ReturnsTrue()
         {
             var go = CreateTestObject("OnToggle");
             var toggle = go.AddComponent<Toggle>();
             toggle.isOn = true;
-            yield return null;
+            
             var search = new Search().Type<Toggle>().With<Toggle>(t => t.isOn);
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator With_Toggle_IsOnFalse_ReturnsFalse()
+        [Test]
+        public async Task With_Toggle_IsOnFalse_ReturnsFalse()
         {
             var go = CreateTestObject("OffToggle");
             var toggle = go.AddComponent<Toggle>();
             toggle.isOn = false;
-            yield return null;
+            
             var search = new Search().Type<Toggle>().With<Toggle>(t => t.isOn);
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator With_Slider_ValueCheck_ReturnsTrue()
+        [Test]
+        public async Task With_Slider_ValueCheck_ReturnsTrue()
         {
             var go = CreateTestObject("SliderObj");
             var slider = go.AddComponent<Slider>();
             slider.value = 0.75f;
-            yield return null;
+            
             var search = new Search().Type<Slider>().With<Slider>(s => s.value > 0.5f);
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator With_MultiplePredicatesOnSameComponent()
+        [Test]
+        public async Task With_MultiplePredicatesOnSameComponent()
         {
             var go = CreateTestObject("SliderObj");
             var slider = go.AddComponent<Slider>();
@@ -709,30 +708,30 @@ namespace ODDGames.UIAutomation.Tests
             slider.maxValue = 100;
             slider.value = 75;
             slider.interactable = true;
-            yield return null;
+            
             var search = new Search()
-                .Type<Slider>()
-                .With<Slider>(s => s.value > 50)
-                .With<Slider>(s => s.value < 80)
-                .With<Slider>(s => s.interactable);
+            .Type<Slider>()
+            .With<Slider>(s => s.value > 50)
+            .With<Slider>(s => s.value < 80)
+            .With<Slider>(s => s.interactable);
             Assert.IsTrue(search.Matches(go));
             slider.value = 90;
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator With_PredicateOnDifferentComponents()
+        [Test]
+        public async Task With_PredicateOnDifferentComponents()
         {
             var go = CreateTestObject("ComplexUI");
             var btn = go.AddComponent<Button>();
             btn.interactable = true;
             var image = go.AddComponent<Image>();
             image.raycastTarget = true;
-            yield return null;
+            
             var search = new Search()
-                .Name("ComplexUI")
-                .With<Button>(b => b.interactable)
-                .With<Image>(i => i.raycastTarget);
+            .Name("ComplexUI")
+            .With<Button>(b => b.interactable)
+            .With<Image>(i => i.raycastTarget);
             Assert.IsTrue(search.Matches(go));
             image.raycastTarget = false;
             Assert.IsFalse(search.Matches(go));
@@ -742,42 +741,42 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Where Predicate Tests
 
-        [UnityTest]
-        public IEnumerator Where_CustomPredicate_ReturnsTrue()
+        [Test]
+        public async Task Where_CustomPredicate_ReturnsTrue()
         {
             var go = CreateTestObject("CustomTarget");
-            yield return null;
+            
             var search = new Search().Where(g => g.name == "CustomTarget");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Where_CustomPredicate_ReturnsFalse()
+        [Test]
+        public async Task Where_CustomPredicate_ReturnsFalse()
         {
             var go = CreateTestObject("OtherObject");
-            yield return null;
+            
             var search = new Search().Where(g => g.name == "CustomTarget");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Where_ComplexPredicate_ReturnsTrue()
+        [Test]
+        public async Task Where_ComplexPredicate_ReturnsTrue()
         {
             var go = CreateTestObject("ActiveEnabled");
             go.SetActive(true);
-            yield return null;
+            
             var search = new Search().Where(g => g.activeInHierarchy && g.name.Contains("Active"));
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Where_ComplexPredicate_WithClosure()
+        [Test]
+        public async Task Where_ComplexPredicate_WithClosure()
         {
             var go1 = CreateTestObject("Target_1");
             var go2 = CreateTestObject("Target_2");
             var go3 = CreateTestObject("Other_3");
             var validNames = new[] { "Target_1", "Target_2" };
-            yield return null;
+            
             var search = new Search().Where(go => validNames.Contains(go.name));
             Assert.IsTrue(search.Matches(go1));
             Assert.IsTrue(search.Matches(go2));
@@ -788,32 +787,32 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Not (Negation) Tests
 
-        [UnityTest]
-        public IEnumerator Not_Name_ExcludesMatch()
+        [Test]
+        public async Task Not_Name_ExcludesMatch()
         {
             var go1 = CreateTestObject("NotThisOne");
             var go2 = CreateTestObject("NotOther");
-            yield return null;
+            
             var search = new Search().Name("Not*").Not.Name("NotThisOne");
             Assert.IsFalse(search.Matches(go1), "Should NOT match NotThisOne");
             Assert.IsTrue(search.Matches(go2), "Should match NotOther");
         }
 
-        [UnityTest]
-        public IEnumerator Not_Type_ExcludesComponent()
+        [Test]
+        public async Task Not_Type_ExcludesComponent()
         {
             var goWithButton = CreateTestObject("WithButton");
             goWithButton.AddComponent<Button>();
             var goWithToggle = CreateTestObject("WithToggle");
             goWithToggle.AddComponent<Toggle>();
-            yield return null;
+            
             var search = new Search().Name("With*").Not.Type<Button>();
             Assert.IsFalse(search.Matches(goWithButton), "Should NOT match object with Button");
             Assert.IsTrue(search.Matches(goWithToggle), "Should match object with Toggle");
         }
 
-        [UnityTest]
-        public IEnumerator Not_ChainedMultipleTimes_AllNegated()
+        [Test]
+        public async Task Not_ChainedMultipleTimes_AllNegated()
         {
             var go1 = CreateTestObject("KeepThis");
             go1.AddComponent<Button>();
@@ -821,11 +820,11 @@ namespace ODDGames.UIAutomation.Tests
             go2.AddComponent<Button>();
             var go3 = CreateTestObject("ExcludeB");
             go3.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search()
-                .Type<Button>()
-                .Not.Name("ExcludeA")
-                .Not.Name("ExcludeB");
+            .Type<Button>()
+            .Not.Name("ExcludeA")
+            .Not.Name("ExcludeB");
             Assert.IsTrue(search.Matches(go1));
             Assert.IsFalse(search.Matches(go2));
             Assert.IsFalse(search.Matches(go3));
@@ -835,53 +834,53 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Hierarchy Tests - HasParent
 
-        [UnityTest]
-        public IEnumerator HasParent_Search_DirectParentMatches_ReturnsTrue()
+        [Test]
+        public async Task HasParent_Search_DirectParentMatches_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("ChildButton").HasParent(new Search().Name("ParentPanel"));
             Assert.IsTrue(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator HasParent_Search_WrongParent_ReturnsFalse()
+        [Test]
+        public async Task HasParent_Search_WrongParent_ReturnsFalse()
         {
             var parent = CreateTestObject("OtherPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("ChildButton").HasParent(new Search().Name("ParentPanel"));
             Assert.IsFalse(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator HasParent_String_DirectParentMatches_ReturnsTrue()
+        [Test]
+        public async Task HasParent_String_DirectParentMatches_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("ChildButton").HasParent("ParentPanel");
             Assert.IsTrue(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator HasParent_String_Wildcard_ReturnsTrue()
+        [Test]
+        public async Task HasParent_String_Wildcard_ReturnsTrue()
         {
             var parent = CreateTestObject("MyParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("ChildButton").HasParent("*Parent*");
             Assert.IsTrue(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator HasParent_GrandparentDoesNotMatch()
+        [Test]
+        public async Task HasParent_GrandparentDoesNotMatch()
         {
             var grandparent = CreateTestObject("GrandPanel");
             var parent = CreateTestObject("ParentPanel", grandparent.transform);
             var child = CreateTestObject("ChildButton", parent.transform);
-            yield return null;
+            
             var searchParent = new Search().Name("ChildButton").HasParent("ParentPanel");
             var searchGrandparent = new Search().Name("ChildButton").HasParent("GrandPanel");
             Assert.IsTrue(searchParent.Matches(child));
@@ -892,49 +891,49 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Hierarchy Tests - HasAncestor
 
-        [UnityTest]
-        public IEnumerator HasAncestor_Search_GrandparentMatches_ReturnsTrue()
+        [Test]
+        public async Task HasAncestor_Search_GrandparentMatches_ReturnsTrue()
         {
             var grandparent = CreateTestObject("RootPanel");
             var parent = CreateTestObject("MiddlePanel", grandparent.transform);
             var child = CreateTestObject("DeepButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("DeepButton").HasAncestor(new Search().Name("RootPanel"));
             Assert.IsTrue(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator HasAncestor_Search_NoMatchingAncestor_ReturnsFalse()
+        [Test]
+        public async Task HasAncestor_Search_NoMatchingAncestor_ReturnsFalse()
         {
             var grandparent = CreateTestObject("OtherRoot");
             var parent = CreateTestObject("MiddlePanel", grandparent.transform);
             var child = CreateTestObject("DeepButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("DeepButton").HasAncestor(new Search().Name("RootPanel"));
             Assert.IsFalse(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator HasAncestor_String_DeepHierarchy_ReturnsTrue()
+        [Test]
+        public async Task HasAncestor_String_DeepHierarchy_ReturnsTrue()
         {
             var root = CreateTestObject("AncestorRoot");
             var level1 = CreateTestObject("Level1", root.transform);
             var level2 = CreateTestObject("Level2", level1.transform);
             var level3 = CreateTestObject("Level3", level2.transform);
-            yield return null;
+            
             var search = new Search().Name("Level3").HasAncestor("AncestorRoot");
             Assert.IsTrue(search.Matches(level3));
         }
 
-        [UnityTest]
-        public IEnumerator HasAncestor_MatchesAtAnyDepth()
+        [Test]
+        public async Task HasAncestor_MatchesAtAnyDepth()
         {
             var root = CreateTestObject("RootPanel");
             var level1 = CreateTestObject("Level1", root.transform);
             var level2 = CreateTestObject("Level2", level1.transform);
             var level3 = CreateTestObject("Level3", level2.transform);
             var level4 = CreateTestObject("DeepButton", level3.transform);
-            yield return null;
+            
             Assert.IsTrue(new Search().Name("DeepButton").HasAncestor("RootPanel").Matches(level4));
             Assert.IsTrue(new Search().Name("DeepButton").HasAncestor("Level1").Matches(level4));
             Assert.IsTrue(new Search().Name("DeepButton").HasAncestor("Level2").Matches(level4));
@@ -945,43 +944,43 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Hierarchy Tests - HasChild
 
-        [UnityTest]
-        public IEnumerator HasChild_Search_DirectChildMatches_ReturnsTrue()
+        [Test]
+        public async Task HasChild_Search_DirectChildMatches_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("ParentPanel").HasChild(new Search().Name("ChildButton"));
             Assert.IsTrue(search.Matches(parent));
         }
 
-        [UnityTest]
-        public IEnumerator HasChild_Search_NoMatchingChild_ReturnsFalse()
+        [Test]
+        public async Task HasChild_Search_NoMatchingChild_ReturnsFalse()
         {
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("OtherChild", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("ParentPanel").HasChild(new Search().Name("ChildButton"));
             Assert.IsFalse(search.Matches(parent));
         }
 
-        [UnityTest]
-        public IEnumerator HasChild_String_Wildcard_ReturnsTrue()
+        [Test]
+        public async Task HasChild_String_Wildcard_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("SpecificChildBtn", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("ParentPanel").HasChild("*Child*");
             Assert.IsTrue(search.Matches(parent));
         }
 
-        [UnityTest]
-        public IEnumerator HasChild_OnlyMatchesDirectChildren()
+        [Test]
+        public async Task HasChild_OnlyMatchesDirectChildren()
         {
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildPanel", parent.transform);
             var grandchild = CreateTestObject("GrandchildButton", child.transform);
-            yield return null;
+            
             var searchChild = new Search().Name("ParentPanel").HasChild("ChildPanel");
             var searchGrandchild = new Search().Name("ParentPanel").HasChild("GrandchildButton");
             Assert.IsTrue(searchChild.Matches(parent));
@@ -992,64 +991,64 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Hierarchy Tests - HasDescendant
 
-        [UnityTest]
-        public IEnumerator HasDescendant_Search_GrandchildMatches_ReturnsTrue()
+        [Test]
+        public async Task HasDescendant_Search_GrandchildMatches_ReturnsTrue()
         {
             var root = CreateTestObject("RootPanel");
             var middle = CreateTestObject("MiddlePanel", root.transform);
             var deep = CreateTestObject("DeepButton", middle.transform);
-            yield return null;
+            
             var search = new Search().Name("RootPanel").HasDescendant(new Search().Name("DeepButton"));
             Assert.IsTrue(search.Matches(root));
         }
 
-        [UnityTest]
-        public IEnumerator HasDescendant_Search_NoMatchingDescendant_ReturnsFalse()
+        [Test]
+        public async Task HasDescendant_Search_NoMatchingDescendant_ReturnsFalse()
         {
             var root = CreateTestObject("RootPanel");
             var middle = CreateTestObject("MiddlePanel", root.transform);
             var deep = CreateTestObject("OtherButton", middle.transform);
-            yield return null;
+            
             var search = new Search().Name("RootPanel").HasDescendant(new Search().Name("DeepButton"));
             Assert.IsFalse(search.Matches(root));
         }
 
-        [UnityTest]
-        public IEnumerator HasDescendant_String_DeepHierarchy_ReturnsTrue()
+        [Test]
+        public async Task HasDescendant_String_DeepHierarchy_ReturnsTrue()
         {
             var root = CreateTestObject("DescendantRoot");
             var level1 = CreateTestObject("Level1", root.transform);
             var level2 = CreateTestObject("Level2", level1.transform);
             var level3 = CreateTestObject("TargetDescendant", level2.transform);
-            yield return null;
+            
             var search = new Search().Name("DescendantRoot").HasDescendant("*Target*");
             Assert.IsTrue(search.Matches(root));
         }
 
-        [UnityTest]
-        public IEnumerator HasDescendant_MatchesAtAnyDepth()
+        [Test]
+        public async Task HasDescendant_MatchesAtAnyDepth()
         {
             var root = CreateTestObject("RootPanel");
             var level1 = CreateTestObject("Level1", root.transform);
             var level2 = CreateTestObject("Level2", level1.transform);
             var deepButton = CreateTestObject("DeepButton", level2.transform);
-            yield return null;
+            
             Assert.IsTrue(new Search().Name("RootPanel").HasDescendant("DeepButton").Matches(root));
             Assert.IsTrue(new Search().Name("RootPanel").HasDescendant("Level2").Matches(root));
             Assert.IsTrue(new Search().Name("Level1").HasDescendant("DeepButton").Matches(level1));
         }
 
-        [UnityTest]
-        public IEnumerator Hierarchy_CombinedParentAndChild()
+        [Test]
+        public async Task Hierarchy_CombinedParentAndChild()
         {
             var root = CreateTestObject("Root");
             var panel = CreateTestObject("TargetPanel", root.transform);
             var button = CreateTestObject("TargetButton", panel.transform);
-            yield return null;
+            
             var search = new Search()
-                .Name("TargetPanel")
-                .HasParent("Root")
-                .HasChild("TargetButton");
+            .Name("TargetPanel")
+            .HasParent("Root")
+            .HasChild("TargetButton");
             Assert.IsTrue(search.Matches(panel));
         }
 
@@ -1057,68 +1056,68 @@ namespace ODDGames.UIAutomation.Tests
 
         #region GetParent Tests
 
-        [UnityTest]
-        public IEnumerator GetParent_ComponentInParent_ReturnsTrue()
+        [Test]
+        public async Task GetParent_ComponentInParent_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentPanel");
             parent.AddComponent<CanvasGroup>();
             var child = CreateTestObject("ChildButton", parent.transform);
             child.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>().GetParent<CanvasGroup>();
             Assert.IsTrue(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator GetParent_NoComponentInParent_ReturnsFalse()
+        [Test]
+        public async Task GetParent_NoComponentInParent_ReturnsFalse()
         {
             var parent = CreateTestObject("ParentPanel");
             var child = CreateTestObject("ChildButton", parent.transform);
             child.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>().GetParent<CanvasGroup>();
             Assert.IsFalse(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator GetParent_WithPredicate_ReturnsTrue()
+        [Test]
+        public async Task GetParent_WithPredicate_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentPanel");
             var cg = parent.AddComponent<CanvasGroup>();
             cg.alpha = 0.8f;
             var child = CreateTestObject("ChildButton", parent.transform);
             child.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
             Assert.IsTrue(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator GetParent_WithPredicate_PredicateFails_ReturnsFalse()
+        [Test]
+        public async Task GetParent_WithPredicate_PredicateFails_ReturnsFalse()
         {
             var parent = CreateTestObject("ParentPanel");
             var cg = parent.AddComponent<CanvasGroup>();
             cg.alpha = 0.3f;
             var child = CreateTestObject("ChildButton", parent.transform);
             child.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>().GetParent<CanvasGroup>(g => g.alpha > 0.5f);
             Assert.IsFalse(search.Matches(child));
         }
 
-        [UnityTest]
-        public IEnumerator GetParent_ExcludesSelf()
+        [Test]
+        public async Task GetParent_ExcludesSelf()
         {
             var go = CreateTestObject("SelfTest");
             go.AddComponent<Button>();
             go.AddComponent<CanvasGroup>();
-            yield return null;
+            
             var search = new Search().Type<Button>().GetParent<CanvasGroup>();
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Not_GetParent_Works()
+        [Test]
+        public async Task Not_GetParent_Works()
         {
             var parent1 = CreateTestObject("WithCanvasGroup");
             parent1.AddComponent<CanvasGroup>();
@@ -1127,7 +1126,7 @@ namespace ODDGames.UIAutomation.Tests
             var parent2 = CreateTestObject("WithoutCanvasGroup");
             var child2 = CreateTestObject("Child2", parent2.transform);
             child2.AddComponent<Button>();
-            yield return null;
+            
             var search = new Search().Type<Button>().Not.GetParent<CanvasGroup>();
             Assert.IsFalse(search.Matches(child1));
             Assert.IsTrue(search.Matches(child2));
@@ -1137,29 +1136,29 @@ namespace ODDGames.UIAutomation.Tests
 
         #region GetChild Tests
 
-        [UnityTest]
-        public IEnumerator GetChild_ComponentInChildren_ReturnsTrue()
+        [Test]
+        public async Task GetChild_ComponentInChildren_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentSlot");
             var child = CreateTestObject("ChildImage", parent.transform);
             child.AddComponent<Image>();
-            yield return null;
+            
             var search = new Search().Name("ParentSlot").GetChild<Image>();
             Assert.IsTrue(search.Matches(parent));
         }
 
-        [UnityTest]
-        public IEnumerator GetChild_NoComponentInChildren_ReturnsFalse()
+        [Test]
+        public async Task GetChild_NoComponentInChildren_ReturnsFalse()
         {
             var parent = CreateTestObject("ParentSlot");
             var child = CreateTestObject("ChildEmpty", parent.transform);
-            yield return null;
+            
             var search = new Search().Name("ParentSlot").GetChild<Image>();
             Assert.IsFalse(search.Matches(parent));
         }
 
-        [UnityTest]
-        public IEnumerator GetChild_WithPredicate_ReturnsTrue()
+        [Test]
+        public async Task GetChild_WithPredicate_ReturnsTrue()
         {
             var parent = CreateTestObject("ParentSlot");
             var child = CreateTestObject("ChildImage", parent.transform);
@@ -1167,44 +1166,44 @@ namespace ODDGames.UIAutomation.Tests
             var texture = new Texture2D(1, 1);
             var sprite = Sprite.Create(texture, new Rect(0, 0, 1, 1), Vector2.zero);
             image.sprite = sprite;
-            yield return null;
+            
             var search = new Search().Name("ParentSlot").GetChild<Image>(img => img.sprite != null);
             Assert.IsTrue(search.Matches(parent));
             Object.Destroy(sprite);
             Object.Destroy(texture);
         }
 
-        [UnityTest]
-        public IEnumerator GetChild_WithPredicate_PredicateFails_ReturnsFalse()
+        [Test]
+        public async Task GetChild_WithPredicate_PredicateFails_ReturnsFalse()
         {
             var parent = CreateTestObject("ParentSlot");
             var child = CreateTestObject("ChildImage", parent.transform);
             var image = child.AddComponent<Image>();
             image.sprite = null;
-            yield return null;
+            
             var search = new Search().Name("ParentSlot").GetChild<Image>(img => img.sprite != null);
             Assert.IsFalse(search.Matches(parent));
         }
 
-        [UnityTest]
-        public IEnumerator GetChild_ExcludesSelf()
+        [Test]
+        public async Task GetChild_ExcludesSelf()
         {
             var go = CreateTestObject("SelfTest");
             go.AddComponent<Image>();
-            yield return null;
+            
             var search = new Search().Name("SelfTest").GetChild<Image>();
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Not_GetChild_Works()
+        [Test]
+        public async Task Not_GetChild_Works()
         {
             var parent1 = CreateTestObject("ParentWithImage");
             var child1 = CreateTestObject("ImageChild", parent1.transform);
             child1.AddComponent<Image>();
             var parent2 = CreateTestObject("ParentWithoutImage");
             var child2 = CreateTestObject("EmptyChild", parent2.transform);
-            yield return null;
+            
             var search = new Search().Name("Parent*").Not.GetChild<Image>();
             Assert.IsFalse(search.Matches(parent1));
             Assert.IsTrue(search.Matches(parent2));
@@ -1212,98 +1211,83 @@ namespace ODDGames.UIAutomation.Tests
 
         #endregion
 
-        #region Implicit Conversion Tests
-
-        [UnityTest]
-        public IEnumerator ImplicitConversion_String_ToSearch_Works()
-        {
-            // Implicit conversion creates Text() search, which only matches text elements directly
-            var go = CreateButtonWithText("Btn", "Target Text");
-            var textElement = go.transform.GetChild(0).gameObject;
-            yield return null;
-            Search search = "Target Text";
-            Assert.IsTrue(search.Matches(textElement), "Implicit search should match text element");
-        }
-
-        #endregion
-
         #region Edge Cases
 
-        [UnityTest]
-        public IEnumerator Search_NullGameObject_ReturnsFalse()
+        [Test]
+        public async Task Search_NullGameObject_ReturnsFalse()
         {
-            yield return null;
+            
             var search = new Search().Name("Any");
             Assert.IsFalse(search.Matches(null));
         }
 
-        [UnityTest]
-        public IEnumerator Search_InactiveGameObject_StillMatches()
+        [Test]
+        public async Task Search_InactiveGameObject_StillMatches()
         {
             var go = CreateTestObject("InactiveObject");
             go.SetActive(false);
-            yield return null;
+            
             var search = new Search().Name("InactiveObject");
             Assert.IsTrue(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Search_EmptyName_ReturnsFalse()
+        [Test]
+        public async Task Search_EmptyName_ReturnsFalse()
         {
             var go = CreateTestObject("");
-            yield return null;
+            
             var search = new Search().Name("");
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator Chain_MultipleConditions_AllMustMatch()
+        [Test]
+        public async Task Chain_MultipleConditions_AllMustMatch()
         {
             // Use HasChild(Text()) to match parent by child's text
             var go = CreateButtonWithText("SubmitButton", "Submit");
             go.AddComponent<Button>();
-            yield return null;
+            
             var searchAllMatch = new Search()
-                .Type<Button>()
-                .Name("*Button")
-                .HasChild(new Search().Text("Submit"));
+            .Type<Button>()
+            .Name("*Button")
+            .HasChild(new Search().Text("Submit"));
             Assert.IsTrue(searchAllMatch.Matches(go));
             var searchOneFails = new Search()
-                .Type<Button>()
-                .Name("*Button")
-                .HasChild(new Search().Text("Cancel"));
+            .Type<Button>()
+            .Name("*Button")
+            .HasChild(new Search().Text("Cancel"));
             Assert.IsFalse(searchOneFails.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator LongName_Matches()
+        [Test]
+        public async Task LongName_Matches()
         {
             var longName = new string('A', 500) + "_Button_" + new string('B', 500);
             var go = CreateTestObject(longName);
-            yield return null;
+            
             Assert.IsTrue(new Search().Name(longName).Matches(go));
             Assert.IsTrue(new Search().Name("*_Button_*").Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator DestroyedGameObject_ReturnsFalse()
+        [Test]
+        public async Task DestroyedGameObject_ReturnsFalse()
         {
             var go = CreateTestObject("WillBeDestroyed");
             var search = new Search().Name("WillBeDestroyed");
             Assert.IsTrue(search.Matches(go));
             Object.DestroyImmediate(go);
             _createdObjects.Remove(go);
-            yield return null;
+            
             Assert.IsFalse(search.Matches(go));
         }
 
-        [UnityTest]
-        public IEnumerator DisabledComponents_StillMatch()
+        [Test]
+        public async Task DisabledComponents_StillMatch()
         {
             var go = CreateTestObject("DisabledButton");
             var btn = go.AddComponent<Button>();
             btn.enabled = false;
-            yield return null;
+            
             Assert.IsTrue(new Search().Type<Button>().Name("DisabledButton").Matches(go));
         }
 
@@ -1311,45 +1295,45 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Ordering Tests (Skip, First, Last)
 
-        [UnityTest]
-        public IEnumerator Skip_ReturnsCorrectSkipCount()
+        [Test]
+        public async Task Skip_ReturnsCorrectSkipCount()
         {
-            yield return null;
+            
             var search = new Search().Name("Item*").Skip(2);
             Assert.IsTrue(search.HasPostProcessing);
         }
 
-        [UnityTest]
-        public IEnumerator First_SetsPostProcessing()
+        [Test]
+        public async Task First_SetsPostProcessing()
         {
-            yield return null;
+            
             var search = new Search().Name("Item*").First();
             Assert.IsTrue(search.HasPostProcessing);
         }
 
-        [UnityTest]
-        public IEnumerator Last_SetsPostProcessing()
+        [Test]
+        public async Task Last_SetsPostProcessing()
         {
-            yield return null;
+            
             var search = new Search().Name("Item*").Last();
             Assert.IsTrue(search.HasPostProcessing);
         }
 
-        [UnityTest]
-        public IEnumerator OrderByPosition_SetsPostProcessing()
+        [Test]
+        public async Task OrderByPosition_SetsPostProcessing()
         {
-            yield return null;
+            
             var search = new Search().Name("Item*").OrderByPosition();
             Assert.IsTrue(search.HasPostProcessing);
         }
 
-        [UnityTest]
-        public IEnumerator ApplyPostProcessing_Skip_Works()
+        [Test]
+        public async Task ApplyPostProcessing_Skip_Works()
         {
             var go1 = CreateTestObject("Item1");
             var go2 = CreateTestObject("Item2");
             var go3 = CreateTestObject("Item3");
-            yield return null;
+            
             var search = new Search().Name("Item*").Skip(1);
             var input = new[] { go1, go2, go3 };
             var result = search.ApplyPostProcessing(input).ToList();
@@ -1358,13 +1342,13 @@ namespace ODDGames.UIAutomation.Tests
             Assert.AreEqual(go3, result[1]);
         }
 
-        [UnityTest]
-        public IEnumerator ApplyPostProcessing_SkipAndFirst_Works()
+        [Test]
+        public async Task ApplyPostProcessing_SkipAndFirst_Works()
         {
             var go1 = CreateTestObject("Item1");
             var go2 = CreateTestObject("Item2");
             var go3 = CreateTestObject("Item3");
-            yield return null;
+            
             var search = new Search().Name("Item*").Skip(1).First();
             var input = new[] { go1, go2, go3 };
             var result = search.ApplyPostProcessing(input).ToList();
@@ -1372,457 +1356,412 @@ namespace ODDGames.UIAutomation.Tests
             Assert.AreEqual(go2, result[0]);
         }
 
-        [UnityTest]
-        public IEnumerator First_WithoutSkip_GetsFirst()
+        [Test]
+        public async Task First_WithoutSkip_GetsFirst()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
-                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
-                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var result = await test.TestFind<Button>(
-                    new Search().Name("OrderedBtn*").First());
-                Assert.IsNotNull(result, "Should find button");
-                Assert.AreEqual("OrderedBtn1", result.name, "First() should return OrderedBtn1 (leftmost)");
-            });
+            var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+            var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+            var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var result = await test.TestFind<Button>(
+                new Search().Name("OrderedBtn*").First());
+            Assert.IsNotNull(result, "Should find button");
+            Assert.AreEqual("OrderedBtn1", result.name, "First() should return OrderedBtn1 (leftmost)");
         }
 
-        [UnityTest]
-        public IEnumerator Skip_SkipsElements()
+        [Test]
+        public async Task Skip_SkipsElements()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
-                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
-                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var result = await test.TestFind<Button>(
-                    new Search().Name("OrderedBtn*").Skip(1).First());
-                Assert.IsNotNull(result, "Should find button after skip");
-                Assert.AreEqual("OrderedBtn2", result.name, "Skip(1).First() should return second button");
-            });
+            var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+            var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+            var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var result = await test.TestFind<Button>(
+                new Search().Name("OrderedBtn*").Skip(1).First());
+            Assert.IsNotNull(result, "Should find button after skip");
+            Assert.AreEqual("OrderedBtn2", result.name, "Skip(1).First() should return second button");
         }
 
-        [UnityTest]
-        public IEnumerator Skip2_First_GetsThird()
+        [Test]
+        public async Task Skip2_First_GetsThird()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
-                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
-                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var result = await test.TestFind<Button>(
-                    new Search().Name("OrderedBtn*").Skip(2).First());
-                Assert.IsNotNull(result, "Should find button");
-                Assert.AreEqual("OrderedBtn3", result.name, "Skip(2).First() should return OrderedBtn3");
-            });
+            var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+            var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+            var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var result = await test.TestFind<Button>(
+                new Search().Name("OrderedBtn*").Skip(2).First());
+            Assert.IsNotNull(result, "Should find button");
+            Assert.AreEqual("OrderedBtn3", result.name, "Skip(2).First() should return OrderedBtn3");
         }
 
-        [UnityTest]
-        public IEnumerator Skip_ThenLast_Works()
+        [Test]
+        public async Task Skip_ThenLast_Works()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
-                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
-                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var result = await test.TestFind<Button>(
-                    new Search().Name("OrderedBtn*").Skip(1).Last());
-                Assert.IsNotNull(result, "Should find button");
-                Assert.AreEqual("OrderedBtn3", result.name, "Skip(1).Last() should return third button");
-            });
+            var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+            var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+            var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var result = await test.TestFind<Button>(
+                new Search().Name("OrderedBtn*").Skip(1).Last());
+            Assert.IsNotNull(result, "Should find button");
+            Assert.AreEqual("OrderedBtn3", result.name, "Skip(1).Last() should return third button");
         }
 
-        [UnityTest]
-        public IEnumerator VerticalOrdering_First_GetsTop()
+        [Test]
+        public async Task VerticalOrdering_First_GetsTop()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var top = CreateButton("TopBtn", "Top", _canvas.transform, new Vector2(0, 200));
-                var mid = CreateButton("MidBtn", "Mid", _canvas.transform, new Vector2(0, 0));
-                var bot = CreateButton("BotBtn", "Bot", _canvas.transform, new Vector2(0, -200));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var result = await test.TestFind<Button>(
-                    new Search().Name("*Btn").First());
-                Assert.IsNotNull(result, "Should find button");
-                Assert.AreEqual("TopBtn", result.name, "First() should return TopBtn (top-most)");
-            });
+            var top = CreateButton("TopBtn", "Top", _canvas.transform, new Vector2(0, 200));
+            var mid = CreateButton("MidBtn", "Mid", _canvas.transform, new Vector2(0, 0));
+            var bot = CreateButton("BotBtn", "Bot", _canvas.transform, new Vector2(0, -200));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var result = await test.TestFind<Button>(
+                new Search().Name("*Btn").First());
+            Assert.IsNotNull(result, "Should find button");
+            Assert.AreEqual("TopBtn", result.name, "First() should return TopBtn (top-most)");
         }
 
-        [UnityTest]
-        public IEnumerator VerticalOrdering_Last_GetsBottom()
+        [Test]
+        public async Task VerticalOrdering_Last_GetsBottom()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var top = CreateButton("TopBtn", "Top", _canvas.transform, new Vector2(0, 200));
-                var mid = CreateButton("MidBtn", "Mid", _canvas.transform, new Vector2(0, 0));
-                var bot = CreateButton("BotBtn", "Bot", _canvas.transform, new Vector2(0, -200));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var result = await test.TestFind<Button>(
-                    new Search().Name("*Btn").Last());
-                Assert.IsNotNull(result, "Should find button");
-                Assert.AreEqual("BotBtn", result.name, "Last() should return BotBtn (bottom-most)");
-            });
+            var top = CreateButton("TopBtn", "Top", _canvas.transform, new Vector2(0, 200));
+            var mid = CreateButton("MidBtn", "Mid", _canvas.transform, new Vector2(0, 0));
+            var bot = CreateButton("BotBtn", "Bot", _canvas.transform, new Vector2(0, -200));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var result = await test.TestFind<Button>(
+                new Search().Name("*Btn").Last());
+            Assert.IsNotNull(result, "Should find button");
+            Assert.AreEqual("BotBtn", result.name, "Last() should return BotBtn (bottom-most)");
         }
 
-        [UnityTest]
-        public IEnumerator FindAll_ReturnsAllInOrder()
+        [Test]
+        public async Task FindAll_ReturnsAllInOrder()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
-                var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
-                var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindAllHelper();
-                var results = await test.TestFindAll<Button>(
-                    new Search().Name("OrderedBtn*").OrderByPosition());
-                Assert.AreEqual(3, results.Count, "Should find all 3 buttons");
-                Assert.AreEqual("OrderedBtn1", results[0].name, "First should be OrderedBtn1 (leftmost)");
-                Assert.AreEqual("OrderedBtn2", results[1].name, "Second should be OrderedBtn2 (middle)");
-                Assert.AreEqual("OrderedBtn3", results[2].name, "Third should be OrderedBtn3 (rightmost)");
-            });
+            var btn1 = CreateButton("OrderedBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+            var btn2 = CreateButton("OrderedBtn2", "2", _canvas.transform, new Vector2(0, 0));
+            var btn3 = CreateButton("OrderedBtn3", "3", _canvas.transform, new Vector2(200, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindAllHelper();
+            var results = await test.TestFindAll<Button>(
+                new Search().Name("OrderedBtn*").OrderByPosition());
+            Assert.AreEqual(3, results.Count, "Should find all 3 buttons");
+            Assert.AreEqual("OrderedBtn1", results[0].name, "First should be OrderedBtn1 (leftmost)");
+            Assert.AreEqual("OrderedBtn2", results[1].name, "Second should be OrderedBtn2 (middle)");
+            Assert.AreEqual("OrderedBtn3", results[2].name, "Third should be OrderedBtn3 (rightmost)");
         }
 
-        [UnityTest]
-        public IEnumerator OrderBy_SortsCorrectly()
+        [Test]
+        public async Task OrderBy_SortsCorrectly()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var slider1 = CreateSlider("Slider1", 0.1f, _canvas.transform, new Vector2(-100, 0));
-                var slider2 = CreateSlider("Slider2", 0.9f, _canvas.transform, new Vector2(0, 0));
-                var slider3 = CreateSlider("Slider3", 0.5f, _canvas.transform, new Vector2(100, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var lowest = await test.TestFind<Slider>(
-                    new Search().Name("Slider*").OrderBy<Slider>(s => s.value).First());
-                Assert.IsNotNull(lowest, "Should find slider");
-                Assert.AreEqual("Slider1", lowest.name, "First by value should be Slider1 (0.1)");
-                var highest = await test.TestFind<Slider>(
-                    new Search().Name("Slider*").OrderBy<Slider>(s => s.value).Last());
-                Assert.IsNotNull(highest, "Should find slider");
-                Assert.AreEqual("Slider2", highest.name, "Last by value should be Slider2 (0.9)");
-            });
+            var slider1 = CreateSlider("Slider1", 0.1f, _canvas.transform, new Vector2(-100, 0));
+            var slider2 = CreateSlider("Slider2", 0.9f, _canvas.transform, new Vector2(0, 0));
+            var slider3 = CreateSlider("Slider3", 0.5f, _canvas.transform, new Vector2(100, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var lowest = await test.TestFind<Slider>(
+                new Search().Name("Slider*").OrderBy<Slider>(s => s.value).First());
+            Assert.IsNotNull(lowest, "Should find slider");
+            Assert.AreEqual("Slider1", lowest.name, "First by value should be Slider1 (0.1)");
+            var highest = await test.TestFind<Slider>(
+                new Search().Name("Slider*").OrderBy<Slider>(s => s.value).Last());
+            Assert.IsNotNull(highest, "Should find slider");
+            Assert.AreEqual("Slider2", highest.name, "Last by value should be Slider2 (0.9)");
         }
 
-        [UnityTest]
-        public IEnumerator Diagnostic_LogsScreenPositions()
+        [Test]
+        public async Task Diagnostic_LogsScreenPositions()
         {
-            return UniTask.ToCoroutine(async () =>
+            // Create buttons at known positions
+            var btn1 = CreateButton("DiagBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+            var btn2 = CreateButton("DiagBtn2", "2", _canvas.transform, new Vector2(0, 0));
+            var btn3 = CreateButton("DiagBtn3", "3", _canvas.transform, new Vector2(200, 0));
+
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+
+            // Log canvas info
+            Debug.Log($"[DIAGNOSTIC] Canvas: renderMode={_canvasComponent.renderMode}, scaleFactor={_canvasComponent.scaleFactor}");
+            Debug.Log($"[DIAGNOSTIC] Screen: {Screen.width}x{Screen.height}");
+
+            // Log each button's position info
+            foreach (var btn in new[] { btn1, btn2, btn3 })
             {
-                // Create buttons at known positions
-                var btn1 = CreateButton("DiagBtn1", "1", _canvas.transform, new Vector2(-200, 0));
-                var btn2 = CreateButton("DiagBtn2", "2", _canvas.transform, new Vector2(0, 0));
-                var btn3 = CreateButton("DiagBtn3", "3", _canvas.transform, new Vector2(200, 0));
+                var rect = btn.GetComponent<RectTransform>();
+                Vector3[] corners = new Vector3[4];
+                rect.GetWorldCorners(corners);
+                Vector3 center = (corners[0] + corners[2]) / 2f;
 
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
+                Debug.Log($"[DIAGNOSTIC] {btn.name}: anchoredPos={rect.anchoredPosition}, worldCenter={center}, corners[0]={corners[0]}, corners[2]={corners[2]}");
+            }
 
-                // Log canvas info
-                Debug.Log($"[DIAGNOSTIC] Canvas: renderMode={_canvasComponent.renderMode}, scaleFactor={_canvasComponent.scaleFactor}");
-                Debug.Log($"[DIAGNOSTIC] Screen: {Screen.width}x{Screen.height}");
+            // Test ordering with Debug.Log already in ApplyPostProcessing
+            var test = new TestFindAllHelper();
 
-                // Log each button's position info
-                foreach (var btn in new[] { btn1, btn2, btn3 })
-                {
-                    var rect = btn.GetComponent<RectTransform>();
-                    Vector3[] corners = new Vector3[4];
-                    rect.GetWorldCorners(corners);
-                    Vector3 center = (corners[0] + corners[2]) / 2f;
+            Debug.Log("[DIAGNOSTIC] === Testing OrderByPosition ===");
+            var results = await test.TestFindAll<Button>(
+                new Search().Name("DiagBtn*").OrderByPosition());
 
-                    Debug.Log($"[DIAGNOSTIC] {btn.name}: anchoredPos={rect.anchoredPosition}, worldCenter={center}, corners[0]={corners[0]}, corners[2]={corners[2]}");
-                }
+            Debug.Log($"[DIAGNOSTIC] Results count: {results.Count}");
+            for (int i = 0; i < results.Count; i++)
+            {
+                Debug.Log($"[DIAGNOSTIC] Result[{i}]: {results[i].name}");
+            }
 
-                // Test ordering with Debug.Log already in ApplyPostProcessing
-                var test = new TestFindAllHelper();
-
-                Debug.Log("[DIAGNOSTIC] === Testing OrderByPosition ===");
-                var results = await test.TestFindAll<Button>(
-                    new Search().Name("DiagBtn*").OrderByPosition());
-
-                Debug.Log($"[DIAGNOSTIC] Results count: {results.Count}");
-                for (int i = 0; i < results.Count; i++)
-                {
-                    Debug.Log($"[DIAGNOSTIC] Result[{i}]: {results[i].name}");
-                }
-
-                // Verify ordering - btn1 should be first (leftmost), btn3 should be last (rightmost)
-                Assert.AreEqual(3, results.Count, "Should find all 3 buttons");
-                Assert.AreEqual("DiagBtn1", results[0].name, "First should be DiagBtn1 (leftmost at x=-200)");
-                Assert.AreEqual("DiagBtn2", results[1].name, "Second should be DiagBtn2 (center at x=0)");
-                Assert.AreEqual("DiagBtn3", results[2].name, "Third should be DiagBtn3 (rightmost at x=200)");
-            });
+            // Verify ordering - btn1 should be first (leftmost), btn3 should be last (rightmost)
+            Assert.AreEqual(3, results.Count, "Should find all 3 buttons");
+            Assert.AreEqual("DiagBtn1", results[0].name, "First should be DiagBtn1 (leftmost at x=-200)");
+            Assert.AreEqual("DiagBtn2", results[1].name, "Second should be DiagBtn2 (center at x=0)");
+            Assert.AreEqual("DiagBtn3", results[2].name, "Third should be DiagBtn3 (rightmost at x=200)");
         }
 
-        [UnityTest]
-        public IEnumerator Diagnostic_SkipFirst_Works()
+        [Test]
+        public async Task Diagnostic_SkipFirst_Works()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var btn1 = CreateButton("SkipDiagBtn1", "1", _canvas.transform, new Vector2(-200, 0));
-                var btn2 = CreateButton("SkipDiagBtn2", "2", _canvas.transform, new Vector2(0, 0));
-                var btn3 = CreateButton("SkipDiagBtn3", "3", _canvas.transform, new Vector2(200, 0));
+            var btn1 = CreateButton("SkipDiagBtn1", "1", _canvas.transform, new Vector2(-200, 0));
+            var btn2 = CreateButton("SkipDiagBtn2", "2", _canvas.transform, new Vector2(0, 0));
+            var btn3 = CreateButton("SkipDiagBtn3", "3", _canvas.transform, new Vector2(200, 0));
 
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
 
-                Debug.Log("[DIAGNOSTIC] === Testing Skip(1).First() ===");
+            Debug.Log("[DIAGNOSTIC] === Testing Skip(1).First() ===");
 
-                var test = new TestFindHelper();
+            var test = new TestFindHelper();
 
-                // This should order by position, skip 1, take 1 - returning btn2
-                var result = await test.TestFind<Button>(
-                    new Search().Name("SkipDiagBtn*").Skip(1).First());
+            // This should order by position, skip 1, take 1 - returning btn2
+            var result = await test.TestFind<Button>(
+                new Search().Name("SkipDiagBtn*").Skip(1).First());
 
-                Debug.Log($"[DIAGNOSTIC] Skip(1).First() result: {(result != null ? result.name : "NULL")}");
+            Debug.Log($"[DIAGNOSTIC] Skip(1).First() result: {(result != null ? result.name : "NULL")}");
 
-                Assert.IsNotNull(result, "Should find button after Skip(1).First()");
-                Assert.AreEqual("SkipDiagBtn2", result.name, "Skip(1).First() should return second button");
-            });
+            Assert.IsNotNull(result, "Should find button after Skip(1).First()");
+            Assert.AreEqual("SkipDiagBtn2", result.name, "Skip(1).First() should return second button");
         }
 
         #endregion
 
         #region Target Transformation Tests (Parent, Child, Sibling)
 
-        [UnityTest]
-        public IEnumerator Parent_ReturnsParentElement()
+        [Test]
+        public async Task Parent_ReturnsParentElement()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var container = CreatePanel("ParentContainer", _canvas.transform, Vector2.zero, new Vector2(200, 100));
-                var child = CreateButton("ChildButton", "Child", container.transform, Vector2.zero);
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var result = await test.TestFind<RectTransform>(
-                    new Search().Name("ChildButton").GetParent());
-                Assert.IsNotNull(result, "Should find parent");
-                Assert.AreEqual("ParentContainer", result.name, "Parent() should return the parent container");
-            });
+            var container = CreatePanel("ParentContainer", _canvas.transform, Vector2.zero, new Vector2(200, 100));
+            var child = CreateButton("ChildButton", "Child", container.transform, Vector2.zero);
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var result = await test.TestFind<RectTransform>(
+                new Search().Name("ChildButton").GetParent());
+            Assert.IsNotNull(result, "Should find parent");
+            Assert.AreEqual("ParentContainer", result.name, "Parent() should return the parent container");
         }
 
-        [UnityTest]
-        public IEnumerator Child_ReturnsChildAtIndex()
+        [Test]
+        public async Task Child_ReturnsChildAtIndex()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var container = CreatePanel("Container", _canvas.transform, Vector2.zero, new Vector2(200, 100));
-                var child0 = CreateButton("Child0", "First", container.transform, new Vector2(-50, 0));
-                var child1 = CreateButton("Child1", "Second", container.transform, new Vector2(50, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var result0 = await test.TestFind<Button>(
-                    new Search().Name("Container").GetChild(0));
-                Assert.IsNotNull(result0, "Should find child at index 0");
-                Assert.AreEqual("Child0", result0.name);
-                var result1 = await test.TestFind<Button>(
-                    new Search().Name("Container").GetChild(1));
-                Assert.IsNotNull(result1, "Should find child at index 1");
-                Assert.AreEqual("Child1", result1.name);
-            });
+            var container = CreatePanel("Container", _canvas.transform, Vector2.zero, new Vector2(200, 100));
+            var child0 = CreateButton("Child0", "First", container.transform, new Vector2(-50, 0));
+            var child1 = CreateButton("Child1", "Second", container.transform, new Vector2(50, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var result0 = await test.TestFind<Button>(
+                new Search().Name("Container").GetChild(0));
+            Assert.IsNotNull(result0, "Should find child at index 0");
+            Assert.AreEqual("Child0", result0.name);
+            var result1 = await test.TestFind<Button>(
+                new Search().Name("Container").GetChild(1));
+            Assert.IsNotNull(result1, "Should find child at index 1");
+            Assert.AreEqual("Child1", result1.name);
         }
 
-        [UnityTest]
-        public IEnumerator Sibling_ReturnsSiblingByOffset()
+        [Test]
+        public async Task Sibling_ReturnsSiblingByOffset()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var container = CreatePanel("Container", _canvas.transform, Vector2.zero, new Vector2(400, 50));
-                var first = CreateButton("First", "1", container.transform, new Vector2(-150, 0));
-                var second = CreateButton("Second", "2", container.transform, new Vector2(-50, 0));
-                var third = CreateButton("Third", "3", container.transform, new Vector2(50, 0));
-                var fourth = CreateButton("Fourth", "4", container.transform, new Vector2(150, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var test = new TestFindHelper();
-                var nextSibling = await test.TestFind<Button>(
-                    new Search().Name("Second").GetSibling(1));
-                Assert.IsNotNull(nextSibling, "Should find next sibling");
-                Assert.AreEqual("Third", nextSibling.name);
-                var prevSibling = await test.TestFind<Button>(
-                    new Search().Name("Third").GetSibling(-1));
-                Assert.IsNotNull(prevSibling, "Should find previous sibling");
-                Assert.AreEqual("Second", prevSibling.name);
-            });
+            var container = CreatePanel("Container", _canvas.transform, Vector2.zero, new Vector2(400, 50));
+            var first = CreateButton("First", "1", container.transform, new Vector2(-150, 0));
+            var second = CreateButton("Second", "2", container.transform, new Vector2(-50, 0));
+            var third = CreateButton("Third", "3", container.transform, new Vector2(50, 0));
+            var fourth = CreateButton("Fourth", "4", container.transform, new Vector2(150, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var test = new TestFindHelper();
+            var nextSibling = await test.TestFind<Button>(
+                new Search().Name("Second").GetSibling(1));
+            Assert.IsNotNull(nextSibling, "Should find next sibling");
+            Assert.AreEqual("Third", nextSibling.name);
+            var prevSibling = await test.TestFind<Button>(
+                new Search().Name("Third").GetSibling(-1));
+            Assert.IsNotNull(prevSibling, "Should find previous sibling");
+            Assert.AreEqual("Second", prevSibling.name);
         }
 
-        [UnityTest]
-        public IEnumerator ChainedTransformations_Work()
+        [Test]
+        public async Task ChainedTransformations_Work()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var root = CreatePanel("Root", _canvas.transform, Vector2.zero, new Vector2(300, 200));
-                var level1 = CreatePanel("Level1", root.transform, Vector2.zero, new Vector2(250, 150));
-                var level2 = CreatePanel("Level2", level1.transform, Vector2.zero, new Vector2(200, 100));
-                var deepBtn = CreateButton("DeepButton", "Deep", level2.transform, Vector2.zero);
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
+            var root = CreatePanel("Root", _canvas.transform, Vector2.zero, new Vector2(300, 200));
+            var level1 = CreatePanel("Level1", root.transform, Vector2.zero, new Vector2(250, 150));
+            var level2 = CreatePanel("Level2", level1.transform, Vector2.zero, new Vector2(200, 100));
+            var deepBtn = CreateButton("DeepButton", "Deep", level2.transform, Vector2.zero);
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
 
-                // Diagnostic: Log hierarchy
-                Debug.Log($"[DIAGNOSTIC] Hierarchy: Root.childCount={root.transform.childCount}");
-                Debug.Log($"[DIAGNOSTIC] Level1: childCount={level1.transform.childCount}");
-                Debug.Log($"[DIAGNOSTIC] Level2: childCount={level2.transform.childCount}");
-                Debug.Log($"[DIAGNOSTIC] DeepButton parent: {deepBtn.transform.parent.name}");
+            // Diagnostic: Log hierarchy
+            Debug.Log($"[DIAGNOSTIC] Hierarchy: Root.childCount={root.transform.childCount}");
+            Debug.Log($"[DIAGNOSTIC] Level1: childCount={level1.transform.childCount}");
+            Debug.Log($"[DIAGNOSTIC] Level2: childCount={level2.transform.childCount}");
+            Debug.Log($"[DIAGNOSTIC] DeepButton parent: {deepBtn.transform.parent.name}");
 
-                // Verify Level2 can be found first
-                var test = new TestFindHelper();
+            // Verify Level2 can be found first
+            var test = new TestFindHelper();
 
-                Debug.Log("[DIAGNOSTIC] === Testing Find Level2 (no transformation) ===");
-                var level2Result = await test.TestFind<RectTransform>(
-                    new Search().Name("Level2"));
-                Assert.IsNotNull(level2Result, "Should find Level2");
-                Assert.AreEqual("Level2", level2Result.name);
+            Debug.Log("[DIAGNOSTIC] === Testing Find Level2 (no transformation) ===");
+            var level2Result = await test.TestFind<RectTransform>(
+                new Search().Name("Level2"));
+            Assert.IsNotNull(level2Result, "Should find Level2");
+            Assert.AreEqual("Level2", level2Result.name);
 
-                Debug.Log("[DIAGNOSTIC] === Testing Level2.GetChild(0) ===");
-                var result = await test.TestFind<RectTransform>(
-                    new Search().Name("Level2").GetChild(0));
-                Assert.IsNotNull(result, "Should find child");
-                Assert.AreEqual("DeepButton", result.name);
-            });
+            Debug.Log("[DIAGNOSTIC] === Testing Level2.GetChild(0) ===");
+            var result = await test.TestFind<RectTransform>(
+                new Search().Name("Level2").GetChild(0));
+            Assert.IsNotNull(result, "Should find child");
+            Assert.AreEqual("DeepButton", result.name);
         }
 
-        [UnityTest]
-        public IEnumerator Diagnostic_ChildTransformation()
+        [Test]
+        public async Task Diagnostic_ChildTransformation()
         {
-            return UniTask.ToCoroutine(async () =>
+            var container = CreatePanel("DiagContainer", _canvas.transform, Vector2.zero, new Vector2(200, 100));
+            var child = CreateButton("DiagChild", "Child", container.transform, Vector2.zero);
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+
+            Debug.Log($"[DIAGNOSTIC] Container.childCount = {container.transform.childCount}");
+            Debug.Log($"[DIAGNOSTIC] Child0 = {container.transform.GetChild(0).name}");
+
+            // Manually verify the transformation works
+            var search = new Search().Name("DiagContainer").GetChild(0);
+            Debug.Log($"[DIAGNOSTIC] search.HasPostProcessing = {search.HasPostProcessing}");
+
+            // Apply post-processing manually to see what happens
+            var testInput = new[] { container };
+            var postProcessed = search.ApplyPostProcessing(testInput).ToList();
+            Debug.Log($"[DIAGNOSTIC] PostProcessed count = {postProcessed.Count}");
+            foreach (var go in postProcessed)
             {
-                var container = CreatePanel("DiagContainer", _canvas.transform, Vector2.zero, new Vector2(200, 100));
-                var child = CreateButton("DiagChild", "Child", container.transform, Vector2.zero);
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
+                Debug.Log($"[DIAGNOSTIC] PostProcessed item: {(go != null ? go.name : "NULL")}");
+            }
 
-                Debug.Log($"[DIAGNOSTIC] Container.childCount = {container.transform.childCount}");
-                Debug.Log($"[DIAGNOSTIC] Child0 = {container.transform.GetChild(0).name}");
+            var test = new TestFindHelper();
 
-                // Manually verify the transformation works
-                var search = new Search().Name("DiagContainer").GetChild(0);
-                Debug.Log($"[DIAGNOSTIC] search.HasPostProcessing = {search.HasPostProcessing}");
-
-                // Apply post-processing manually to see what happens
-                var testInput = new[] { container };
-                var postProcessed = search.ApplyPostProcessing(testInput).ToList();
-                Debug.Log($"[DIAGNOSTIC] PostProcessed count = {postProcessed.Count}");
-                foreach (var go in postProcessed)
-                {
-                    Debug.Log($"[DIAGNOSTIC] PostProcessed item: {(go != null ? go.name : "NULL")}");
-                }
-
-                var test = new TestFindHelper();
-
-                var result = await test.TestFind<Button>(
-                    new Search().Name("DiagContainer").GetChild(0));
-                Assert.IsNotNull(result, "Should find child button via Child(0)");
-                Assert.AreEqual("DiagChild", result.name);
-            });
+            var result = await test.TestFind<Button>(
+                new Search().Name("DiagContainer").GetChild(0));
+            Assert.IsNotNull(result, "Should find child button via Child(0)");
+            Assert.AreEqual("DiagChild", result.name);
         }
 
         #endregion
 
         #region Adjacent Tests
 
-        [UnityTest]
-        public IEnumerator Adjacent_Right_FindsInputToRightOfLabel()
+        [Test]
+        public async Task Adjacent_Right_FindsInputToRightOfLabel()
         {
             var label = CreateLabel("Username:", new Vector2(-100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(100, 0));
-            yield return null;
+            
             var search = new Search().Adjacent("Username:");
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input to the right of label");
         }
 
-        [UnityTest]
-        public IEnumerator Adjacent_Right_IgnoresInputToLeft()
+        [Test]
+        public async Task Adjacent_Right_IgnoresInputToLeft()
         {
             var label = CreateLabel("Username:", new Vector2(100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(-100, 0));
-            yield return null;
+            
             var search = new Search().Adjacent("Username:", Direction.Right);
             bool matches = search.Matches(input);
             Assert.IsFalse(matches, "Should not match input to the left when searching Right");
         }
 
-        [UnityTest]
-        public IEnumerator Adjacent_Right_PrefersCloserInput()
+        [Test]
+        public async Task Adjacent_Right_PrefersCloserInput()
         {
             var label = CreateLabel("Field:", new Vector2(-150, 0));
             var closeInput = CreateInputField("CloseInput", new Vector2(0, 0));
             var farInput = CreateInputField("FarInput", new Vector2(200, 0));
-            yield return null;
+            
             var search = new Search().Adjacent("Field:");
             Assert.IsTrue(search.Matches(closeInput), "Closer input should match");
             Assert.IsFalse(search.Matches(farInput), "Farther input should not match");
         }
 
-        [UnityTest]
-        public IEnumerator Adjacent_Left_FindsInputToLeftOfLabel()
+        [Test]
+        public async Task Adjacent_Left_FindsInputToLeftOfLabel()
         {
             var input = CreateInputField("VolumeSlider", new Vector2(-100, 0));
             var label = CreateLabel("Volume Level", new Vector2(100, 0));
-            yield return null;
+            
             var search = new Search().Adjacent("Volume Level", Direction.Left);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input to the left of label");
         }
 
-        [UnityTest]
-        public IEnumerator Adjacent_Below_FindsInputBelowLabel()
+        [Test]
+        public async Task Adjacent_Below_FindsInputBelowLabel()
         {
             var label = CreateLabel("Description", new Vector2(0, 50));
             var input = CreateInputField("DescriptionInput", new Vector2(0, -50));
-            yield return null;
+            
             var search = new Search().Adjacent("Description", Direction.Below);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input below label");
         }
 
-        [UnityTest]
-        public IEnumerator Adjacent_Above_FindsInputAboveLabel()
+        [Test]
+        public async Task Adjacent_Above_FindsInputAboveLabel()
         {
             var input = CreateInputField("OptionToggle", new Vector2(0, 50));
             var label = CreateLabel("Clear Selection", new Vector2(0, -50));
-            yield return null;
+            
             var search = new Search().Adjacent("Clear Selection", Direction.Above);
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should find input above label");
         }
 
-        [UnityTest]
-        public IEnumerator Adjacent_NoMatchingLabel_ReturnsFalse()
+        [Test]
+        public async Task Adjacent_NoMatchingLabel_ReturnsFalse()
         {
             var label = CreateLabel("Other Label:", new Vector2(-100, 0));
             var input = CreateInputField("TestInput", new Vector2(100, 0));
-            yield return null;
+            
             var search = new Search().Adjacent("NonExistent:");
             bool matches = search.Matches(input);
             Assert.IsFalse(matches, "Should not match when label text doesn't exist");
         }
 
-        [UnityTest]
-        public IEnumerator Adjacent_WildcardPattern_Matches()
+        [Test]
+        public async Task Adjacent_WildcardPattern_Matches()
         {
             var label = CreateLabel("Username:", new Vector2(-100, 0));
             var input = CreateInputField("UsernameInput", new Vector2(100, 0));
-            yield return null;
+            
             var search = new Search().Adjacent("User*");
             bool matches = search.Matches(input);
             Assert.IsTrue(matches, "Should match with wildcard pattern");
@@ -1839,10 +1778,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Center Flag", new Vector2(0, 0));
             var closeButton = CreateButton("TextureButton", new Vector2(50, -30)); // Closest
             var farButton = CreateButton("OtherButton", new Vector2(200, 0)); // Further away
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Near() without direction matches ALL elements
             var search = new Search().Near("Center Flag");
@@ -1861,10 +1800,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Center Flag", new Vector2(0, 0));
             var belowButton = CreateButton("BelowButton", new Vector2(0, -80)); // Below
             var aboveButton = CreateButton("AboveButton", new Vector2(0, 80)); // Above
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Direction filtering works - elements outside direction don't match
             var searchBelow = new Search().Near("Center Flag", Direction.Below);
@@ -1882,10 +1821,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Center Flag", new Vector2(0, 50));
             var closeBelow = CreateButton("CloseBelow", new Vector2(0, -30)); // Closer below
             var farBelow = CreateButton("FarBelow", new Vector2(0, -150)); // Further below
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Both elements below match - Near() matches all in direction
             var search = new Search().Near("Center Flag", Direction.Below);
@@ -1905,10 +1844,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Texture", new Vector2(0, 50));
             var diagonalClose = CreateButton("DiagonalButton", new Vector2(30, -20)); // Diagonal but closest
             var straightFar = CreateButton("StraightButton", new Vector2(0, -150)); // Straight down but far
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             var search = new Search().Near("Texture");
             Assert.IsTrue(search.Matches(diagonalClose), "Diagonal button should match");
@@ -1926,10 +1865,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Center Flag", new Vector2(0, 50));
             var textureButton = CreateButton("TextureButton", new Vector2(0, -30));
             var maskButton = CreateButton("MaskButton", new Vector2(0, -80));
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Name filter excludes MaskButton, Near matches both (in direction)
             var search = new Search().Near("Center Flag", Direction.Below).Name("*Texture*");
@@ -1941,7 +1880,7 @@ namespace ODDGames.UIAutomation.Tests
         public async Task Near_NonExistentLabel_ReturnsFalse()
         {
             var button = CreateButton("SomeButton", new Vector2(0, 0));
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
 
             var search = new Search().Near("NonExistentLabel");
@@ -1953,10 +1892,10 @@ namespace ODDGames.UIAutomation.Tests
         {
             var label = CreateLabel("Center Flag", new Vector2(0, 50));
             var button = CreateButton("NearbyButton", new Vector2(0, -30));
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             var search = new Search().Near("Center*");
             Assert.IsTrue(search.Matches(button), "Should match with wildcard pattern");
@@ -1968,10 +1907,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Right Label", new Vector2(100, 0));
             var leftButton = CreateButton("LeftButton", new Vector2(-50, 0)); // To the left
             var rightButton = CreateButton("RightButton", new Vector2(200, 0)); // To the right
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             var search = new Search().Near("Right Label", Direction.Left);
             Assert.IsTrue(search.Matches(leftButton), "Button to the left should match");
@@ -1984,10 +1923,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Left Label", new Vector2(-100, 0));
             var leftButton = CreateButton("LeftButton", new Vector2(-200, 0)); // To the left
             var rightButton = CreateButton("RightButton", new Vector2(50, 0)); // To the right
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             var search = new Search().Near("Left Label", Direction.Right);
             Assert.IsFalse(search.Matches(leftButton), "Button to the left should not match");
@@ -2002,10 +1941,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Test Label", new Vector2(0, 0));
             // Diagonal position - not strictly "right" or "below" but close
             var diagonalButton = CreateButton("DiagonalButton", new Vector2(80, -60));
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Adjacent.Right requires same row (within tolerance) - should fail for diagonal
             var adjacentSearch = new Search().Adjacent("Test Label", Direction.Right);
@@ -2033,10 +1972,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
             var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Near matches all elements below, ordered by distance
             // Use HasChild(Text()) to match buttons by their child text
@@ -2066,10 +2005,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
             var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // HasChild(Text()) first, then Near - same result since Near sets ordering
             var search = new Search().HasChild(new Search().Text("Mask")).Near("Center Flag", Direction.Below);
@@ -2097,10 +2036,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
             var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Near matches all elements below "Right Flag", ordered by distance
             var search = new Search().Near("Right Flag", Direction.Below).HasChild(new Search().Text("Mask"));
@@ -2129,10 +2068,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
             var rightMaskBtn = CreateButton("RightFlagMaskBtn", "Mask", rightSection.transform, new Vector2(0, -20));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // HasChild(Text()) first, then Near - same result since Near sets ordering
             var search = new Search().HasChild(new Search().Text("Mask")).Near("Right Flag", Direction.Below);
@@ -2160,10 +2099,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
             var rightTextureBtn = CreateButton("RightFlagTextureBtn", "Texture", rightSection.transform, new Vector2(0, -20));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Test: Adjacent first, then HasChild(Text()) - should find Center Flag's Texture button
             // HasChild(Text()) matches elements that have a child with the text
@@ -2184,10 +2123,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Right Flag", rightSection.transform, new Vector2(0, 50));
             var rightTextureBtn = CreateButton("RightFlagTextureBtn", "Texture", rightSection.transform, new Vector2(0, -20));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Test: HasChild(Text()) first, then Adjacent - should find Center Flag's Texture button
             // HasChild(Text()) matches elements that have a child with the text
@@ -2203,10 +2142,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Settings:", new Vector2(-150, 0));
             var closeButton = CreateButton("CloseButton", "Edit", _canvas.transform, new Vector2(0, 0));
             var farButton = CreateButton("FarButton", "Save", _canvas.transform, new Vector2(150, 0));
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Adjacent finds the single nearest element - Name doesn't change that
             var search = new Search().Adjacent("Settings:", Direction.Right).Name("*Button*");
@@ -2221,10 +2160,10 @@ namespace ODDGames.UIAutomation.Tests
             var label = CreateLabel("Account:", new Vector2(-150, 0));
             var closeButton = CreateButton("CloseButton", "Save", _canvas.transform, new Vector2(0, 0));
             var farButton = CreateButton("FarButton", "Delete", _canvas.transform, new Vector2(150, 0));
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Adjacent finds the single nearest element - Type doesn't change that
             var search = new Search().Adjacent("Account:", Direction.Right).Type<Button>();
@@ -2253,10 +2192,10 @@ namespace ODDGames.UIAutomation.Tests
             var rightMask = CreateButton("RightMask", "Mask", rightSection.transform, new Vector2(0, 0));
             var rightNone = CreateButton("RightNone", "None", rightSection.transform, new Vector2(0, -40));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Debug: Log world positions
             Vector3[] corners = new Vector3[4];
@@ -2322,10 +2261,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Bottom Header", bottomSection.transform, new Vector2(0, 70));
             var bottomBtn = CreateButton("BottomBtn", "Action", bottomSection.transform, new Vector2(0, -70));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             var test = new TestFindHelper();
 
@@ -2360,10 +2299,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Password", _canvas.transform, new Vector2(-100, -50));
             var passwordInput = CreateButton("PasswordInput", "input2", _canvas.transform, new Vector2(50, -50));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             // Debug: Check TMP text bounds
             var tmp = usernameLabel.GetComponent<TMP_Text>();
@@ -2381,15 +2320,15 @@ namespace ODDGames.UIAutomation.Tests
             Debug.Log($"[Near Test] Total TMP_Text components found: {allTmp.Length}");
             foreach (var t in allTmp)
             {
-                var textBounds = t.textBounds;
-                Vector3 worldCenter = t.transform.TransformPoint(textBounds.center);
-                Vector3 worldSize = t.transform.TransformVector(textBounds.size);
-                var bounds = new Rect(
-                    worldCenter.x - Mathf.Abs(worldSize.x) / 2,
-                    worldCenter.y - Mathf.Abs(worldSize.y) / 2,
-                    Mathf.Abs(worldSize.x),
-                    Mathf.Abs(worldSize.y));
-                Debug.Log($"[Near Test] TMP_Text: '{t.text}', localBounds.center: {textBounds.center}, worldCenter: {worldCenter}, worldBounds: {bounds}");
+            var textBounds = t.textBounds;
+            Vector3 worldCenter = t.transform.TransformPoint(textBounds.center);
+            Vector3 worldSize = t.transform.TransformVector(textBounds.size);
+            var bounds = new Rect(
+                worldCenter.x - Mathf.Abs(worldSize.x) / 2,
+                worldCenter.y - Mathf.Abs(worldSize.y) / 2,
+                Mathf.Abs(worldSize.x),
+                Mathf.Abs(worldSize.y));
+            Debug.Log($"[Near Test] TMP_Text: '{t.text}', localBounds.center: {textBounds.center}, worldCenter: {worldCenter}, worldBounds: {bounds}");
             }
 
             // Log button positions
@@ -2436,10 +2375,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Section C", _canvas.transform, new Vector2(0, -200));
             var btnC = CreateButton("BtnC", "Action C", _canvas.transform, new Vector2(0, -300));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             var test = new TestFindHelper();
 
@@ -2474,10 +2413,10 @@ namespace ODDGames.UIAutomation.Tests
             CreateLabelInParent("Address:", _canvas.transform, new Vector2(-200, -100));
             var addressInput = CreateButton("AddressInput", "[address]", _canvas.transform, new Vector2(100, -100));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             var test = new TestFindHelper();
 
@@ -2517,10 +2456,10 @@ namespace ODDGames.UIAutomation.Tests
             var aboveClose = CreateButton("AboveClose", "A1", _canvas.transform, new Vector2(0, 150));
             var aboveFar = CreateButton("AboveFar", "A2", _canvas.transform, new Vector2(0, 300));
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
-            await Task.Yield();
+            await Async.DelayFrames(1);
+            await Async.DelayFrames(1);
 
             var test = new TestFindHelper();
 
@@ -2553,13 +2492,13 @@ namespace ODDGames.UIAutomation.Tests
             var visibleBtn = CreateScrollButton("DiagVisibleItem", "Visible", content.transform);
             for (int i = 0; i < 10; i++)
             {
-                CreateScrollButton($"DiagHiddenItem{i}", $"Hidden {i}", content.transform);
+            CreateScrollButton($"DiagHiddenItem{i}", $"Hidden {i}", content.transform);
             }
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
             scrollRect.verticalNormalizedPosition = 1f; // Start at top
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Log viewport info
             Vector3[] viewportCorners = new Vector3[4];
@@ -2579,8 +2518,8 @@ namespace ODDGames.UIAutomation.Tests
 
             Debug.Log("[DIAGNOSTIC] === Testing ScrollTo with visible item ===");
             var result = await test.TestScrollTo(
-                new Search().Name("DiagScrollView"),
-                new Search().Name("DiagVisibleItem"));
+            new Search().Name("DiagScrollView"),
+            new Search().Name("DiagVisibleItem"));
 
             Debug.Log($"[DIAGNOSTIC] ScrollTo result: {(result != null ? result.name : "NULL")}");
             Assert.IsNotNull(result, "Should find visible item");
@@ -2598,18 +2537,18 @@ namespace ODDGames.UIAutomation.Tests
             CreateScrollButton("VisibleItem", "Visible", content.transform);
             for (int i = 0; i < 10; i++)
             {
-                CreateScrollButton($"HiddenItem{i}", $"Hidden {i}", content.transform);
+            CreateScrollButton($"HiddenItem{i}", $"Hidden {i}", content.transform);
             }
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
             scrollRect.verticalNormalizedPosition = 1f; // Start at top
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             var test = new TestScrollHelper();
             var result = await test.TestScrollTo(
-                new Search().Name("TestScrollView"),
-                new Search().Name("VisibleItem"));
+            new Search().Name("TestScrollView"),
+            new Search().Name("VisibleItem"));
             Assert.IsNotNull(result, "Should find visible item");
             Assert.AreEqual("VisibleItem", result.name);
         }
@@ -2625,17 +2564,17 @@ namespace ODDGames.UIAutomation.Tests
             // Use CreateScrollItem (not Button) so drag events bubble to ScrollRect
             for (int i = 0; i < 15; i++)
             {
-                CreateScrollItem($"Item{i}", $"Item {i}", content.transform);
+            CreateScrollItem($"Item{i}", $"Item {i}", content.transform);
             }
             CreateScrollItem("TargetItem", "Target", content.transform);
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Ensure we're at the top
             scrollRect.verticalNormalizedPosition = 1f;
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
 
             Debug.Log($"[TEST] Content height: {content.rect.height}, Viewport height: {scrollRect.viewport.rect.height}");
@@ -2643,9 +2582,9 @@ namespace ODDGames.UIAutomation.Tests
 
             var test = new TestScrollHelper();
             var result = await test.TestScrollTo(
-                new Search().Name("TestScrollView"),
-                new Search().Name("TargetItem"),
-                maxScrollAttempts: 20);
+            new Search().Name("TestScrollView"),
+            new Search().Name("TargetItem"),
+            maxScrollAttempts: 20);
 
             Debug.Log($"[TEST] Final scroll position: {scrollRect.verticalNormalizedPosition}");
 
@@ -2665,16 +2604,16 @@ namespace ODDGames.UIAutomation.Tests
             CreateScrollItem("TargetItem", "Target", content.transform);
             for (int i = 0; i < 15; i++)
             {
-                CreateScrollItem($"Item{i}", $"Item {i}", content.transform);
+            CreateScrollItem($"Item{i}", $"Item {i}", content.transform);
             }
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Start at the BOTTOM
             scrollRect.verticalNormalizedPosition = 0f;
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
 
             Debug.Log($"[TEST] Content height: {content.rect.height}, Viewport height: {scrollRect.viewport.rect.height}");
@@ -2682,9 +2621,9 @@ namespace ODDGames.UIAutomation.Tests
 
             var test = new TestScrollHelper();
             var result = await test.TestScrollTo(
-                new Search().Name("TestScrollView"),
-                new Search().Name("TargetItem"),
-                maxScrollAttempts: 20);
+            new Search().Name("TestScrollView"),
+            new Search().Name("TargetItem"),
+            maxScrollAttempts: 20);
 
             Debug.Log($"[TEST] Final scroll position: {scrollRect.verticalNormalizedPosition}");
 
@@ -2703,30 +2642,30 @@ namespace ODDGames.UIAutomation.Tests
             // Items above, middle items, target at bottom
             for (int i = 0; i < 10; i++)
             {
-                CreateScrollItem($"TopItem{i}", $"Top {i}", content.transform);
+            CreateScrollItem($"TopItem{i}", $"Top {i}", content.transform);
             }
             for (int i = 0; i < 10; i++)
             {
-                CreateScrollItem($"MiddleItem{i}", $"Middle {i}", content.transform);
+            CreateScrollItem($"MiddleItem{i}", $"Middle {i}", content.transform);
             }
             CreateScrollItem("TargetItem", "Target", content.transform);
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Start in the MIDDLE
             scrollRect.verticalNormalizedPosition = 0.5f;
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
 
             Debug.Log($"[TEST] Initial scroll position: {scrollRect.verticalNormalizedPosition}");
 
             var test = new TestScrollHelper();
             var result = await test.TestScrollTo(
-                new Search().Name("TestScrollView"),
-                new Search().Name("TargetItem"),
-                maxScrollAttempts: 25);
+            new Search().Name("TestScrollView"),
+            new Search().Name("TargetItem"),
+            maxScrollAttempts: 25);
 
             Debug.Log($"[TEST] Final scroll position: {scrollRect.verticalNormalizedPosition}");
 
@@ -2744,17 +2683,17 @@ namespace ODDGames.UIAutomation.Tests
             // Items to the left, target on the right
             for (int i = 0; i < 10; i++)
             {
-                CreateHorizontalScrollItem($"Item{i}", $"Item {i}", content.transform);
+            CreateHorizontalScrollItem($"Item{i}", $"Item {i}", content.transform);
             }
             CreateHorizontalScrollItem("TargetItem", "Target", content.transform);
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Start at the LEFT (horizontalNormalizedPosition = 0)
             scrollRect.horizontalNormalizedPosition = 0f;
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
 
             Debug.Log($"[TEST] Content width: {content.rect.width}, Viewport width: {scrollRect.viewport.rect.width}");
@@ -2762,9 +2701,9 @@ namespace ODDGames.UIAutomation.Tests
 
             var test = new TestScrollHelper();
             var result = await test.TestScrollTo(
-                new Search().Name("HScrollView"),
-                new Search().Name("TargetItem"),
-                maxScrollAttempts: 20);
+            new Search().Name("HScrollView"),
+            new Search().Name("TargetItem"),
+            maxScrollAttempts: 20);
 
             Debug.Log($"[TEST] Final scroll position: {scrollRect.horizontalNormalizedPosition}");
 
@@ -2784,25 +2723,25 @@ namespace ODDGames.UIAutomation.Tests
             CreateHorizontalScrollItem("TargetItem", "Target", content.transform);
             for (int i = 0; i < 10; i++)
             {
-                CreateHorizontalScrollItem($"Item{i}", $"Item {i}", content.transform);
+            CreateHorizontalScrollItem($"Item{i}", $"Item {i}", content.transform);
             }
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Start at the RIGHT (horizontalNormalizedPosition = 1)
             scrollRect.horizontalNormalizedPosition = 1f;
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
 
             Debug.Log($"[TEST] Initial scroll position: {scrollRect.horizontalNormalizedPosition}");
 
             var test = new TestScrollHelper();
             var result = await test.TestScrollTo(
-                new Search().Name("HScrollView"),
-                new Search().Name("TargetItem"),
-                maxScrollAttempts: 20);
+            new Search().Name("HScrollView"),
+            new Search().Name("TargetItem"),
+            maxScrollAttempts: 20);
 
             Debug.Log($"[TEST] Final scroll position: {scrollRect.horizontalNormalizedPosition}");
 
@@ -2822,21 +2761,21 @@ namespace ODDGames.UIAutomation.Tests
             // Create a grid of items, target in bottom-right corner
             for (int row = 0; row < 5; row++)
             {
-                for (int col = 0; col < 5; col++)
-                {
-                    string name = (row == 4 && col == 4) ? "TargetItem" : $"Item_{row}_{col}";
-                    Create2DScrollItem(name, name, content.transform, row, col);
-                }
+            for (int col = 0; col < 5; col++)
+            {
+                string name = (row == 4 && col == 4) ? "TargetItem" : $"Item_{row}_{col}";
+                Create2DScrollItem(name, name, content.transform, row, col);
+            }
             }
 
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
-            await Task.Yield();
+            await Async.DelayFrames(1);
 
             // Start at top-left (vertical=1, horizontal=0)
             scrollRect.verticalNormalizedPosition = 1f;
             scrollRect.horizontalNormalizedPosition = 0f;
-            await Task.Yield();
+            await Async.DelayFrames(1);
             Canvas.ForceUpdateCanvases();
 
             Debug.Log($"[TEST] Content size: {content.rect.width}x{content.rect.height}");
@@ -2844,9 +2783,9 @@ namespace ODDGames.UIAutomation.Tests
 
             var test = new TestScrollHelper();
             var result = await test.TestScrollTo(
-                new Search().Name("DiagScrollView"),
-                new Search().Name("TargetItem"),
-                maxScrollAttempts: 30);
+            new Search().Name("DiagScrollView"),
+            new Search().Name("TargetItem"),
+            maxScrollAttempts: 30);
 
             Debug.Log($"[TEST] Final scroll position: h={scrollRect.horizontalNormalizedPosition}, v={scrollRect.verticalNormalizedPosition}");
 
@@ -2861,38 +2800,32 @@ namespace ODDGames.UIAutomation.Tests
 
         #region InRegion Tests
 
-        [UnityTest]
-        public IEnumerator InRegion_TopLeft_FindsElement()
+        [Test]
+        public async Task InRegion_TopLeft_FindsElement()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var topLeftBtn = CreateButton("TopLeftBtn", "TL", _canvas.transform, new Vector2(-400, 250));
-                var bottomRightBtn = CreateButton("BottomRightBtn", "BR", _canvas.transform, new Vector2(400, -250));
-                var centerBtn = CreateButton("CenterBtn", "C", _canvas.transform, new Vector2(0, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var search = new Search().Type<Button>().InRegion(ScreenRegion.TopLeft);
-                Assert.IsTrue(search.Matches(topLeftBtn.gameObject), "TopLeft button should match TopLeft region");
-                Assert.IsFalse(search.Matches(bottomRightBtn.gameObject), "BottomRight button should not match TopLeft region");
-                Assert.IsFalse(search.Matches(centerBtn.gameObject), "Center button should not match TopLeft region");
-            });
+            var topLeftBtn = CreateButton("TopLeftBtn", "TL", _canvas.transform, new Vector2(-400, 250));
+            var bottomRightBtn = CreateButton("BottomRightBtn", "BR", _canvas.transform, new Vector2(400, -250));
+            var centerBtn = CreateButton("CenterBtn", "C", _canvas.transform, new Vector2(0, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var search = new Search().Type<Button>().InRegion(ScreenRegion.TopLeft);
+            Assert.IsTrue(search.Matches(topLeftBtn.gameObject), "TopLeft button should match TopLeft region");
+            Assert.IsFalse(search.Matches(bottomRightBtn.gameObject), "BottomRight button should not match TopLeft region");
+            Assert.IsFalse(search.Matches(centerBtn.gameObject), "Center button should not match TopLeft region");
         }
 
-        [UnityTest]
-        public IEnumerator InRegion_Center_FindsElement()
+        [Test]
+        public async Task InRegion_Center_FindsElement()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var topLeftBtn = CreateButton("TopLeftBtn", "TL", _canvas.transform, new Vector2(-400, 250));
-                var bottomRightBtn = CreateButton("BottomRightBtn", "BR", _canvas.transform, new Vector2(400, -250));
-                var centerBtn = CreateButton("CenterBtn", "C", _canvas.transform, new Vector2(0, 0));
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                var search = new Search().Type<Button>().InRegion(ScreenRegion.Center);
-                Assert.IsFalse(search.Matches(topLeftBtn.gameObject), "TopLeft button should not match Center region");
-                Assert.IsFalse(search.Matches(bottomRightBtn.gameObject), "BottomRight button should not match Center region");
-                Assert.IsTrue(search.Matches(centerBtn.gameObject), "Center button should match Center region");
-            });
+            var topLeftBtn = CreateButton("TopLeftBtn", "TL", _canvas.transform, new Vector2(-400, 250));
+            var bottomRightBtn = CreateButton("BottomRightBtn", "BR", _canvas.transform, new Vector2(400, -250));
+            var centerBtn = CreateButton("CenterBtn", "C", _canvas.transform, new Vector2(0, 0));
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            var search = new Search().Type<Button>().InRegion(ScreenRegion.Center);
+            Assert.IsFalse(search.Matches(topLeftBtn.gameObject), "TopLeft button should not match Center region");
+            Assert.IsFalse(search.Matches(bottomRightBtn.gameObject), "BottomRight button should not match Center region");
+            Assert.IsTrue(search.Matches(centerBtn.gameObject), "Center button should match Center region");
         }
 
         #endregion
@@ -3302,159 +3235,144 @@ namespace ODDGames.UIAutomation.Tests
 
         #region FindItems Tests
 
-        [UnityTest]
-        public IEnumerator FindItems_ScrollRect_ReturnsItemsInOrder()
+        [Test]
+        public async Task FindItems_ScrollRect_ReturnsItemsInOrder()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var scrollViewGO = CreateScrollView("InventoryList", Vector2.zero, new Vector2(300, 200));
-                var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
-                var content = scrollRect.content;
+            var scrollViewGO = CreateScrollView("InventoryList", Vector2.zero, new Vector2(300, 200));
+            var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
+            var content = scrollRect.content;
 
-                CreateScrollItem("Item1", "First Item", content);
-                CreateScrollItem("Item2", "Second Item", content);
-                CreateScrollItem("Item3", "Third Item", content);
-                CreateScrollItem("Item4", "Fourth Item", content);
+            CreateScrollItem("Item1", "First Item", content);
+            CreateScrollItem("Item2", "Second Item", content);
+            CreateScrollItem("Item3", "Third Item", content);
+            CreateScrollItem("Item4", "Fourth Item", content);
 
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
 
-                var helper = CreateFindItemsHelper();
-                var container = await helper.TestFindItems("InventoryList");
+            var helper = CreateFindItemsHelper();
+            var container = await helper.TestFindItems("InventoryList");
 
-                Assert.NotNull(container);
-                Assert.NotNull(container.ScrollRect);
-                var items = container.Items.ToList();
-                Assert.AreEqual(4, items.Count, "Should find 4 items");
-                Assert.AreEqual("Item1", items[0].gameObject.name, "First item should be Item1");
-                Assert.AreEqual("Item4", items[3].gameObject.name, "Last item should be Item4");
-            });
+            Assert.NotNull(container);
+            Assert.NotNull(container.ScrollRect);
+            var items = container.Items.ToList();
+            Assert.AreEqual(4, items.Count, "Should find 4 items");
+            Assert.AreEqual("Item1", items[0].gameObject.name, "First item should be Item1");
+            Assert.AreEqual("Item4", items[3].gameObject.name, "Last item should be Item4");
         }
 
-        [UnityTest]
-        public IEnumerator FindItems_WithFilter_ReturnsFilteredItems()
+        [Test]
+        public async Task FindItems_WithFilter_ReturnsFilteredItems()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var scrollViewGO = CreateScrollView("FilterList", Vector2.zero, new Vector2(300, 200));
-                var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
-                var content = scrollRect.content;
+            var scrollViewGO = CreateScrollView("FilterList", Vector2.zero, new Vector2(300, 200));
+            var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
+            var content = scrollRect.content;
 
-                CreateScrollItem("RareItem1", "Rare Sword", content);
-                CreateScrollItem("CommonItem1", "Common Shield", content);
-                CreateScrollItem("RareItem2", "Rare Bow", content);
-                CreateScrollItem("CommonItem2", "Common Helmet", content);
+            CreateScrollItem("RareItem1", "Rare Sword", content);
+            CreateScrollItem("CommonItem1", "Common Shield", content);
+            CreateScrollItem("RareItem2", "Rare Bow", content);
+            CreateScrollItem("CommonItem2", "Common Helmet", content);
 
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
 
-                var helper = CreateFindItemsHelper();
-                var container = await helper.TestFindItems("FilterList", new Search().Name("Rare*"));
+            var helper = CreateFindItemsHelper();
+            var container = await helper.TestFindItems("FilterList", new Search().Name("Rare*"));
 
-                var items = container.Items.ToList();
-                Assert.AreEqual(2, items.Count, "Should find 2 rare items");
-                Assert.IsTrue(items.All(i => i.gameObject.name.StartsWith("Rare")), "All items should start with Rare");
-            });
+            var items = container.Items.ToList();
+            Assert.AreEqual(2, items.Count, "Should find 2 rare items");
+            Assert.IsTrue(items.All(i => i.gameObject.name.StartsWith("Rare")), "All items should start with Rare");
         }
 
-        [UnityTest]
-        public IEnumerator FindItems_VerticalLayoutGroup_ReturnsItems()
+        [Test]
+        public async Task FindItems_VerticalLayoutGroup_ReturnsItems()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var layoutGO = new GameObject("TabBar");
-                layoutGO.transform.SetParent(_canvas.transform, false);
-                _createdObjects.Add(layoutGO);
-                var rect = layoutGO.AddComponent<RectTransform>();
-                rect.sizeDelta = new Vector2(200, 300);
-                var vlg = layoutGO.AddComponent<VerticalLayoutGroup>();
-                vlg.childForceExpandWidth = true;
-                vlg.childForceExpandHeight = false;
+            var layoutGO = new GameObject("TabBar");
+            layoutGO.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(layoutGO);
+            var rect = layoutGO.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(200, 300);
+            var vlg = layoutGO.AddComponent<VerticalLayoutGroup>();
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
 
-                CreateButton("Tab1", "Home", layoutGO.transform, Vector2.zero);
-                CreateButton("Tab2", "Settings", layoutGO.transform, Vector2.zero);
-                CreateButton("Tab3", "Profile", layoutGO.transform, Vector2.zero);
+            CreateButton("Tab1", "Home", layoutGO.transform, Vector2.zero);
+            CreateButton("Tab2", "Settings", layoutGO.transform, Vector2.zero);
+            CreateButton("Tab3", "Profile", layoutGO.transform, Vector2.zero);
 
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
 
-                var helper = CreateFindItemsHelper();
-                var container = await helper.TestFindItems("TabBar");
+            var helper = CreateFindItemsHelper();
+            var container = await helper.TestFindItems("TabBar");
 
-                var items = container.Items.ToList();
-                Assert.AreEqual(3, items.Count, "Should find 3 tabs");
-            });
+            var items = container.Items.ToList();
+            Assert.AreEqual(3, items.Count, "Should find 3 tabs");
         }
 
-        [UnityTest]
-        public IEnumerator FindItems_GridLayoutGroup_ReturnsItems()
+        [Test]
+        public async Task FindItems_GridLayoutGroup_ReturnsItems()
         {
-            return UniTask.ToCoroutine(async () =>
+            var layoutGO = new GameObject("InventoryGrid");
+            layoutGO.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(layoutGO);
+            var rect = layoutGO.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(300, 300);
+            var glg = layoutGO.AddComponent<GridLayoutGroup>();
+            glg.cellSize = new Vector2(80, 80);
+            glg.spacing = new Vector2(10, 10);
+            glg.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            glg.constraintCount = 3;
+
+            for (int i = 1; i <= 6; i++)
             {
-                var layoutGO = new GameObject("InventoryGrid");
-                layoutGO.transform.SetParent(_canvas.transform, false);
-                _createdObjects.Add(layoutGO);
-                var rect = layoutGO.AddComponent<RectTransform>();
-                rect.sizeDelta = new Vector2(300, 300);
-                var glg = layoutGO.AddComponent<GridLayoutGroup>();
-                glg.cellSize = new Vector2(80, 80);
-                glg.spacing = new Vector2(10, 10);
-                glg.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-                glg.constraintCount = 3;
+                var itemGO = new GameObject($"Slot{i}");
+                itemGO.transform.SetParent(layoutGO.transform, false);
+                _createdObjects.Add(itemGO);
+                itemGO.AddComponent<RectTransform>();
+                itemGO.AddComponent<Image>();
+            }
 
-                for (int i = 1; i <= 6; i++)
-                {
-                    var itemGO = new GameObject($"Slot{i}");
-                    itemGO.transform.SetParent(layoutGO.transform, false);
-                    _createdObjects.Add(itemGO);
-                    itemGO.AddComponent<RectTransform>();
-                    itemGO.AddComponent<Image>();
-                }
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
 
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+            var helper = CreateFindItemsHelper();
+            var container = await helper.TestFindItems("InventoryGrid");
 
-                var helper = CreateFindItemsHelper();
-                var container = await helper.TestFindItems("InventoryGrid");
-
-                var items = container.Items.ToList();
-                Assert.AreEqual(6, items.Count, "Should find 6 slots");
-            });
+            var items = container.Items.ToList();
+            Assert.AreEqual(6, items.Count, "Should find 6 slots");
         }
 
-        [UnityTest]
-        public IEnumerator FindItems_CanIterateWithForeach()
+        [Test]
+        public async Task FindItems_CanIterateWithForeach()
         {
-            return UniTask.ToCoroutine(async () =>
+            var scrollViewGO = CreateScrollView("TestList", Vector2.zero, new Vector2(300, 200));
+            var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
+            var content = scrollRect.content;
+
+            CreateScrollItem("ListItem1", "Item 1", content);
+            CreateScrollItem("ListItem2", "Item 2", content);
+            CreateScrollItem("ListItem3", "Item 3", content);
+
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+
+            var helper = CreateFindItemsHelper();
+            var container = await helper.TestFindItems("TestList");
+
+            int count = 0;
+            foreach (var (scrollRectComponent, item) in container)
             {
-                var scrollViewGO = CreateScrollView("TestList", Vector2.zero, new Vector2(300, 200));
-                var scrollRect = scrollViewGO.GetComponent<ScrollRect>();
-                var content = scrollRect.content;
-
-                CreateScrollItem("ListItem1", "Item 1", content);
-                CreateScrollItem("ListItem2", "Item 2", content);
-                CreateScrollItem("ListItem3", "Item 3", content);
-
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
-                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
-
-                var helper = CreateFindItemsHelper();
-                var container = await helper.TestFindItems("TestList");
-
-                int count = 0;
-                foreach (var (scrollRectComponent, item) in container)
-                {
-                    Assert.NotNull(scrollRectComponent, "ScrollRect should not be null");
-                    Assert.NotNull(item, "Item should not be null");
-                    count++;
-                }
-                Assert.AreEqual(3, count, "Should iterate 3 times");
-            });
+                Assert.NotNull(scrollRectComponent, "ScrollRect should not be null");
+                Assert.NotNull(item, "Item should not be null");
+                count++;
+            }
+            Assert.AreEqual(3, count, "Should iterate 3 times");
         }
 
         private TestFindItemsHelper CreateFindItemsHelper()
@@ -3466,55 +3384,49 @@ namespace ODDGames.UIAutomation.Tests
 
         #region Component Overload Tests
 
-        [UnityTest]
-        public IEnumerator Click_Component_ClicksAtComponentPosition()
+        [Test]
+        public async Task Click_Component_ClicksAtComponentPosition()
         {
-            return UniTask.ToCoroutine(async () =>
-            {
-                var button = CreateButton("TestBtn", "Click Me", _canvas.transform, Vector2.zero);
-                int clickCount = 0;
-                button.onClick.AddListener(() => clickCount++);
+            var button = CreateButton("TestBtn", "Click Me", _canvas.transform, Vector2.zero);
+            int clickCount = 0;
+            button.onClick.AddListener(() => clickCount++);
 
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
 
-                var helper = CreateComponentHelper();
-                await helper.TestClickComponent(button);
+            var helper = CreateComponentHelper();
+            await helper.TestClickComponent(button);
 
-                Assert.AreEqual(1, clickCount, "Button should have been clicked once");
-            });
+            Assert.AreEqual(1, clickCount, "Button should have been clicked once");
         }
 
-        [UnityTest]
-        public IEnumerator Click_Component_WorksWithFindAllIteration()
+        [Test]
+        public async Task Click_Component_WorksWithFindAllIteration()
         {
-            return UniTask.ToCoroutine(async () =>
+            // Create multiple buttons
+            CreateButton("Btn1", "Button 1", _canvas.transform, new Vector2(-100, 0));
+            CreateButton("Btn2", "Button 2", _canvas.transform, new Vector2(0, 0));
+            CreateButton("Btn3", "Button 3", _canvas.transform, new Vector2(100, 0));
+
+            int totalClicks = 0;
+            foreach (var btn in Object.FindObjectsByType<Button>(FindObjectsSortMode.None))
             {
-                // Create multiple buttons
-                CreateButton("Btn1", "Button 1", _canvas.transform, new Vector2(-100, 0));
-                CreateButton("Btn2", "Button 2", _canvas.transform, new Vector2(0, 0));
-                CreateButton("Btn3", "Button 3", _canvas.transform, new Vector2(100, 0));
+                if (btn.name.StartsWith("Btn"))
+                    btn.onClick.AddListener(() => totalClicks++);
+            }
 
-                int totalClicks = 0;
-                foreach (var btn in Object.FindObjectsByType<Button>(FindObjectsSortMode.None))
-                {
-                    if (btn.name.StartsWith("Btn"))
-                        btn.onClick.AddListener(() => totalClicks++);
-                }
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
 
-                await UniTask.Yield();
-                Canvas.ForceUpdateCanvases();
+            var helper = CreateComponentHelper();
+            var buttons = await helper.TestFindAllButtons(new Search().Name("Btn*"));
 
-                var helper = CreateComponentHelper();
-                var buttons = await helper.TestFindAllButtons(new Search().Name("Btn*"));
+            foreach (var button in buttons)
+            {
+                await helper.TestClickComponent(button);
+            }
 
-                foreach (var button in buttons)
-                {
-                    await helper.TestClickComponent(button);
-                }
-
-                Assert.AreEqual(3, totalClicks, "All 3 buttons should have been clicked");
-            });
+            Assert.AreEqual(3, totalClicks, "All 3 buttons should have been clicked");
         }
 
         private TestComponentHelper CreateComponentHelper()
@@ -3529,11 +3441,11 @@ namespace ODDGames.UIAutomation.Tests
 
     public class TestScrollHelper
     {
-        public async UniTask<GameObject> TestScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20)
+        public async Task<GameObject> TestScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20)
         {
             return await ScrollTo(scrollViewSearch, targetSearch, maxScrollAttempts, throwIfMissing: false, searchTime: 2);
         }
-        public async UniTask TestScrollToAndClick(Search scrollViewSearch, Search targetSearch)
+        public async Task TestScrollToAndClick(Search scrollViewSearch, Search targetSearch)
         {
             await ScrollToAndClick(scrollViewSearch, targetSearch, throwIfMissing: true, searchTime: 2);
         }
@@ -3541,7 +3453,7 @@ namespace ODDGames.UIAutomation.Tests
 
     public class TestFindHelper
     {
-        public async UniTask<T> TestFind<T>(Search search, bool throwIfMissing = true) where T : Component
+        public async Task<T> TestFind<T>(Search search, bool throwIfMissing = true) where T : Component
         {
             return await Find<T>(search, throwIfMissing, seconds: 2);
         }
@@ -3549,7 +3461,7 @@ namespace ODDGames.UIAutomation.Tests
 
     public class TestFindAllHelper
     {
-        public async UniTask<List<T>> TestFindAll<T>(Search search) where T : Component
+        public async Task<List<T>> TestFindAll<T>(Search search) where T : Component
         {
             var results = await FindAll<T>(search, seconds: 2);
             return results.ToList();
@@ -3558,11 +3470,11 @@ namespace ODDGames.UIAutomation.Tests
 
     public class TestFindItemsHelper
     {
-        public async UniTask<ItemContainer> TestFindItems(string containerName, Search itemSearch = null)
+        public async Task<ItemContainer> TestFindItems(string containerName, Search itemSearch = null)
         {
             return await FindItems(containerName, itemSearch);
         }
-        public async UniTask<ItemContainer> TestFindItems(Search containerSearch, Search itemSearch = null)
+        public async Task<ItemContainer> TestFindItems(Search containerSearch, Search itemSearch = null)
         {
             return await FindItems(containerSearch, itemSearch);
         }
@@ -3570,13 +3482,13 @@ namespace ODDGames.UIAutomation.Tests
 
     public class TestComponentHelper
     {
-        public async UniTask TestClickComponent(Component component)
+        public async Task TestClickComponent(Component component)
         {
             // Click using component's gameObject name as search
             await Click(Name(component.gameObject.name));
         }
 
-        public async UniTask<List<Button>> TestFindAllButtons(Search search)
+        public async Task<List<Button>> TestFindAllButtons(Search search)
         {
             var results = await FindAll<Button>(search, seconds: 2);
             return results.ToList();
@@ -3626,8 +3538,8 @@ namespace ODDGames.UIAutomation.Tests
             // Safety check for destroyed EventSystem
             if (_eventSystem == null || !_eventSystem.gameObject.activeInHierarchy)
             {
-                _logging = false;
-                return;
+            _logging = false;
+            return;
             }
 
             _frameCount++;
@@ -3642,16 +3554,16 @@ namespace ODDGames.UIAutomation.Tests
             string pointerInfo = "N/A";
             if (_eventSystem != null && _eventSystem.currentInputModule is UnityEngine.InputSystem.UI.InputSystemUIInputModule)
             {
-                var pointerData = new PointerEventData(_eventSystem) { position = pos };
-                var raycastResults = new List<RaycastResult>();
-                _eventSystem.RaycastAll(pointerData, raycastResults);
-                pointerInfo = raycastResults.Count > 0 ? raycastResults[0].gameObject.name : "none";
+            var pointerData = new PointerEventData(_eventSystem) { position = pos };
+            var raycastResults = new List<RaycastResult>();
+            _eventSystem.RaycastAll(pointerData, raycastResults);
+            pointerInfo = raycastResults.Count > 0 ? raycastResults[0].gameObject.name : "none";
             }
 
             // Only log when there's activity
             if (leftBtn || delta.sqrMagnitude > 0 || wasPressed || wasReleased)
             {
-                Debug.Log($"[DragDebug] F{_frameCount}: pos=({pos.x:F1},{pos.y:F1}) delta=({delta.x:F2},{delta.y:F2}) btn={leftBtn} pressed={wasPressed} released={wasReleased} hit={pointerInfo}");
+            Debug.Log($"[DragDebug] F{_frameCount}: pos=({pos.x:F1},{pos.y:F1}) delta=({delta.x:F2},{delta.y:F2}) btn={leftBtn} pressed={wasPressed} released={wasReleased} hit={pointerInfo}");
             }
         }
     }

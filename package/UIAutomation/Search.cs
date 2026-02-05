@@ -214,14 +214,17 @@ namespace ODDGames.UIAutomation
         ///
         /// // Wildcard contains match
         /// new Search().Name("*Settings*")
+        ///
+        /// // Case-sensitive match
+        /// new Search().Name("PlayButton", ignoreCase: false)
         /// </code>
         /// </example>
-        public Search Name(string pattern)
+        public Search Name(string pattern, bool ignoreCase = true)
         {
             AddDescription($"Name(\"{pattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
-            _conditions.Add(go => negate != WildcardMatch(go.name, pattern));
+            _conditions.Add(go => negate != WildcardMatch(go.name, pattern, ignoreCase));
             return this;
         }
 
@@ -242,14 +245,17 @@ namespace ODDGames.UIAutomation
         ///
         /// // Wildcard suffix match
         /// new Search().Text("Level *")
+        ///
+        /// // Case-sensitive match
+        /// new Search().Text("PLAY", ignoreCase: false)
         /// </code>
         /// </example>
-        public Search Text(string pattern)
+        public Search Text(string pattern, bool ignoreCase = true)
         {
             AddDescription($"Text(\"{pattern}\")");
             bool negate = _nextNegate;
             _nextNegate = false;
-            _conditions.Add(go => negate != MatchText(go, pattern));
+            _conditions.Add(go => negate != MatchText(go, pattern, ignoreCase));
             return this;
         }
 
@@ -1121,6 +1127,72 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
+        /// Order matches alphabetically by GameObject name (A-Z).
+        /// </summary>
+        /// <returns>This Search instance for chaining.</returns>
+        /// <example>
+        /// <code>
+        /// // Get buttons sorted alphabetically by name
+        /// new Search().Type&lt;Button&gt;().OrderByName()
+        /// </code>
+        /// </example>
+        public Search OrderByName()
+        {
+            _orderBy = objects => objects.OrderBy(go => go.name, StringComparer.Ordinal);
+            return this;
+        }
+
+        /// <summary>
+        /// Order matches alphabetically by GameObject name in reverse (Z-A).
+        /// </summary>
+        /// <returns>This Search instance for chaining.</returns>
+        /// <example>
+        /// <code>
+        /// // Get buttons sorted reverse-alphabetically by name
+        /// new Search().Type&lt;Button&gt;().OrderByNameDescending()
+        /// </code>
+        /// </example>
+        public Search OrderByNameDescending()
+        {
+            _orderBy = objects => objects.OrderByDescending(go => go.name, StringComparer.Ordinal);
+            return this;
+        }
+
+        /// <summary>
+        /// Order matches by Unity instance ID (ascending).
+        /// Instance IDs are generally stable within a session and reflect creation order.
+        /// </summary>
+        /// <returns>This Search instance for chaining.</returns>
+        /// <example>
+        /// <code>
+        /// // Get elements in creation order
+        /// new Search().Name("Item*").OrderByInstanceId()
+        /// </code>
+        /// </example>
+        public Search OrderByInstanceId()
+        {
+            _orderBy = objects => objects.OrderBy(go => go.GetInstanceID());
+            return this;
+        }
+
+        /// <summary>
+        /// Order matches by Unity instance ID (descending).
+        /// Instance IDs are generally stable within a session and reflect creation order.
+        /// </summary>
+        /// <returns>This Search instance for chaining.</returns>
+        /// <example>
+        /// <code>
+        /// // Get elements in reverse creation order (newest first)
+        /// new Search().Name("Item*").OrderByInstanceIdDescending()
+        /// </code>
+        /// </example>
+        public Search OrderByInstanceIdDescending()
+        {
+            _orderBy = objects => objects.OrderByDescending(go => go.GetInstanceID());
+            return this;
+        }
+
+        /// <summary>
         /// Filter to elements that are currently visible in the viewport.
         /// Elements that are scrolled off-screen or outside camera view are excluded.
         /// </summary>
@@ -1417,91 +1489,192 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Finds all GameObjects in the scene matching this search query.
-        /// </summary>
-        /// <param name="includeInactive">Whether to include inactive GameObjects. If null, uses IncludeInactive() setting.</param>
-        /// <returns>List of matching GameObjects with post-processing applied.</returns>
-        public List<GameObject> FindAll(bool? includeInactive = null)
-        {
-            bool searchInactive = includeInactive ?? ShouldIncludeInactive;
-            var findMode = searchInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
-
-            // Search all Transform objects (includes RectTransform) to support both UI and non-UI objects
-            var allMatching = UnityEngine.Object.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None)
-                .Where(t => t != null && Matches(t.gameObject))
-                .Select(t => t.gameObject)
-                .ToList();
-
-            if (HasPostProcessing)
-            {
-                allMatching = ApplyPostProcessing(allMatching).ToList();
-            }
-
-            return allMatching;
-        }
-
-        /// <summary>
-        /// Finds the first GameObject matching this search query.
-        /// </summary>
-        /// <param name="includeInactive">Whether to include inactive GameObjects. If null, uses IncludeInactive() setting.</param>
-        /// <returns>The first matching GameObject, or null if none found.</returns>
-        public GameObject FindFirst(bool? includeInactive = null)
-        {
-            var results = FindAll(includeInactive);
-            return results.Count > 0 ? results[0] : null;
-        }
-
-        /// <summary>
-        /// Asynchronously resolves the search by polling until the element is found or timeout.
-        /// For recovery-enabled searches, use ActionExecutor methods (Click, Type, etc.) instead.
+        /// Asynchronously finds the first GameObject matching this search query.
+        /// Waits until element is stable (found for 3 consecutive frames) or timeout.
         /// </summary>
         /// <param name="timeout">Maximum time to wait for the element (default 10 seconds).</param>
         /// <param name="index">Index of the element when multiple match (0-based).</param>
-        /// <returns>Result containing the found element and metadata about the resolution.</returns>
+        /// <returns>The found GameObject, or null if not found within timeout.</returns>
         /// <example>
         /// <code>
-        /// var result = await Name("Submit").Resolve();
-        /// if (result.Found) await Click(result.Element);
+        /// var button = await Name("Submit").Find();
+        /// if (button != null) await Click(button);
         /// </code>
         /// </example>
-        public async Task<ResolveResult> Resolve(float timeout = 10f, int index = 0)
+        public async Task<GameObject> Find(float timeout = 10f, int index = 0)
         {
             float startTime = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
-            var searchDescription = ToString();
+            var findMode = ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
+
+            // Stability tracking - track all matching elements, not just one candidate
+            List<GameObject> stableResults = null;
+            int stableFrameCount = 0;
+            const int requiredStableFrames = 3;
+            bool loggedOnce = false;
 
             while (((float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime) < timeout && Application.isPlaying)
             {
-                var results = FindAll();
-                if (results.Count > index)
+                // Search all Transform objects (includes RectTransform) to support both UI and non-UI objects
+                var allMatching = UnityEngine.Object.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None)
+                    .Where(t => t != null && Matches(t.gameObject))
+                    .Select(t => t.gameObject)
+                    .ToList();
+
+                if (HasPostProcessing)
+                    allMatching = ApplyPostProcessing(allMatching).ToList();
+
+                // Order results: on-screen first, then UI elements, then others
+                allMatching = allMatching.OrderBy(go =>
                 {
-                    return new ResolveResult
+                    var pos = InputInjector.GetScreenPosition(go);
+                    bool isOnScreen = pos.x >= 0 && pos.x <= Screen.width &&
+                                      pos.y >= 0 && pos.y <= Screen.height;
+                    bool isUI = go.GetComponentInParent<Canvas>() != null;
+
+                    // Lower score = higher priority
+                    if (isOnScreen && isUI) return 0;
+                    if (isOnScreen) return 1;
+                    if (isUI) return 2;
+                    return 3;
+                }).ToList();
+
+                // Debug logging on first match
+                if (allMatching.Count > 0 && !loggedOnce)
+                {
+                    loggedOnce = true;
+                    var matchInfo = string.Join(", ", allMatching.Take(5).Select(go =>
                     {
-                        Found = true,
-                        Element = results[index],
-                        AllElements = results,
-                        SearchQuery = searchDescription
-                    };
+                        var pos = InputInjector.GetScreenPosition(go);
+                        var path = GetHierarchyPath(go.transform);
+                        return $"'{go.name}' at ({pos.x:F0},{pos.y:F0}) path={path}";
+                    }));
+                    if (allMatching.Count > 5)
+                        matchInfo += $" ... and {allMatching.Count - 5} more";
+                    Debug.Log($"[Search] {ToString()} matched {allMatching.Count}: {matchInfo}");
                 }
+
+                if (allMatching.Count > index)
+                {
+                    // Check if results are the same as previous frame (same objects in same order)
+                    bool resultsMatch = stableResults != null
+                        && stableResults.Count == allMatching.Count
+                        && stableResults.SequenceEqual(allMatching);
+
+                    if (resultsMatch)
+                    {
+                        stableFrameCount++;
+                        if (stableFrameCount >= requiredStableFrames)
+                            return allMatching[index];
+                    }
+                    else
+                    {
+                        // Results changed - reset stability counter but keep new results
+                        stableResults = allMatching;
+                        stableFrameCount = 1;
+                    }
+
+                    // Wait one frame and check again
+                    await Async.DelayFrames(1);
+                    continue;
+                }
+                else
+                {
+                    // Not enough elements found - reset stability
+                    stableResults = null;
+                    stableFrameCount = 0;
+                }
+
                 await Task.Delay(100);
             }
 
-            return new ResolveResult
-            {
-                Found = false,
-                Element = null,
-                AllElements = new List<GameObject>(),
-                SearchQuery = searchDescription
-            };
+            return null;
         }
+
+        /// <summary>
+        /// Asynchronously finds all GameObjects matching this search query.
+        /// Waits until results are stable (same for 3 consecutive frames) or timeout.
+        /// </summary>
+        /// <param name="timeout">Maximum time to wait for elements (default 10 seconds).</param>
+        /// <returns>List of matching GameObjects, or empty list if none found within timeout.</returns>
+        public async Task<List<GameObject>> FindAll(float timeout = 10f)
+        {
+            float startTime = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
+            var findMode = ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
+
+            // Stability tracking - results must be consistent for consecutive frames
+            List<GameObject> stableResults = null;
+            int stableFrameCount = 0;
+            const int requiredStableFrames = 3;
+
+            while (((float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime) < timeout && Application.isPlaying)
+            {
+                // Search all Transform objects (includes RectTransform) to support both UI and non-UI objects
+                var results = UnityEngine.Object.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None)
+                    .Where(t => t != null && Matches(t.gameObject))
+                    .Select(t => t.gameObject)
+                    .ToList();
+
+                if (HasPostProcessing)
+                    results = ApplyPostProcessing(results).ToList();
+
+                // Order results: on-screen first, then UI elements, then others
+                results = results.OrderBy(go =>
+                {
+                    var pos = InputInjector.GetScreenPosition(go);
+                    bool isOnScreen = pos.x >= 0 && pos.x <= Screen.width &&
+                                      pos.y >= 0 && pos.y <= Screen.height;
+                    bool isUI = go.GetComponentInParent<Canvas>() != null;
+
+                    // Lower score = higher priority
+                    if (isOnScreen && isUI) return 0;
+                    if (isOnScreen) return 1;
+                    if (isUI) return 2;
+                    return 3;
+                }).ToList();
+
+                if (results.Count > 0)
+                {
+                    // Check if results are the same as previous frame (same objects in same order)
+                    bool resultsMatch = stableResults != null
+                        && stableResults.Count == results.Count
+                        && stableResults.SequenceEqual(results);
+
+                    if (resultsMatch)
+                    {
+                        stableFrameCount++;
+                        if (stableFrameCount >= requiredStableFrames)
+                            return results;
+                    }
+                    else
+                    {
+                        stableResults = results;
+                        stableFrameCount = 1;
+                    }
+
+                    await Async.DelayFrames(1);
+                    continue;
+                }
+                else
+                {
+                    stableResults = null;
+                    stableFrameCount = 0;
+                }
+
+                await Task.Delay(100);
+            }
+
+            return new List<GameObject>();
+        }
+
 
         /// <summary>
         /// Validates this search query and returns details about what was found.
         /// Useful for AI feedback - call this before performing actions to verify the target exists.
         /// </summary>
         /// <returns>Validation result with count and description of matches.</returns>
-        public SearchValidation Validate()
+        public async Task<SearchValidation> Validate(float timeout = 10f)
         {
-            var results = FindAll();
+            var results = await FindAll(timeout);
             return new SearchValidation
             {
                 Success = results.Count > 0,
@@ -1517,307 +1690,25 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Returns true if at least one element matches this search query.
-        /// Faster than FindFirst() != null for existence checks.
+        /// Checks if any element matches this search asynchronously with stability waiting.
         /// </summary>
-        public bool Exists() => FindFirst() != null;
-
-        /// <summary>
-        /// Gets the screen position of the first matching element.
-        /// </summary>
-        /// <param name="index">Index of the element when multiple match (0-based)</param>
-        /// <returns>Screen position of the element center, or null if not found.</returns>
-        public Vector2? GetScreenPosition(int index = 0)
+        public async Task<bool> Exists(float timeout = 10f)
         {
-            var results = FindAll();
-            if (results.Count <= index) return null;
-
-            return GetScreenPosition(results[index]);
-        }
-
-        #endregion
-
-        #region Value Properties
-
-        /// <summary>
-        /// Gets the text content of the first matching element (TMP_Text, Text, or InputField).
-        /// For static paths, returns ToString() of the value.
-        /// </summary>
-        public string StringValue
-        {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue == null)
-                        throw new InvalidOperationException($"StringValue failed: Static path '{_staticPath}' resolved to null");
-                    return _staticValue as string ?? _staticValue.ToString();
-                }
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"StringValue failed: No UI element found matching '{ToString()}'");
-
-                var tmp = go.GetComponent<TMP_Text>();
-                if (tmp != null) return tmp.text;
-
-                var legacy = go.GetComponent<Text>();
-                if (legacy != null) return legacy.text;
-
-                var inputField = go.GetComponent<TMP_InputField>();
-                if (inputField != null) return inputField.text;
-
-                var legacyInput = go.GetComponent<InputField>();
-                if (legacyInput != null) return legacyInput.text;
-
-                throw new InvalidOperationException($"StringValue failed: Element '{go.name}' has no text component (TMP_Text, Text, TMP_InputField, InputField)");
-            }
+            var result = await Find(timeout);
+            return result != null;
         }
 
         /// <summary>
-        /// Gets the toggle state of the first matching element.
-        /// For static paths, returns the bool value.
+        /// Gets the screen position of the element asynchronously.
         /// </summary>
-        public bool BoolValue
+        /// <param name="searchTime">Timeout in seconds</param>
+        /// <returns>Screen position of the element center</returns>
+        public async Task<Vector2> GetScreenPosition(float searchTime = 10f)
         {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue == null)
-                        throw new InvalidOperationException($"BoolValue failed: Static path '{_staticPath}' resolved to null");
-                    if (_staticValue is bool b) return b;
-                    throw new InvalidOperationException($"BoolValue failed: Static path '{_staticPath}' is not a bool (type: {_staticValue.GetType().Name})");
-                }
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"BoolValue failed: No UI element found matching '{ToString()}'");
-
-                var toggle = go.GetComponent<Toggle>();
-                if (toggle != null) return toggle.isOn;
-
-                throw new InvalidOperationException($"BoolValue failed: Element '{go.name}' has no Toggle component");
-            }
-        }
-
-        /// <summary>
-        /// Gets the float value of the first matching element (Slider or Scrollbar).
-        /// For static paths, converts the value to float.
-        /// </summary>
-        public float FloatValue
-        {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue == null)
-                        throw new InvalidOperationException($"FloatValue failed: Static path '{_staticPath}' resolved to null");
-                    try { return Convert.ToSingle(_staticValue); }
-                    catch (Exception ex) { throw new InvalidOperationException($"FloatValue failed: Cannot convert '{_staticValue}' (type: {_staticValue.GetType().Name}) to float. {ex.Message}"); }
-                }
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"FloatValue failed: No UI element found matching '{ToString()}'");
-
-                var slider = go.GetComponent<Slider>();
-                if (slider != null) return slider.value;
-
-                var scrollbar = go.GetComponent<Scrollbar>();
-                if (scrollbar != null) return scrollbar.value;
-
-                throw new InvalidOperationException($"FloatValue failed: Element '{go.name}' has no Slider or Scrollbar component");
-            }
-        }
-
-        /// <summary>
-        /// Gets the int value of the first matching element (Slider as int, Dropdown index, or text parsed as int).
-        /// For static paths, converts the value to int.
-        /// </summary>
-        public int IntValue
-        {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue == null)
-                        throw new InvalidOperationException($"IntValue failed: Static path '{_staticPath}' resolved to null");
-                    try { return Convert.ToInt32(_staticValue); }
-                    catch (Exception ex) { throw new InvalidOperationException($"IntValue failed: Cannot convert '{_staticValue}' (type: {_staticValue.GetType().Name}) to int. {ex.Message}"); }
-                }
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"IntValue failed: No UI element found matching '{ToString()}'");
-
-                var slider = go.GetComponent<Slider>();
-                if (slider != null) return (int)slider.value;
-
-                var dropdown = go.GetComponent<Dropdown>();
-                if (dropdown != null) return dropdown.value;
-
-                var tmpDropdown = go.GetComponent<TMP_Dropdown>();
-                if (tmpDropdown != null) return tmpDropdown.value;
-
-                // Try parsing text
-                var tmp = go.GetComponent<TMP_Text>();
-                if (tmp != null && int.TryParse(tmp.text, out var intVal))
-                    return intVal;
-
-                var legacy = go.GetComponent<Text>();
-                if (legacy != null && int.TryParse(legacy.text, out intVal))
-                    return intVal;
-
-                throw new InvalidOperationException($"IntValue failed: Element '{go.name}' has no Slider, Dropdown, or parseable text component");
-            }
-        }
-
-        /// <summary>
-        /// Gets a Vector3 value from the current search.
-        /// For static paths, returns the value cast to Vector3.
-        /// For UI elements, gets RectTransform position.
-        /// </summary>
-        public Vector3 Vector3Value
-        {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue == null)
-                        throw new InvalidOperationException($"Vector3Value failed: Static path '{_staticPath}' resolved to null");
-                    if (_staticValue is Vector3 v3) return v3;
-                    if (_staticValue is Vector2 v2) return v2;
-                    throw new InvalidOperationException($"Vector3Value failed: Static path '{_staticPath}' is not a Vector3 (type: {_staticValue.GetType().Name})");
-                }
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"Vector3Value failed: No UI element found matching '{ToString()}'");
-
-                var rt = go.GetComponent<RectTransform>();
-                if (rt != null) return rt.anchoredPosition3D;
-
-                return go.transform.position;
-            }
-        }
-
-        /// <summary>
-        /// Gets a Vector2 value from the current search.
-        /// For static paths, returns the value cast to Vector2.
-        /// For UI elements, gets RectTransform anchoredPosition.
-        /// </summary>
-        public Vector2 Vector2Value
-        {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue == null)
-                        throw new InvalidOperationException($"Vector2Value failed: Static path '{_staticPath}' resolved to null");
-                    if (_staticValue is Vector2 v2) return v2;
-                    if (_staticValue is Vector3 v3) return new Vector2(v3.x, v3.y);
-                    throw new InvalidOperationException($"Vector2Value failed: Static path '{_staticPath}' is not a Vector2 (type: {_staticValue.GetType().Name})");
-                }
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"Vector2Value failed: No UI element found matching '{ToString()}'");
-
-                var rt = go.GetComponent<RectTransform>();
-                if (rt != null) return rt.anchoredPosition;
-
-                return go.transform.position;
-            }
-        }
-
-        /// <summary>
-        /// Gets a Color value from the current search.
-        /// For static paths, returns the value cast to Color.
-        /// For UI elements, gets Image or Text color.
-        /// </summary>
-        public Color ColorValue
-        {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue == null)
-                        throw new InvalidOperationException($"ColorValue failed: Static path '{_staticPath}' resolved to null");
-                    if (_staticValue is Color c) return c;
-                    if (_staticValue is Color32 c32) return c32;
-                    throw new InvalidOperationException($"ColorValue failed: Static path '{_staticPath}' is not a Color (type: {_staticValue.GetType().Name})");
-                }
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"ColorValue failed: No UI element found matching '{ToString()}'");
-
-                var image = go.GetComponent<Image>();
-                if (image != null) return image.color;
-
-                var rawImage = go.GetComponent<RawImage>();
-                if (rawImage != null) return rawImage.color;
-
-                var tmp = go.GetComponent<TMP_Text>();
-                if (tmp != null) return tmp.color;
-
-                var text = go.GetComponent<Text>();
-                if (text != null) return text.color;
-
-                throw new InvalidOperationException($"ColorValue failed: Element '{go.name}' has no Image, RawImage, or Text component");
-            }
-        }
-
-        /// <summary>
-        /// Gets a Quaternion value from the current search.
-        /// For static paths, returns the value cast to Quaternion.
-        /// For UI elements, gets Transform rotation.
-        /// </summary>
-        public Quaternion QuaternionValue
-        {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue == null)
-                        throw new InvalidOperationException($"QuaternionValue failed: Static path '{_staticPath}' resolved to null");
-                    if (_staticValue is Quaternion q) return q;
-                    throw new InvalidOperationException($"QuaternionValue failed: Static path '{_staticPath}' is not a Quaternion (type: {_staticValue.GetType().Name})");
-                }
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"QuaternionValue failed: No UI element found matching '{ToString()}'");
-
-                return go.transform.rotation;
-            }
-        }
-
-        /// <summary>
-        /// Gets the dropdown options as a string array.
-        /// For static paths, returns the array if it's a string[].
-        /// </summary>
-        public string[] ArrayValue
-        {
-            get
-            {
-                if (_isStaticPath)
-                    return _staticValue as string[] ?? Array.Empty<string>();
-
-                var go = FindFirst();
-                if (go == null) return Array.Empty<string>();
-
-                var dropdown = go.GetComponent<Dropdown>();
-                if (dropdown != null)
-                    return dropdown.options.Select(o => o.text).ToArray();
-
-                var tmpDropdown = go.GetComponent<TMP_Dropdown>();
-                if (tmpDropdown != null)
-                    return tmpDropdown.options.Select(o => o.text).ToArray();
-
-                return Array.Empty<string>();
-            }
+            var go = await Find(searchTime);
+            if (go == null)
+                throw new TimeoutException($"No element found matching '{this}' within {searchTime}s");
+            return GetScreenPosition(go);
         }
 
         #endregion
@@ -1825,218 +1716,94 @@ namespace ODDGames.UIAutomation
         #region Spatial Helpers
 
         /// <summary>
-        /// Gets the screen-space center position of the UI element.
+        /// Gets the screen-space center position of a GameObject.
+        /// For UI elements (RectTransform), returns the center of the rect.
+        /// For 3D objects, projects the transform position to screen space.
         /// </summary>
-        public Vector2 ScreenCenter
+        public static Vector2 GetScreenCenter(GameObject go)
         {
-            get
+            if (go == null)
+                throw new ArgumentNullException(nameof(go));
+
+            var rt = go.GetComponent<RectTransform>();
+            if (rt != null)
             {
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"ScreenCenter failed: No UI element found matching '{ToString()}'");
+                var corners = new Vector3[4];
+                rt.GetWorldCorners(corners);
+                var center = (corners[0] + corners[2]) / 2f;
+                var canvas = rt.GetComponentInParent<Canvas>();
+                if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay && canvas.worldCamera != null)
+                    return RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, center);
+                return center;
+            }
 
-                var rt = go.GetComponent<RectTransform>();
-                if (rt != null)
+            // For 3D objects, project to screen
+            var cam = Camera.main;
+            if (cam != null)
+                return cam.WorldToScreenPoint(go.transform.position);
+
+            return go.transform.position;
+        }
+
+        /// <summary>
+        /// Gets the screen-space bounds of a GameObject as a Rect.
+        /// </summary>
+        public static Rect GetScreenBounds(GameObject go)
+        {
+            if (go == null)
+                throw new ArgumentNullException(nameof(go));
+
+            var rt = go.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                var corners = new Vector3[4];
+                rt.GetWorldCorners(corners);
+                var canvas = rt.GetComponentInParent<Canvas>();
+                if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay && canvas.worldCamera != null)
                 {
-                    var corners = new Vector3[4];
-                    rt.GetWorldCorners(corners);
-                    var center = (corners[0] + corners[2]) / 2f;
-                    var canvas = rt.GetComponentInParent<Canvas>();
-                    if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay && canvas.worldCamera != null)
-                        return RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, center);
-                    return center;
+                    for (int i = 0; i < 4; i++)
+                        corners[i] = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, corners[i]);
                 }
+                float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+                float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+                float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+                float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+                return new Rect(minX, minY, maxX - minX, maxY - minY);
+            }
 
-                // For 3D objects, project to screen
+            // For 3D objects, use renderer bounds projected to screen
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer != null)
+            {
                 var cam = Camera.main;
                 if (cam != null)
-                    return cam.WorldToScreenPoint(go.transform.position);
-
-                return go.transform.position;
-            }
-        }
-
-        /// <summary>
-        /// Gets the screen-space bounds of the UI element as a Rect.
-        /// </summary>
-        public Rect ScreenBounds
-        {
-            get
-            {
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"ScreenBounds failed: No UI element found matching '{ToString()}'");
-
-                var rt = go.GetComponent<RectTransform>();
-                if (rt != null)
                 {
-                    var corners = new Vector3[4];
-                    rt.GetWorldCorners(corners);
-                    var canvas = rt.GetComponentInParent<Canvas>();
-                    if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay && canvas.worldCamera != null)
-                    {
-                        for (int i = 0; i < 4; i++)
-                            corners[i] = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, corners[i]);
-                    }
-                    float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
-                    float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
-                    float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
-                    float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
-                    return new Rect(minX, minY, maxX - minX, maxY - minY);
+                    var bounds = renderer.bounds;
+                    var min = cam.WorldToScreenPoint(bounds.min);
+                    var max = cam.WorldToScreenPoint(bounds.max);
+                    return new Rect(min.x, min.y, max.x - min.x, max.y - min.y);
                 }
-
-                // For 3D objects, use renderer bounds projected to screen
-                var renderer = go.GetComponent<Renderer>();
-                if (renderer != null)
-                {
-                    var cam = Camera.main;
-                    if (cam != null)
-                    {
-                        var bounds = renderer.bounds;
-                        var min = cam.WorldToScreenPoint(bounds.min);
-                        var max = cam.WorldToScreenPoint(bounds.max);
-                        return new Rect(min.x, min.y, max.x - min.x, max.y - min.y);
-                    }
-                }
-
-                return new Rect(go.transform.position.x, go.transform.position.y, 0, 0);
             }
+
+            return new Rect(go.transform.position.x, go.transform.position.y, 0, 0);
         }
 
         /// <summary>
-        /// Gets the world-space position (3D).
+        /// Gets the world-space bounds of a GameObject from Renderer or Collider.
         /// </summary>
-        public Vector3 WorldPosition
+        public static Bounds GetWorldBounds(GameObject go)
         {
-            get
-            {
-                if (_isStaticPath)
-                {
-                    if (_staticValue is Vector3 v3) return v3;
-                    throw new InvalidOperationException($"WorldPosition failed: Static path '{_staticPath}' is not a Vector3");
-                }
+            if (go == null)
+                throw new ArgumentNullException(nameof(go));
 
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"WorldPosition failed: No element found matching '{ToString()}'");
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer != null) return renderer.bounds;
 
-                return go.transform.position;
-            }
-        }
+            var collider = go.GetComponent<Collider>();
+            if (collider != null) return collider.bounds;
 
-        /// <summary>
-        /// Gets the world-space bounds (3D) from Renderer or Collider.
-        /// </summary>
-        public Bounds WorldBounds
-        {
-            get
-            {
-                if (_isStaticPath && _staticValue is Bounds b)
-                    return b;
-
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"WorldBounds failed: No element found matching '{ToString()}'");
-
-                var renderer = go.GetComponent<Renderer>();
-                if (renderer != null) return renderer.bounds;
-
-                var collider = go.GetComponent<Collider>();
-                if (collider != null) return collider.bounds;
-
-                // Fall back to position with zero size
-                return new Bounds(go.transform.position, Vector3.zero);
-            }
-        }
-
-        /// <summary>
-        /// Returns true if this element is above another element in screen space.
-        /// </summary>
-        public bool IsAbove(Search other) => ScreenCenter.y > other.ScreenCenter.y;
-
-        /// <summary>
-        /// Returns true if this element is below another element in screen space.
-        /// </summary>
-        public bool IsBelow(Search other) => ScreenCenter.y < other.ScreenCenter.y;
-
-        /// <summary>
-        /// Returns true if this element is to the left of another element in screen space.
-        /// </summary>
-        public bool IsLeftOf(Search other) => ScreenCenter.x < other.ScreenCenter.x;
-
-        /// <summary>
-        /// Returns true if this element is to the right of another element in screen space.
-        /// </summary>
-        public bool IsRightOf(Search other) => ScreenCenter.x > other.ScreenCenter.x;
-
-        /// <summary>
-        /// Returns the screen-space distance between the centers of two elements.
-        /// </summary>
-        public float DistanceTo(Search other) => Vector2.Distance(ScreenCenter, other.ScreenCenter);
-
-        /// <summary>
-        /// Returns the world-space distance between two elements.
-        /// </summary>
-        public float WorldDistanceTo(Search other) => Vector3.Distance(WorldPosition, other.WorldPosition);
-
-        /// <summary>
-        /// Returns true if this element's screen bounds overlap with another element's bounds.
-        /// </summary>
-        public bool Overlaps(Search other) => ScreenBounds.Overlaps(other.ScreenBounds);
-
-        /// <summary>
-        /// Returns true if this element's screen bounds fully contain another element's bounds.
-        /// </summary>
-        public bool Contains(Search other)
-        {
-            var thisBounds = ScreenBounds;
-            var otherBounds = other.ScreenBounds;
-            return thisBounds.Contains(new Vector2(otherBounds.xMin, otherBounds.yMin)) &&
-                   thisBounds.Contains(new Vector2(otherBounds.xMax, otherBounds.yMax));
-        }
-
-        /// <summary>
-        /// Returns true if two elements are horizontally aligned (same Y center within tolerance).
-        /// </summary>
-        public bool IsHorizontallyAligned(Search other, float tolerance = 10f)
-            => Mathf.Abs(ScreenCenter.y - other.ScreenCenter.y) <= tolerance;
-
-        /// <summary>
-        /// Returns true if two elements are vertically aligned (same X center within tolerance).
-        /// </summary>
-        public bool IsVerticallyAligned(Search other, float tolerance = 10f)
-            => Mathf.Abs(ScreenCenter.x - other.ScreenCenter.x) <= tolerance;
-
-        /// <summary>
-        /// Returns true if this element is in front of another in world space (closer to camera).
-        /// </summary>
-        public bool IsInFrontOf(Search other)
-        {
-            var cam = Camera.main;
-            if (cam == null) return false;
-            var thisDistance = Vector3.Distance(cam.transform.position, WorldPosition);
-            var otherDistance = Vector3.Distance(cam.transform.position, other.WorldPosition);
-            return thisDistance < otherDistance;
-        }
-
-        /// <summary>
-        /// Returns true if this element is behind another in world space (further from camera).
-        /// </summary>
-        public bool IsBehind(Search other) => !IsInFrontOf(other);
-
-        /// <summary>
-        /// Returns true if this element's world bounds intersect with another element's bounds.
-        /// </summary>
-        public bool WorldIntersects(Search other) => WorldBounds.Intersects(other.WorldBounds);
-
-        /// <summary>
-        /// Returns true if this element's world bounds fully contain another element's bounds.
-        /// </summary>
-        public bool WorldContains(Search other)
-        {
-            var thisBounds = WorldBounds;
-            var otherBounds = other.WorldBounds;
-            return thisBounds.Contains(otherBounds.min) && thisBounds.Contains(otherBounds.max);
+            // Fall back to position with zero size
+            return new Bounds(go.transform.position, Vector3.zero);
         }
 
         #endregion
@@ -2056,7 +1823,9 @@ namespace ODDGames.UIAutomation
             return "/" + path.ToString();
         }
 
-        static bool WildcardMatch(string text, string pattern)
+        static bool WildcardMatch(string text, string pattern) => WildcardMatch(text, pattern, ignoreCase: true);
+
+        static bool WildcardMatch(string text, string pattern, bool ignoreCase)
         {
             // Empty string pattern should never match (invalid search)
             if (pattern != null && pattern.Length == 0)
@@ -2070,22 +1839,24 @@ namespace ODDGames.UIAutomation
                 string[] alternatives = pattern.Split('|');
                 foreach (string alt in alternatives)
                 {
-                    if (WildcardMatchSingle(text, alt.Trim()))
+                    if (WildcardMatchSingle(text, alt.Trim(), ignoreCase))
                         return true;
                 }
                 return false;
             }
 
-            return WildcardMatchSingle(text, pattern);
+            return WildcardMatchSingle(text, pattern, ignoreCase);
         }
 
-        static bool WildcardMatchSingle(string text, string pattern)
+        static bool WildcardMatchSingle(string text, string pattern, bool ignoreCase)
         {
             if (string.IsNullOrEmpty(pattern)) return true;
             if (string.IsNullOrEmpty(text)) return false;
 
+            var comparison = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
             if (!pattern.Contains("*"))
-                return text.Equals(pattern, StringComparison.OrdinalIgnoreCase);
+                return text.Equals(pattern, comparison);
 
             string[] parts = pattern.Split('*');
             int textIndex = 0;
@@ -2095,7 +1866,7 @@ namespace ODDGames.UIAutomation
                 string part = parts[i];
                 if (string.IsNullOrEmpty(part)) continue;
 
-                int foundIndex = text.IndexOf(part, textIndex, StringComparison.OrdinalIgnoreCase);
+                int foundIndex = text.IndexOf(part, textIndex, comparison);
                 if (foundIndex < 0) return false;
 
                 if (i == 0 && !pattern.StartsWith("*") && foundIndex != 0)
@@ -2108,22 +1879,24 @@ namespace ODDGames.UIAutomation
             {
                 string lastPart = parts[parts.Length - 1];
                 if (!string.IsNullOrEmpty(lastPart))
-                    return text.EndsWith(lastPart, StringComparison.OrdinalIgnoreCase);
+                    return text.EndsWith(lastPart, comparison);
             }
 
             return true;
         }
 
-        static bool MatchText(GameObject go, string pattern)
+        static bool MatchText(GameObject go, string pattern) => MatchText(go, pattern, ignoreCase: true);
+
+        static bool MatchText(GameObject go, string pattern, bool ignoreCase)
         {
             // Check TMP_Text on this object only (not children)
             var tmpText = go.GetComponent<TMP_Text>();
-            if (tmpText != null && WildcardMatch(tmpText.text, pattern))
+            if (tmpText != null && WildcardMatch(tmpText.text, pattern, ignoreCase))
                 return true;
 
             // Check legacy Text on this object only (not children)
             var legacyText = go.GetComponent<Text>();
-            if (legacyText != null && WildcardMatch(legacyText.text, pattern))
+            if (legacyText != null && WildcardMatch(legacyText.text, pattern, ignoreCase))
                 return true;
 
             return false;
@@ -2618,11 +2391,11 @@ namespace ODDGames.UIAutomation
         /// <returns>A Search representing the resolved value</returns>
         /// <example>
         /// // Access static values
-        /// var score = Search.Reflect("GameManager.Instance.Score").IntValue;
+        /// var score = Search.Reflect("GameManager.Instance.Score").GetValue&lt;int&gt;();
         ///
         /// // Iterate over arrays
         /// foreach (var player in Search.Reflect("GameManager.Players"))
-        ///     Debug.Log(player.Property("Name").StringValue);
+        ///     Debug.Log(player.Property("Name").GetValue&lt;string&gt;());
         ///
         /// // Use with Assert
         /// ActionExecutor.Assert(Search.Reflect("GameManager.IsReady").Property("Value"));
@@ -2677,27 +2450,8 @@ namespace ODDGames.UIAutomation
                 throw new InvalidOperationException($"Property failed: Property '{name}' not found on '{_staticPath}' (type: {_staticValue.GetType().Name})");
             }
 
-            // For UI elements, get the first match and navigate its component properties
-            var go = FindFirst();
-            if (go == null)
-                throw new InvalidOperationException($"Property failed: No UI element found matching '{context}', cannot access property '{name}'");
-
-            // Try to get property from any component
-            foreach (var comp in go.GetComponents<Component>())
-            {
-                if (comp == null) continue;
-                var type = comp.GetType();
-                var prop = type.GetProperty(name, bindingFlags);
-                if (prop != null)
-                    return new Search(prop.GetValue(comp), name, comp, name, prop);
-
-                var field = type.GetField(name, bindingFlags);
-                if (field != null)
-                    return new Search(field.GetValue(comp), name, comp, name, field);
-            }
-
-            var componentNames = string.Join(", ", go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name));
-            throw new InvalidOperationException($"Property failed: Property/field '{name}' not found on any component of '{go.name}'. Components: [{componentNames}]");
+            // For UI elements, use async Find() first, then call Property on the result
+            throw new InvalidOperationException($"Property() is only for Reflect paths. For UI elements use: var go = await {context}.Find(); then access components directly.");
         }
 
         /// <summary>
@@ -2757,10 +2511,8 @@ namespace ODDGames.UIAutomation
             }
             else
             {
-                // For UI element searches, find the first match
-                go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"Component failed: No UI element found matching '{context}', cannot get component '{typeName}'");
+                // For UI element searches, use async Find() first
+                throw new InvalidOperationException($"Component() is only for Reflect paths. For UI elements use: var go = await {context}.Find(); then access components directly.");
             }
 
             // Find the component by type name
@@ -2782,7 +2534,7 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Accesses an element by index (for arrays, lists, dictionaries, or types with indexers).
-        /// Works for static paths and values obtained via Property() from UI elements.
+        /// Only works for static/Reflect paths.
         /// </summary>
         /// <param name="index">The integer index to access</param>
         /// <returns>A new Search representing the indexed value</returns>
@@ -2792,13 +2544,10 @@ namespace ODDGames.UIAutomation
         /// var item = Search.Reflect("GameManager.Instance").Property("Players").Index(0);
         ///
         /// // Access list element
-        /// var weapon = Search.Reflect("Inventory.Items").Index(2).Property("Name").StringValue;
-        ///
-        /// // Access array property from UI element component
-        /// var firstItem = new Search().Name("Inventory").Property("Items").Index(0).StringValue;
+        /// var weapon = Search.Reflect("Inventory.Items").Index(2).Property("Name").GetValue&lt;string&gt;();
         ///
         /// // Chain with other accessors
-        /// var name = Search.Reflect("Config.Settings").Property("Profiles").Index(0).Property("Name").StringValue;
+        /// var name = Search.Reflect("Config.Settings").Property("Profiles").Index(0).Property("Name").GetValue&lt;string&gt;();
         /// </code>
         /// </example>
         public Search Index(int index)
@@ -2817,7 +2566,7 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Accesses an element by string key (for dictionaries or types with string indexers).
-        /// Works for static paths and values obtained via Property() from UI elements.
+        /// Only works for static/Reflect paths.
         /// </summary>
         /// <param name="key">The string key to access</param>
         /// <returns>A new Search representing the indexed value</returns>
@@ -2826,11 +2575,8 @@ namespace ODDGames.UIAutomation
         /// // Access dictionary element
         /// var player = Search.Reflect("GameManager.Instance").Property("PlayersByName").Index("Player1");
         ///
-        /// // Access dictionary property from UI element component
-        /// var value = new Search().Name("Config").Property("Settings").Index("volume").FloatValue;
-        ///
         /// // Chain with other accessors
-        /// var score = Search.Reflect("Leaderboard.Scores").Index("TopPlayer").IntValue;
+        /// var score = Search.Reflect("Leaderboard.Scores").Index("TopPlayer").GetValue&lt;int&gt;();
         /// </code>
         /// </example>
         public Search Index(string key)
@@ -2849,7 +2595,7 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Indexer for accessing elements by integer index.
-        /// Equivalent to calling Index(int).
+        /// Equivalent to calling Index(int). Only works for static/Reflect paths.
         /// </summary>
         /// <param name="index">The integer index to access</param>
         /// <returns>A new Search representing the indexed value</returns>
@@ -2859,17 +2605,14 @@ namespace ODDGames.UIAutomation
         /// var item = Search.Reflect("GameManager.Instance").Property("Players")[0];
         ///
         /// // Chain with other accessors
-        /// var name = Search.Reflect("Config.Settings").Property("Profiles")[0].Property("Name").StringValue;
-        ///
-        /// // From UI element property
-        /// var firstItem = new Search().Name("Inventory").Property("Items")[0].StringValue;
+        /// var name = Search.Reflect("Config.Settings").Property("Profiles")[0].Property("Name").GetValue&lt;string&gt;();
         /// </code>
         /// </example>
         public Search this[int index] => Index(index);
 
         /// <summary>
         /// Indexer for accessing elements by string key.
-        /// Equivalent to calling Index(string).
+        /// Equivalent to calling Index(string). Only works for static/Reflect paths.
         /// </summary>
         /// <param name="key">The string key to access</param>
         /// <returns>A new Search representing the indexed value</returns>
@@ -2878,15 +2621,15 @@ namespace ODDGames.UIAutomation
         /// // Access dictionary element using indexer syntax
         /// var player = Search.Reflect("GameManager.Instance").Property("PlayersByName")["Player1"];
         ///
-        /// // From UI element property
-        /// var value = new Search().Name("Config").Property("Settings")["volume"].FloatValue;
+        /// // Get typed value
+        /// var volume = Search.Reflect("Config.Settings")["volume"].GetValue&lt;float&gt;();
         /// </code>
         /// </example>
         public Search this[string key] => Index(key);
 
         /// <summary>
         /// Invokes a method on the current object and returns the result as a new Search.
-        /// Works for both static paths and UI element components.
+        /// Only works for static/Reflect paths.
         /// </summary>
         /// <param name="methodName">The name of the method to invoke</param>
         /// <param name="args">Optional arguments to pass to the method</param>
@@ -2894,13 +2637,13 @@ namespace ODDGames.UIAutomation
         /// <example>
         /// <code>
         /// // Call a parameterless method
-        /// var result = Search.Reflect("GameManager.Instance").Invoke("GetScore").IntValue;
+        /// var result = Search.Reflect("GameManager.Instance").Invoke("GetScore").GetValue&lt;int&gt;();
         ///
         /// // Call a method with arguments
         /// var player = Search.Reflect("GameManager.Instance").Invoke("GetPlayer", "Player1");
         ///
-        /// // Call method on UI element component
-        /// new Search().Name("MyButton").Invoke("IsInteractable").BoolValue;
+        /// // Use typed Invoke
+        /// int score = Search.Reflect("GameManager.Instance").Invoke&lt;int&gt;("GetScore");
         /// </code>
         /// </example>
         public Search Invoke(string methodName, params object[] args)
@@ -2919,30 +2662,8 @@ namespace ODDGames.UIAutomation
             }
             else
             {
-                // For UI elements, get the first match and try to find method on any component
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"Invoke failed: No UI element found matching '{context}', cannot invoke '{methodName}'");
-
-                foreach (var comp in go.GetComponents<Component>())
-                {
-                    if (comp == null) continue;
-                    var type = comp.GetType();
-                    var method = type.GetMethod(methodName,
-                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    if (method != null)
-                    {
-                        target = comp;
-                        targetType = type;
-                        break;
-                    }
-                }
-
-                if (target == null)
-                {
-                    var componentNames = string.Join(", ", go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name));
-                    throw new InvalidOperationException($"Invoke failed: Method '{methodName}' not found on any component of '{go.name}'. Components: [{componentNames}]");
-                }
+                // For UI element searches, use async Find() first
+                throw new InvalidOperationException($"Invoke() is only for Reflect paths. For UI elements use: var go = await {context}.Find(); then call methods directly.");
             }
 
             // Find and invoke the method
@@ -3245,7 +2966,7 @@ namespace ODDGames.UIAutomation
         /// </example>
         public async Task<ActiveState> Disable(float searchTime = 10f)
         {
-            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
+            var go = await FindGameObjectFromSearchOrStatic(searchTime);
             var state = new ActiveState(go, go.activeSelf);
             go.SetActive(false);
             Debug.Log($"[UIAutomation] Disable '{go.name}'");
@@ -3265,7 +2986,7 @@ namespace ODDGames.UIAutomation
         /// </example>
         public async Task<ActiveState> Enable(float searchTime = 10f)
         {
-            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime, includeInactive: true);
+            var go = await FindGameObjectFromSearchOrStatic(searchTime, includeInactive: true);
             var state = new ActiveState(go, go.activeSelf);
             go.SetActive(true);
             Debug.Log($"[UIAutomation] Enable '{go.name}'");
@@ -3286,7 +3007,7 @@ namespace ODDGames.UIAutomation
         /// </example>
         public async Task<FreezeState> Freeze(bool includeChildren = true, float searchTime = 10f)
         {
-            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
+            var go = await FindGameObjectFromSearchOrStatic(searchTime);
             var state = new FreezeState();
 
             if (includeChildren)
@@ -3344,7 +3065,7 @@ namespace ODDGames.UIAutomation
         /// </example>
         public async Task<PositionState> Teleport(Vector3 worldPosition, float searchTime = 10f)
         {
-            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
+            var go = await FindGameObjectFromSearchOrStatic(searchTime);
             var state = new PositionState(go.transform);
             go.transform.position = worldPosition;
             Debug.Log($"[UIAutomation] Teleport '{go.name}' to {worldPosition}");
@@ -3365,7 +3086,7 @@ namespace ODDGames.UIAutomation
         /// </example>
         public async Task<ColliderState> NoClip(bool includeChildren = true, float searchTime = 10f)
         {
-            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
+            var go = await FindGameObjectFromSearchOrStatic(searchTime);
             var state = new ColliderState();
 
             if (includeChildren)
@@ -3413,7 +3134,7 @@ namespace ODDGames.UIAutomation
         /// </example>
         public async Task<ColliderState> Clip(bool includeChildren = true, float searchTime = 10f)
         {
-            var go = await FindGameObjectFromSearchOrStaticAsync(searchTime);
+            var go = await FindGameObjectFromSearchOrStatic(searchTime);
             var state = new ColliderState();
 
             if (includeChildren)
@@ -3450,7 +3171,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Helper to get a GameObject from either a static path or UI search (async with timeout).
         /// </summary>
-        private async Task<GameObject> FindGameObjectFromSearchOrStaticAsync(float searchTime = 10f, bool includeInactive = false)
+        private async Task<GameObject> FindGameObjectFromSearchOrStatic(float searchTime = 10f, bool includeInactive = false)
         {
             if (_isStaticPath)
             {
@@ -3468,61 +3189,34 @@ namespace ODDGames.UIAutomation
             }
             else
             {
-                // UI search with timeout
+                // UI search with timeout - use async Find with stability checking
                 if (includeInactive)
                     IncludeInactive();
 
-                float startTime = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
-                while (((float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime) < searchTime && Application.isPlaying)
-                {
-                    var result = FindFirst();
-                    if (result != null)
-                        return result;
-                    await Task.Delay(100);
-                }
-
-                throw new TimeoutException($"No GameObject found matching '{this}' within {searchTime}s");
+                var result = await Find(searchTime);
+                if (result == null)
+                    throw new TimeoutException($"No GameObject found matching '{this}' within {searchTime}s");
+                return result;
             }
         }
 
         /// <summary>
-        /// Gets a typed value from this Search.
-        /// For static paths, returns the resolved value.
-        /// For UI elements, returns component values (text, toggle state, slider value, etc.)
+        /// Gets a typed value from this Search (static/Reflect paths only).
+        /// For UI elements, use ActionExecutor.GetValue&lt;T&gt;(search) instead.
         /// </summary>
         public T GetValue<T>(string subPath = null)
         {
             string context = _staticPath ?? ToString();
-            object value;
 
-            if (_isStaticPath)
-            {
-                if (_staticValue == null)
-                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Static path '{_staticPath}' resolved to null");
+            if (!_isStaticPath)
+                throw new InvalidOperationException($"GetValue<{typeof(T).Name}> is only for Reflect paths. For UI elements use: await ActionExecutor.GetValue<{typeof(T).Name}>({context})");
 
-                value = string.IsNullOrEmpty(subPath) ? _staticValue : NavigateProperty(_staticValue, subPath);
-                if (value == null && !string.IsNullOrEmpty(subPath))
-                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Sub-path '{subPath}' not found on '{_staticPath}' (type: {_staticValue.GetType().Name})");
-            }
-            else
-            {
-                // For UI elements, use the appropriate value property based on type
-                var go = FindFirst();
-                if (go == null)
-                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: No UI element found matching '{context}'");
+            if (_staticValue == null)
+                throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Static path '{_staticPath}' resolved to null");
 
-                value = typeof(T) switch
-                {
-                    Type t when t == typeof(string) => StringValue,
-                    Type t when t == typeof(bool) => BoolValue,
-                    Type t when t == typeof(float) => FloatValue,
-                    Type t when t == typeof(int) => IntValue,
-                    _ => null
-                };
-
-                if (value == null)
-                    throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Unsupported type for UI element '{go.name}'. Supported types: string, bool, float, int");
-            }
+            var value = string.IsNullOrEmpty(subPath) ? _staticValue : NavigateProperty(_staticValue, subPath);
+            if (value == null && !string.IsNullOrEmpty(subPath))
+                throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Sub-path '{subPath}' not found on '{_staticPath}' (type: {_staticValue.GetType().Name})");
 
             if (value == null)
                 throw new InvalidOperationException($"GetValue<{typeof(T).Name}> failed: Value resolved to null");
@@ -3543,45 +3237,44 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Gets the raw value for static path searches.
+        /// Gets the raw value for static path searches only.
+        /// For UI elements, use Find() to get the GameObject asynchronously.
         /// </summary>
-        public object Value => _isStaticPath ? _staticValue : FindFirst();
+        public object Value
+        {
+            get
+            {
+                if (!_isStaticPath)
+                    throw new InvalidOperationException($"Value is only for Reflect paths. For UI elements use: await {ToString()}.Find()");
+                return _staticValue;
+            }
+        }
 
         /// <summary>
-        /// Iterates over array/list elements for static paths, or all matching elements for UI searches.
+        /// Iterates over array/list elements for static paths only.
+        /// For UI elements, use FindAll() asynchronously instead.
         /// </summary>
         public IEnumerator<Search> GetEnumerator()
         {
-            if (_isStaticPath)
-            {
-                if (_staticValue == null)
-                    yield break;
+            if (!_isStaticPath)
+                throw new InvalidOperationException($"Enumeration is only for Reflect paths. For UI elements use: await {ToString()}.FindAll()");
 
-                if (_staticValue is System.Collections.IEnumerable enumerable && !(_staticValue is string))
+            if (_staticValue == null)
+                yield break;
+
+            if (_staticValue is System.Collections.IEnumerable enumerable && !(_staticValue is string))
+            {
+                int idx = 0;
+                foreach (var item in enumerable)
                 {
-                    int idx = 0;
-                    foreach (var item in enumerable)
-                    {
-                        if (item != null)
-                            yield return new Search(item, $"{_staticPath}[{idx}]");
-                        idx++;
-                    }
-                }
-                else
-                {
-                    yield return this;
+                    if (item != null)
+                        yield return new Search(item, $"{_staticPath}[{idx}]");
+                    idx++;
                 }
             }
             else
             {
-                // For UI searches, iterate over all matches
-                foreach (var go in FindAll())
-                {
-                    var search = new Search();
-                    search._conditions.Add(g => g == go);
-                    search._descriptionParts.Add($"GameObject({go.name})");
-                    yield return search;
-                }
+                yield return this;
             }
         }
 

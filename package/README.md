@@ -186,15 +186,15 @@ Access game state for assertions:
 
 ```csharp
 // Read values
-var health = Reflect("Player.Instance.Health").FloatValue;
-var score = Reflect("GameManager.Score").IntValue;
+var health = Reflect("Player.Instance.Health").GetValue<float>();
+var score = Reflect("GameManager.Score").GetValue<int>();
 
 // Navigate nested properties
-var damage = Reflect("Player.Instance").Property("Stats.Damage").FloatValue;
+var damage = Reflect("Player.Instance").Property("Stats.Damage").GetValue<float>();
 
 // With NUnit assertions
-Assert.AreEqual(100f, Reflect("Player.Health").FloatValue);
-Assert.Greater(Reflect("Player.Score").IntValue, 0);
+Assert.AreEqual(100f, Reflect("Player.Health").GetValue<float>());
+Assert.Greater(Reflect("Player.Score").GetValue<int>(), 0);
 ```
 
 ## Auto-Explorer (Monkey Testing)
