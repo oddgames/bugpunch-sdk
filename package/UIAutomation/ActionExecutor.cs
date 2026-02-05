@@ -282,7 +282,7 @@ namespace ODDGames.UIAutomation
     ///     [Test]
     ///     public async Task TestLogin()
     ///     {
-    ///         await EnsureSceneLoaded("LoginScene");
+    ///         await LoadScene("LoginScene");
     ///         await TextInput(Name("Username"), "testuser");
     ///         await Click(Name("LoginButton"));
     ///     }
@@ -1052,49 +1052,6 @@ namespace ODDGames.UIAutomation
 
         [System.Serializable]
         private class PlayerPrefsEntry { public string key; public string value; public string type; }
-
-        /// <summary>
-        /// Ensures a specific scene is loaded. If not already loaded, loads it.
-        /// Waits for stable frame rate (default 20 FPS) before returning.
-        /// </summary>
-        /// <param name="sceneName">Name of the scene to load.</param>
-        /// <param name="timeout">Maximum time to wait for scene load.</param>
-        /// <param name="minFps">Minimum stable frame rate before considering scene ready. Set to 0 to skip FPS check.</param>
-        public static async Task EnsureSceneLoaded(string sceneName, float timeout = 30f, float minFps = 20f)
-        {
-            if (SceneManager.GetActiveScene().name == sceneName)
-            {
-                Log($"EnsureSceneLoaded(\"{sceneName}\") - already loaded");
-                await Task.Yield();
-                return;
-            }
-
-            await using var action = await RunAction($"EnsureSceneLoaded(\"{sceneName}\", timeout={timeout}s)");
-            var asyncOp = SceneManager.LoadSceneAsync(sceneName);
-
-            float startTime = Now;
-            while (!asyncOp.isDone && (Now - startTime) < timeout)
-            {
-                await Task.Yield();
-            }
-
-            if (!asyncOp.isDone)
-            {
-                action.Fail($"did not load within {timeout}s");
-            }
-
-            // Wait for stable frame rate if requested
-            if (minFps > 0)
-            {
-                await WaitForStableFrameRate(minFps, timeout: 10f);
-            }
-            else
-            {
-                // Just wait a few frames
-                await Async.DelayFrames(3);
-            }
-            action.SetResult("loaded");
-        }
 
         /// <summary>
         /// Waits until the frame rate stabilizes at or above the specified FPS.

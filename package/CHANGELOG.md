@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.18] - 2026-02-05
+
+### Removed
+- **`EnsureSceneLoaded()`** from ActionExecutor - use `LoadScene()` (UITestBase) instead
+- **`RestoreGameState()`** from UITestBase - use `LoadTestData()` (ActionExecutor) directly
+- **`LogPersistentDataState()`** and `FormatFileSize()` private helpers from UITestBase (unused after RestoreGameState removal)
+
 ## [1.1.17] - 2026-02-05
 
 ### Changed

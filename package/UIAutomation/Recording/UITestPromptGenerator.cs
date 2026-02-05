@@ -55,7 +55,7 @@ public class MyTest
     [Test]
     public async Task TestSomething()
     {
-        await EnsureSceneLoaded(""TestScene"");
+        await LoadScene(""TestScene"");
         await Click(Name(""Button""));
         await Wait(1);
     }
