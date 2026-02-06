@@ -5,15 +5,26 @@
 - `package/` - UPM package (core framework code, samples)
 - `test/` - Unity test project (PlayMode tests, references package locally)
 
+## Real-World Test Project
+
+The primary project used to exercise/test the library in a real game:
+- **Path**: `C:\Workspaces\game_monster_truck_destruction_steam\UnityProj_MTD`
+- PlayMode tests live in `Assets/Tests/PlayMode/` with a `PlayModeTests.asmdef`
+- References the UIAutomation package via Git URL in `Packages/manifest.json`
+
 ## Core Philosophy
 
-**Input System Only** - ALL input injection MUST use Unity's new Input System. NEVER use:
+**Async First** - Prefer `async Task` over synchronous patterns everywhere. The entire API is async-based.
+
+**Real Touch/Input Simulation** - ALL input injection MUST use Unity's new Input System to simulate real touches, clicks, and gestures. NEVER use:
 - Direct value manipulation (`dropdown.value`, `slider.value`, `toggle.isOn`)
 - IMGUI events (`Event.current`, `ProcessEvent()`)
 
 Use the appropriate helper instead: `ClickDropdown()`, `ClickSlider()`, `Click()`, etc.
 
 **Exception**: `TypeIntoField()` uses direct text manipulation because TMP_InputField doesn't support Input System text events (known Unity limitation).
+
+**Search is Central** - The `Search` class (fluent query builder) is the backbone of the framework. All element finding flows through it. Invest in keeping its API clean, expressive, and well-tested.
 
 **No External Dependencies** - The package uses only standard .NET and Unity APIs:
 - Use `System.Threading.Tasks` (async/await) - NOT UniTask
@@ -88,4 +99,4 @@ Track changes methodically as you work. Used to generate CHANGELOG.md during `/d
 
 ### Current Local Changes
 
-(None - cleared after v1.1.29 deploy)
+(None - cleared after v1.1.35 deploy)

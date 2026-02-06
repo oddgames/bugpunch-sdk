@@ -21,9 +21,6 @@
     "defineConstraints": [
         "UNITY_INCLUDE_TESTS"
     ],
-    "optionalUnityReferences": [
-        "TestAssemblies"
-    ],
     "versionDefines": [
         {
             "name": "com.unity.recorder",
