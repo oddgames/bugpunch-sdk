@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.23] - 2026-02-06
+
+### Fixed
+- **Failure messages now logged before throwing** - `ActionScope.Fail()` logs error message before throwing `AssertionException`
+  - Failure reason is now visible in Unity console: `[UIAutomation] FAILED: Click(Text("Button")) failed: Element not found within 10s`
+  - Previously the failure message was only in the exception, which could be truncated in test results
+
 ## [1.1.22] - 2026-02-06
 
 ### Changed
