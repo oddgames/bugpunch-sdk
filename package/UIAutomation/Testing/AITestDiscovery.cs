@@ -1,12 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using UnityEngine;
-
-#if UNITY_INCLUDE_TESTS
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.TestTools;
-#endif
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -68,7 +65,6 @@ namespace ODDGames.UIAutomation.AI
     ///   └─ ...
     /// </code>
     /// </summary>
-#if UNITY_INCLUDE_TESTS
     [TestFixture]
     [Category("AI")]
     public class AI
@@ -185,5 +181,4 @@ namespace ODDGames.UIAutomation.AI
             }
         }
     }
-#endif
 }
