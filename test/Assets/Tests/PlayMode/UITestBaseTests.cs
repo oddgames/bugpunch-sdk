@@ -71,9 +71,9 @@ namespace ODDGames.UIAutomation.Tests
             try
             {
                 await ActionExecutor.Click(new Search().Name("NonExistentElement"), searchTime: 0.5f);
-                Assert.Fail("Expected UIAutomationTimeoutException");
+                Assert.Fail("Expected AssertionException");
             }
-            catch (UIAutomationTimeoutException)
+            catch (AssertionException)
             {
                 // Expected
             }

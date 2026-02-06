@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.22] - 2026-02-06
+
+### Changed
+- **All failures now throw `NUnit.Framework.AssertionException`** - Simplified exception handling
+  - Removed `UIAutomationException`, `UIAutomationTimeoutException`, `UIAutomationNotFoundException` custom exception classes
+  - All action failures (element not found, timeouts, invalid paths) now throw `AssertionException` directly
+  - Ensures proper test failure reporting in Unity Test Runner without exception swallowing
+
 ## [1.1.21] - 2026-02-06
 
 ### Fixed
