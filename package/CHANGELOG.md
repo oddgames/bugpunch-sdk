@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.29] - 2026-02-06
+
+### Changed
+- **`AITestRunner` and `AITestDiscovery` moved to Testing assembly** - These files now in `ODDGames.UIAutomation.Testing`
+  - Fixes build errors when Test Framework not installed (LogAssert/NUnit references)
+  - Core runtime assembly (`ODDGames.UIAutomation`) now has zero test dependencies
+  - Works correctly in player builds without Test Framework
+
 ## [1.1.28] - 2026-02-06
 
 ### Changed
