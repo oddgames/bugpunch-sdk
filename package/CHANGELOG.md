@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.24] - 2026-02-06
+
+### Added
+- **`InputVisualizer` cursor fade-out** - Cursor icon now gradually fades over 1.5 seconds after actions complete
+  - Configurable via `InputVisualizer.CursorFadeDuration`
+  - Previously cursor disappeared instantly
+
+### Changed
+- **Realistic input injection timing** - All input methods now simulate realistic user interaction speeds
+  - Single click: ~160ms total (80ms button down, 30ms release)
+  - Double/Triple click: ~120ms between clicks (was 50ms)
+  - Touch tap: ~110ms total (80ms contact, 30ms release)
+  - Key press: ~110ms total (80ms down, 30ms release)
+  - Scroll: ~160ms total (80ms move to position, 50ms scroll, 30ms reset)
+  - Previously timings were 20-50ms which was too fast for realistic simulation
+
+### Fixed
+- **`InjectScroll` no longer triggers clicks** - Scroll methods now use explicit `MouseState` struct
+  - Previously `StateEvent.From(mouse)` could inherit button state from prior operations
+  - Now explicitly sets all button states to released during scroll
+
 ## [1.1.23] - 2026-02-06
 
 ### Fixed

@@ -104,7 +104,11 @@ namespace ODDGames.UIAutomation
             public bool IsMouse;
             public bool IsPressed;
             public int FingerIndex;
+            public float FadeStartTime; // When cursor started fading (0 = not fading)
         }
+
+        /// <summary>Duration in seconds for cursor to fade out after release.</summary>
+        public static float CursorFadeDuration = 1.5f;
 
         private readonly List<ClickEvent> _clicks = new();
         private readonly List<TrailPoint> _trail = new();
@@ -176,11 +180,17 @@ namespace ODDGames.UIAutomation
             }
         }
 
-        /// <summary>Hides the active cursor.</summary>
+        /// <summary>Starts fading out the active cursor.</summary>
         public static void RecordCursorEnd()
         {
             if (!_enabled || _instance == null) return;
-            _instance._activeCursor = null;
+            if (!_instance._activeCursor.HasValue) return;
+
+            // Start fading instead of immediately hiding
+            var cursor = _instance._activeCursor.Value;
+            cursor.IsActive = false;
+            cursor.FadeStartTime = Time.unscaledTime;
+            _instance._activeCursor = cursor;
         }
 
         /// <summary>Records a scroll event.</summary>
@@ -304,6 +314,15 @@ namespace ODDGames.UIAutomation
             _clicks.RemoveAll(c => now - c.StartTime > ClickDuration);
             _scrolls.RemoveAll(s => now - s.StartTime > ScrollDuration);
             _trail.RemoveAll(t => now - t.Time > TrailDuration);
+
+            // Clear cursor when fade completes
+            if (_activeCursor.HasValue && !_activeCursor.Value.IsActive)
+            {
+                if (now - _activeCursor.Value.FadeStartTime > CursorFadeDuration)
+                {
+                    _activeCursor = null;
+                }
+            }
         }
 
         #endregion
@@ -447,7 +466,16 @@ namespace ODDGames.UIAutomation
             if (icon != null)
             {
                 var guiPos = ScreenToGUI(cursor.Position);
-                DrawIcon(icon, guiPos, CursorSize, 1f);
+
+                // Calculate alpha based on fade state
+                float alpha = 1f;
+                if (!cursor.IsActive && cursor.FadeStartTime > 0)
+                {
+                    float fadeProgress = (Time.unscaledTime - cursor.FadeStartTime) / CursorFadeDuration;
+                    alpha = Mathf.Clamp01(1f - fadeProgress);
+                }
+
+                DrawIcon(icon, guiPos, CursorSize, alpha);
             }
         }
 
