@@ -3,7 +3,6 @@
     "rootNamespace": "ODDGames.UIAutomation.VisualBuilder",
     "references": [
         "ODDGames.UIAutomation",
-        "ODDGames.UIAutomation.AI",
         "Unity.TextMeshPro",
         "Unity.InputSystem"
     ],
@@ -13,7 +12,12 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }
