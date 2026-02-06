@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.34] - 2026-02-06
+
+### Fixed
+- **Testing assembly now supports PlayMode tests** - Removed `includePlatforms: ["Editor"]` restriction
+  - Testing assembly can now be referenced by PlayMode test assemblies
+  - Uses `defineConstraints: ["UNITY_INCLUDE_TESTS"]` to ensure exclusion from player builds
+  - Fixes "ODDGames namespace not found" errors when referencing UITestBase from PlayMode tests
+
 ## [1.1.30] - 2026-02-06
 
 ### Fixed
