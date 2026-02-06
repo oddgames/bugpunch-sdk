@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.26] - 2026-02-06
+
+### Fixed
+- **All test-related assemblies excluded from builds without Test Framework** - Added `defineConstraints: ["UNITY_INCLUDE_TESTS"]` to:
+  - `ODDGames.UIAutomation.Editor` (main editor assembly)
+  - `ODDGames.UIAutomation.VisualBuilder` (visual test builder)
+  - `ODDGames.UIAutomation.VisualBuilder.Editor` (visual builder editor)
+  - `ODDGames.UIAutomation.AI.Editor` (AI test editor)
+  - Previously these assemblies would fail to compile when Test Framework was not installed
+  - Core runtime assembly (`ODDGames.UIAutomation`) still compiles without tests for runtime-only usage
+
 ## [1.1.25] - 2026-02-06
 
 ### Fixed

@@ -3,15 +3,12 @@
     "rootNamespace": "ODDGames.UIAutomation.Editor",
     "references": [
         "ODDGames.UIAutomation",
-        "ODDGames.UIAutomation.AI",
         "ODDGames.UIAutomation.AI.Editor",
         "ODDGames.UIAutomation.VisualBuilder",
         "ODDGames.UIAutomation.VisualBuilder.Editor",
         "Unity.TextMeshPro",
         "Unity.InputSystem",
-        "Unity.Recorder.Editor",
-        "UnityEditor.TestRunner",
-        "UnityEngine.TestRunner"
+        "Unity.Recorder.Editor"
     ],
     "includePlatforms": [
         "Editor"
@@ -21,7 +18,12 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
     "versionDefines": [
         {
             "name": "com.unity.recorder",
