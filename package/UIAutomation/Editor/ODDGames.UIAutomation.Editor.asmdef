@@ -29,6 +29,11 @@
             "name": "com.unity.recorder",
             "expression": "",
             "define": "UNITY_RECORDER"
+        },
+        {
+            "name": "com.unity.test-framework",
+            "expression": "",
+            "define": "UNITY_INCLUDE_TESTS"
         }
     ],
     "noEngineReferences": false
