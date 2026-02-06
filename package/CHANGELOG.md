@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.36] - 2026-02-06
+
+### Fixed
+- **Removed `LogAssert` dependency from core assembly** - Replaced `LogAssert.ignoreFailingMessages` in AITestRunner/AITestDiscovery with existing custom log handler, eliminating the need for `UnityEngine.TestRunner` reference in the core assembly
+- **Testing assembly now references `UnityEngine.TestRunner`** - Ensures `LogAssert` works properly in UITestBase
+
 ## [1.1.35] - 2026-02-06
 
 ### Fixed

@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -117,8 +116,6 @@ namespace ODDGames.UIAutomation.AI
             var suppressingHandler = new AITestLogHandler(originalHandler) { SuppressErrors = true };
             Debug.unityLogger.logHandler = suppressingHandler;
 
-            // Also set LogAssert as backup
-            LogAssert.ignoreFailingMessages = true;
 
             try
             {
@@ -178,7 +175,6 @@ namespace ODDGames.UIAutomation.AI
             {
                 // Restore original handler
                 Debug.unityLogger.logHandler = originalHandler;
-                LogAssert.ignoreFailingMessages = false;
             }
         }
     }
