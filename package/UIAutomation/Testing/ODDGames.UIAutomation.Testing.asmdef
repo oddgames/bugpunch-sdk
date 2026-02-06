@@ -4,9 +4,7 @@
     "references": [
         "ODDGames.UIAutomation",
         "Unity.TextMeshPro",
-        "Unity.InputSystem",
-        "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"
