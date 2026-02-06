@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.30] - 2026-02-06
+
+### Fixed
+- **Testing assembly now Editor-only** - Added `includePlatforms: ["Editor"]` to Testing assembly
+  - Prevents LogAssert/NUnit errors when Test Framework not fully configured in consuming projects
+  - Testing assembly only compiles in Editor context where Test Framework is guaranteed
+
 ## [1.1.29] - 2026-02-06
 
 ### Changed
