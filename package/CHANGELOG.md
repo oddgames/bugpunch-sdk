@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.37] - 2026-02-06
+
+### Fixed
+- **Testing assembly now self-defines `UNITY_INCLUDE_TESTS`** - Added `versionDefines` to detect `com.unity.test-framework` and satisfy its own `defineConstraints`, fixing `UITestBase` not found errors
+
 ## [1.1.36] - 2026-02-06
 
 ### Fixed
