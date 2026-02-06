@@ -3,6 +3,7 @@
     "rootNamespace": "ODDGames.UIAutomation",
     "references": [
         "ODDGames.UIAutomation",
+        "UnityEngine.TestRunner",
         "Unity.TextMeshPro",
         "Unity.InputSystem"
     ],

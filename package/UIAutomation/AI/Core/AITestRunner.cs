@@ -4,9 +4,6 @@ using System.Collections.Generic;
 using System.Threading;
 
 using UnityEngine;
-#if UNITY_INCLUDE_TESTS
-using UnityEngine.TestTools;
-#endif
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -184,12 +181,6 @@ namespace ODDGames.UIAutomation.AI
             var ct = cts.Token;
 
             // Suppress error logs from failing the test (game code may log errors we don't care about)
-#if UNITY_INCLUDE_TESTS
-            if (config.SuppressErrorLogs)
-            {
-                LogAssert.ignoreFailingMessages = true;
-            }
-#endif
 
             try
             {
@@ -463,12 +454,6 @@ namespace ODDGames.UIAutomation.AI
                 try { cts?.Dispose(); } catch { }
                 cts = null;
 
-#if UNITY_INCLUDE_TESTS
-                if (config.SuppressErrorLogs)
-                {
-                    LogAssert.ignoreFailingMessages = false;
-                }
-#endif
             }
         }
 
