@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.28] - 2026-02-06
+
+### Changed
+- **BREAKING: `UITestBase` moved to separate assembly** - Now in `ODDGames.UIAutomation.Testing`
+  - User test assemblies must add reference to `ODDGames.UIAutomation.Testing`
+  - Testing assembly only compiles when Test Framework is installed (via `defineConstraints`)
+  - Core runtime (`ODDGames.UIAutomation`) no longer has any test dependencies
+  - `CaptureUnobservedExceptions` moved to always-available in core assembly (no longer conditional)
+
 ## [1.1.27] - 2026-02-06
 
 ### Fixed

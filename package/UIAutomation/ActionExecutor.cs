@@ -417,7 +417,6 @@ namespace ODDGames.UIAutomation
             return null;
         }
 
-#if UNITY_INCLUDE_TESTS
         private static readonly System.Collections.Generic.List<Exception> _capturedExceptions = new System.Collections.Generic.List<Exception>();
         private static bool _captureHandlerAttached;
 
@@ -463,7 +462,6 @@ namespace ODDGames.UIAutomation
                     _capturedExceptions.Add(inner);
             }
         }
-#endif
 
         #region Random Generator
 
