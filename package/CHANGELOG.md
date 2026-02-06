@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.35] - 2026-02-06
+
+### Fixed
+- **Removed deprecated `optionalUnityReferences` from all assemblies** - This Unity 6 deprecated field was silently preventing the core assembly from compiling in some projects, causing `ODDGames` namespace not found errors in downstream test assemblies
+
 ## [1.1.34] - 2026-02-06
 
 ### Fixed
