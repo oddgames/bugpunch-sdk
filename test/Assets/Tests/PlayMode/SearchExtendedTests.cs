@@ -66,11 +66,11 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Without IncludeInactive - should not find inactive
-            var normalResults = new Search().Name("*Button").FindAll();
+            var normalResults = await new Search().Name("*Button").FindAll();
             Assert.AreEqual(1, normalResults.Count, "Should only find active button");
 
             // With IncludeInactive - should find both
-            var allResults = new Search().Name("*Button").IncludeInactive().FindAll();
+            var allResults = await new Search().Name("*Button").IncludeInactive().FindAll();
             Assert.AreEqual(2, allResults.Count, "Should find both active and inactive buttons");
         }
 
@@ -88,7 +88,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("NestedChild").IncludeInactive().FindAll();
+            var results = await new Search().Name("NestedChild").IncludeInactive().FindAll();
             Assert.AreEqual(1, results.Count, "Should find button in inactive parent");
         }
 
@@ -106,10 +106,10 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Without IncludeDisabled - behavior depends on search type
-            var normalResults = new Search().Name("*Button").Type<Button>().FindAll();
+            var normalResults = await new Search().Name("*Button").Type<Button>().FindAll();
 
             // With IncludeDisabled - should find both
-            var allResults = new Search().Name("*Button").Type<Button>().IncludeDisabled().FindAll();
+            var allResults = await new Search().Name("*Button").Type<Button>().IncludeDisabled().FindAll();
             Assert.AreEqual(2, allResults.Count, "Should find both enabled and disabled buttons");
         }
 
@@ -133,7 +133,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("InputField").HasSibling(new Search().Text("Username:")).FindAll();
+            var results = await new Search().Name("InputField").HasSibling(new Search().Text("Username:")).FindAll();
             Assert.AreEqual(1, results.Count, "Should find input field with username label sibling");
         }
 
@@ -153,7 +153,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // HasSibling(string) searches by NAME pattern, not text
-            var results = new Search().Name("PassInput").HasSibling("PasswordLabel").FindAll();
+            var results = await new Search().Name("PassInput").HasSibling("PasswordLabel").FindAll();
             Assert.AreEqual(1, results.Count, "Should find input field with password label sibling");
         }
 
@@ -173,7 +173,7 @@ namespace ODDGames.UIAutomation.Tests
 
             // Search for buttons in the left half of screen (assuming ~400px canvas width)
             // InRegion uses normalized coordinates (0-1)
-            var results = new Search().Name("*").Type<Button>().InRegion(0, 0, 0.5f, 1f).FindAll();
+            var results = await new Search().Name("*").Type<Button>().InRegion(0, 0, 0.5f, 1f).FindAll();
 
             // Should find buttons on the left side
             Assert.GreaterOrEqual(results.Count, 1, "Should find at least one button in left region");
@@ -193,7 +193,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("TakeButton*").Take(3).FindAll();
+            var results = await new Search().Name("TakeButton*").Take(3).FindAll();
             Assert.AreEqual(3, results.Count, "Should return exactly 3 results");
         }
 
@@ -204,7 +204,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("OnlyButton").Take(10).FindAll();
+            var results = await new Search().Name("OnlyButton").Take(10).FindAll();
             Assert.AreEqual(1, results.Count, "Should return 1 when fewer than limit exist");
         }
 
@@ -226,8 +226,8 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var ascending = new Search().Name("*_Button").OrderBy<RectTransform>(rt => rt.sizeDelta.x).FindAll();
-            var descending = new Search().Name("*_Button").OrderByDescending<RectTransform>(rt => rt.sizeDelta.x).FindAll();
+            var ascending = await new Search().Name("*_Button").OrderBy<RectTransform>(rt => rt.sizeDelta.x).FindAll();
+            var descending = await new Search().Name("*_Button").OrderByDescending<RectTransform>(rt => rt.sizeDelta.x).FindAll();
 
             Assert.AreEqual(ascending.First().name, descending.Last().name, "Descending should reverse order");
         }
@@ -250,7 +250,7 @@ namespace ODDGames.UIAutomation.Tests
             var orders = new List<string>();
             for (int trial = 0; trial < 5; trial++)
             {
-                var results = new Search().Name("RandBtn*").Randomize().FindAll();
+                var results = await new Search().Name("RandBtn*").Randomize().FindAll(timeout: 2f);
                 orders.Add(string.Join(",", results.Select(r => r.name)));
             }
 
@@ -271,7 +271,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("*Btn").Visible().FindAll();
+            var results = await new Search().Name("*Btn").Visible().FindAll();
 
             // Should find visible button, might not find offscreen one
             Assert.GreaterOrEqual(results.Count, 1, "Should find at least the visible button");
@@ -291,7 +291,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("*Btn").Interactable().FindAll();
+            var results = await new Search().Name("*Btn").Interactable().FindAll();
 
             Assert.AreEqual(1, results.Count, "Should find only interactable button");
             Assert.AreEqual("InteractableBtn", results[0].name, "Should be the interactable button");
@@ -305,7 +305,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("Test*").Interactable().FindAll();
+            var results = await new Search().Name("Test*").Interactable().FindAll();
 
             Assert.AreEqual(2, results.Count, "Should find both slider and toggle");
         }
@@ -326,7 +326,7 @@ namespace ODDGames.UIAutomation.Tests
             var blueSearch = new Search().Name("BlueButton");
             var redSearch = new Search().Name("RedButton");
 
-            var results = blueSearch.Or(redSearch).FindAll();
+            var results = await blueSearch.Or(redSearch).FindAll();
 
             Assert.AreEqual(2, results.Count, "Should find both blue and red buttons");
             Assert.IsTrue(results.Any(r => r.name == "BlueButton"), "Should include blue button");
@@ -347,7 +347,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("FindAllBtn*").FindAll();
+            var results = await new Search().Name("FindAllBtn*").FindAll();
             Assert.AreEqual(5, results.Count, "Should find all 5 buttons");
         }
 
@@ -358,7 +358,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("NonExistent*").FindAll();
+            var results = await new Search().Name("NonExistent*").FindAll();
             Assert.AreEqual(0, results.Count, "Should return empty list");
             Assert.IsNotNull(results, "Should not return null");
         }
@@ -426,13 +426,20 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [Test]
-        public async Task GetScreenPosition_ReturnsNullWhenNotFound()
+        public async Task GetScreenPosition_ThrowsWhenNotFound()
         {
             await Async.DelayFrames(1);
 
-            var screenPos = new Search().Name("NonExistentElement").GetScreenPosition();
-
-            Assert.IsFalse(screenPos.HasValue, "Should return null when element not found");
+            // GetScreenPosition throws TimeoutException when element not found
+            try
+            {
+                await new Search().Name("NonExistentElement").GetScreenPosition(1f);
+                Assert.Fail("Should have thrown TimeoutException");
+            }
+            catch (System.TimeoutException ex)
+            {
+                Assert.IsTrue(ex.Message.Contains("NonExistentElement"), "Exception message should contain search pattern");
+            }
         }
 
         #endregion
@@ -452,7 +459,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Use Name filter to get exact element, verify texture matches
-            var results = new Search().Name("SpriteBtn").Texture("TestIconSprite_Unique123").FindAll();
+            var results = await new Search().Name("SpriteBtn").Texture("TestIconSprite_Unique123").FindAll();
             Assert.AreEqual(1, results.Count, "Should find element by sprite name");
             Assert.AreEqual("SpriteBtn", results[0].name);
         }
@@ -469,10 +476,10 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Verify the specific button is found with wildcard patterns
-            var results = new Search().Name("IconBtnWildcard").Texture("uniqueicon_*").FindAll();
+            var results = await new Search().Name("IconBtnWildcard").Texture("uniqueicon_*").FindAll();
             Assert.AreEqual(1, results.Count, "Should find element by sprite wildcard pattern");
 
-            results = new Search().Name("IconBtnWildcard").Texture("*settings*").FindAll();
+            results = await new Search().Name("IconBtnWildcard").Texture("*settings*").FindAll();
             Assert.AreEqual(1, results.Count, "Should find element by middle wildcard");
         }
 
@@ -493,10 +500,10 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Verify exact match by name + texture
-            var results = new Search().Name("RawImageObj").Texture("unique_avatar_texture_01_xyz").FindAll();
+            var results = await new Search().Name("RawImageObj").Texture("unique_avatar_texture_01_xyz").FindAll();
             Assert.AreEqual(1, results.Count, "Should find RawImage by texture name");
 
-            results = new Search().Name("RawImageObj").Texture("unique_avatar_*").FindAll();
+            results = await new Search().Name("RawImageObj").Texture("unique_avatar_*").FindAll();
             Assert.AreEqual(1, results.Count, "Should find RawImage by texture wildcard");
         }
 
@@ -515,10 +522,10 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Verify exact match
-            var results = new Search().Name("SpriteRendererObj").Texture("unique_player_idle_anim_xyz").FindAll();
+            var results = await new Search().Name("SpriteRendererObj").Texture("unique_player_idle_anim_xyz").FindAll();
             Assert.AreEqual(1, results.Count, "Should find SpriteRenderer by sprite name");
 
-            results = new Search().Name("SpriteRendererObj").Texture("*idle*").FindAll();
+            results = await new Search().Name("SpriteRendererObj").Texture("*idle*").FindAll();
             Assert.AreEqual(1, results.Count, "Should find SpriteRenderer by wildcard");
         }
 
@@ -539,10 +546,10 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Verify the specific cube is found
-            var results = new Search().Name("TexturedCubeUnique").Texture("unique_wood_diffuse_01_xyz").FindAll();
+            var results = await new Search().Name("TexturedCubeUnique").Texture("unique_wood_diffuse_01_xyz").FindAll();
             Assert.AreEqual(1, results.Count, "Should find MeshRenderer by material texture name");
 
-            results = new Search().Name("TexturedCubeUnique").Texture("unique_wood_*").FindAll();
+            results = await new Search().Name("TexturedCubeUnique").Texture("unique_wood_*").FindAll();
             Assert.AreEqual(1, results.Count, "Should find MeshRenderer by texture wildcard");
         }
 
@@ -564,7 +571,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Filter by name pattern to get only our buttons, then verify texture OR works
-            var results = new Search().Name("OrPatternBtn*").Texture("unique_play_icon_xyz|unique_pause_icon_xyz").FindAll();
+            var results = await new Search().Name("OrPatternBtn*").Texture("unique_play_icon_xyz|unique_pause_icon_xyz").FindAll();
             Assert.AreEqual(2, results.Count, "Should find both buttons with OR pattern");
         }
 
@@ -587,7 +594,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Find only interactable buttons with icon_star among our specific buttons
-            var results = new Search().Name("ChainIconBtn*").Texture("unique_icon_star_xyz").Interactable().FindAll();
+            var results = await new Search().Name("ChainIconBtn*").Texture("unique_icon_star_xyz").Interactable().FindAll();
             Assert.AreEqual(1, results.Count, "Should find only interactable button");
             Assert.AreEqual("ChainIconBtn1", results[0].name);
         }
@@ -602,7 +609,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Search for our specific button and verify it doesn't match any texture pattern
-            var results = new Search().Name("NoTextureBtnUnique").Texture("*anytexture*").FindAll();
+            var results = await new Search().Name("NoTextureBtnUnique").Texture("*anytexture*").FindAll();
             Assert.AreEqual(0, results.Count, "Should not match element with no texture");
         }
 
@@ -621,10 +628,12 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            // Get component using generic version
-            var search = new Search().Name("ComponentTestBtn").Component<Rigidbody2D>();
-            Assert.IsNotNull(search.Value, "Should get Rigidbody2D component");
-            Assert.IsTrue(search.Value is Rigidbody2D, "Value should be Rigidbody2D");
+            // Component<T>() only works on Reflect paths. For UI searches, find the element first
+            // then access component directly.
+            var go = await new Search().Name("ComponentTestBtn").Find();
+            var component = go.GetComponent<Rigidbody2D>();
+            Assert.IsNotNull(component, "Should get Rigidbody2D component");
+            Assert.IsTrue(component is Rigidbody2D, "Component should be Rigidbody2D");
         }
 
         [Test]
@@ -708,13 +717,12 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            // Get Image component (which exists on button)
-            var colorValue = new Search().Name("ImageComponentBtn")
-                .Component<Image>()
-                .Property("color")
-                .ColorValue;
-
-            Assert.AreEqual(Color.gray, colorValue, "Should read Image color property");
+            // Component<T>() only works on Reflect paths. For UI searches, find the element first
+            // then access component directly.
+            var go = await new Search().Name("ImageComponentBtn").Find();
+            var image = go.GetComponent<Image>();
+            Assert.IsNotNull(image, "Should get Image component");
+            Assert.AreEqual(Color.gray, image.color, "Should read Image color property");
         }
 
         [Test]
@@ -725,11 +733,11 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            // Change color via Component + Property + SetValue
-            new Search().Name("ImageSetBtn")
-                .Component<Image>()
-                .Property("color")
-                .SetValue(Color.red);
+            // Component<T>() only works on Reflect paths. For UI searches, find the element first
+            // then modify component directly.
+            var go = await new Search().Name("ImageSetBtn").Find();
+            var foundImage = go.GetComponent<Image>();
+            foundImage.color = Color.red;
 
             Assert.AreEqual(Color.red, image.color, "Image color should be updated to red");
         }
@@ -750,7 +758,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Find all including inactive and disabled
-            var allResults = new Search()
+            var allResults = await new Search()
                 .Name("ChainBtn*")
                 .IncludeInactive()
                 .IncludeDisabled()
@@ -759,7 +767,7 @@ namespace ODDGames.UIAutomation.Tests
             Assert.AreEqual(3, allResults.Count, "Should find all 3 buttons with filters");
 
             // Find only interactable
-            var interactableResults = new Search()
+            var interactableResults = await new Search()
                 .Name("ChainBtn*")
                 .Interactable()
                 .FindAll();

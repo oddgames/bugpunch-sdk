@@ -106,7 +106,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("*Button").FindAll();
+            var results = await new Search().Name("*Button").FindAll();
             Assert.AreEqual(2, results.Count, "Should find both buttons with wildcard prefix");
         }
 
@@ -118,7 +118,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("Button*").FindAll();
+            var results = await new Search().Name("Button*").FindAll();
             Assert.AreEqual(2, results.Count, "Should find both buttons with wildcard suffix");
         }
 
@@ -130,7 +130,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("*Menu*").FindAll();
+            var results = await new Search().Name("*Menu*").FindAll();
             Assert.AreEqual(2, results.Count, "Should find both buttons with wildcard in middle");
         }
 
@@ -158,7 +158,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Text() now only matches elements with text directly on them (not ancestors)
-            var results = new Search().Text("Level*").FindAll();
+            var results = await new Search().Text("Level*").FindAll();
             Assert.AreEqual(2, results.Count, "Should find both text elements with wildcard");
         }
 
@@ -185,7 +185,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Type<Button>().FindAll();
+            var results = await new Search().Type<Button>().FindAll();
             Assert.GreaterOrEqual(results.Count, 2, "Should find buttons by type");
         }
 
@@ -197,7 +197,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Type<Slider>().FindAll();
+            var results = await new Search().Type<Slider>().FindAll();
             Assert.AreEqual(2, results.Count, "Should find sliders by type");
         }
 
@@ -208,7 +208,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Type("Button").FindAll();
+            var results = await new Search().Type("Button").FindAll();
             Assert.GreaterOrEqual(results.Count, 1, "Should find by type name string");
         }
 
@@ -221,7 +221,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Both Button and Slider inherit from Selectable
-            var results = new Search().Type("*Selectable*").FindAll();
+            var results = await new Search().Type("*Selectable*").FindAll();
             // Note: This tests pattern matching on type names
         }
 
@@ -259,7 +259,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Find elements with matching sprite - filter to only those with Image component directly
-            var results = new Search().Texture("icon_*").FindAll();
+            var results = await new Search().Texture("icon_*").FindAll();
             var directImageElements = results.Where(go => go.GetComponent<Image>() != null).ToList();
             Assert.AreEqual(2, directImageElements.Count, "Should find both elements with icon_ prefix");
         }
@@ -303,7 +303,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Path("*/Panel*/ActionBtn").FindAll();
+            var results = await new Search().Path("*/Panel*/ActionBtn").FindAll();
             Assert.AreEqual(2, results.Count, "Should find both buttons through wildcard path");
         }
 
@@ -321,7 +321,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Tag("Untagged").Name("TaggedButton").FindAll();
+            var results = await new Search().Tag("Untagged").Name("TaggedButton").FindAll();
             Assert.GreaterOrEqual(results.Count, 1, "Should find element by tag");
         }
 
@@ -421,7 +421,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Near("Origin", Direction.Right).Type<Button>().FindAll();
+            var results = await new Search().Near("Origin", Direction.Right).Type<Button>().FindAll();
             Assert.AreEqual(3, results.Count, "Should find all 3 buttons");
             Assert.AreEqual("NearBtn", results[0].name, "First should be nearest");
             Assert.AreEqual("MidBtn", results[1].name, "Second should be middle");
@@ -511,7 +511,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("Skip*").Skip(1).FindAll();
+            var results = await new Search().Name("Skip*").Skip(1).FindAll();
             Assert.AreEqual(2, results.Count, "Should skip first element");
         }
 
@@ -529,7 +529,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("*_Button").OrderBy<RectTransform>(rt => rt.sizeDelta.x).FindAll();
+            var results = await new Search().Name("*_Button").OrderBy<RectTransform>(rt => rt.sizeDelta.x).FindAll();
             Assert.AreEqual("A_Button", results[0].name, "First should be smallest (A)");
             Assert.AreEqual("B_Button", results[1].name, "Second should be medium (B)");
             Assert.AreEqual("C_Button", results[2].name, "Third should be largest (C)");
@@ -544,7 +544,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = new Search().Name("PosBtn*").OrderByPosition().FindAll();
+            var results = await new Search().Name("PosBtn*").OrderByPosition().FindAll();
             Assert.AreEqual(3, results.Count, "Should find all buttons");
             // First element should have smallest X position
         }

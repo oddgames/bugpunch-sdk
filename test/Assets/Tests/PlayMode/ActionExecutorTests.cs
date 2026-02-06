@@ -100,8 +100,15 @@ namespace ODDGames.UIAutomation.Tests
         public async Task ClickAsync_WithSearch_ThrowsWhenNotFound()
         {
             await Async.DelayFrames(1);
-            Assert.ThrowsAsync<UIAutomationTimeoutException>(async () =>
-                await ActionExecutor.Click(new Search().Name("NonExistentButton"), searchTime: 0.5f));
+            try
+            {
+                await ActionExecutor.Click(new Search().Name("NonExistentButton"), searchTime: 0.5f);
+                Assert.Fail("Expected UIAutomationTimeoutException");
+            }
+            catch (UIAutomationTimeoutException)
+            {
+                // Expected
+            }
         }
 
         [Test]
@@ -479,27 +486,6 @@ namespace ODDGames.UIAutomation.Tests
             float elapsed = Time.realtimeSinceStartup - startTime;
 
             Assert.GreaterOrEqual(elapsed, 0.15f, "Should have held keys for approximately 0.2s");
-        }
-
-        #endregion
-
-        #region ClickAny Tests
-
-        [Test]
-        public async Task ClickAnyAsync_ClicksOneOfMultipleMatches()
-        {
-            // Create multiple buttons with same name pattern
-            int clickCount = 0;
-            for (int i = 0; i < 3; i++)
-            {
-                var btn = CreateButton($"AnyButton", new Vector2(-100 + i * 100, 0));
-                btn.onClick.AddListener(() => clickCount++);
-            }
-
-            await Async.DelayFrames(1);
-            await ActionExecutor.ClickAny(new Search().Name("AnyButton"), searchTime: 2f);
-
-            Assert.AreEqual(1, clickCount, "Exactly one button should have been clicked");
         }
 
         #endregion
@@ -956,8 +942,15 @@ namespace ODDGames.UIAutomation.Tests
         {
             await Async.DelayFrames(1);
 
-            Assert.ThrowsAsync<UIAutomationTimeoutException>(async () =>
-                await ActionExecutor.WaitFor(new Search().Name("NonExistent"), timeout: 0.3f));
+            try
+            {
+                await ActionExecutor.WaitFor(new Search().Name("NonExistent"), timeout: 0.3f);
+                Assert.Fail("Expected UIAutomationTimeoutException");
+            }
+            catch (UIAutomationTimeoutException)
+            {
+                // Expected
+            }
         }
 
         [Test]
@@ -992,8 +985,15 @@ namespace ODDGames.UIAutomation.Tests
             CreateTextElement("WaitText", "Actual Text", new Vector2(0, 0));
             await Async.DelayFrames(1);
 
-            Assert.ThrowsAsync<UIAutomationTimeoutException>(async () =>
-                await ActionExecutor.WaitFor(new Search().Name("WaitText"), "Wrong Text", timeout: 0.3f));
+            try
+            {
+                await ActionExecutor.WaitFor(new Search().Name("WaitText"), "Wrong Text", timeout: 0.3f);
+                Assert.Fail("Expected UIAutomationTimeoutException");
+            }
+            catch (UIAutomationTimeoutException)
+            {
+                // Expected
+            }
         }
 
         [Test]
@@ -1022,8 +1022,15 @@ namespace ODDGames.UIAutomation.Tests
             CreateButton("ExistingButton", new Vector2(0, 0));
             await Async.DelayFrames(1);
 
-            Assert.ThrowsAsync<UIAutomationTimeoutException>(async () =>
-                await ActionExecutor.WaitForNot(new Search().Name("ExistingButton"), timeout: 0.3f));
+            try
+            {
+                await ActionExecutor.WaitForNot(new Search().Name("ExistingButton"), timeout: 0.3f);
+                Assert.Fail("Expected UIAutomationTimeoutException");
+            }
+            catch (UIAutomationTimeoutException)
+            {
+                // Expected
+            }
         }
 
         [Test]
@@ -1250,8 +1257,15 @@ namespace ODDGames.UIAutomation.Tests
         {
             await Async.DelayFrames(1);
 
-            Assert.ThrowsAsync<UIAutomationTimeoutException>(async () =>
-                await ActionExecutor.WaitFor("Application.isPlaying", false, timeout: 0.3f));
+            try
+            {
+                await ActionExecutor.WaitFor("Application.isPlaying", false, timeout: 0.3f);
+                Assert.Fail("Expected UIAutomationTimeoutException");
+            }
+            catch (UIAutomationTimeoutException)
+            {
+                // Expected
+            }
         }
 
         #endregion

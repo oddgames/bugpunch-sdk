@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,6 +10,8 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.UI;
+
+using Debug = UnityEngine.Debug;
 
 namespace ODDGames.UIAutomation
 {
@@ -67,6 +70,28 @@ namespace ODDGames.UIAutomation
         {
             int target = Time.frameCount + frameCount;
             while (Time.frameCount < target)
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Yield();
+            }
+        }
+
+        /// <summary>
+        /// Waits for at least the specified number of frames AND at least the specified time.
+        /// Use this for timing-critical operations like multi-click detection where both
+        /// frame processing and real-time thresholds matter.
+        /// Uses Stopwatch for accurate wall-clock timing independent of Unity's TimeScale.
+        /// </summary>
+        /// <param name="minFrames">Minimum number of frames to wait</param>
+        /// <param name="minSeconds">Minimum time to wait in seconds</param>
+        /// <param name="ct">Cancellation token</param>
+        public static async Task Delay(int minFrames, float minSeconds, CancellationToken ct = default)
+        {
+            int targetFrame = Time.frameCount + minFrames;
+            long startTicks = Stopwatch.GetTimestamp();
+            long targetTicks = startTicks + (long)(minSeconds * Stopwatch.Frequency);
+
+            while (Time.frameCount < targetFrame || Stopwatch.GetTimestamp() < targetTicks)
             {
                 ct.ThrowIfCancellationRequested();
                 await Task.Yield();
@@ -568,6 +593,48 @@ namespace ODDGames.UIAutomation
             return GetScreenPosition(go);
         }
 
+        /// <summary>
+        /// Gets all raycast hits at the given screen position using EventSystem.RaycastAll.
+        /// This invokes all registered raycasters (GraphicRaycaster for UI, PhysicsRaycaster for 3D).
+        /// </summary>
+        /// <param name="screenPosition">Screen position to test</param>
+        /// <returns>List of RaycastResult sorted by depth (topmost first)</returns>
+        public static List<RaycastResult> GetHitsAtPosition(Vector2 screenPosition)
+        {
+            var results = new List<RaycastResult>();
+            var eventSystem = EventSystem.current;
+            if (eventSystem == null) return results;
+
+            var pointerData = new PointerEventData(eventSystem) { position = screenPosition };
+            eventSystem.RaycastAll(pointerData, results);
+            return results;
+        }
+
+        /// <summary>
+        /// Gets all GameObjects at position that have any of the specified handler interface types.
+        /// </summary>
+        /// <param name="screenPosition">Screen position to test</param>
+        /// <param name="handlerTypes">Handler interface types to look for (e.g., typeof(IPointerClickHandler))</param>
+        /// <returns>List of GameObjects that have at least one of the specified handlers</returns>
+        public static List<GameObject> GetReceiversAtPosition(Vector2 screenPosition, params Type[] handlerTypes)
+        {
+            var receivers = new List<GameObject>();
+            var hits = GetHitsAtPosition(screenPosition);
+
+            foreach (var hit in hits)
+            {
+                foreach (var handlerType in handlerTypes)
+                {
+                    if (hit.gameObject.GetComponent(handlerType) != null)
+                    {
+                        receivers.Add(hit.gameObject);
+                        break; // Don't add same object twice
+                    }
+                }
+            }
+            return receivers;
+        }
+
         #region High-Level Action Helpers
         // These are the SHARED action implementations that all execution paths should use.
         // This ensures consistent behavior whether executed via AI, Visual Builder, or Code.
@@ -1030,6 +1097,7 @@ namespace ODDGames.UIAutomation
         {
             LogDebug($"InjectPointerTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             InputVisualizer.RecordClick(screenPosition, 1);
+            InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
             await EnsureGameViewFocusAsync();
 
             // Scale to actual Game View window coordinates in Editor
@@ -1054,23 +1122,24 @@ namespace ODDGames.UIAutomation
             // Use MouseState struct for complete state control
             var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
 
-            // Move mouse to position first (2 frames to ensure UI updates)
+            // Move mouse to position first - ensure both frames and minimum time for UI updates
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(2);
+            await Async.Delay(2, 0.02f);
 
-            // Mouse button down - hold for 2 frames to ensure registration
+            // Mouse button down - hold for frames + time to ensure registration
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(2);
+            await Async.Delay(2, 0.02f);
 
             // Mouse button up
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
             LogDebug("InjectPointerTap complete");
-            await Async.DelayFrames(2);
+            InputVisualizer.RecordCursorEnd();
+            await Async.Delay(2, 0.02f);
         }
 
         /// <summary>
@@ -1079,12 +1148,18 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectPointerDoubleTap(Vector2 screenPosition)
         {
+            LogDebug($"InjectPointerDoubleTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             InputVisualizer.RecordClick(screenPosition, 2);
+            InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
             await EnsureGameViewFocusAsync();
+
+            // Scale to actual Game View window coordinates in Editor
+            var scaledPosition = ScaleToGameViewWindow(screenPosition);
 
             if (ShouldUseTouchInput())
             {
-                await InjectTouchDoubleTap(screenPosition);
+                LogDebug("Using touch input");
+                await InjectTouchDoubleTap(scaledPosition);
                 return;
             }
 
@@ -1095,46 +1170,47 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+            LogDebug($"Using mouse input, device={mouse.deviceId}");
 
-            // First click
+            // First click - use frames + time to ensure reliable registration
+            var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.02f);
 
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.02f);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.02f);
 
             // Brief delay between clicks - needs to be long enough for Unity's Button to reset
             // but short enough to be recognized as a double-click by the system
-            // Use frame-based wait to ensure UI processes the first click
-            await Async.DelayFrames(3);
+            await Async.Delay(4, 0.05f);
 
             await EnsureGameViewFocusAsync(); // Ensure focus before second click
 
-            // Re-set position before second click to ensure it's registered after the delay
-            mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+            // Second click - re-set position to ensure proper registration
+            mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.02f);
 
-            // Second click
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.02f);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            LogDebug("InjectPointerDoubleTap complete");
+            InputVisualizer.RecordCursorEnd();
+            await Async.Delay(2, 0.02f);
         }
 
         /// <summary>
@@ -1146,8 +1222,8 @@ namespace ODDGames.UIAutomation
             await InjectTouchTap(screenPosition);
 
             // Brief delay between taps - needs to be long enough for Unity's Button to reset
-            // Use frame-based wait to ensure UI processes the first tap
-            await Async.DelayFrames(3);
+            // Use frames + time to ensure UI processes the first tap
+            await Async.Delay(4, 0.05f);
 
             // Second tap
             await InjectTouchTap(screenPosition);
@@ -1160,12 +1236,18 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectPointerTripleTap(Vector2 screenPosition)
         {
+            LogDebug($"InjectPointerTripleTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             InputVisualizer.RecordClick(screenPosition, 3);
+            InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
             await EnsureGameViewFocusAsync();
+
+            // Scale to actual Game View window coordinates in Editor
+            var scaledPosition = ScaleToGameViewWindow(screenPosition);
 
             if (ShouldUseTouchInput())
             {
-                await InjectTouchTripleTap(screenPosition);
+                LogDebug("Using touch input");
+                await InjectTouchTripleTap(scaledPosition);
                 return;
             }
 
@@ -1176,35 +1258,67 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Three clicks in quick succession
-            for (int i = 0; i < 3; i++)
-            {
-                if (i > 0)
-                    await EnsureGameViewFocusAsync(); // Ensure focus before subsequent clicks
+            LogDebug($"Using mouse input, device={mouse.deviceId}");
 
-                var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
+            // First click - use frames + time to ensure reliable registration
+            var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.02f);
 
-                // Move to position
-                InputSystem.QueueStateEvent(mouse, mouseState);
-                InputSystem.Update();
-                await Async.DelayFrames(1);
+            mouseState = mouseState.WithButton(MouseButton.Left);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.02f);
 
-                // Mouse down
-                mouseState = mouseState.WithButton(MouseButton.Left);
-                InputSystem.QueueStateEvent(mouse, mouseState);
-                InputSystem.Update();
-                await Async.DelayFrames(1);
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.02f);
 
-                // Mouse up
-                mouseState = mouseState.WithButton(MouseButton.Left, false);
-                InputSystem.QueueStateEvent(mouse, mouseState);
-                InputSystem.Update();
-                await Async.DelayFrames(1);
+            // Brief delay between clicks - needs to be long enough for Unity's Button to reset
+            await Async.Delay(4, 0.05f);
 
-                // Brief delay between clicks - use frame-based wait to ensure UI processes the click
-                if (i < 2)
-                    await Async.DelayFrames(2);
-            }
+            await EnsureGameViewFocusAsync();
+
+            // Second click - re-set position to ensure proper registration
+            mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.02f);
+
+            mouseState = mouseState.WithButton(MouseButton.Left);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.02f);
+
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.02f);
+
+            // Brief delay between clicks
+            await Async.Delay(4, 0.05f);
+
+            await EnsureGameViewFocusAsync();
+
+            // Third click - re-set position to ensure proper registration
+            mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.02f);
+
+            mouseState = mouseState.WithButton(MouseButton.Left);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.02f);
+
+            mouseState = mouseState.WithButton(MouseButton.Left, false);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            LogDebug("InjectPointerTripleTap complete");
+            InputVisualizer.RecordCursorEnd();
+            await Async.Delay(2, 0.02f);
         }
 
         /// <summary>
@@ -1212,13 +1326,19 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectTouchTripleTap(Vector2 screenPosition)
         {
-            for (int i = 0; i < 3; i++)
-            {
-                await InjectTouchTap(screenPosition);
-                // Brief delay between taps - use frame-based wait to ensure UI processes the tap
-                if (i < 2)
-                    await Async.DelayFrames(2);
-            }
+            // First tap
+            await InjectTouchTap(screenPosition);
+
+            // Brief delay between taps - use frames + time to ensure UI processes the tap
+            await Async.Delay(4, 0.05f);
+
+            // Second tap
+            await InjectTouchTap(screenPosition);
+
+            await Async.Delay(4, 0.05f);
+
+            // Third tap
+            await InjectTouchTap(screenPosition);
         }
 
         /// <summary>
@@ -1248,8 +1368,8 @@ namespace ODDGames.UIAutomation
             }
             InputSystem.Update();
 
-            // Hold touch for 2 frames to ensure UI registers it
-            await Async.DelayFrames(2);
+            // Hold touch for frames + time to ensure UI registers it
+            await Async.Delay(2, 0.02f);
 
             // Touch ended (tap is just began + ended at same position)
             using (StateEvent.From(touchscreen, out var endPtr))
@@ -1264,7 +1384,7 @@ namespace ODDGames.UIAutomation
             InputSystem.Update();
 
             // Wait for UI to process the click
-            await Async.DelayFrames(2);
+            await Async.Delay(2, 0.02f);
         }
 
         /// <summary>
@@ -1279,17 +1399,20 @@ namespace ODDGames.UIAutomation
         public static async Task InjectPointerDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             InputVisualizer.RecordDragStart(startPos);
+            InputVisualizer.RecordCursorPosition(startPos, !ShouldUseTouchInput());
             await EnsureGameViewFocusAsync();
 
             if (ShouldUseTouchInput())
             {
                 await InjectTouchDrag(startPos, endPos, duration, holdTime);
                 InputVisualizer.RecordDragEnd(endPos);
+                InputVisualizer.RecordCursorEnd();
                 return;
             }
 
             await InjectMouseDrag(startPos, endPos, duration, holdTime, button);
             InputVisualizer.RecordDragEnd(endPos);
+            InputVisualizer.RecordCursorEnd();
         }
 
         /// <summary>
@@ -1348,11 +1471,11 @@ namespace ODDGames.UIAutomation
 
             LogDebug($"MouseDrag mouse down at ({startPos.x:F0},{startPos.y:F0})");
 
-            // Hold at start position before dragging (real-time based)
+            // Hold at start position before dragging (wall-clock based using Stopwatch)
             if (holdTime > 0)
             {
-                float holdEndTime = Time.realtimeSinceStartup + holdTime;
-                while (Time.realtimeSinceStartup < holdEndTime)
+                long holdEndTicks = Stopwatch.GetTimestamp() + (long)(holdTime * Stopwatch.Frequency);
+                while (Stopwatch.GetTimestamp() < holdEndTicks)
                 {
                     using (StateEvent.From(mouse, out var holdPtr))
                     {
@@ -1385,17 +1508,19 @@ namespace ODDGames.UIAutomation
             // Use frame-based interpolation with minimum frames to ensure movement is always captured
             const int minFrames = 5; // Minimum frames to ensure movement registers
             int frameCount = 0;
-            float dragStartTime = Time.realtimeSinceStartup;
+            long dragStartTicks = Stopwatch.GetTimestamp();
+            long durationTicks = (long)(duration * Stopwatch.Frequency);
 
-            while (frameCount < minFrames || Time.realtimeSinceStartup < dragStartTime + duration)
+            while (frameCount < minFrames || Stopwatch.GetTimestamp() < dragStartTicks + durationTicks)
             {
                 frameCount++;
                 // Use frame count for interpolation to ensure smooth progression regardless of timing
                 float t = Mathf.Clamp01((float)frameCount / minFrames);
-                if (duration > 0 && Time.realtimeSinceStartup < dragStartTime + duration)
+                long elapsed = Stopwatch.GetTimestamp() - dragStartTicks;
+                if (duration > 0 && elapsed < durationTicks)
                 {
                     // If still within duration, use time-based interpolation for smoother motion
-                    t = Mathf.Max(t, (Time.realtimeSinceStartup - dragStartTime) / duration);
+                    t = Mathf.Max(t, (float)elapsed / durationTicks);
                 }
                 t = Mathf.Clamp01(t);
 
@@ -1410,6 +1535,9 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update(); // Force event processing each frame
+
+                // Update cursor visualization with trail
+                InputVisualizer.RecordCursorPosition(currentPos, isMouse: true, fingerIndex: 0, isPressed: true);
 
                 previousPos = currentPos;
                 await Async.DelayFrames(1); // Frame-based to ensure event processing
@@ -1482,11 +1610,11 @@ namespace ODDGames.UIAutomation
             InputSystem.Update();
             await Async.DelayFrames(1);
 
-            // Hold at start position before dragging (real-time based, send Stationary events)
+            // Hold at start position before dragging (wall-clock based using Stopwatch)
             if (holdTime > 0)
             {
-                float holdEndTime = Time.realtimeSinceStartup + holdTime;
-                while (Time.realtimeSinceStartup < holdEndTime)
+                long holdEndTicks = Stopwatch.GetTimestamp() + (long)(holdTime * Stopwatch.Frequency);
+                while (Stopwatch.GetTimestamp() < holdEndTicks)
                 {
                     using (StateEvent.From(touchscreen, out var holdPtr))
                     {
@@ -1505,15 +1633,17 @@ namespace ODDGames.UIAutomation
             // Touch moved - frame-based with minimum frames to ensure movement registers
             const int minFrames = 5;
             int frameCount = 0;
-            float dragStartTime = Time.realtimeSinceStartup;
+            long dragStartTicks = Stopwatch.GetTimestamp();
+            long durationTicks = (long)(duration * Stopwatch.Frequency);
 
-            while (frameCount < minFrames || Time.realtimeSinceStartup < dragStartTime + duration)
+            while (frameCount < minFrames || Stopwatch.GetTimestamp() < dragStartTicks + durationTicks)
             {
                 frameCount++;
                 float t = Mathf.Clamp01((float)frameCount / minFrames);
-                if (duration > 0 && Time.realtimeSinceStartup < dragStartTime + duration)
+                long elapsed = Stopwatch.GetTimestamp() - dragStartTicks;
+                if (duration > 0 && elapsed < durationTicks)
                 {
-                    t = Mathf.Max(t, (Time.realtimeSinceStartup - dragStartTime) / duration);
+                    t = Mathf.Max(t, (float)elapsed / durationTicks);
                 }
                 t = Mathf.Clamp01(t);
 
@@ -1530,6 +1660,10 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputSystem.Update();
+
+                // Update cursor visualization with trail
+                InputVisualizer.RecordCursorPosition(currentPos, isMouse: false, fingerIndex: 0, isPressed: true);
+
                 previousPos = currentPos;
                 await Async.DelayFrames(1);
 
@@ -1771,13 +1905,12 @@ namespace ODDGames.UIAutomation
             await Async.DelayFrames(1);
 
             // Hold for duration - re-queue key state each frame so input system registers continuous hold
-            float elapsed = 0f;
-            while (elapsed < duration)
+            long holdEndTicks = Stopwatch.GetTimestamp() + (long)(duration * Stopwatch.Frequency);
+            while (Stopwatch.GetTimestamp() < holdEndTicks)
             {
                 InputSystem.QueueStateEvent(keyboard, keyState);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
-                elapsed += Time.unscaledDeltaTime;
             }
 
             // Key up
@@ -1817,13 +1950,12 @@ namespace ODDGames.UIAutomation
             await Async.DelayFrames(1);
 
             // Hold for duration - re-queue key state each frame so input system registers continuous hold
-            float elapsed = 0f;
-            while (elapsed < duration)
+            long holdEndTicks = Stopwatch.GetTimestamp() + (long)(duration * Stopwatch.Frequency);
+            while (Stopwatch.GetTimestamp() < holdEndTicks)
             {
                 InputSystem.QueueStateEvent(keyboard, keyState);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
-                elapsed += Time.unscaledDeltaTime;
             }
 
             // Keys up
@@ -1869,14 +2001,13 @@ namespace ODDGames.UIAutomation
             InputSystem.Update();
             await Async.DelayFrames(1);
 
-            // Hold for specified duration - re-queue state each frame
-            float elapsed = 0f;
-            while (elapsed < holdSeconds)
+            // Hold for specified duration - re-queue state each frame (wall-clock based)
+            long holdEndTicks = Stopwatch.GetTimestamp() + (long)(holdSeconds * Stopwatch.Frequency);
+            while (Stopwatch.GetTimestamp() < holdEndTicks)
             {
                 InputSystem.QueueStateEvent(mouse, mouseState);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
-                elapsed += Time.unscaledDeltaTime;
             }
 
             // Mouse button up
@@ -1915,9 +2046,9 @@ namespace ODDGames.UIAutomation
             InputSystem.Update();
             await Async.DelayFrames(1);
 
-            // Hold for specified duration (touch stays in Stationary phase)
-            float elapsed = 0f;
-            while (elapsed < holdSeconds)
+            // Hold for specified duration (touch stays in Stationary phase, wall-clock based)
+            long holdEndTicks = Stopwatch.GetTimestamp() + (long)(holdSeconds * Stopwatch.Frequency);
+            while (Stopwatch.GetTimestamp() < holdEndTicks)
             {
                 using (StateEvent.From(touchscreen, out var stationaryPtr))
                 {
@@ -1930,7 +2061,6 @@ namespace ODDGames.UIAutomation
                 }
                 InputSystem.Update();
                 await Async.DelayFrames(1);
-                elapsed += Time.unscaledDeltaTime;
             }
 
             // Touch ended

@@ -91,6 +91,19 @@ namespace ODDGames.UIAutomation
         string _memberName;
         MemberInfo _memberInfo;
 
+        // For RequiresReceiver - stores receivers found at position
+        List<GameObject> _receivers = new();
+
+        /// <summary>
+        /// Gets the receivers found by the last RequiresReceiver() check.
+        /// </summary>
+        public IReadOnlyList<GameObject> Receivers => _receivers;
+
+        /// <summary>
+        /// Whether this search uses RequiresReceiver() filter.
+        /// </summary>
+        public bool UsesReceiverFilter => _descriptionParts.Any(p => p.Contains("RequiresReceiver"));
+
         /// <summary>
         /// Creates a new Search instance.
         /// </summary>
@@ -1242,6 +1255,38 @@ namespace ODDGames.UIAutomation
                 bool match = selectable != null && selectable.interactable;
                 return negate != match;
             });
+            return this;
+        }
+
+        /// <summary>
+        /// Filters to elements where something with ANY of the specified handler types exists at the element's screen position.
+        /// Uses EventSystem.RaycastAll to check all registered raycasters (GraphicRaycaster, PhysicsRaycaster, etc.).
+        /// All matching receivers are stored in the Receivers property for logging/debugging.
+        /// </summary>
+        /// <param name="handlerTypes">Handler interface types to look for (e.g., typeof(IPointerClickHandler), typeof(IDragHandler))</param>
+        /// <returns>This Search instance for chaining.</returns>
+        /// <example>
+        /// <code>
+        /// // Find buttons that have a click receiver at their position
+        /// new Search().Type&lt;Button&gt;().RequiresReceiver(typeof(IPointerClickHandler))
+        ///
+        /// // Find elements with either click or drag handlers
+        /// new Search().Name("*Item*").RequiresReceiver(typeof(IPointerClickHandler), typeof(IDragHandler))
+        /// </code>
+        /// </example>
+        public Search RequiresReceiver(params Type[] handlerTypes)
+        {
+            bool negate = _nextNegate;
+            _nextNegate = false;
+            _conditions.Add(go =>
+            {
+                var screenPos = InputInjector.GetScreenPosition(go);
+                _receivers = InputInjector.GetReceiversAtPosition(screenPos, handlerTypes);
+                return negate != (_receivers.Count > 0);
+            });
+
+            var typeNames = string.Join(", ", handlerTypes.Select(t => t.Name));
+            AddDescription($"RequiresReceiver({typeNames})");
             return this;
         }
 

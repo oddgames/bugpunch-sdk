@@ -44,33 +44,6 @@ namespace ODDGames.UIAutomation.AI
         }
 
         /// <summary>
-        /// Creates a recovery handler that uses AI to analyze the screen and dismiss blockers.
-        /// The handler can be assigned to <see cref="ActionExecutor.RecoveryHandler"/>.
-        /// </summary>
-        /// <example>
-        /// // Configure AI recovery in test setup:
-        /// AINavigator.SetModelProvider(AITestSettings.Instance.CreateModelProvider());
-        /// ActionExecutor.RecoveryHandler = AINavigator.CreateRecoveryHandler();
-        /// </example>
-        public static Func<RecoveryContext, Task<RecoveryResult>> CreateRecoveryHandler()
-        {
-            return async (context) =>
-            {
-                var navResult = await TryNavigateAsync(
-                    context.FailedAction,
-                    context.ErrorMessage,
-                    context.CancellationToken);
-
-                return new RecoveryResult
-                {
-                    Success = navResult.Success,
-                    NoBlockerFound = navResult.NoBlockerFound,
-                    Explanation = navResult.Explanation
-                };
-            };
-        }
-
-        /// <summary>
         /// Whether AI navigation is currently in progress.
         /// </summary>
         public static bool IsNavigating => _isNavigating;
