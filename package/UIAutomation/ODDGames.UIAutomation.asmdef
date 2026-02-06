@@ -12,7 +12,15 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "optionalUnityReferences": [],
-    "versionDefines": [],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.test-framework",
+            "expression": "",
+            "define": "UNITY_INCLUDE_TESTS"
+        }
+    ],
     "noEngineReferences": false
 }
