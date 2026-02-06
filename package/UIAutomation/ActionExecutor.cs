@@ -595,6 +595,8 @@ namespace ODDGames.UIAutomation
             {
                 _failed = true;
                 var message = $"{_action} failed: {reason}";
+                // Log before throwing so the failure message is visible in console
+                Debug.LogError($"[UIAutomation] FAILED: {message}");
                 // Throw AssertionException directly - properly fails tests in Unity Test Runner
                 throw new NUnit.Framework.AssertionException(message);
             }
