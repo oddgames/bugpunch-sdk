@@ -797,27 +797,25 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Step 1: Press modifier key down
+            // Step 1: Press modifier key down - hold for realistic timing
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
             InputSystem.Update();
-            await Async.DelayFrames(1);
-            await Async.DelayFrames(2); // Give time for EventSystem to process
+            await Async.Delay(2, 0.05f);
 
             // Step 2: Press the main key while modifier is held
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier, key));
             InputSystem.Update();
-            await Async.DelayFrames(1);
-            await Async.DelayFrames(2);
+            await Async.Delay(3, 0.08f);
 
             // Step 3: Release the main key (modifier still held)
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.03f);
 
             // Step 4: Release modifier
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
@@ -1122,16 +1120,16 @@ namespace ODDGames.UIAutomation
             // Use MouseState struct for complete state control
             var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
 
-            // Move mouse to position first - ensure both frames and minimum time for UI updates
+            // Move mouse to position first - simulate real user movement time
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.05f);
 
-            // Mouse button down - hold for frames + time to ensure registration
+            // Mouse button down - hold for realistic click duration (~100ms)
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(3, 0.08f);
 
             // Mouse button up
             mouseState = mouseState.WithButton(MouseButton.Left, false);
@@ -1139,7 +1137,7 @@ namespace ODDGames.UIAutomation
             InputSystem.Update();
             LogDebug("InjectPointerTap complete");
             InputVisualizer.RecordCursorEnd();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
@@ -1172,25 +1170,25 @@ namespace ODDGames.UIAutomation
 
             LogDebug($"Using mouse input, device={mouse.deviceId}");
 
-            // First click - use frames + time to ensure reliable registration
+            // First click - simulate realistic user timing
             var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.05f);
 
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(3, 0.08f);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.03f);
 
-            // Brief delay between clicks - needs to be long enough for Unity's Button to reset
-            // but short enough to be recognized as a double-click by the system
-            await Async.Delay(4, 0.05f);
+            // Delay between clicks - realistic double-click timing (~150ms)
+            // Short enough for double-click detection, long enough for UI reset
+            await Async.Delay(4, 0.12f);
 
             await EnsureGameViewFocusAsync(); // Ensure focus before second click
 
@@ -1198,19 +1196,19 @@ namespace ODDGames.UIAutomation
             mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.05f);
 
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(3, 0.08f);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
             LogDebug("InjectPointerDoubleTap complete");
             InputVisualizer.RecordCursorEnd();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
@@ -1221,9 +1219,9 @@ namespace ODDGames.UIAutomation
             // First tap
             await InjectTouchTap(screenPosition);
 
-            // Brief delay between taps - needs to be long enough for Unity's Button to reset
-            // Use frames + time to ensure UI processes the first tap
-            await Async.Delay(4, 0.05f);
+            // Delay between taps - realistic double-tap timing (~150ms)
+            // Short enough for double-tap detection, long enough for UI reset
+            await Async.Delay(4, 0.12f);
 
             // Second tap
             await InjectTouchTap(screenPosition);
@@ -1260,24 +1258,24 @@ namespace ODDGames.UIAutomation
 
             LogDebug($"Using mouse input, device={mouse.deviceId}");
 
-            // First click - use frames + time to ensure reliable registration
+            // First click - simulate realistic user timing
             var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.05f);
 
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(3, 0.08f);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.03f);
 
-            // Brief delay between clicks - needs to be long enough for Unity's Button to reset
-            await Async.Delay(4, 0.05f);
+            // Delay between clicks - realistic multi-click timing (~150ms)
+            await Async.Delay(4, 0.12f);
 
             await EnsureGameViewFocusAsync();
 
@@ -1285,20 +1283,20 @@ namespace ODDGames.UIAutomation
             mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.05f);
 
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(3, 0.08f);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.03f);
 
-            // Brief delay between clicks
-            await Async.Delay(4, 0.05f);
+            // Delay between clicks
+            await Async.Delay(4, 0.12f);
 
             await EnsureGameViewFocusAsync();
 
@@ -1306,19 +1304,19 @@ namespace ODDGames.UIAutomation
             mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.05f);
 
             mouseState = mouseState.WithButton(MouseButton.Left);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(3, 0.08f);
 
             mouseState = mouseState.WithButton(MouseButton.Left, false);
             InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
             LogDebug("InjectPointerTripleTap complete");
             InputVisualizer.RecordCursorEnd();
-            await Async.Delay(2, 0.02f);
+            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
@@ -1329,13 +1327,13 @@ namespace ODDGames.UIAutomation
             // First tap
             await InjectTouchTap(screenPosition);
 
-            // Brief delay between taps - use frames + time to ensure UI processes the tap
-            await Async.Delay(4, 0.05f);
+            // Delay between taps - realistic multi-tap timing (~150ms)
+            await Async.Delay(4, 0.12f);
 
             // Second tap
             await InjectTouchTap(screenPosition);
 
-            await Async.Delay(4, 0.05f);
+            await Async.Delay(4, 0.12f);
 
             // Third tap
             await InjectTouchTap(screenPosition);
@@ -1368,8 +1366,8 @@ namespace ODDGames.UIAutomation
             }
             InputSystem.Update();
 
-            // Hold touch for frames + time to ensure UI registers it
-            await Async.Delay(2, 0.02f);
+            // Hold touch for realistic tap duration (~100ms)
+            await Async.Delay(3, 0.08f);
 
             // Touch ended (tap is just began + ended at same position)
             using (StateEvent.From(touchscreen, out var endPtr))
@@ -1383,8 +1381,8 @@ namespace ODDGames.UIAutomation
             }
             InputSystem.Update();
 
-            // Wait for UI to process the click
-            await Async.Delay(2, 0.02f);
+            // Wait for UI to process the tap
+            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
@@ -1714,34 +1712,26 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Move mouse to position first
-            using (StateEvent.From(mouse, out var posPtr))
-            {
-                mouse.position.WriteValueIntoEvent(position, posPtr);
-                InputSystem.QueueEvent(posPtr);
-            }
-            InputSystem.Update();
-            await Async.DelayFrames(1);
+            // Use MouseState struct for explicit control - no buttons pressed during scroll
+            var mouseState = new MouseState { position = position, delta = Vector2.zero };
 
-            // Send scroll event with delta value
-            using (StateEvent.From(mouse, out var scrollPtr))
-            {
-                mouse.position.WriteValueIntoEvent(position, scrollPtr);
-                mouse.scroll.WriteValueIntoEvent(new Vector2(0, delta), scrollPtr);
-                InputSystem.QueueEvent(scrollPtr);
-            }
+            // Move mouse to position first - simulate user moving to scroll target (~80ms)
+            InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(3, 0.08f);
+
+            // Send scroll event with delta value - no buttons pressed
+            // Scroll wheel tick duration (~50ms per notch)
+            mouseState.scroll = new Vector2(0, delta);
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.05f);
 
             // Reset scroll to zero (scroll is a delta, needs to return to zero)
-            using (StateEvent.From(mouse, out var resetPtr))
-            {
-                mouse.position.WriteValueIntoEvent(position, resetPtr);
-                mouse.scroll.WriteValueIntoEvent(Vector2.zero, resetPtr);
-                InputSystem.QueueEvent(resetPtr);
-            }
+            mouseState.scroll = Vector2.zero;
+            InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
@@ -1761,34 +1751,26 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Move to position first
-            using (StateEvent.From(mouse, out var posPtr))
-            {
-                mouse.position.WriteValueIntoEvent(position, posPtr);
-                InputSystem.QueueEvent(posPtr);
-            }
-            InputSystem.Update();
-            await Async.DelayFrames(1);
+            // Use MouseState struct for explicit control - no buttons pressed during scroll
+            var mouseState = new MouseState { position = position, delta = Vector2.zero };
 
-            // Send scroll event
-            using (StateEvent.From(mouse, out var scrollPtr))
-            {
-                mouse.position.WriteValueIntoEvent(position, scrollPtr);
-                mouse.scroll.WriteValueIntoEvent(scrollDelta, scrollPtr);
-                InputSystem.QueueEvent(scrollPtr);
-            }
+            // Move to position first - simulate user moving to scroll target (~80ms)
+            InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(3, 0.08f);
+
+            // Send scroll event - no buttons pressed
+            // Scroll wheel tick duration (~50ms per notch)
+            mouseState.scroll = scrollDelta;
+            InputSystem.QueueStateEvent(mouse, mouseState);
+            InputSystem.Update();
+            await Async.Delay(2, 0.05f);
 
             // Reset scroll to zero (scroll is a delta, needs to return to zero)
-            using (StateEvent.From(mouse, out var resetPtr))
-            {
-                mouse.position.WriteValueIntoEvent(position, resetPtr);
-                mouse.scroll.WriteValueIntoEvent(Vector2.zero, resetPtr);
-                InputSystem.QueueEvent(resetPtr);
-            }
+            mouseState.scroll = Vector2.zero;
+            InputSystem.QueueStateEvent(mouse, mouseState);
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
@@ -1870,13 +1852,15 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
+            // Key down - hold for realistic key press duration (~80ms)
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(key));
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(3, 0.08f);
 
+            // Key up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Async.DelayFrames(1);
+            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
