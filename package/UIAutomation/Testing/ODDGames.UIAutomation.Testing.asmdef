@@ -18,18 +18,10 @@
         "nunit.framework.dll"
     ],
     "autoReferenced": true,
-    "defineConstraints": [
-        "UNITY_INCLUDE_TESTS"
-    ],
+    "defineConstraints": [],
     "optionalUnityReferences": [
         "TestAssemblies"
     ],
-    "versionDefines": [
-        {
-            "name": "com.unity.test-framework",
-            "expression": "",
-            "define": "UNITY_INCLUDE_TESTS"
-        }
-    ],
+    "versionDefines": [],
     "noEngineReferences": false
 }
