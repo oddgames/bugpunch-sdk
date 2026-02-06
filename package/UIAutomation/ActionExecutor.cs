@@ -621,7 +621,11 @@ namespace ODDGames.UIAutomation
                 _failed = true;
                 var message = $"{_action} failed: {reason}";
                 Debug.LogWarning($"[UIAutomation] FAILED: {message}");
+#if UNITY_INCLUDE_TESTS
+                NUnit.Framework.Assert.Fail(message);
+#else
                 throw new UIAutomationTimeoutException(message);
+#endif
             }
 
             public async ValueTask DisposeAsync()

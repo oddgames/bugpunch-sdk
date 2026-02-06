@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.21] - 2026-02-06
+
+### Fixed
+- **`ActionScope.Fail()` now uses NUnit `Assert.Fail()`** when `UNITY_INCLUDE_TESTS` is defined
+  - Previously only threw `UIAutomationTimeoutException` which could be swallowed by async continuations
+  - Now properly reports test failures in Unity Test Runner with correct stack traces
+  - Non-test contexts still throw `UIAutomationTimeoutException`
+
 ## [1.1.20] - 2026-02-06
 
 ### Added
