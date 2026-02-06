@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.20] - 2026-02-06
+
+### Added
+- **`InputVisualizer` PNG icon support** - Visual feedback now uses PNG icons loaded from Resources folder
+  - Icons: mouse-cursor, mouse-click, touch, touch-tap, scroll-up, scroll-down
+  - White icons with black shadows for contrast on any background
+- **`Async.Delay(int minFrames, float minSeconds)`** - Wait for both minimum frames AND minimum time
+  - Used for timing-critical operations where both frame processing and real-time thresholds matter
+
+### Changed
+- **`InputVisualizer` uses OnGUI rendering** - Works without cameras, regardless of render pipeline
+  - Previously used GL rendering which required a camera
+  - Now renders cursor icons, click ripples, and trails via Unity's immediate mode GUI
+- **Improved input injection timing reliability** - All tap/click methods now use `Async.Delay(frames, seconds)`
+  - `InjectPointerTap` uses 2 frames + 20ms per step
+  - `InjectPointerDoubleTap`/`TripleTap` use 2 frames + 20ms per step, 4 frames + 50ms between clicks
+  - `InjectTouchTap` uses 2 frames + 20ms for began/ended phases
+  - `InjectTouchDoubleTap`/`TripleTap` use 4 frames + 50ms between taps
+  - Fixes sporadic test failures from insufficient timing between input events
+
+## [1.1.19] - 2026-02-06
+
+### Added
+- **`InputInjector.GetHitsAtPosition(Vector2)`** - Gets all raycast hits at a screen position using EventSystem.RaycastAll
+- **`InputInjector.GetReceiversAtPosition(Vector2, params Type[])`** - Gets GameObjects with specified handler interfaces (IPointerClickHandler, IDragHandler, etc.) at a screen position
+- **`Search.RequiresReceiver(params Type[])`** - Filter to elements where receivers with specified handler types exist at the element's screen position
+- **`Search.Receivers` property** - Returns the receivers found by the last RequiresReceiver evaluation
+
+### Changed
+- **Receiver logging on action completion** - Click, DoubleClick, TripleClick, Hold, Drag, DragTo, Scroll, Type methods now log receiver hierarchy paths when actions complete, showing what GameObjects at the target position have event handler interfaces
+- **Optional receiver logging for "At" methods** - ClickAt, DoubleClickAt, TripleClickAt, HoldAt, DragFromTo, Drag(Vector2) methods now have optional `requireReceivers` parameter (default false) to enable receiver logging
+
 ## [1.1.18] - 2026-02-05
 
 ### Removed

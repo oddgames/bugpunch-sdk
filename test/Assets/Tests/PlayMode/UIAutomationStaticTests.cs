@@ -812,27 +812,6 @@ namespace ODDGames.UIAutomation.Tests
 
         #endregion
 
-        #region ClickAny Tests
-
-        [Test]
-        public async Task ClickAny_ClicksFirstMatchingElement()
-        {
-                var button = CreateButton("AnyButton", "Any Target", _canvas.transform, Vector2.zero);
-                bool clicked = false;
-                button.onClick.AddListener(() => clicked = true);
-                await Async.DelayFrames(1);
-                Canvas.ForceUpdateCanvases();
-
-                // ClickAny takes a Search - use Or() to check multiple names
-                var search = new Search().Name("NonExistent")
-                    .Or(new Search().Name("AnyButton"))
-                    .Or(new Search().Name("AlsoNonExistent"));
-                await ClickAny(search, searchTime: 2f);
-                Assert.IsTrue(clicked, "Should have clicked the matching button");
-        }
-
-        #endregion
-
         #region Reflect Tests
 
         [Test]

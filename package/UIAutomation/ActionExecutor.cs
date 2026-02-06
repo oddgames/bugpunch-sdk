@@ -13,6 +13,7 @@ using Debug = UnityEngine.Debug;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 namespace ODDGames.UIAutomation
 {
@@ -39,43 +40,6 @@ namespace ODDGames.UIAutomation
     public class UIAutomationNotFoundException : UIAutomationException
     {
         public UIAutomationNotFoundException(string message) : base(message) { }
-    }
-
-    /// <summary>
-    /// Context passed to recovery handlers when an action fails.
-    /// The recovery handler should perform the full action (e.g., dismiss blockers AND click the target).
-    /// </summary>
-    public class RecoveryContext
-    {
-        /// <summary>
-        /// Description of the action that failed (e.g., "Click the button named 'Submit'").
-        /// This describes what the AI should accomplish, not just what element to find.
-        /// </summary>
-        public string FailedAction { get; set; }
-
-        /// <summary>Error message from the failed action.</summary>
-        public string ErrorMessage { get; set; }
-
-        /// <summary>Cancellation token for the recovery operation.</summary>
-        public System.Threading.CancellationToken CancellationToken { get; set; }
-    }
-
-    /// <summary>
-    /// Result of a recovery attempt.
-    /// </summary>
-    public class RecoveryResult
-    {
-        /// <summary>Whether recovery succeeded and the original action now works.</summary>
-        public bool Success { get; set; }
-
-        /// <summary>
-        /// Whether the handler determined there was no blocker present.
-        /// If true, the test failure is genuine (not flaky) and should fail normally.
-        /// </summary>
-        public bool NoBlockerFound { get; set; }
-
-        /// <summary>Explanation of what was blocking and what was done to recover.</summary>
-        public string Explanation { get; set; }
     }
 
     /// <summary>
@@ -349,57 +313,6 @@ namespace ODDGames.UIAutomation
         /// </example>
         public static System.Func<string, Task> BeforeAction { get; set; }
 
-        /// <summary>
-        /// Callback invoked when an action fails and recovery is enabled.
-        /// The handler should attempt to recover (dismiss dialogs, navigate, etc.) and return a result.
-        /// Set this to use AI recovery, coded recovery, or a custom implementation.
-        /// </summary>
-        /// <example>
-        /// // Use AI recovery (requires ODDGames.UIAutomation.AI namespace)
-        /// AINavigator.SetModelProvider(AITestSettings.Instance.CreateModelProvider());
-        /// ActionExecutor.RecoveryHandler = AINavigator.CreateRecoveryHandler();
-        ///
-        /// // Use coded recovery
-        /// ActionExecutor.RecoveryHandler = async (context) => {
-        ///     // Check for common dialogs
-        ///     var closeBtn = Find(Name("CloseButton"));
-        ///     if (closeBtn != null) {
-        ///         await Click(closeBtn);
-        ///         return new RecoveryResult { Success = true, Explanation = "Dismissed dialog" };
-        ///     }
-        ///     return new RecoveryResult { Success = false, NoBlockerFound = true };
-        /// };
-        /// </example>
-        public static System.Func<RecoveryContext, Task<RecoveryResult>> RecoveryHandler { get; set; }
-
-        /// <summary>
-        /// Set to true when recovery was used during the current test.
-        /// Check this in TearDown to mark the test as unstable/flaky.
-        /// Call <see cref="ResetRecoveryTracking"/> at the start of each test.
-        /// </summary>
-        public static bool RecoveryUsed { get; private set; } = false;
-
-        /// <summary>
-        /// Number of times recovery was invoked during the current test.
-        /// </summary>
-        public static int RecoveryCount { get; private set; } = 0;
-
-        /// <summary>
-        /// Explanation of what recovery actions were taken.
-        /// Contains details about what blockers were encountered and how they were resolved.
-        /// </summary>
-        public static string RecoveryExplanation { get; private set; } = "";
-
-        /// <summary>
-        /// Resets recovery tracking. Call at the start of each test.
-        /// </summary>
-        public static void ResetRecoveryTracking()
-        {
-            RecoveryUsed = false;
-            RecoveryCount = 0;
-            RecoveryExplanation = "";
-        }
-
         #endregion
 
         #region Button Click Tracking
@@ -455,130 +368,6 @@ namespace ODDGames.UIAutomation
         public static string LastClickedButton => _lastClickedButton;
 
         #endregion
-
-        #region Recovery Flows
-
-        private static readonly List<(Search detect, Func<Task> recover)> _detectedFlows = new();
-        private static readonly List<Func<Task>> _failureFlows = new();
-
-        /// <summary>
-        /// Registers a recovery handler that runs when a Search is detected.
-        /// These run preemptively before each action (Click, ClickAny, etc.).
-        /// </summary>
-        /// <param name="detect">Search to detect when flow should run</param>
-        /// <param name="recover">Async action to handle the detected state</param>
-        public static void DetectedRecoveryHandler(Search detect, Func<Task> recover)
-        {
-            _detectedFlows.Add((detect, recover));
-        }
-
-        /// <summary>
-        /// Registers a recovery handler that runs when an action fails.
-        /// These are fallbacks run after other recovery methods fail.
-        /// </summary>
-        /// <param name="recover">Async action to attempt recovery</param>
-        public static void FailureRecoveryHandler(Func<Task> recover)
-        {
-            _failureFlows.Add(recover);
-        }
-
-        /// <summary>
-        /// Clears all registered recovery flows.
-        /// </summary>
-        public static void ClearRecoveryFlows()
-        {
-            _detectedFlows.Clear();
-            _failureFlows.Clear();
-        }
-
-        /// <summary>
-        /// Runs detected recovery flows.
-        /// Called internally before actions when recovery is enabled.
-        /// </summary>
-        internal static async Task RunDetectedFlows()
-        {
-            foreach (var (detect, recover) in _detectedFlows)
-            {
-                if (await detect.Exists(0.5f))
-                {
-                    Debug.Log($"[Recovery] Detected: {detect}");
-                    await recover();
-                    RecordRecovery($"Detected flow: {detect}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Runs failure recovery flows.
-        /// Called when an action fails and other recovery methods haven't worked.
-        /// </summary>
-        internal static async Task<bool> RunFailureFlows()
-        {
-            foreach (var recover in _failureFlows)
-            {
-                Debug.Log("[Recovery] Running failure flow");
-                await recover();
-                return true;
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// Records that recovery was used.
-        /// </summary>
-        internal static void RecordRecovery(string explanation)
-        {
-            RecoveryUsed = true;
-            RecoveryCount++;
-            if (!string.IsNullOrEmpty(RecoveryExplanation))
-                RecoveryExplanation += "\n---\n";
-            RecoveryExplanation += explanation;
-        }
-
-        // Legacy alias
-        internal static void RecordAINavigation(string explanation) => RecordRecovery(explanation);
-
-        /// <summary>
-        /// Whether recovery is enabled.
-        /// </summary>
-        internal static bool IsRecoveryEnabled => RecoveryHandler != null;
-
-        /// <summary>
-        /// Chains multiple recovery handlers together in a waterfall pattern.
-        /// Each handler is tried in order until one succeeds or returns NoBlockerFound.
-        /// </summary>
-        /// <example>
-        /// ActionExecutor.RecoveryHandler = ActionExecutor.ChainRecoveryHandlers(
-        ///     DialogDismissal.CreateHandler(),
-        ///     MyCustomHandler(),
-        ///     AINavigator.CreateRecoveryHandler()
-        /// );
-        /// </example>
-        public static Func<RecoveryContext, Task<RecoveryResult>> ChainRecoveryHandlers(
-            params Func<RecoveryContext, Task<RecoveryResult>>[] handlers)
-        {
-            return async (context) =>
-            {
-                foreach (var handler in handlers)
-                {
-                    if (handler == null) continue;
-
-                    var result = await handler(context);
-
-                    if (result.Success || result.NoBlockerFound)
-                        return result;
-
-                    Debug.Log("[Recovery] Handler failed, trying next...");
-                }
-
-                return new RecoveryResult
-                {
-                    Success = false,
-                    NoBlockerFound = false,
-                    Explanation = "All recovery handlers failed"
-                };
-            };
-        }
 
         /// <summary>
         /// Checks if a screen position is within screen bounds and can be clicked.
@@ -700,8 +489,6 @@ namespace ODDGames.UIAutomation
             }
         }
 #endif
-
-        #endregion
 
         #region Random Generator
 
@@ -828,17 +615,13 @@ namespace ODDGames.UIAutomation
                 Debug.LogWarning($"[UIAutomation] FAILED: {_action} - {reason}");
             }
 
-            /// <summary>Marks the action as failed with a reason. Uses NUnit Assert.Fail for proper test failure reporting.</summary>
+            /// <summary>Marks the action as failed with a reason.</summary>
             public void Fail(string reason)
             {
                 _failed = true;
                 var message = $"{_action} failed: {reason}";
                 Debug.LogWarning($"[UIAutomation] FAILED: {message}");
-#if UNITY_INCLUDE_TESTS
-                NUnit.Framework.Assert.Fail(message);
-#else
                 throw new UIAutomationTimeoutException(message);
-#endif
             }
 
             public async ValueTask DisposeAsync()
@@ -1062,6 +845,8 @@ namespace ODDGames.UIAutomation
         /// <param name="timeout">Maximum time to wait (default 10 seconds).</param>
         public static async Task WaitForStableFrameRate(float minFps = 20f, int stableFrames = 5, float timeout = 10f)
         {
+            await using var action = await RunAction($"WaitForStableFrameRate(minFps={minFps}, stableFrames={stableFrames}, timeout={timeout}s)");
+
             float startTime = Now;
             int consecutiveStableFrames = 0;
             float minDeltaTime = 1f / minFps;
@@ -1076,6 +861,8 @@ namespace ODDGames.UIAutomation
                     consecutiveStableFrames++;
                     if (consecutiveStableFrames >= stableFrames)
                     {
+                        float elapsed = Now - startTime;
+                        action.SetResult($"stable after {elapsed:F2}s");
                         return;
                     }
                 }
@@ -1084,6 +871,9 @@ namespace ODDGames.UIAutomation
                     consecutiveStableFrames = 0;
                 }
             }
+
+            float totalElapsed = Now - startTime;
+            action.SetResult($"timed out after {totalElapsed:F2}s (did not stabilize)");
         }
 
         /// <summary>
@@ -1579,6 +1369,62 @@ namespace ODDGames.UIAutomation
 
         #endregion
 
+        #region Receiver Logging Helpers
+
+        /// <summary>
+        /// Gets the full hierarchy path of a GameObject for debug logging.
+        /// </summary>
+        static string GetHierarchyPath(GameObject go)
+        {
+            if (go == null) return "(none)";
+            var path = go.name;
+            var t = go.transform.parent;
+            while (t != null)
+            {
+                path = t.name + "/" + path;
+                t = t.parent;
+            }
+            return path;
+        }
+
+        /// <summary>
+        /// Formats receiver list for logging.
+        /// </summary>
+        static string FormatReceivers(List<GameObject> receivers)
+        {
+            if (receivers == null || receivers.Count == 0)
+                return "no receivers";
+            return string.Join(", ", receivers.Select(GetHierarchyPath));
+        }
+
+        /// <summary>
+        /// Builds a detailed error message when a search fails.
+        /// Includes receiver info and guidance when RequiresReceiver() is used.
+        /// </summary>
+        static string BuildSearchFailureMessage(Search search, float searchTime)
+        {
+            var msg = $"Element not found within {searchTime}s";
+
+            // If the search uses RequiresReceiver, provide additional context
+            if (search.UsesReceiverFilter)
+            {
+                var receivers = search.Receivers;
+                if (receivers != null && receivers.Count > 0)
+                {
+                    msg += $". Receivers found at position: {FormatReceivers(receivers.ToList())}";
+                }
+                else
+                {
+                    msg += ". No receivers found at element position";
+                }
+                msg += ". To click without receiver validation, remove .RequiresReceiver() from the search";
+            }
+
+            return msg;
+        }
+
+        #endregion
+
         #region Click Actions
 
         /// <summary>
@@ -1591,10 +1437,6 @@ namespace ODDGames.UIAutomation
         /// <exception cref="UIAutomationTimeoutException">Thrown when element is not found or not clickable within searchTime</exception>
         public static async Task Click(Search search, float searchTime = 10f, int index = 0)
         {
-            // Run preemptive flows before action
-            if (IsRecoveryEnabled)
-                await RunDetectedFlows();
-
             await using var action = await RunAction($"Click({search})");
 
             var element = await search.Find(searchTime, index);
@@ -1615,7 +1457,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Element not found within {searchTime}s");
+            action.Fail(BuildSearchFailureMessage(search, searchTime));
         }
 
         /// <summary>
@@ -1632,12 +1474,17 @@ namespace ODDGames.UIAutomation
         /// Clicks at a screen position specified by percentage.
         /// </summary>
         /// <param name="normalizedPosition">Screen position as percentage (0-1 for both x and y)</param>
-        public static async Task ClickAt(Vector2 normalizedPosition)
+        /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
+        public static async Task ClickAt(Vector2 normalizedPosition, bool requireReceivers = false)
         {
             var screenPosition = new Vector2(Screen.width * normalizedPosition.x, Screen.height * normalizedPosition.y);
-            await using (await RunAction($"ClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))"))
+            await using var action = await RunAction($"ClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
+            await InputInjector.InjectPointerTap(screenPosition);
+            if (requireReceivers)
             {
-                await InputInjector.InjectPointerTap(screenPosition);
+                var receivers = InputInjector.GetReceiversAtPosition(screenPosition,
+                    typeof(IPointerClickHandler), typeof(IPointerUpHandler));
+                action.SetResult($"receivers: {FormatReceivers(receivers)}");
             }
         }
 
@@ -1646,9 +1493,10 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <param name="xPercent">Horizontal position as percentage (0-1)</param>
         /// <param name="yPercent">Vertical position as percentage (0-1)</param>
-        public static async Task ClickAt(float xPercent, float yPercent)
+        /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
+        public static async Task ClickAt(float xPercent, float yPercent, bool requireReceivers = false)
         {
-            await ClickAt(new Vector2(xPercent, yPercent));
+            await ClickAt(new Vector2(xPercent, yPercent), requireReceivers);
         }
 
         /// <summary>
@@ -1660,9 +1508,6 @@ namespace ODDGames.UIAutomation
         /// <exception cref="UIAutomationTimeoutException">Thrown when element is not found or not clickable within searchTime</exception>
         public static async Task DoubleClick(Search search, float searchTime = 10f, int index = 0)
         {
-            if (IsRecoveryEnabled)
-                await RunDetectedFlows();
-
             await using var action = await RunAction($"DoubleClick({search})");
 
             var element = await search.Find(searchTime, index);
@@ -1683,18 +1528,23 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Element not found within {searchTime}s");
+            action.Fail(BuildSearchFailureMessage(search, searchTime));
         }
 
         /// <summary>
         /// Double-clicks at a specific screen position.
         /// </summary>
         /// <param name="screenPosition">Screen coordinates to double-click</param>
-        public static async Task DoubleClickAt(Vector2 screenPosition)
+        /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
+        public static async Task DoubleClickAt(Vector2 screenPosition, bool requireReceivers = false)
         {
-            await using (await RunAction($"DoubleClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))"))
+            await using var action = await RunAction($"DoubleClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
+            await InputInjector.InjectPointerDoubleTap(screenPosition);
+            if (requireReceivers)
             {
-                await InputInjector.InjectPointerDoubleTap(screenPosition);
+                var receivers = InputInjector.GetReceiversAtPosition(screenPosition,
+                    typeof(IPointerClickHandler), typeof(IPointerUpHandler));
+                action.SetResult($"receivers: {FormatReceivers(receivers)}");
             }
         }
 
@@ -1708,9 +1558,6 @@ namespace ODDGames.UIAutomation
         /// <exception cref="UIAutomationTimeoutException">Thrown when element is not found or not clickable within searchTime</exception>
         public static async Task TripleClick(Search search, float searchTime = 10f, int index = 0)
         {
-            if (IsRecoveryEnabled)
-                await RunDetectedFlows();
-
             await using var action = await RunAction($"TripleClick({search})");
 
             var element = await search.Find(searchTime, index);
@@ -1731,7 +1578,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Element not found within {searchTime}s");
+            action.Fail(BuildSearchFailureMessage(search, searchTime));
         }
 
         /// <summary>
@@ -1739,11 +1586,16 @@ namespace ODDGames.UIAutomation
         /// Performs three rapid clicks in succession.
         /// </summary>
         /// <param name="screenPosition">Screen coordinates to triple-click</param>
-        public static async Task TripleClickAt(Vector2 screenPosition)
+        /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
+        public static async Task TripleClickAt(Vector2 screenPosition, bool requireReceivers = false)
         {
-            await using (await RunAction($"TripleClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))"))
+            await using var action = await RunAction($"TripleClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
+            await InputInjector.InjectPointerTripleTap(screenPosition);
+            if (requireReceivers)
             {
-                await InputInjector.InjectPointerTripleTap(screenPosition);
+                var receivers = InputInjector.GetReceiversAtPosition(screenPosition,
+                    typeof(IPointerClickHandler), typeof(IPointerUpHandler));
+                action.SetResult($"receivers: {FormatReceivers(receivers)}");
             }
         }
 
@@ -1771,7 +1623,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Element not found within {searchTime}s");
+            action.Fail(BuildSearchFailureMessage(search, searchTime));
         }
 
         /// <summary>
@@ -1779,11 +1631,16 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <param name="screenPosition">Screen coordinates to hold</param>
         /// <param name="seconds">Duration of the hold in seconds</param>
-        public static async Task HoldAt(Vector2 screenPosition, float seconds)
+        /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
+        public static async Task HoldAt(Vector2 screenPosition, float seconds, bool requireReceivers = false)
         {
-            await using (await RunAction($"HoldAt(({screenPosition.x:F0},{screenPosition.y:F0}), {seconds}s)"))
+            await using var action = await RunAction($"HoldAt(({screenPosition.x:F0},{screenPosition.y:F0}), {seconds}s)");
+            await InputInjector.InjectPointerHold(screenPosition, seconds);
+            if (requireReceivers)
             {
-                await InputInjector.InjectPointerHold(screenPosition, seconds);
+                var receivers = InputInjector.GetReceiversAtPosition(screenPosition,
+                    typeof(IPointerDownHandler), typeof(IPointerUpHandler));
+                action.SetResult($"receivers: {FormatReceivers(receivers)}");
             }
         }
 
@@ -1816,7 +1673,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Element not found within {searchTime}s");
+            action.Fail(BuildSearchFailureMessage(search, searchTime));
         }
 
         /// <summary>
@@ -1870,7 +1727,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Element not found within {searchTime}s");
+            action.Fail(BuildSearchFailureMessage(search, searchTime));
         }
 
         /// <summary>
@@ -1909,11 +1766,16 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
-        public static async Task DragFromTo(Vector2 startPosition, Vector2 endPosition, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
+        /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
+        public static async Task DragFromTo(Vector2 startPosition, Vector2 endPosition, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left, bool requireReceivers = false)
         {
-            await using (await RunAction($"DragFromTo(({startPosition.x:F0},{startPosition.y:F0}) -> ({endPosition.x:F0},{endPosition.y:F0}))"))
+            await using var action = await RunAction($"DragFromTo(({startPosition.x:F0},{startPosition.y:F0}) -> ({endPosition.x:F0},{endPosition.y:F0}))");
+            await InputInjector.InjectPointerDrag(startPosition, endPosition, duration, holdTime, button);
+            if (requireReceivers)
             {
-                await InputInjector.InjectPointerDrag(startPosition, endPosition, duration, holdTime, button);
+                var receivers = InputInjector.GetReceiversAtPosition(startPosition,
+                    typeof(IDragHandler), typeof(IBeginDragHandler));
+                action.SetResult($"receivers: {FormatReceivers(receivers)}");
             }
         }
 
@@ -1958,7 +1820,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Element not found within {searchTime}s");
+            action.Fail(BuildSearchFailureMessage(search, searchTime));
         }
 
         /// <summary>
@@ -1985,7 +1847,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Element not found within {searchTime}s");
+            action.Fail(BuildSearchFailureMessage(search, searchTime));
         }
 
         #endregion
@@ -2291,13 +2153,18 @@ namespace ODDGames.UIAutomation
         /// <param name="direction">The direction to drag (pixel offset)</param>
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
-        public static async Task Drag(Vector2 direction, float duration = 0.3f, float holdTime = 0.05f)
+        /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
+        public static async Task Drag(Vector2 direction, float duration = 0.3f, float holdTime = 0.05f, bool requireReceivers = false)
         {
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
             var endPos = center + direction;
-            await using (await RunAction($"Drag(direction=({direction.x:F0},{direction.y:F0})) from center"))
+            await using var action = await RunAction($"Drag(direction=({direction.x:F0},{direction.y:F0})) from center");
+            await InputInjector.InjectPointerDrag(center, endPos, duration, holdTime);
+            if (requireReceivers)
             {
-                await InputInjector.InjectPointerDrag(center, endPos, duration, holdTime);
+                var receivers = InputInjector.GetReceiversAtPosition(center,
+                    typeof(IDragHandler), typeof(IBeginDragHandler));
+                action.SetResult($"receivers: {FormatReceivers(receivers)}");
             }
         }
 

@@ -2,39 +2,28 @@ using System;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
-using ODDGames.UIAutomation.AI;
-
-#if UNITY_INCLUDE_TESTS
-using UnityEngine.TestTools;
-#endif
 
 namespace ODDGames.UIAutomation
 {
     /// <summary>
     /// Base class for UI automation tests. Provides:
-    /// - Configurable recovery for handling dialogs/obstacles
     /// - Unobserved exception capture
-    /// - Automatic test instability detection when recovery was needed
+    /// - Hardware input isolation
+    /// - Scene loading with frame rate stabilization
     ///
     /// Usage:
     /// <code>
     /// public class MyTests : UITestBase
     /// {
-    ///     protected override bool EnableRecovery => true;
-    ///
     ///     [Test]
     ///     public async Task TestSomething()
     ///     {
-    ///         await LoadTestData("TestData/SaveGame");
     ///         await LoadScene("MainMenu");
     ///         await Click(Name("StartButton"));
     ///     }
     /// }
     /// </code>
     /// </summary>
-#if UNITY_INCLUDE_TESTS
-    [TestMustExpectAllLogs(false)]
-#endif
     public abstract class UITestBase
     {
 
@@ -43,20 +32,6 @@ namespace ODDGames.UIAutomation
         /// Default is true.
         /// </summary>
         protected virtual bool CaptureUnobservedException => true;
-
-        /// <summary>
-        /// Override to enable recovery mode.
-        /// When true, TryRecover will be called when actions fail.
-        /// If recovery was needed, the test will be marked as unstable.
-        /// Default is false.
-        /// </summary>
-        protected virtual bool EnableRecovery => false;
-
-        /// <summary>
-        /// Override to fail the test when recovery was needed.
-        /// Default is false (test passes but logs a warning).
-        /// </summary>
-        protected virtual bool FailOnRecovery => false;
 
         /// <summary>
         /// Override to keep hardware input enabled during tests.
@@ -81,28 +56,17 @@ namespace ODDGames.UIAutomation
             Debug.Log($"[UITestBase] SetUp starting (frame {Time.frameCount})");
 
             // Ignore error logs by default - game errors shouldn't fail UI tests
+#if UNITY_INCLUDE_TESTS
             if (IgnoreErrorLogs)
             {
                 UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
             }
+#endif
 
             if (CaptureUnobservedException)
             {
                 ActionExecutor.CaptureUnobservedExceptions = true;
                 ActionExecutor.ClearCapturedExceptions();
-            }
-
-            ActionExecutor.ResetRecoveryTracking();
-            ActionExecutor.ClearRecoveryFlows();
-
-            if (EnableRecovery)
-            {
-                ActionExecutor.RecoveryHandler = TryRecover;
-                Debug.Log("[UITestBase] Recovery enabled");
-            }
-            else
-            {
-                ActionExecutor.RecoveryHandler = null;
             }
 
             if (DisableHardwareInput)
@@ -118,30 +82,10 @@ namespace ODDGames.UIAutomation
         {
             Debug.Log($"[UITestBase] TearDown starting (frame {Time.frameCount})");
 
-            if (ActionExecutor.RecoveryUsed)
-            {
-                var message = $"[UNSTABLE TEST] Recovery was used {ActionExecutor.RecoveryCount} time(s).\n" +
-                              $"Reason: {ActionExecutor.RecoveryExplanation}";
-
-                if (FailOnRecovery)
-                {
-                    Assert.Fail(message);
-                }
-                else
-                {
-                    Debug.LogWarning(message);
-#if UNITY_INCLUDE_TESTS
-                    TestContext.WriteLine(message);
-#endif
-                }
-            }
-
             if (CaptureUnobservedException)
             {
                 ActionExecutor.CaptureUnobservedExceptions = false;
             }
-
-            ActionExecutor.RecoveryHandler = null;
 
             if (DisableHardwareInput)
             {
@@ -215,89 +159,10 @@ namespace ODDGames.UIAutomation
         }
 
         /// <summary>
-        /// Called when an action fails and recovery is enabled.
-        /// Override to customize recovery behavior.
-        ///
-        /// Default implementation:
-        /// 1. Tries DialogDismissal to click common close/cancel buttons
-        /// 2. Falls back to AI recovery if configured
-        ///
-        /// Example override:
-        /// <code>
-        /// protected override async Task&lt;RecoveryResult&gt; TryRecover(RecoveryContext context)
-        /// {
-        ///     // Try your custom recovery first
-        ///     if (await TryClickCloseButton())
-        ///         return new RecoveryResult { Success = true, Explanation = "Clicked close" };
-        ///
-        ///     // Fall back to base implementation
-        ///     return await base.TryRecover(context);
-        /// }
-        /// </code>
-        /// </summary>
-        protected virtual async Task<RecoveryResult> TryRecover(RecoveryContext context)
-        {
-            Debug.Log($"[UITestBase] TryRecover: {context.FailedAction}");
-
-            // 1. Try registered detected flows (in case something just appeared)
-            await ActionExecutor.RunDetectedFlows();
-
-            // 2. Try dialog dismissal
-            if (await DialogDismissal.TryDismiss())
-            {
-                return new RecoveryResult
-                {
-                    Success = true,
-                    Explanation = "Dismissed dialog"
-                };
-            }
-
-            // 3. Try failure flows
-            if (await ActionExecutor.RunFailureFlows())
-            {
-                return new RecoveryResult
-                {
-                    Success = true,
-                    Explanation = "Ran fallback recovery flow"
-                };
-            }
-
-            // 4. Try AI recovery if configured
-            var settings = AITestSettings.Instance;
-            if (settings != null)
-            {
-                var provider = settings.CreateModelProvider();
-                if (provider != null)
-                {
-                    AINavigator.SetModelProvider(provider);
-                    var aiHandler = AINavigator.CreateRecoveryHandler();
-                    return await aiHandler(context);
-                }
-            }
-
-            return new RecoveryResult
-            {
-                Success = false,
-                NoBlockerFound = true,
-                Explanation = "No recovery method succeeded"
-            };
-        }
-
-        /// <summary>
         /// Gets exceptions captured during the test (if CaptureUnobservedException is true).
         /// </summary>
         protected System.Collections.Generic.IReadOnlyList<Exception> CapturedExceptions
             => ActionExecutor.CapturedExceptions;
-
-        /// <summary>
-        /// Returns true if recovery was used during the current test.
-        /// </summary>
-        protected bool WasRecoveryUsed => ActionExecutor.RecoveryUsed;
-
-        /// <summary>
-        /// Gets the explanation of what recovery actions were taken.
-        /// </summary>
-        protected string RecoveryReason => ActionExecutor.RecoveryExplanation;
 
         /// <summary>
         /// Gets the persistent data path for the current platform.
