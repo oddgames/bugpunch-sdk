@@ -22,6 +22,12 @@
     "optionalUnityReferences": [
         "TestAssemblies"
     ],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.test-framework",
+            "expression": "",
+            "define": "UNITY_INCLUDE_TESTS"
+        }
+    ],
     "noEngineReferences": false
 }

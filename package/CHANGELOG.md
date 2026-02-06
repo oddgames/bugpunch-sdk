@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.27] - 2026-02-06
+
+### Fixed
+- **Assembly definitions now auto-define `UNITY_INCLUDE_TESTS`** - Added `versionDefines` to detect Test Framework
+  - All assemblies with `defineConstraints: ["UNITY_INCLUDE_TESTS"]` now have matching `versionDefines`
+  - Fixes "namespace 'ODDGames' could not be found" errors when Test Framework is installed but define was missing
+  - Unity's `UNITY_INCLUDE_TESTS` is not globally defined - must be set per-assembly via `versionDefines`
+
 ## [1.1.26] - 2026-02-06
 
 ### Fixed
