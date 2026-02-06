@@ -3,8 +3,7 @@
     "rootNamespace": "ODDGames.UIAutomation",
     "references": [
         "Unity.TextMeshPro",
-        "Unity.InputSystem",
-        "UnityEngine.TestRunner"
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -13,6 +12,9 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.25] - 2026-02-06
+
+### Fixed
+- **UITestBase now compiles in builds without Test Framework** - Wrapped entire class in `#if UNITY_INCLUDE_TESTS`
+  - Previously `UITestBase.cs` would cause build errors when Test Framework package was not installed
+  - Assembly definition now uses `optionalUnityReferences: ["TestAssemblies"]` for conditional test support
+
 ## [1.1.24] - 2026-02-06
 
 ### Added
