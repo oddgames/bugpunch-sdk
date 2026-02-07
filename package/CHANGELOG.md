@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.38] - 2026-02-07
+
+### Fixed
+- **Testing assembly no longer uses `defineConstraints`** - Removed `defineConstraints: ["UNITY_INCLUDE_TESTS"]` and set `autoReferenced: false` to prevent the Testing assembly from being skipped by Unity's constraint evaluation. Consumer assemblies reference it explicitly by name instead.
+
 ## [1.1.37] - 2026-02-06
 
 ### Fixed
