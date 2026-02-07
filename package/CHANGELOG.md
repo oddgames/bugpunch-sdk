@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.39] - 2026-02-07
+
+### Fixed
+- **Testing assembly compiles in player builds** - Wrapped `LogAssert.ignoreFailingMessages` in `#if UNITY_INCLUDE_TESTS` guard so `UITestBase` compiles when test-framework is unavailable (e.g. production builds)
+- **Testing assembly uses `versionDefines` without `defineConstraints`** - Self-defines `UNITY_INCLUDE_TESTS` when test-framework is present, but always compiles regardless
+
 ## [1.1.38] - 2026-02-07
 
 ### Fixed

@@ -56,10 +56,12 @@ namespace ODDGames.UIAutomation
             Debug.Log($"[UITestBase] SetUp starting (frame {Time.frameCount})");
 
             // Ignore error logs by default - game errors shouldn't fail UI tests
+#if UNITY_INCLUDE_TESTS
             if (IgnoreErrorLogs)
             {
                 UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
             }
+#endif
 
             if (CaptureUnobservedException)
             {
