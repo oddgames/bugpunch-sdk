@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.40] - 2026-02-07
+
+### Fixed
+- **`LogAssert` guard changed from `UNITY_INCLUDE_TESTS` to `UNITY_EDITOR`** - `UNITY_INCLUDE_TESTS` is defined via `versionDefines` even in player builds (when test-framework package is installed), but `LogAssert` lives in `UnityEngine.TestRunner` which is editor-only. Using `#if UNITY_EDITOR` correctly excludes the call from player builds.
+
 ## [1.1.39] - 2026-02-07
 
 ### Fixed
