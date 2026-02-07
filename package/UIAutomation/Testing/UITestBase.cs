@@ -56,7 +56,8 @@ namespace ODDGames.UIAutomation
             Debug.Log($"[UITestBase] SetUp starting (frame {Time.frameCount})");
 
             // Ignore error logs by default - game errors shouldn't fail UI tests
-#if UNITY_INCLUDE_TESTS
+            // LogAssert is in UnityEngine.TestRunner which is editor-only
+#if UNITY_EDITOR
             if (IgnoreErrorLogs)
             {
                 UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
