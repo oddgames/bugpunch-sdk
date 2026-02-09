@@ -40,5 +40,5 @@ Deploy the UITest package - version bump, tag, and push.
    - Show the git tag for referencing in manifests
    - Show example manifest entry:
      ```json
-     "com.oddgames.uitest": "https://github.com/nickhudson4/tool_ui_automation.git?path=package#v{version}"
+     "au.com.oddgames.uiautomation": "https://github.com/oddgames/ui-automation.git?path=package#v{version}"
      ```

@@ -7,7 +7,9 @@
         "Unity.TextMeshPro",
         "Unity.InputSystem"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
@@ -16,12 +18,6 @@
     ],
     "autoReferenced": false,
     "defineConstraints": [],
-    "versionDefines": [
-        {
-            "name": "com.unity.test-framework",
-            "expression": "",
-            "define": "UNITY_INCLUDE_TESTS"
-        }
-    ],
+    "versionDefines": [],
     "noEngineReferences": false
 }

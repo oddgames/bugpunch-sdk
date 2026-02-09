@@ -1,13 +1,10 @@
-#if UNITY_INCLUDE_TESTS
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
-
-#if UNITY_EDITOR
 using UnityEditor;
-#endif
 
 namespace ODDGames.UIAutomation.AI
 {
