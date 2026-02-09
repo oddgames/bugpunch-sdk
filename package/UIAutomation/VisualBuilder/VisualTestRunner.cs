@@ -9,7 +9,9 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
+#if UNITY_EDITOR
 using NUnit.Framework;
+#endif
 using ODDGames.UIAutomation.AI;
 
 namespace ODDGames.UIAutomation.VisualBuilder
@@ -496,60 +498,87 @@ namespace ODDGames.UIAutomation.VisualBuilder
 
         #region Assert Helpers
 
+        /// <summary>
+        /// Throws an assertion failure. Uses NUnit Assert.Fail in editor (for Test Runner integration),
+        /// falls back to InvalidOperationException in player builds.
+        /// </summary>
+        private static void Fail(string message)
+        {
+#if UNITY_EDITOR
+            Assert.Fail(message);
+#else
+            throw new InvalidOperationException(message);
+#endif
+        }
+
         private static async Task AssertElementExistsAsync(VisualBlock block, bool shouldExist, CancellationToken ct)
         {
             var element = await TryResolveElementAsync(block.target, ct);
             bool exists = element?.gameObject != null;
 
-            if (shouldExist)
-                Assert.IsTrue(exists, $"Element not found: {GetSelectorDisplay(block.target)}");
-            else
-                Assert.IsFalse(exists, $"Element should not exist but found: {GetSelectorDisplay(block.target)}");
+            if (shouldExist && !exists)
+                Fail($"Element not found: {GetSelectorDisplay(block.target)}");
+            if (!shouldExist && exists)
+                Fail($"Element should not exist but found: {GetSelectorDisplay(block.target)}");
         }
 
         private static async Task AssertTextAsync(VisualBlock block, bool containsMode, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
-            Assert.IsNotNull(element?.gameObject, $"Assert target not found: {GetSelectorDisplay(block.target)}");
+            if (element?.gameObject == null)
+                Fail($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             string actualText = GetElementText(element.gameObject);
             string expectedText = block.assertExpected ?? "";
 
             if (containsMode)
-                Assert.That(actualText, Does.Contain(expectedText).IgnoreCase, $"Text does not contain '{expectedText}'");
+            {
+                if (actualText == null || !actualText.Contains(expectedText, StringComparison.OrdinalIgnoreCase))
+                    Fail($"Text does not contain '{expectedText}'. Actual: '{actualText}'");
+            }
             else
-                Assert.AreEqual(expectedText, actualText, $"Text mismatch");
+            {
+                if (!string.Equals(expectedText, actualText))
+                    Fail($"Text mismatch. Expected: '{expectedText}', Actual: '{actualText}'");
+            }
         }
 
         private static async Task AssertToggleStateAsync(VisualBlock block, bool value, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
-            Assert.IsNotNull(element?.gameObject, $"Assert target not found: {GetSelectorDisplay(block.target)}");
+            if (element?.gameObject == null)
+                Fail($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             var toggle = element.gameObject.GetComponent<Toggle>();
-            Assert.IsNotNull(toggle, $"Element '{element.name}' is not a Toggle");
-            Assert.AreEqual(value, toggle.isOn, $"Toggle '{element.name}' is {(toggle.isOn ? "ON" : "OFF")} but expected {(value ? "ON" : "OFF")}");
+            if (toggle == null)
+                Fail($"Element '{element.name}' is not a Toggle");
+            if (value != toggle.isOn)
+                Fail($"Toggle '{element.name}' is {(toggle.isOn ? "ON" : "OFF")} but expected {(value ? "ON" : "OFF")}");
         }
 
         private static async Task AssertSliderValueAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
-            Assert.IsNotNull(element?.gameObject, $"Assert target not found: {GetSelectorDisplay(block.target)}");
+            if (element?.gameObject == null)
+                Fail($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             var slider = element.gameObject.GetComponent<Slider>();
-            Assert.IsNotNull(slider, $"Element '{element.name}' is not a Slider");
+            if (slider == null)
+                Fail($"Element '{element.name}' is not a Slider");
 
             float actual = slider.normalizedValue;
             float expected = block.assertFloatValue;
             float variance = block.assertVariance;
 
-            Assert.That(actual, Is.EqualTo(expected).Within(variance), $"Slider '{element.name}' value mismatch");
+            if (Math.Abs(actual - expected) > variance)
+                Fail($"Slider '{element.name}' value mismatch. Expected: {expected} (+/- {variance}), Actual: {actual}");
         }
 
         private static async Task AssertDropdownIndexAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
-            Assert.IsNotNull(element?.gameObject, $"Assert target not found: {GetSelectorDisplay(block.target)}");
+            if (element?.gameObject == null)
+                Fail($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             int actual = -1;
             var tmpDropdown = element.gameObject.GetComponent<TMPro.TMP_Dropdown>();
@@ -562,14 +591,17 @@ namespace ODDGames.UIAutomation.VisualBuilder
                     actual = legacyDropdown.value;
             }
 
-            Assert.That(actual, Is.GreaterThanOrEqualTo(0), $"Element '{element.name}' is not a Dropdown");
-            Assert.AreEqual(block.assertIntValue, actual, $"Dropdown '{element.name}' index mismatch");
+            if (actual < 0)
+                Fail($"Element '{element.name}' is not a Dropdown");
+            if (block.assertIntValue != actual)
+                Fail($"Dropdown '{element.name}' index mismatch. Expected: {block.assertIntValue}, Actual: {actual}");
         }
 
         private static async Task AssertDropdownTextAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
-            Assert.IsNotNull(element?.gameObject, $"Assert target not found: {GetSelectorDisplay(block.target)}");
+            if (element?.gameObject == null)
+                Fail($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             string actual = null;
             var tmpDropdown = element.gameObject.GetComponent<TMPro.TMP_Dropdown>();
@@ -582,14 +614,17 @@ namespace ODDGames.UIAutomation.VisualBuilder
                     actual = legacyDropdown.options[legacyDropdown.value].text;
             }
 
-            Assert.IsNotNull(actual, $"Element '{element.name}' is not a Dropdown or has no selection");
-            Assert.AreEqual(block.assertExpected, actual, $"Dropdown '{element.name}' text mismatch");
+            if (actual == null)
+                Fail($"Element '{element.name}' is not a Dropdown or has no selection");
+            if (!string.Equals(block.assertExpected, actual))
+                Fail($"Dropdown '{element.name}' text mismatch. Expected: '{block.assertExpected}', Actual: '{actual}'");
         }
 
         private static async Task AssertInputValueAsync(VisualBlock block, CancellationToken ct)
         {
             var element = await ResolveElementAsync(block.target, ct);
-            Assert.IsNotNull(element?.gameObject, $"Assert target not found: {GetSelectorDisplay(block.target)}");
+            if (element?.gameObject == null)
+                Fail($"Assert target not found: {GetSelectorDisplay(block.target)}");
 
             string actual = null;
             var tmpInput = element.gameObject.GetComponent<TMPro.TMP_InputField>();
@@ -602,18 +637,22 @@ namespace ODDGames.UIAutomation.VisualBuilder
                     actual = legacyInput.text;
             }
 
-            Assert.IsNotNull(actual, $"Element '{element.name}' is not an InputField");
-            Assert.AreEqual(block.assertExpected, actual, $"InputField '{element.name}' value mismatch");
+            if (actual == null)
+                Fail($"Element '{element.name}' is not an InputField");
+            if (!string.Equals(block.assertExpected, actual))
+                Fail($"InputField '{element.name}' value mismatch. Expected: '{block.assertExpected}', Actual: '{actual}'");
         }
 
         private static async Task AssertCustomExpressionAsync(VisualBlock block, CancellationToken ct)
         {
             await Task.Yield();
 
-            Assert.IsFalse(string.IsNullOrWhiteSpace(block.assertExpression), "No custom expression specified");
+            if (string.IsNullOrWhiteSpace(block.assertExpression))
+                Fail("No custom expression specified");
 
             var result = RuntimeCodeCompiler.EvaluateBoolExpression(block.assertExpression);
-            Assert.IsTrue(result, $"Expression returned false: {block.assertExpression}");
+            if (!result)
+                Fail($"Expression returned false: {block.assertExpression}");
         }
 
         #endregion

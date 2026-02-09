@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.41] - 2026-02-09
+
+### Fixed
+- **Player build failures from test-only assemblies** - Removed `versionDefines` that self-defined `UNITY_INCLUDE_TESTS` from all 6 asmdefs. The define was always active (test-framework is always installed in editor), causing NUnit/LogAssert/TestRunner code to compile in player builds where those assemblies don't exist.
+
+### Changed
+- **Testing assembly is now editor-only** - Added `includePlatforms: ["Editor"]` to `ODDGames.UIAutomation.Testing.asmdef` since it depends on `UnityEngine.TestRunner` and `nunit.framework.dll` which are editor-only.
+- **AITestDiscovery guard changed to `#if UNITY_EDITOR`** - The entire file uses NUnit and AssetDatabase, so `UNITY_EDITOR` is the correct guard (not `UNITY_INCLUDE_TESTS`).
+- **VisualTestRunner no longer depends on NUnit directly** - Uses `Assert.Fail()` via `#if UNITY_EDITOR` for PlayMode test integration, falls back to `InvalidOperationException` in player builds. This allows VisualTestRunner to work on-device.
+- **Removed `defineConstraints: ["UNITY_INCLUDE_TESTS"]`** from Editor, VisualBuilder, VisualBuilder.Editor, and AI.Editor asmdefs. Editor asmdefs are already protected by `includePlatforms: ["Editor"]`. VisualBuilder runtime assembly needs to compile in player builds.
+
 ## [1.1.40] - 2026-02-07
 
 ### Fixed
