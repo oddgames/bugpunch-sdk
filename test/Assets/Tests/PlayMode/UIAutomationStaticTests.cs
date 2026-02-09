@@ -318,7 +318,7 @@ namespace ODDGames.UIAutomation.Tests
                 await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
-                var found = await Find<Button>(Name("TestButton"), throwIfMissing: true, seconds: 2);
+                var found = await Find<Button>(Name("TestButton"), throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("TestButton", found.name);
         }
@@ -331,7 +331,7 @@ namespace ODDGames.UIAutomation.Tests
                 Canvas.ForceUpdateCanvases();
 
                 // Text() finds the TMP_Text component that has the text, then we get parent Button
-                var found = await Find<TextMeshProUGUI>(Text("Submit Form"), throwIfMissing: true, seconds: 2);
+                var found = await Find<TextMeshProUGUI>(Text("Submit Form"), throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("Submit Form", found.text);
 
@@ -348,7 +348,7 @@ namespace ODDGames.UIAutomation.Tests
                 await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
-                var found = await Find<Slider>(Type<Slider>(), throwIfMissing: true, seconds: 2);
+                var found = await Find<Slider>(Type<Slider>(), throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("VolumeSlider", found.name);
         }
@@ -362,7 +362,7 @@ namespace ODDGames.UIAutomation.Tests
                 await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
-                var found = await Find<TMP_InputField>(Adjacent("Username:"), throwIfMissing: true, seconds: 2);
+                var found = await Find<TMP_InputField>(Adjacent("Username:"), throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("UsernameInput", found.name);
         }
@@ -461,7 +461,7 @@ namespace ODDGames.UIAutomation.Tests
                 await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
-                var found = await Find<Button>(Name("FindMeButton"), throwIfMissing: true, seconds: 2);
+                var found = await Find<Button>(Name("FindMeButton"), throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(found);
                 Assert.AreSame(button, found);
         }
@@ -482,7 +482,7 @@ namespace ODDGames.UIAutomation.Tests
                 await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
-                var found = await FindAll<Button>(Name("ItemButton"), seconds: 2);
+                var found = await FindAll<Button>(Name("ItemButton"), seconds: 0.5f);
                 Assert.AreEqual(3, found.Count(), "Should find all 3 buttons");
         }
 
@@ -675,7 +675,7 @@ namespace ODDGames.UIAutomation.Tests
 
                 // Chain Type and Name filters
                 var search = Type<Button>().Name("Button2");
-                var found = await Find<Button>(search, throwIfMissing: true, seconds: 2);
+                var found = await Find<Button>(search, throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("Button2", found.name);
         }
@@ -694,7 +694,7 @@ namespace ODDGames.UIAutomation.Tests
                 Canvas.ForceUpdateCanvases();
 
                 // Path uses / separator for hierarchy, with wildcards
-                var found = await Find<Button>(Path("*/Panel/NestedButton"), throwIfMissing: true, seconds: 2);
+                var found = await Find<Button>(Path("*/Panel/NestedButton"), throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("NestedButton", found.name);
         }
@@ -711,7 +711,7 @@ namespace ODDGames.UIAutomation.Tests
                 Canvas.ForceUpdateCanvases();
 
                 // Should find by name
-                var foundByName = await Find<Button>(Any("UniqueBtn"), throwIfMissing: true, seconds: 2);
+                var foundByName = await Find<Button>(Any("UniqueBtn"), throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(foundByName);
                 Assert.AreEqual("UniqueBtn", foundByName.name);
 
@@ -731,7 +731,7 @@ namespace ODDGames.UIAutomation.Tests
                 await Async.DelayFrames(1);
                 Canvas.ForceUpdateCanvases();
 
-                var found = await Find<Button>(Tag("Player"), throwIfMissing: true, seconds: 2);
+                var found = await Find<Button>(Tag("Player"), throwIfMissing: true, seconds: 0.5f);
                 Assert.IsNotNull(found);
                 Assert.AreEqual("TaggedButton", found.name);
         }

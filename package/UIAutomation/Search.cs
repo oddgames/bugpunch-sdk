@@ -80,6 +80,7 @@ namespace ODDGames.UIAutomation
         bool _nextNegate;
         bool _includeInactive;
         bool _includeDisabled;
+        bool _includeOffScreen;
 
         // Static path support
         string _staticPath;
@@ -197,6 +198,17 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <returns>This Search instance for chaining.</returns>
         /// <example>Search.Type&lt;Button&gt;().IncludeDisabled()</example>
+        /// <summary>
+        /// Include off-screen GameObjects in the search.
+        /// By default, only on-screen GameObjects with visible bounds are returned.
+        /// </summary>
+        /// <returns>This Search instance for chaining.</returns>
+        public Search IncludeOffScreen()
+        {
+            _includeOffScreen = true;
+            return this;
+        }
+
         public Search IncludeDisabled()
         {
             _includeDisabled = true;
@@ -914,6 +926,10 @@ namespace ODDGames.UIAutomation
         /// </example>
         public Search InRegion(float xMin, float yMin, float xMax, float yMax)
         {
+            if (xMin < 0f || xMin > 1f) throw new ArgumentOutOfRangeException(nameof(xMin), xMin, "xMin must be between 0 and 1");
+            if (yMin < 0f || yMin > 1f) throw new ArgumentOutOfRangeException(nameof(yMin), yMin, "yMin must be between 0 and 1");
+            if (xMax < 0f || xMax > 1f) throw new ArgumentOutOfRangeException(nameof(xMax), xMax, "xMax must be between 0 and 1");
+            if (yMax < 0f || yMax > 1f) throw new ArgumentOutOfRangeException(nameof(yMax), yMax, "yMax must be between 0 and 1");
             bool negate = _nextNegate;
             _nextNegate = false;
             _conditions.Add(go =>
@@ -1312,6 +1328,7 @@ namespace ODDGames.UIAutomation
             combined._conditions.Add(go => thisSearch.Matches(go) || other.Matches(go));
             combined._includeInactive = _includeInactive || other._includeInactive;
             combined._includeDisabled = _includeDisabled || other._includeDisabled;
+            combined._includeOffScreen = _includeOffScreen || other._includeOffScreen;
             // Copy post-processing from this search
             combined._orderBy = _orderBy;
             combined._skipCount = _skipCount;
@@ -1510,7 +1527,7 @@ namespace ODDGames.UIAutomation
         /// var processed = search.ApplyPostProcessing(allButtons); // Returns only the first button
         /// </code>
         /// </example>
-        public IEnumerable<GameObject> ApplyPostProcessing(IEnumerable<GameObject> results)
+        internal IEnumerable<GameObject> ApplyPostProcessing(IEnumerable<GameObject> results)
         {
             var processed = results;
 
@@ -1559,29 +1576,40 @@ namespace ODDGames.UIAutomation
 
             while (((float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime) < timeout && Application.isPlaying)
             {
+
                 // Search all Transform objects (includes RectTransform) to support both UI and non-UI objects
                 var allMatching = UnityEngine.Object.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None)
                     .Where(t => t != null && Matches(t.gameObject))
                     .Select(t => t.gameObject)
                     .ToList();
 
-                if (HasPostProcessing)
-                    allMatching = ApplyPostProcessing(allMatching).ToList();
-
-                // Order results: on-screen first, then UI elements, then others
-                allMatching = allMatching.OrderBy(go =>
+                // Filter to on-screen objects only (off-screen can't be interacted with)
+                // using corner-based bounds so partially visible objects are included
+                if (!_includeOffScreen)
                 {
-                    var pos = InputInjector.GetScreenPosition(go);
-                    bool isOnScreen = pos.x >= 0 && pos.x <= Screen.width &&
-                                      pos.y >= 0 && pos.y <= Screen.height;
-                    bool isUI = go.GetComponentInParent<Canvas>() != null;
+                    var screenRect = new Rect(0, 0, Screen.width, Screen.height);
+                    allMatching = allMatching
+                        .Where(go =>
+                        {
+                            var bounds = InputInjector.GetScreenBounds(go);
+                            return bounds.width > 0 && bounds.height > 0 && bounds.Overlaps(screenRect);
+                        })
+                        .ToList();
+                }
 
-                    // Lower score = higher priority
-                    if (isOnScreen && isUI) return 0;
-                    if (isOnScreen) return 1;
-                    if (isUI) return 2;
-                    return 3;
-                }).ToList();
+                if (HasPostProcessing)
+                {
+                    // Apply user-specified ordering (Near, OrderBy, OrderByPosition, etc.)
+                    allMatching = ApplyPostProcessing(allMatching).ToList();
+                }
+                else
+                {
+                    // Default: order by depth (closest first), with UI elements as tiebreaker
+                    allMatching = allMatching
+                        .OrderBy(go => GetDepth(go))
+                        .ThenBy(go => go.GetComponentInParent<Canvas>() != null ? 0 : 1)
+                        .ToList();
+                }
 
                 // Debug logging on first match
                 if (allMatching.Count > 0 && !loggedOnce)
@@ -1659,23 +1687,33 @@ namespace ODDGames.UIAutomation
                     .Select(t => t.gameObject)
                     .ToList();
 
-                if (HasPostProcessing)
-                    results = ApplyPostProcessing(results).ToList();
-
-                // Order results: on-screen first, then UI elements, then others
-                results = results.OrderBy(go =>
+                // Filter to on-screen objects only (off-screen can't be interacted with)
+                // using corner-based bounds so partially visible objects are included
+                if (!_includeOffScreen)
                 {
-                    var pos = InputInjector.GetScreenPosition(go);
-                    bool isOnScreen = pos.x >= 0 && pos.x <= Screen.width &&
-                                      pos.y >= 0 && pos.y <= Screen.height;
-                    bool isUI = go.GetComponentInParent<Canvas>() != null;
+                    var screenRect = new Rect(0, 0, Screen.width, Screen.height);
+                    results = results
+                        .Where(go =>
+                        {
+                            var bounds = InputInjector.GetScreenBounds(go);
+                            return bounds.width > 0 && bounds.height > 0 && bounds.Overlaps(screenRect);
+                        })
+                        .ToList();
+                }
 
-                    // Lower score = higher priority
-                    if (isOnScreen && isUI) return 0;
-                    if (isOnScreen) return 1;
-                    if (isUI) return 2;
-                    return 3;
-                }).ToList();
+                if (HasPostProcessing)
+                {
+                    // Apply user-specified ordering (Near, OrderBy, OrderByPosition, etc.)
+                    results = ApplyPostProcessing(results).ToList();
+                }
+                else
+                {
+                    // Default: order by depth (closest first), with UI elements as tiebreaker
+                    results = results
+                        .OrderBy(go => GetDepth(go))
+                        .ThenBy(go => go.GetComponentInParent<Canvas>() != null ? 0 : 1)
+                        .ToList();
+                }
 
                 if (results.Count > 0)
                 {
@@ -1854,6 +1892,31 @@ namespace ODDGames.UIAutomation
         #endregion
 
         #region Helper Methods
+
+        /// <summary>
+        /// Returns a depth value for ordering: lower values are closer to the viewer.
+        /// UI elements use negative canvas sort order (higher sort order = on top = lower depth value),
+        /// with sibling index as secondary. 3D objects use camera distance.
+        /// </summary>
+        static float GetDepth(GameObject go)
+        {
+            var canvas = go.GetComponentInParent<Canvas>();
+            if (canvas != null)
+            {
+                // UI: use negative sort order so higher sort order = lower depth value (closer)
+                // Subtract a small sibling fraction so later siblings (drawn on top) sort first
+                var rootCanvas = canvas.rootCanvas;
+                float siblingFraction = 1f - (go.transform.GetSiblingIndex() / 10000f);
+                return -rootCanvas.sortingOrder + siblingFraction;
+            }
+
+            // 3D: use camera distance (closer = lower value)
+            Camera cam = Camera.main;
+            if (cam != null)
+                return Vector3.Distance(cam.transform.position, go.transform.position);
+
+            return float.MaxValue;
+        }
 
         static string GetHierarchyPath(Transform transform)
         {
@@ -3234,7 +3297,9 @@ namespace ODDGames.UIAutomation
             }
             else
             {
-                // UI search with timeout - use async Find with stability checking
+                // Manipulation methods work on any GameObject, not just on-screen UI
+                IncludeOffScreen();
+
                 if (includeInactive)
                     IncludeInactive();
 

@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.43] - 2026-02-09
+
+### Fixed
+- **`InjectScroll()` uses `DeltaStateEvent` for correct scroll injection** — Full-state `QueueStateEvent` with `MouseState` was clobbering delta controls that reset each frame. Now uses `DeltaStateEvent.From(mouse.scroll)` matching Unity's `InputTestFixture.Set()` pattern. Scroll event no longer calls `InputSystem.Update()` manually, letting the player loop process it so the scroll delta isn't reset before `InputSystemUIInputModule.Process()` reads it.
+- **`ScaleToGameViewWindow()` removed from all input injection** — Was transforming coordinates to Game View render-target space but Input System expects `Screen.width/height` space, causing clicks, scrolls, and gestures to miss their targets.
+- **Search ordering preserved** — `Near()`, `OrderBy()`, `OrderByPosition()` etc. were being overwritten by a depth-sort applied unconditionally after post-processing. Depth-sort now only applies as fallback when no custom ordering is set.
+- **`EnsureGameViewFocusAsync()` on all injection entry points** — `InjectPointerTap`, `Swipe`, `TypeText`, `InjectPinch`, `InjectTwoFingerDrag`, `InjectRotatePixels` now ensure Game View focus before injecting events.
+- **`LogAssert.Expect` added to tests** catching expected `AssertionException` from `ActionScope.Fail()`.
+
+### Changed
+- **Input injection uses `DeltaStateEvent` consistently** — Mouse click, hold, and scroll methods now use `DeltaStateEvent.From(control)` for individual controls instead of full `MouseState` structs, matching Unity's `InputTestFixture` pattern and avoiding delta control clobbering.
+- **Touch tap simplified to `TouchState` struct** — `InjectTouchTap` now uses `InputSystem.QueueStateEvent(touchscreen, new TouchState{...})` (one line per event) instead of 6-line `WriteValueIntoEvent` calls, matching Unity's `InputTestFixture.SetTouch()` pattern.
+- **Click speed dramatically improved** — Press+release now happen in consecutive frames instead of being spread across ~160ms of delays. Single click: ~3 frames (was ~7 frames + 160ms). Double/triple click use compact loop patterns.
+- **All internal delays reduced to frame-based waits** — pointerEnter gap reduced from 2 frames + 50ms to 1 frame. Key press/release, modifier combos, and touch taps all use `DelayFrames(1)` instead of `Async.Delay(frames, seconds)`.
+- **`ActionExecutor.Interval` default reduced from 200ms to 50ms** — 4x faster waits between high-level test actions.
+- **Default drag/swipe/gesture duration halved from 0.3s to 0.15s** — All drag, swipe, pinch, rotate, and two-finger gesture defaults are now twice as fast.
+- **Inter-click gap reduced to 50ms** — Double/triple click inter-click delay reduced from 120ms to 50ms (still within multi-click speed threshold).
+- **`EnsureGameViewFocusAsync()` caches Game View reference** — Avoids reflection lookup on every call (runs in every delay loop iteration).
+- **Virtual input devices created eagerly in `OnDomainReload`** — All hardware devices disabled at init so `<Mouse>/position` etc. can only resolve to virtual devices, eliminating `.current` race conditions.
+- **`editorInputBehaviorInPlayMode = AllDeviceInputAlwaysGoesToGameView`** — Routes all virtual device input to Game View during play mode (matches Unity's `InputTestFixture`).
+- **Test search timeouts reduced to 0.5s** — All test `searchTime`, `timeout`, and `seconds` parameters reduced from 2s to 0.5s (or 1s for delayed-element tests) to prevent slow hangs on expected failures.
+
+### Added
+- **Percentage parameter validation (0-1 range)** on all public API methods — `ClickAt`, `SwipeAt`, `PinchAt`, `RotateAt`, `TwoFingerSwipeAt`, `ClickSlider`, `DragSlider`, `SetSlider`, `SetScrollbar`, `Scroll(direction)`, `Search.InRegion`; throws `ArgumentOutOfRangeException` for values outside 0-1.
+- **Full gesture visualization** in InputVisualizer (pinch, rotate, two-finger drag, key presses, text input).
+- **3D object click tests** (with and without collider) in InputInjectorTests.
+
 ## [1.1.42] - 2026-02-09
 
 ### Fixed

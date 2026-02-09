@@ -3443,11 +3443,11 @@ namespace ODDGames.UIAutomation.Tests
     {
         public async Task<GameObject> TestScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20)
         {
-            return await ScrollTo(scrollViewSearch, targetSearch, maxScrollAttempts, throwIfMissing: false, searchTime: 2);
+            return await ScrollTo(scrollViewSearch, targetSearch, maxScrollAttempts, throwIfMissing: false, searchTime: 0.5f);
         }
         public async Task TestScrollToAndClick(Search scrollViewSearch, Search targetSearch)
         {
-            await ScrollToAndClick(scrollViewSearch, targetSearch, throwIfMissing: true, searchTime: 2);
+            await ScrollToAndClick(scrollViewSearch, targetSearch, throwIfMissing: true, searchTime: 0.5f);
         }
     }
 
@@ -3455,7 +3455,7 @@ namespace ODDGames.UIAutomation.Tests
     {
         public async Task<T> TestFind<T>(Search search, bool throwIfMissing = true) where T : Component
         {
-            return await Find<T>(search, throwIfMissing, seconds: 2);
+            return await Find<T>(search, throwIfMissing, seconds: 0.5f);
         }
     }
 
@@ -3463,7 +3463,7 @@ namespace ODDGames.UIAutomation.Tests
     {
         public async Task<List<T>> TestFindAll<T>(Search search) where T : Component
         {
-            var results = await FindAll<T>(search, seconds: 2);
+            var results = await FindAll<T>(search, seconds: 0.5f);
             return results.ToList();
         }
     }
@@ -3490,7 +3490,7 @@ namespace ODDGames.UIAutomation.Tests
 
         public async Task<List<Button>> TestFindAllButtons(Search search)
         {
-            var results = await FindAll<Button>(search, seconds: 2);
+            var results = await FindAll<Button>(search, seconds: 0.5f);
             return results.ToList();
         }
     }

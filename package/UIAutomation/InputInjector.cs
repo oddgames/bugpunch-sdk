@@ -72,6 +72,7 @@ namespace ODDGames.UIAutomation
             while (Time.frameCount < target)
             {
                 ct.ThrowIfCancellationRequested();
+                await InputInjector.EnsureGameViewFocusAsync();
                 await Task.Yield();
             }
         }
@@ -94,6 +95,7 @@ namespace ODDGames.UIAutomation
             while (Time.frameCount < targetFrame || Stopwatch.GetTimestamp() < targetTicks)
             {
                 ct.ThrowIfCancellationRequested();
+                await InputInjector.EnsureGameViewFocusAsync();
                 await Task.Yield();
             }
         }
@@ -279,6 +281,17 @@ namespace ODDGames.UIAutomation
             _virtualTouchscreen = null;
             _disabledDevices = new List<InputDevice>();
 
+            // Ensure InputSystemUIInputModule processes events even when Game View is unfocused
+            // (in Editor, Application.isFocused is false when Game View doesn't have focus,
+            // which causes EventSystem to skip processing our injected input events)
+            InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
+#if UNITY_EDITOR
+            // Route all device input to Game View during play mode (matches InputTestFixture behavior).
+            // Without this, input from virtual devices could be routed to Editor windows instead.
+            InputSystem.settings.editorInputBehaviorInPlayMode =
+                InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+#endif
+
             // Remove any orphaned virtual devices from previous runs
             var devicesToRemove = new List<InputDevice>();
             foreach (var device in InputSystem.devices)
@@ -295,6 +308,25 @@ namespace ODDGames.UIAutomation
             {
                 Debug.Log($"[InputInjector] Cleaning up orphaned device from previous run: {device.name}");
                 InputSystem.RemoveDevice(device);
+            }
+
+            // Create virtual devices and disable all hardware devices so only our
+            // virtual ones are active. This guarantees InputAction bindings like
+            // <Mouse>/position resolve to our virtual device — no .current race,
+            // no Editor windows consuming injected events.
+            _virtualMouse = InputSystem.AddDevice<Mouse>("UIAutomation_Mouse");
+            _virtualKeyboard = InputSystem.AddDevice<Keyboard>("UIAutomation_Keyboard");
+            _virtualTouchscreen = InputSystem.AddDevice<Touchscreen>("UIAutomation_Touchscreen");
+
+            // Disable hardware so bindings can only resolve to our virtual devices
+            foreach (var device in InputSystem.devices)
+            {
+                if (device.name.StartsWith("UIAutomation_")) continue;
+                if (device.enabled)
+                {
+                    _disabledDevices.Add(device);
+                    InputSystem.DisableDevice(device);
+                }
             }
 
 #if UNITY_EDITOR
@@ -324,15 +356,14 @@ namespace ODDGames.UIAutomation
         /// </summary>
         private static Mouse GetMouse()
         {
-            var mouse = Mouse.current;
-            if (mouse != null && mouse.enabled) return mouse;
-
-            // Create virtual mouse if none available
+            // Always use the virtual mouse for injection. The system mouse's events can be
+            // consumed by Editor windows (Inspector scroll, Console, etc.) before reaching
+            // the Game View, causing injected scroll and other input to silently fail.
             if (_virtualMouse == null || !_virtualMouse.added)
             {
                 _virtualMouse = InputSystem.AddDevice<Mouse>("UIAutomation_Mouse");
             }
-            return _virtualMouse ?? Mouse.current;
+            return _virtualMouse;
         }
 
         /// <summary>
@@ -340,17 +371,12 @@ namespace ODDGames.UIAutomation
         /// </summary>
         private static Keyboard GetKeyboard()
         {
-            var keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.enabled) return keyboard;
-
-            // Create virtual keyboard if none available
+            // Always use the virtual keyboard for injection consistency
             if (_virtualKeyboard == null || !_virtualKeyboard.added)
             {
                 _virtualKeyboard = InputSystem.AddDevice<Keyboard>("UIAutomation_Keyboard");
-                if (_virtualKeyboard != null)
-                    Debug.Log("[InputInjector] Created virtual keyboard device");
             }
-            return _virtualKeyboard ?? Keyboard.current;
+            return _virtualKeyboard;
         }
 
         /// <summary>
@@ -358,17 +384,12 @@ namespace ODDGames.UIAutomation
         /// </summary>
         private static Touchscreen GetTouchscreen()
         {
-            var touchscreen = Touchscreen.current;
-            if (touchscreen != null && touchscreen.enabled) return touchscreen;
-
-            // Create virtual touchscreen if none available
+            // Always use the virtual touchscreen for injection consistency
             if (_virtualTouchscreen == null || !_virtualTouchscreen.added)
             {
                 _virtualTouchscreen = InputSystem.AddDevice<Touchscreen>("UIAutomation_Touchscreen");
-                if (_virtualTouchscreen != null)
-                    Debug.Log("[InputInjector] Created virtual touchscreen device");
             }
-            return _virtualTouchscreen ?? Touchscreen.current;
+            return _virtualTouchscreen;
         }
 
         /// <summary>
@@ -501,21 +522,21 @@ namespace ODDGames.UIAutomation
                 }
             }
 
-            // Try Renderer bounds (3D objects)
-            if (go.TryGetComponent<Renderer>(out var renderer))
+            // Try Renderer bounds, then Collider bounds (3D objects)
+            if (go.TryGetComponent<Renderer>(out var renderer) && renderer.enabled)
             {
                 Camera cam = Camera.main;
                 if (cam != null)
-                {
                     return cam.WorldToScreenPoint(renderer.bounds.center);
-                }
             }
-
-            // Fallback to transform position
+            else if (go.TryGetComponent<Collider>(out var collider) && collider.enabled)
             {
                 Camera cam = Camera.main;
-                return cam != null ? (Vector2)cam.WorldToScreenPoint(go.transform.position) : Vector2.zero;
+                if (cam != null)
+                    return cam.WorldToScreenPoint(collider.bounds.center);
             }
+
+            return Vector2.zero;
         }
 
         /// <summary>
@@ -557,15 +578,20 @@ namespace ODDGames.UIAutomation
                 return new Rect(minX, minY, maxX - minX, maxY - minY);
             }
 
-            // Try Renderer bounds (3D objects)
-            if (go.TryGetComponent<Renderer>(out var renderer))
+            // Try Renderer bounds, then Collider bounds (3D objects)
+            Bounds? worldBounds = null;
+            if (go.TryGetComponent<Renderer>(out var renderer) && renderer.enabled)
+                worldBounds = renderer.bounds;
+            else if (go.TryGetComponent<Collider>(out var collider) && collider.enabled)
+                worldBounds = collider.bounds;
+
+            if (worldBounds.HasValue)
             {
                 Camera cam = Camera.main;
                 if (cam != null)
                 {
-                    var bounds = renderer.bounds;
-                    Vector2 screenMin = cam.WorldToScreenPoint(bounds.min);
-                    Vector2 screenMax = cam.WorldToScreenPoint(bounds.max);
+                    Vector2 screenMin = cam.WorldToScreenPoint(worldBounds.Value.min);
+                    Vector2 screenMax = cam.WorldToScreenPoint(worldBounds.Value.max);
 
                     return new Rect(
                         Mathf.Min(screenMin.x, screenMax.x),
@@ -797,25 +823,25 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Step 1: Press modifier key down - hold for realistic timing
+            // Modifier down
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
             InputSystem.Update();
-            await Async.Delay(2, 0.05f);
+            await Async.DelayFrames(1);
 
-            // Step 2: Press the main key while modifier is held
+            // Key down (with modifier held)
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier, key));
             InputSystem.Update();
-            await Async.Delay(3, 0.08f);
+            await Async.DelayFrames(1);
 
-            // Step 3: Release the main key (modifier still held)
+            // Key up (modifier still held)
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(modifier));
             InputSystem.Update();
-            await Async.Delay(2, 0.03f);
+            await Async.DelayFrames(1);
 
-            // Step 4: Release modifier
+            // Modifier up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Async.Delay(2, 0.03f);
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -886,6 +912,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task Swipe(GameObject element, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
         {
+            await EnsureGameViewFocusAsync();
             var startPos = GetScreenPosition(element);
             var offset = GetDirectionOffset(direction, normalizedDistance);
             var endPos = startPos + offset;
@@ -961,6 +988,7 @@ namespace ODDGames.UIAutomation
         public static async Task InjectTwoFingerSwipe(Vector2 centerPosition, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
             await EnsureGameViewFocusAsync();
+
             var offset = GetDirectionOffset(direction, normalizedDistance);
 
             // Calculate finger positions
@@ -988,28 +1016,47 @@ namespace ODDGames.UIAutomation
         #endregion
 
         /// <summary>
-        /// Ensures the Game view has focus in the Editor so input events are received.
-        /// Does nothing at runtime or in builds.
+        /// Ensures the Game View has focus before injecting input events.
+        /// Without this, input events may be consumed by other Editor windows.
+        /// Polls until focus is confirmed or timeout is reached.
         /// </summary>
         public static async Task EnsureGameViewFocusAsync()
         {
 #if UNITY_EDITOR
-            var gameViewType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
-            if (gameViewType != null)
+            // Cache Game View reference to avoid reflection every call
+            // (this runs in every delay loop iteration)
+            if (_cachedGameView == null || !_cachedGameView)
             {
-                var gameView = UnityEditor.EditorWindow.GetWindow(gameViewType, false, null, false);
-                if (gameView != null)
-                {
-                    gameView.Focus();
-                    // Wait for focus to take effect
-                    await Async.DelayFrames(1);
-                    await Async.DelayFrames(1);
-                }
+                var gameViewType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
+                if (gameViewType == null) return;
+                _cachedGameView = UnityEditor.EditorWindow.GetWindow(gameViewType, false, null, false);
+                if (_cachedGameView == null) return;
             }
+
+            // Already focused — early return
+            if (UnityEditor.EditorWindow.focusedWindow == _cachedGameView) return;
+
+            _cachedGameView.Focus();
+
+            // Poll until focus is confirmed (max ~30 frames / 0.5s)
+            for (int i = 0; i < 30; i++)
+            {
+                await Task.Yield();
+                if (UnityEditor.EditorWindow.focusedWindow == _cachedGameView)
+                    return;
+            }
+
+            // Last resort: try once more
+            _cachedGameView.Focus();
+            await Task.Yield();
 #else
             await Task.CompletedTask;
 #endif
         }
+
+#if UNITY_EDITOR
+        private static UnityEditor.EditorWindow _cachedGameView;
+#endif
 
         /// <summary>
         /// Scales screen coordinates to match the actual Game View window size in the Editor.
@@ -1098,13 +1145,10 @@ namespace ODDGames.UIAutomation
             InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
             await EnsureGameViewFocusAsync();
 
-            // Scale to actual Game View window coordinates in Editor
-            var scaledPosition = ScaleToGameViewWindow(screenPosition);
-
             if (ShouldUseTouchInput())
             {
                 LogDebug("Using touch input");
-                await InjectTouchTap(scaledPosition);
+                await InjectTouchTap(screenPosition);
                 return;
             }
 
@@ -1117,27 +1161,35 @@ namespace ODDGames.UIAutomation
 
             LogDebug($"Using mouse input, device={mouse.deviceId}");
 
-            // Use MouseState struct for complete state control
-            var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
-
-            // Move mouse to position first - simulate real user movement time
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            // Move mouse to position first — establishes pointerEnter on the UI element.
+            // One frame wait is sufficient (matches Unity's InputTestFixture pattern).
+            using (DeltaStateEvent.From(mouse.position, out var posPtr))
+            {
+                mouse.position.WriteValueIntoEvent(screenPosition, posPtr);
+                InputSystem.QueueEvent(posPtr);
+            }
             InputSystem.Update();
-            await Async.Delay(2, 0.05f);
+            await Async.DelayFrames(1);
 
-            // Mouse button down - hold for realistic click duration (~100ms)
-            mouseState = mouseState.WithButton(MouseButton.Left);
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            // Press and release in same frame — Unity's InputTestFixture proves this works.
+            // Queue both events before Update so they're processed in one batch.
+            using (DeltaStateEvent.From(mouse.leftButton, out var downPtr))
+            {
+                mouse.leftButton.WriteValueIntoEvent(1f, downPtr);
+                InputSystem.QueueEvent(downPtr);
+            }
             InputSystem.Update();
-            await Async.Delay(3, 0.08f);
+            await Async.DelayFrames(1);
 
-            // Mouse button up
-            mouseState = mouseState.WithButton(MouseButton.Left, false);
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            using (DeltaStateEvent.From(mouse.leftButton, out var upPtr))
+            {
+                mouse.leftButton.WriteValueIntoEvent(0f, upPtr);
+                InputSystem.QueueEvent(upPtr);
+            }
             InputSystem.Update();
             LogDebug("InjectPointerTap complete");
             InputVisualizer.RecordCursorEnd();
-            await Async.Delay(2, 0.03f);
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1151,13 +1203,10 @@ namespace ODDGames.UIAutomation
             InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
             await EnsureGameViewFocusAsync();
 
-            // Scale to actual Game View window coordinates in Editor
-            var scaledPosition = ScaleToGameViewWindow(screenPosition);
-
             if (ShouldUseTouchInput())
             {
                 LogDebug("Using touch input");
-                await InjectTouchDoubleTap(scaledPosition);
+                await InjectTouchDoubleTap(screenPosition);
                 return;
             }
 
@@ -1170,45 +1219,55 @@ namespace ODDGames.UIAutomation
 
             LogDebug($"Using mouse input, device={mouse.deviceId}");
 
-            // First click - simulate realistic user timing
-            var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            // Move mouse to position — 1 frame to establish pointerEnter
+            using (DeltaStateEvent.From(mouse.position, out var posPtr))
+            {
+                mouse.position.WriteValueIntoEvent(screenPosition, posPtr);
+                InputSystem.QueueEvent(posPtr);
+            }
             InputSystem.Update();
+            await Async.DelayFrames(1);
+
+            // First click — press then release in consecutive frames
+            using (DeltaStateEvent.From(mouse.leftButton, out var d1))
+            {
+                mouse.leftButton.WriteValueIntoEvent(1f, d1);
+                InputSystem.QueueEvent(d1);
+            }
+            InputSystem.Update();
+            await Async.DelayFrames(1);
+
+            using (DeltaStateEvent.From(mouse.leftButton, out var u1))
+            {
+                mouse.leftButton.WriteValueIntoEvent(0f, u1);
+                InputSystem.QueueEvent(u1);
+            }
+            InputSystem.Update();
+            await Async.DelayFrames(1);
+
+            // Inter-click gap — must be within double-click speed threshold (~300ms)
             await Async.Delay(2, 0.05f);
 
-            mouseState = mouseState.WithButton(MouseButton.Left);
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            await EnsureGameViewFocusAsync();
+
+            // Second click
+            using (DeltaStateEvent.From(mouse.leftButton, out var d2))
+            {
+                mouse.leftButton.WriteValueIntoEvent(1f, d2);
+                InputSystem.QueueEvent(d2);
+            }
             InputSystem.Update();
-            await Async.Delay(3, 0.08f);
+            await Async.DelayFrames(1);
 
-            mouseState = mouseState.WithButton(MouseButton.Left, false);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(2, 0.03f);
-
-            // Delay between clicks - realistic double-click timing (~150ms)
-            // Short enough for double-click detection, long enough for UI reset
-            await Async.Delay(4, 0.12f);
-
-            await EnsureGameViewFocusAsync(); // Ensure focus before second click
-
-            // Second click - re-set position to ensure proper registration
-            mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(2, 0.05f);
-
-            mouseState = mouseState.WithButton(MouseButton.Left);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(3, 0.08f);
-
-            mouseState = mouseState.WithButton(MouseButton.Left, false);
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            using (DeltaStateEvent.From(mouse.leftButton, out var u2))
+            {
+                mouse.leftButton.WriteValueIntoEvent(0f, u2);
+                InputSystem.QueueEvent(u2);
+            }
             InputSystem.Update();
             LogDebug("InjectPointerDoubleTap complete");
             InputVisualizer.RecordCursorEnd();
-            await Async.Delay(2, 0.03f);
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1216,14 +1275,8 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectTouchDoubleTap(Vector2 screenPosition)
         {
-            // First tap
             await InjectTouchTap(screenPosition);
-
-            // Delay between taps - realistic double-tap timing (~150ms)
-            // Short enough for double-tap detection, long enough for UI reset
-            await Async.Delay(4, 0.12f);
-
-            // Second tap
+            await Async.Delay(2, 0.05f);
             await InjectTouchTap(screenPosition);
         }
 
@@ -1239,13 +1292,10 @@ namespace ODDGames.UIAutomation
             InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
             await EnsureGameViewFocusAsync();
 
-            // Scale to actual Game View window coordinates in Editor
-            var scaledPosition = ScaleToGameViewWindow(screenPosition);
-
             if (ShouldUseTouchInput())
             {
                 LogDebug("Using touch input");
-                await InjectTouchTripleTap(scaledPosition);
+                await InjectTouchTripleTap(screenPosition);
                 return;
             }
 
@@ -1258,65 +1308,43 @@ namespace ODDGames.UIAutomation
 
             LogDebug($"Using mouse input, device={mouse.deviceId}");
 
-            // First click - simulate realistic user timing
-            var mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            // Move mouse to position — 1 frame to establish pointerEnter
+            using (DeltaStateEvent.From(mouse.position, out var posPtr))
+            {
+                mouse.position.WriteValueIntoEvent(screenPosition, posPtr);
+                InputSystem.QueueEvent(posPtr);
+            }
             InputSystem.Update();
-            await Async.Delay(2, 0.05f);
+            await Async.DelayFrames(1);
 
-            mouseState = mouseState.WithButton(MouseButton.Left);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(3, 0.08f);
+            // Three clicks with inter-click gaps within multi-click speed threshold
+            for (int click = 0; click < 3; click++)
+            {
+                if (click > 0)
+                {
+                    await Async.Delay(2, 0.05f);
+                    await EnsureGameViewFocusAsync();
+                }
 
-            mouseState = mouseState.WithButton(MouseButton.Left, false);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(2, 0.03f);
+                using (DeltaStateEvent.From(mouse.leftButton, out var down))
+                {
+                    mouse.leftButton.WriteValueIntoEvent(1f, down);
+                    InputSystem.QueueEvent(down);
+                }
+                InputSystem.Update();
+                await Async.DelayFrames(1);
 
-            // Delay between clicks - realistic multi-click timing (~150ms)
-            await Async.Delay(4, 0.12f);
+                using (DeltaStateEvent.From(mouse.leftButton, out var up))
+                {
+                    mouse.leftButton.WriteValueIntoEvent(0f, up);
+                    InputSystem.QueueEvent(up);
+                }
+                InputSystem.Update();
+                await Async.DelayFrames(1);
+            }
 
-            await EnsureGameViewFocusAsync();
-
-            // Second click - re-set position to ensure proper registration
-            mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(2, 0.05f);
-
-            mouseState = mouseState.WithButton(MouseButton.Left);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(3, 0.08f);
-
-            mouseState = mouseState.WithButton(MouseButton.Left, false);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(2, 0.03f);
-
-            // Delay between clicks
-            await Async.Delay(4, 0.12f);
-
-            await EnsureGameViewFocusAsync();
-
-            // Third click - re-set position to ensure proper registration
-            mouseState = new MouseState { position = scaledPosition, delta = Vector2.zero };
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(2, 0.05f);
-
-            mouseState = mouseState.WithButton(MouseButton.Left);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(3, 0.08f);
-
-            mouseState = mouseState.WithButton(MouseButton.Left, false);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
             LogDebug("InjectPointerTripleTap complete");
             InputVisualizer.RecordCursorEnd();
-            await Async.Delay(2, 0.03f);
         }
 
         /// <summary>
@@ -1324,19 +1352,11 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectTouchTripleTap(Vector2 screenPosition)
         {
-            // First tap
-            await InjectTouchTap(screenPosition);
-
-            // Delay between taps - realistic multi-tap timing (~150ms)
-            await Async.Delay(4, 0.12f);
-
-            // Second tap
-            await InjectTouchTap(screenPosition);
-
-            await Async.Delay(4, 0.12f);
-
-            // Third tap
-            await InjectTouchTap(screenPosition);
+            for (int i = 0; i < 3; i++)
+            {
+                if (i > 0) await Async.Delay(2, 0.05f);
+                await InjectTouchTap(screenPosition);
+            }
         }
 
         /// <summary>
@@ -1352,37 +1372,34 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            const int touchId = 1; // Touch IDs must be non-zero
+            const int touchId = 1;
+            InputVisualizer.RecordClick(screenPosition, 1, 0);
+            InputVisualizer.RecordCursorPosition(screenPosition, false, 0, true);
 
-            // Touch began
-            using (StateEvent.From(touchscreen, out var beginPtr))
+            // Touch began — using TouchState struct (matches Unity's InputTestFixture.SetTouch pattern)
+            InputSystem.QueueStateEvent(touchscreen, new TouchState
             {
-                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, beginPtr);
-                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, beginPtr);
-                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, beginPtr);
-                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Began, beginPtr);
-                touchscreen.touches[0].pressure.WriteValueIntoEvent(1f, beginPtr);
-                InputSystem.QueueEvent(beginPtr);
-            }
+                touchId = touchId,
+                position = screenPosition,
+                delta = Vector2.zero,
+                phase = UnityEngine.InputSystem.TouchPhase.Began,
+                pressure = 1f,
+            });
             InputSystem.Update();
+            await Async.DelayFrames(1);
 
-            // Hold touch for realistic tap duration (~100ms)
-            await Async.Delay(3, 0.08f);
-
-            // Touch ended (tap is just began + ended at same position)
-            using (StateEvent.From(touchscreen, out var endPtr))
+            // Touch ended
+            InputSystem.QueueStateEvent(touchscreen, new TouchState
             {
-                touchscreen.touches[0].touchId.WriteValueIntoEvent(touchId, endPtr);
-                touchscreen.touches[0].position.WriteValueIntoEvent(screenPosition, endPtr);
-                touchscreen.touches[0].delta.WriteValueIntoEvent(Vector2.zero, endPtr);
-                touchscreen.touches[0].phase.WriteValueIntoEvent(UnityEngine.InputSystem.TouchPhase.Ended, endPtr);
-                touchscreen.touches[0].pressure.WriteValueIntoEvent(0f, endPtr);
-                InputSystem.QueueEvent(endPtr);
-            }
+                touchId = touchId,
+                position = screenPosition,
+                delta = Vector2.zero,
+                phase = UnityEngine.InputSystem.TouchPhase.Ended,
+                pressure = 0f,
+            });
             InputSystem.Update();
-
-            // Wait for UI to process the tap
-            await Async.Delay(2, 0.03f);
+            InputVisualizer.RecordCursorEnd();
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1424,6 +1441,7 @@ namespace ODDGames.UIAutomation
         /// <param name="button">Which mouse button to use for dragging</param>
         internal static async Task InjectMouseDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
+
             var mouse = GetMouse();
             if (mouse == null)
             {
@@ -1582,6 +1600,7 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         internal static async Task InjectTouchDrag(Vector2 startPos, Vector2 endPos, float duration, float holdTime = 0.05f)
         {
+
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
@@ -1722,40 +1741,33 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Scale to actual Game View window coordinates in Editor
-            var scaledPosition = ScaleToGameViewWindow(position);
-
             // Move mouse to position first so EventSystem establishes pointerEnter
             // on the element under the cursor. Without this, scroll events are dropped
             // because InputSystemUIInputModule requires a valid pointerEnter target.
-            using (StateEvent.From(mouse, out var movePtr))
+            using (DeltaStateEvent.From(mouse.position, out var posPtr))
             {
-                mouse.position.WriteValueIntoEvent(scaledPosition, movePtr);
-                mouse.delta.WriteValueIntoEvent(Vector2.zero, movePtr);
-                InputSystem.QueueEvent(movePtr);
+                mouse.position.WriteValueIntoEvent(position, posPtr);
+                InputSystem.QueueEvent(posPtr);
             }
             InputSystem.Update();
-            await Async.Delay(3, 0.05f);
+            // Wait for InputSystemUIInputModule.Process() to establish pointerEnter
+            await Async.DelayFrames(2);
 
-            // Send scroll event at the same position
-            using (StateEvent.From(mouse, out var scrollPtr))
+            // Inject scroll using DeltaStateEvent on the scroll control.
+            // CRITICAL: Do NOT call InputSystem.Update() after queuing — let the player
+            // loop process it. Manual Update() would apply the scroll state, but then
+            // Mouse.OnNextUpdate() resets scroll to zero at the start of the NEXT frame's
+            // InputSystem.Update() — BEFORE InputSystemUIInputModule.Process() reads it.
+            // By only queuing, the event is processed in the next frame's natural
+            // InputSystem.Update() → Process() sequence, where scroll is still non-zero.
+            using (DeltaStateEvent.From(mouse.scroll, out var scrollPtr))
             {
-                mouse.position.WriteValueIntoEvent(scaledPosition, scrollPtr);
                 mouse.scroll.WriteValueIntoEvent(scrollDelta, scrollPtr);
                 InputSystem.QueueEvent(scrollPtr);
             }
-            InputSystem.Update();
-            await Async.Delay(2, 0.05f);
-
-            // Reset scroll to zero (scroll is a delta, needs to return to zero)
-            using (StateEvent.From(mouse, out var resetPtr))
-            {
-                mouse.position.WriteValueIntoEvent(scaledPosition, resetPtr);
-                mouse.scroll.WriteValueIntoEvent(Vector2.zero, resetPtr);
-                InputSystem.QueueEvent(resetPtr);
-            }
-            InputSystem.Update();
-            await Async.Delay(2, 0.03f);
+            // Let the player loop process: InputSystem.Update() applies scroll,
+            // then EventSystem.Update() → Process() reads it before next reset.
+            await Async.DelayFrames(2);
         }
 
         /// <summary>
@@ -1767,6 +1779,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task TypeText(string text)
         {
+            await EnsureGameViewFocusAsync();
             LogDebug($"TypeText '{text}' ({text?.Length ?? 0} chars)");
 
             var keyboard = GetKeyboard();
@@ -1795,6 +1808,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task SelectAllText()
         {
+
             var keyboard = GetKeyboard();
             if (keyboard == null)
             {
@@ -1837,15 +1851,15 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Key down - hold for realistic key press duration (~80ms)
+            // Key down
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(key));
             InputSystem.Update();
-            await Async.Delay(3, 0.08f);
+            await Async.DelayFrames(1);
 
             // Key up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             InputSystem.Update();
-            await Async.Delay(2, 0.03f);
+            await Async.DelayFrames(1);
         }
 
         /// <summary>
@@ -1956,32 +1970,37 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Use MouseState struct for complete state control
-            var mouseState = new MouseState { position = screenPosition, delta = Vector2.zero };
-
-            // Move mouse to position
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            // Move mouse to position — 1 frame to establish pointerEnter
+            using (DeltaStateEvent.From(mouse.position, out var posPtr))
+            {
+                mouse.position.WriteValueIntoEvent(screenPosition, posPtr);
+                InputSystem.QueueEvent(posPtr);
+            }
             InputSystem.Update();
             await Async.DelayFrames(1);
 
             // Mouse button down
-            mouseState = mouseState.WithButton(MouseButton.Left);
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            using (DeltaStateEvent.From(mouse.leftButton, out var downPtr))
+            {
+                mouse.leftButton.WriteValueIntoEvent(1f, downPtr);
+                InputSystem.QueueEvent(downPtr);
+            }
             InputSystem.Update();
             await Async.DelayFrames(1);
 
-            // Hold for specified duration - re-queue state each frame (wall-clock based)
+            // Hold for specified duration (wall-clock based)
             long holdEndTicks = Stopwatch.GetTimestamp() + (long)(holdSeconds * Stopwatch.Frequency);
             while (Stopwatch.GetTimestamp() < holdEndTicks)
             {
-                InputSystem.QueueStateEvent(mouse, mouseState);
-                InputSystem.Update();
                 await Async.DelayFrames(1);
             }
 
             // Mouse button up
-            mouseState = mouseState.WithButton(MouseButton.Left, false);
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            using (DeltaStateEvent.From(mouse.leftButton, out var upPtr))
+            {
+                mouse.leftButton.WriteValueIntoEvent(0f, upPtr);
+                InputSystem.QueueEvent(upPtr);
+            }
             InputSystem.Update();
             InputVisualizer.RecordHoldEnd();
             await Async.DelayFrames(1);
@@ -1993,6 +2012,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task InjectTouchHold(Vector2 screenPosition, float holdSeconds)
         {
+
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
@@ -2001,6 +2021,7 @@ namespace ODDGames.UIAutomation
             }
 
             const int touchId = 1; // Touch IDs must be non-zero
+            InputVisualizer.RecordHoldStart(screenPosition);
 
             // Touch began
             using (StateEvent.From(touchscreen, out var beginPtr))
@@ -2043,6 +2064,7 @@ namespace ODDGames.UIAutomation
                 InputSystem.QueueEvent(endPtr);
             }
             InputSystem.Update();
+            InputVisualizer.RecordHoldEnd();
             await Async.DelayFrames(1);
         }
 
@@ -2057,6 +2079,7 @@ namespace ODDGames.UIAutomation
             const float startOffset = 100f; // Initial distance from center
             InputVisualizer.RecordPinchStart(centerPosition, startOffset * 2f);
             await EnsureGameViewFocusAsync();
+
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
@@ -2116,6 +2139,7 @@ namespace ODDGames.UIAutomation
 
                     InputSystem.QueueEvent(movePtr);
                 }
+                InputVisualizer.RecordPinchUpdate(currentTouch1, currentTouch2);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
             }
@@ -2150,6 +2174,7 @@ namespace ODDGames.UIAutomation
         public static async Task InjectPinch(Vector2 centerPosition, float scale, float duration, float fingerDistancePixels)
         {
             InputVisualizer.RecordPinchStart(centerPosition, fingerDistancePixels * 2f);
+            await EnsureGameViewFocusAsync();
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
@@ -2210,6 +2235,7 @@ namespace ODDGames.UIAutomation
 
                     InputSystem.QueueEvent(movePtr);
                 }
+                InputVisualizer.RecordPinchUpdate(currentTouch1, currentTouch2);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
             }
@@ -2241,6 +2267,7 @@ namespace ODDGames.UIAutomation
         {
             InputVisualizer.RecordTwoFingerStart(start1, start2);
             await EnsureGameViewFocusAsync();
+
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
@@ -2291,6 +2318,7 @@ namespace ODDGames.UIAutomation
 
                     InputSystem.QueueEvent(movePtr);
                 }
+                InputVisualizer.RecordTwoFingerUpdate(current1, current2);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
             }
@@ -2328,6 +2356,7 @@ namespace ODDGames.UIAutomation
             float radiusPixels = fingerDistance * Mathf.Min(Screen.width, Screen.height);
             InputVisualizer.RecordRotateStart(centerPosition, radiusPixels);
             await EnsureGameViewFocusAsync();
+
             await InjectRotatePixels(centerPosition, degrees, duration, radiusPixels);
             InputVisualizer.RecordRotateEnd(degrees);
         }
@@ -2341,6 +2370,7 @@ namespace ODDGames.UIAutomation
         /// <param name="radiusPixels">Distance from center in pixels for finger positions.</param>
         public static async Task InjectRotatePixels(Vector2 centerPosition, float degrees, float duration, float radiusPixels)
         {
+            await EnsureGameViewFocusAsync();
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
@@ -2410,6 +2440,7 @@ namespace ODDGames.UIAutomation
 
                     InputSystem.QueueEvent(movePtr);
                 }
+                InputVisualizer.RecordRotateUpdate(currentTouch1, currentTouch2);
                 InputSystem.Update();
                 await Async.DelayFrames(1);
             }

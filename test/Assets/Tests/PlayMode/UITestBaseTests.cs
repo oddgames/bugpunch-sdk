@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 using TMPro;
 
@@ -60,7 +62,7 @@ namespace ODDGames.UIAutomation.Tests
             var button = CreateButton("TestButton", Vector2.zero);
             button.onClick.AddListener(() => clicked = true);
 
-            await ActionExecutor.Click(new Search().Name("TestButton"), searchTime: 2f);
+            await ActionExecutor.Click(new Search().Name("TestButton"), searchTime: 0.5f);
 
             Assert.IsTrue(clicked, "Button should have been clicked");
         }
@@ -68,6 +70,7 @@ namespace ODDGames.UIAutomation.Tests
         [Test]
         public async Task Click_ThrowsWhenElementNotFound()
         {
+            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
             try
             {
                 await ActionExecutor.Click(new Search().Name("NonExistentElement"), searchTime: 0.5f);
@@ -86,7 +89,7 @@ namespace ODDGames.UIAutomation.Tests
             var button = CreateButton("DoubleClickButton", Vector2.zero);
             button.onClick.AddListener(() => clickCount++);
 
-            await ActionExecutor.DoubleClick(new Search().Name("DoubleClickButton"), searchTime: 2f);
+            await ActionExecutor.DoubleClick(new Search().Name("DoubleClickButton"), searchTime: 0.5f);
 
             Assert.AreEqual(2, clickCount, "Button should have been double-clicked");
         }
@@ -98,7 +101,7 @@ namespace ODDGames.UIAutomation.Tests
             var button = CreateButton("TripleClickButton", Vector2.zero);
             button.onClick.AddListener(() => clickCount++);
 
-            await ActionExecutor.TripleClick(new Search().Name("TripleClickButton"), searchTime: 2f);
+            await ActionExecutor.TripleClick(new Search().Name("TripleClickButton"), searchTime: 0.5f);
 
             Assert.AreEqual(3, clickCount, "Button should have been triple-clicked");
         }

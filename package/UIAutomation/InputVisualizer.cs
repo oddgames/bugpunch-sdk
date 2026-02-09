@@ -107,13 +107,58 @@ namespace ODDGames.UIAutomation
             public float FadeStartTime; // When cursor started fading (0 = not fading)
         }
 
+        private struct GestureState
+        {
+            public enum GestureType { Pinch, Rotate, TwoFingerDrag }
+            public GestureType Type;
+            public Vector2 Center;
+            public Vector2 Finger1;
+            public Vector2 Finger2;
+            public float StartTime;
+            public bool IsActive;
+            public float FadeStartTime;
+        }
+
+        private struct KeyEvent
+        {
+            public string KeyName;
+            public float StartTime;
+            public bool IsHold;
+            public bool IsActive; // For holds - true while held
+        }
+
+        private struct TextEvent
+        {
+            public string Text;
+            public Vector2 Position;
+            public float StartTime;
+        }
+
         /// <summary>Duration in seconds for cursor to fade out after release.</summary>
         public static float CursorFadeDuration = 1.5f;
+
+        /// <summary>Duration in seconds for gesture visualization to fade after completion.</summary>
+        public static float GestureFadeDuration = 0.5f;
+
+        /// <summary>Duration in seconds for key press label to display.</summary>
+        public static float KeyDisplayDuration = 0.8f;
+
+        /// <summary>Duration in seconds for text input label to display.</summary>
+        public static float TextDisplayDuration = 1.0f;
+
+        /// <summary>Color for gesture finger dots and lines.</summary>
+        public static Color GestureColor = new Color(1f, 0.6f, 0.2f, 0.7f);
+
+        /// <summary>Color for key press labels.</summary>
+        public static Color KeyColor = new Color(1f, 1f, 0.4f, 0.9f);
 
         private readonly List<ClickEvent> _clicks = new();
         private readonly List<TrailPoint> _trail = new();
         private readonly List<ScrollEvent> _scrolls = new();
+        private readonly List<KeyEvent> _keys = new();
+        private readonly List<TextEvent> _texts = new();
         private CursorState? _activeCursor;
+        private GestureState? _activeGesture;
 
         // Icon textures loaded from Resources
         private Texture2D _mouseCursorIcon;
@@ -217,22 +262,196 @@ namespace ODDGames.UIAutomation
             _instance._trail.Clear();
         }
 
-        // Legacy API stubs for compatibility
+        // Drag visualization
         public static void RecordDragStart(Vector2 screenPosition) => RecordCursorPosition(screenPosition, false, 0, true);
         public static void RecordDragPoint(Vector2 screenPosition) => RecordCursorPosition(screenPosition, false, 0, true);
-        public static void RecordDragEnd(Vector2 screenPosition) { }
-        public static void RecordKeyPress(string keyName) { }
-        public static void RecordKeyHoldStart(string keyName) { }
-        public static void RecordKeyHoldEnd() { }
+        public static void RecordDragEnd(Vector2 screenPosition) => RecordCursorEnd();
+
+        // Hold visualization
         public static void RecordHoldStart(Vector2 screenPosition) => RecordCursorPosition(screenPosition, false, 0, true);
         public static void RecordHoldEnd() => RecordCursorEnd();
-        public static void RecordPinchStart(Vector2 center, float fingerDistance) { }
-        public static void RecordPinchEnd(float endDistance) { }
-        public static void RecordRotateStart(Vector2 center, float radius) { }
-        public static void RecordRotateEnd(float degrees) { }
-        public static void RecordTwoFingerStart(Vector2 pos1, Vector2 pos2) { }
-        public static void RecordTwoFingerEnd(Vector2 end1, Vector2 end2) { }
-        public static void RecordText(string text, Vector2 position) { }
+
+        /// <summary>Records a key press for visualization.</summary>
+        public static void RecordKeyPress(string keyName)
+        {
+            if (!_enabled) return;
+            EnsureInstance();
+            if (_instance == null) return;
+
+            _instance._keys.Add(new KeyEvent
+            {
+                KeyName = keyName,
+                StartTime = Time.unscaledTime,
+                IsHold = false,
+                IsActive = false
+            });
+        }
+
+        /// <summary>Records the start of a key hold for visualization.</summary>
+        public static void RecordKeyHoldStart(string keyName)
+        {
+            if (!_enabled) return;
+            EnsureInstance();
+            if (_instance == null) return;
+
+            _instance._keys.Add(new KeyEvent
+            {
+                KeyName = keyName,
+                StartTime = Time.unscaledTime,
+                IsHold = true,
+                IsActive = true
+            });
+        }
+
+        /// <summary>Marks the active key hold as ended.</summary>
+        public static void RecordKeyHoldEnd()
+        {
+            if (!_enabled || _instance == null) return;
+
+            for (int i = _instance._keys.Count - 1; i >= 0; i--)
+            {
+                var key = _instance._keys[i];
+                if (key.IsHold && key.IsActive)
+                {
+                    key.IsActive = false;
+                    key.StartTime = Time.unscaledTime; // Reset timer for fade-out
+                    _instance._keys[i] = key;
+                    break;
+                }
+            }
+        }
+
+        /// <summary>Records a pinch gesture start with two finger positions.</summary>
+        public static void RecordPinchStart(Vector2 center, float fingerDistance)
+        {
+            if (!_enabled) return;
+            EnsureInstance();
+            if (_instance == null) return;
+
+            _instance._activeGesture = new GestureState
+            {
+                Type = GestureState.GestureType.Pinch,
+                Center = center,
+                Finger1 = center + new Vector2(-fingerDistance / 2f, 0),
+                Finger2 = center + new Vector2(fingerDistance / 2f, 0),
+                StartTime = Time.unscaledTime,
+                IsActive = true
+            };
+        }
+
+        /// <summary>Updates the active pinch gesture finger positions.</summary>
+        public static void RecordPinchUpdate(Vector2 finger1, Vector2 finger2)
+        {
+            if (!_enabled || _instance == null || !_instance._activeGesture.HasValue) return;
+
+            var gesture = _instance._activeGesture.Value;
+            gesture.Finger1 = finger1;
+            gesture.Finger2 = finger2;
+            gesture.Center = (finger1 + finger2) / 2f;
+            _instance._activeGesture = gesture;
+        }
+
+        /// <summary>Ends the active pinch gesture.</summary>
+        public static void RecordPinchEnd(float endDistance)
+        {
+            EndActiveGesture();
+        }
+
+        /// <summary>Records a rotate gesture start.</summary>
+        public static void RecordRotateStart(Vector2 center, float radius)
+        {
+            if (!_enabled) return;
+            EnsureInstance();
+            if (_instance == null) return;
+
+            _instance._activeGesture = new GestureState
+            {
+                Type = GestureState.GestureType.Rotate,
+                Center = center,
+                Finger1 = center + new Vector2(-radius, 0),
+                Finger2 = center + new Vector2(radius, 0),
+                StartTime = Time.unscaledTime,
+                IsActive = true
+            };
+        }
+
+        /// <summary>Updates the active rotate gesture finger positions.</summary>
+        public static void RecordRotateUpdate(Vector2 finger1, Vector2 finger2)
+        {
+            if (!_enabled || _instance == null || !_instance._activeGesture.HasValue) return;
+
+            var gesture = _instance._activeGesture.Value;
+            gesture.Finger1 = finger1;
+            gesture.Finger2 = finger2;
+            _instance._activeGesture = gesture;
+        }
+
+        /// <summary>Ends the active rotate gesture.</summary>
+        public static void RecordRotateEnd(float degrees)
+        {
+            EndActiveGesture();
+        }
+
+        /// <summary>Records a two-finger drag start.</summary>
+        public static void RecordTwoFingerStart(Vector2 pos1, Vector2 pos2)
+        {
+            if (!_enabled) return;
+            EnsureInstance();
+            if (_instance == null) return;
+
+            _instance._activeGesture = new GestureState
+            {
+                Type = GestureState.GestureType.TwoFingerDrag,
+                Center = (pos1 + pos2) / 2f,
+                Finger1 = pos1,
+                Finger2 = pos2,
+                StartTime = Time.unscaledTime,
+                IsActive = true
+            };
+        }
+
+        /// <summary>Updates the active two-finger drag positions.</summary>
+        public static void RecordTwoFingerUpdate(Vector2 pos1, Vector2 pos2)
+        {
+            if (!_enabled || _instance == null || !_instance._activeGesture.HasValue) return;
+
+            var gesture = _instance._activeGesture.Value;
+            gesture.Finger1 = pos1;
+            gesture.Finger2 = pos2;
+            gesture.Center = (pos1 + pos2) / 2f;
+            _instance._activeGesture = gesture;
+        }
+
+        /// <summary>Ends the active two-finger drag.</summary>
+        public static void RecordTwoFingerEnd(Vector2 end1, Vector2 end2)
+        {
+            EndActiveGesture();
+        }
+
+        /// <summary>Records text input for visualization.</summary>
+        public static void RecordText(string text, Vector2 position)
+        {
+            if (!_enabled) return;
+            EnsureInstance();
+            if (_instance == null) return;
+
+            _instance._texts.Add(new TextEvent
+            {
+                Text = text,
+                Position = position,
+                StartTime = Time.unscaledTime
+            });
+        }
+
+        private static void EndActiveGesture()
+        {
+            if (_instance == null || !_instance._activeGesture.HasValue) return;
+
+            var gesture = _instance._activeGesture.Value;
+            gesture.IsActive = false;
+            gesture.FadeStartTime = Time.unscaledTime;
+            _instance._activeGesture = gesture;
+        }
 
         #endregion
 
@@ -314,14 +533,21 @@ namespace ODDGames.UIAutomation
             _clicks.RemoveAll(c => now - c.StartTime > ClickDuration);
             _scrolls.RemoveAll(s => now - s.StartTime > ScrollDuration);
             _trail.RemoveAll(t => now - t.Time > TrailDuration);
+            _keys.RemoveAll(k => !k.IsActive && now - k.StartTime > KeyDisplayDuration);
+            _texts.RemoveAll(t => now - t.StartTime > TextDisplayDuration);
 
             // Clear cursor when fade completes
             if (_activeCursor.HasValue && !_activeCursor.Value.IsActive)
             {
                 if (now - _activeCursor.Value.FadeStartTime > CursorFadeDuration)
-                {
                     _activeCursor = null;
-                }
+            }
+
+            // Clear gesture when fade completes
+            if (_activeGesture.HasValue && !_activeGesture.Value.IsActive)
+            {
+                if (now - _activeGesture.Value.FadeStartTime > GestureFadeDuration)
+                    _activeGesture = null;
             }
         }
 
@@ -334,7 +560,8 @@ namespace ODDGames.UIAutomation
             if (!_enabled) return;
 
             bool hasEvents = _clicks.Count > 0 || _trail.Count > 0 ||
-                             _activeCursor.HasValue || _scrolls.Count > 0;
+                             _activeCursor.HasValue || _scrolls.Count > 0 ||
+                             _activeGesture.HasValue || _keys.Count > 0 || _texts.Count > 0;
 
             if (!hasEvents) return;
 
@@ -342,6 +569,9 @@ namespace ODDGames.UIAutomation
             DrawTrail();
             DrawClicks();
             DrawScrollIcons();
+            DrawGesture();
+            DrawKeys();
+            DrawTexts();
             DrawCursor();
         }
 
@@ -476,6 +706,135 @@ namespace ODDGames.UIAutomation
                 }
 
                 DrawIcon(icon, guiPos, CursorSize, alpha);
+            }
+        }
+
+        private void DrawGesture()
+        {
+            if (!_activeGesture.HasValue || _pixelTexture == null) return;
+
+            var gesture = _activeGesture.Value;
+            float alpha = 1f;
+
+            if (!gesture.IsActive && gesture.FadeStartTime > 0)
+            {
+                float fadeProgress = (Time.unscaledTime - gesture.FadeStartTime) / GestureFadeDuration;
+                alpha = Mathf.Clamp01(1f - fadeProgress);
+            }
+
+            if (alpha <= 0) return;
+
+            var color = GestureColor;
+            color.a *= alpha;
+
+            var guiF1 = ScreenToGUI(gesture.Finger1);
+            var guiF2 = ScreenToGUI(gesture.Finger2);
+            var guiCenter = ScreenToGUI(gesture.Center);
+
+            // Draw finger dots
+            float dotRadius = 8f;
+            DrawFilledCircle(guiF1, dotRadius, color);
+            DrawFilledCircle(guiF2, dotRadius, color);
+
+            // Draw lines from fingers to center
+            var lineColor = color;
+            lineColor.a *= 0.5f;
+            DrawLine(guiF1, guiCenter, lineColor, 2f);
+            DrawLine(guiF2, guiCenter, lineColor, 2f);
+
+            // Draw center marker
+            DrawRing(guiCenter, 6f, lineColor);
+
+            // Draw gesture type label
+            string label = gesture.Type switch
+            {
+                GestureState.GestureType.Pinch => "PINCH",
+                GestureState.GestureType.Rotate => "ROTATE",
+                GestureState.GestureType.TwoFingerDrag => "2-FINGER",
+                _ => ""
+            };
+
+            if (label.Length > 0)
+            {
+                var labelStyle = new GUIStyle(GUI.skin.label)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                    fontSize = 12,
+                    fontStyle = FontStyle.Bold
+                };
+                labelStyle.normal.textColor = new Color(1f, 1f, 1f, alpha * 0.8f);
+
+                var labelRect = new Rect(guiCenter.x - 40, guiCenter.y - 25, 80, 20);
+                GUI.Label(labelRect, label, labelStyle);
+            }
+        }
+
+        private void DrawKeys()
+        {
+            if (_keys.Count == 0) return;
+
+            float now = Time.unscaledTime;
+            float yOffset = 10f;
+
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleLeft,
+                fontSize = 14,
+                fontStyle = FontStyle.Bold
+            };
+
+            foreach (var key in _keys)
+            {
+                float alpha;
+                if (key.IsActive)
+                {
+                    // Currently held - pulse effect
+                    float pulse = 0.7f + 0.3f * Mathf.Sin((now - key.StartTime) * 4f);
+                    alpha = pulse;
+                }
+                else
+                {
+                    float t = (now - key.StartTime) / KeyDisplayDuration;
+                    alpha = Mathf.Clamp01(1f - t);
+                }
+
+                if (alpha <= 0) continue;
+
+                string label = key.IsHold && key.IsActive
+                    ? $"[{key.KeyName}] (hold)"
+                    : $"[{key.KeyName}]";
+
+                style.normal.textColor = new Color(KeyColor.r, KeyColor.g, KeyColor.b, alpha);
+                var rect = new Rect(10, yOffset, 200, 22);
+                GUI.Label(rect, label, style);
+                yOffset += 24f;
+            }
+        }
+
+        private void DrawTexts()
+        {
+            if (_texts.Count == 0) return;
+
+            float now = Time.unscaledTime;
+
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = 12,
+                fontStyle = FontStyle.Bold
+            };
+
+            foreach (var textEvent in _texts)
+            {
+                float t = (now - textEvent.StartTime) / TextDisplayDuration;
+                float alpha = Mathf.Clamp01(1f - t);
+                if (alpha <= 0) continue;
+
+                var guiPos = ScreenToGUI(textEvent.Position);
+                style.normal.textColor = new Color(1f, 1f, 1f, alpha);
+
+                var rect = new Rect(guiPos.x - 100, guiPos.y - 30, 200, 20);
+                GUI.Label(rect, $"\"{textEvent.Text}\"", style);
             }
         }
 
