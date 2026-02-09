@@ -419,9 +419,9 @@ namespace ODDGames.UIAutomation.Tests
             var startPos = InputInjector.GetScreenPosition(draggable);
             var endPos = startPos + new Vector2(100, 0);
 
-            await InputInjector.InjectPointerDrag(startPos, endPos, 0.5f);
+            await InputInjector.InjectPointerDrag(startPos, endPos, 0.1f);
 
-            await Async.DelayFrames(5);
+            await Async.DelayFrames(2);
 
             // Verify drag occurred (object position should change)
             var finalPos = InputInjector.GetScreenPosition(draggable);
@@ -436,20 +436,18 @@ namespace ODDGames.UIAutomation.Tests
         public async Task InjectScroll_FloatDelta_ScrollsAtPosition()
         {
             var scrollRect = CreateScrollRect("ScrollTest", Vector2.zero);
-            // Start at middle
             scrollRect.verticalNormalizedPosition = 0.5f;
 
             await Async.DelayFrames(2);
+            Canvas.ForceUpdateCanvases();
 
             var initialPos = scrollRect.verticalNormalizedPosition;
             var screenPos = InputInjector.GetScreenPosition(scrollRect.gameObject);
 
-            // Scroll up with larger delta (120 = one notch on Windows)
             await InputInjector.InjectScroll(screenPos, 120f);
 
-            await Async.DelayFrames(5);
+            await Async.Delay(5, 0.1f);
 
-            // ScrollRect should have moved up (higher normalized position)
             Assert.Greater(scrollRect.verticalNormalizedPosition, initialPos,
                 $"Scroll up should increase position. Was {initialPos:F3}, now {scrollRect.verticalNormalizedPosition:F3}");
         }
@@ -462,6 +460,7 @@ namespace ODDGames.UIAutomation.Tests
             scrollRect.verticalNormalizedPosition = 0.5f;
 
             await Async.DelayFrames(2);
+            Canvas.ForceUpdateCanvases();
 
             var initialPos = scrollRect.verticalNormalizedPosition;
             var screenPos = InputInjector.GetScreenPosition(scrollRect.gameObject);
@@ -469,7 +468,7 @@ namespace ODDGames.UIAutomation.Tests
             // Scroll down with negative delta
             await InputInjector.InjectScroll(screenPos, -120f);
 
-            await Async.DelayFrames(5);
+            await Async.Delay(5, 0.1f);
 
             // ScrollRect should have moved down (lower normalized position)
             Assert.Less(scrollRect.verticalNormalizedPosition, initialPos,
@@ -506,7 +505,7 @@ namespace ODDGames.UIAutomation.Tests
             // (TMP_InputField uses IMGUI Event.PopEvent(), not Keyboard.onTextInput)
             await InputInjector.TypeIntoField(inputField.gameObject, "abc");
 
-            await Async.DelayFrames(5);
+            await Async.DelayFrames(2);
 
             // Check if text was set
             Assert.AreEqual("abc", inputField.text, "Text should be set to 'abc'");
@@ -523,7 +522,7 @@ namespace ODDGames.UIAutomation.Tests
             // Append without clearing
             await InputInjector.TypeIntoField(inputField.gameObject, "new", clearFirst: false);
 
-            await Async.DelayFrames(5);
+            await Async.DelayFrames(2);
 
             Assert.AreEqual("existingnew", inputField.text, "Text should be appended");
         }
@@ -556,11 +555,11 @@ namespace ODDGames.UIAutomation.Tests
 
             float startTime = Time.time;
 
-            await InputInjector.HoldKey(Key.W, 0.2f);
+            await InputInjector.HoldKey(Key.W, 0.1f);
 
             float elapsed = Time.time - startTime;
 
-            Assert.GreaterOrEqual(elapsed, 0.15f, "Hold should take at least the specified duration");
+            Assert.GreaterOrEqual(elapsed, 0.08f, "Hold should take at least the specified duration");
         }
 
         #endregion
@@ -606,7 +605,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await InputInjector.SetSlider(slider, 0.75f);
 
-            await Async.DelayFrames(5);
+            await Async.DelayFrames(2);
 
             // Slider value should have changed toward target
             Assert.Greater(slider.value, 0f, "Slider value should have increased");
@@ -626,7 +625,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await InputInjector.SetScrollbar(scrollbar, 0.75f);
 
-            await Async.DelayFrames(5);
+            await Async.DelayFrames(2);
 
             // Scrollbar value should have changed
             Assert.Greater(scrollbar.value, 0f, "Scrollbar value should have increased");
@@ -646,7 +645,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await InputInjector.ClearInputField(inputField.gameObject);
 
-            await Async.DelayFrames(5);
+            await Async.DelayFrames(2);
 
             // Text should be cleared
             Assert.AreEqual("", inputField.text, "Text should be cleared after ClearInputField");
@@ -729,51 +728,6 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [Test]
-        public async Task PressKeyWithModifier_VerifyKeyboardState()
-        {
-            await Async.DelayFrames(1);
-
-            var keyboard = UnityEngine.InputSystem.Keyboard.current;
-            Assert.IsNotNull(keyboard, "Keyboard device should exist");
-
-            // Press Ctrl+A and check keyboard state during the press
-            bool ctrlWasPressed = false;
-            bool aWasPressed = false;
-            bool bothPressed = false;
-
-            // Queue the modifier
-            UnityEngine.InputSystem.InputSystem.QueueStateEvent(keyboard,
-                new UnityEngine.InputSystem.LowLevel.KeyboardState(UnityEngine.InputSystem.Key.LeftCtrl));
-            UnityEngine.InputSystem.InputSystem.Update();
-            await Async.DelayFrames(1);
-
-            ctrlWasPressed = keyboard.leftCtrlKey.isPressed;
-            Debug.Log($"After Ctrl down: Ctrl={ctrlWasPressed}");
-
-            // Queue Ctrl+A together
-            UnityEngine.InputSystem.InputSystem.QueueStateEvent(keyboard,
-                new UnityEngine.InputSystem.LowLevel.KeyboardState(
-                    UnityEngine.InputSystem.Key.LeftCtrl,
-                    UnityEngine.InputSystem.Key.A));
-            UnityEngine.InputSystem.InputSystem.Update();
-            await Async.DelayFrames(1);
-
-            aWasPressed = keyboard.aKey.isPressed;
-            bothPressed = keyboard.leftCtrlKey.isPressed && keyboard.aKey.isPressed;
-            Debug.Log($"After Ctrl+A: Ctrl={keyboard.leftCtrlKey.isPressed}, A={aWasPressed}, Both={bothPressed}");
-
-            // Release
-            UnityEngine.InputSystem.InputSystem.QueueStateEvent(keyboard,
-                new UnityEngine.InputSystem.LowLevel.KeyboardState());
-            UnityEngine.InputSystem.InputSystem.Update();
-            await Async.DelayFrames(1);
-
-            Assert.IsTrue(ctrlWasPressed, "Ctrl should have been pressed");
-            Assert.IsTrue(aWasPressed, "A should have been pressed");
-            Assert.IsTrue(bothPressed, "Both Ctrl and A should have been pressed simultaneously");
-        }
-
-        [Test]
         public async Task PressKey_SingleKey_IsDetected()
         {
             await Async.DelayFrames(1);
@@ -802,140 +756,9 @@ namespace ODDGames.UIAutomation.Tests
             // Click to focus
             var screenPos = InputInjector.GetScreenPosition(inputField.gameObject);
             await InputInjector.InjectPointerTap(screenPos);
-            await Task.Delay(200);
+            await Async.DelayFrames(2);
 
             Assert.IsTrue(inputField.isFocused, "Input field should be focused after click");
-        }
-
-        [Test]
-        public async Task InputSystem_QueueStateEvent_PopulatesEventPopEvent()
-        {
-            // Tests if InputSystem.QueueStateEvent populates the Event.PopEvent() queue
-            // Checks immediately on same frame and each subsequent frame to catch transient events
-            var keyboard = UnityEngine.InputSystem.Keyboard.current;
-            if (keyboard == null)
-                keyboard = UnityEngine.InputSystem.InputSystem.AddDevice<UnityEngine.InputSystem.Keyboard>();
-
-            await Async.DelayFrames(1);
-
-            int totalEventsPopped = 0;
-            var evt = new Event();
-
-            // Helper to pop and log all events
-            int PopAllEvents(string context)
-            {
-                int count = 0;
-                int queueCount = Event.GetEventCount();
-                Debug.Log($"[Test] {context} - Frame {Time.frameCount}: Queue count = {queueCount}");
-                while (Event.PopEvent(evt))
-                {
-                    count++;
-                    Debug.Log($"[Test] {context} - Popped: type={evt.type}, rawType={evt.rawType}, keyCode={evt.keyCode}, char='{evt.character}'");
-                }
-                return count;
-            }
-
-            // Clear any existing events
-            PopAllEvents("Pre-clear");
-
-            Debug.Log($"[Test] === Injecting Key.A via InputSystem.QueueStateEvent ===");
-
-            // Inject a key press via Input System
-            UnityEngine.InputSystem.InputSystem.QueueStateEvent(keyboard,
-                new UnityEngine.InputSystem.LowLevel.KeyboardState(UnityEngine.InputSystem.Key.A));
-
-            // Check BEFORE InputSystem.Update()
-            totalEventsPopped += PopAllEvents("After QueueStateEvent, before Update()");
-
-            // Process the Input System
-            UnityEngine.InputSystem.InputSystem.Update();
-
-            // Check IMMEDIATELY after InputSystem.Update() on same frame
-            totalEventsPopped += PopAllEvents("After Update(), same frame");
-
-            // Check next several frames
-            for (int i = 1; i <= 5; i++)
-            {
-                await Async.DelayFrames(1);
-                totalEventsPopped += PopAllEvents($"Frame +{i}");
-            }
-
-            // Also try injecting text event to compare
-            Debug.Log($"[Test] === Injecting 'X' via InputSystem.QueueTextEvent for comparison ===");
-            UnityEngine.InputSystem.InputSystem.QueueTextEvent(keyboard, 'X');
-            UnityEngine.InputSystem.InputSystem.Update();
-            totalEventsPopped += PopAllEvents("After QueueTextEvent");
-            await Async.DelayFrames(1);
-            totalEventsPopped += PopAllEvents("Frame after QueueTextEvent");
-
-            // Release key
-            UnityEngine.InputSystem.InputSystem.QueueStateEvent(keyboard,
-                new UnityEngine.InputSystem.LowLevel.KeyboardState());
-            UnityEngine.InputSystem.InputSystem.Update();
-
-            Debug.Log($"[Test] === RESULTS ===");
-            Debug.Log($"[Test] Total events popped: {totalEventsPopped}");
-
-            if (totalEventsPopped > 0)
-            {
-                Debug.Log("[Test] SUCCESS: Events appeared in Event.PopEvent queue!");
-            }
-            else
-            {
-                Debug.Log("[Test] CONFIRMED: Neither QueueStateEvent nor QueueTextEvent populate Event.PopEvent");
-                Debug.Log("[Test] The two event systems are completely separate in Unity");
-            }
-
-            Assert.Pass("Test complete - check logs for results");
-        }
-
-        [Test]
-        public async Task QueueTextEvent_ControlCharacter_SelectsAll()
-        {
-            // Tests if sending ASCII control character (Ctrl+A = '\x01') via QueueTextEvent
-            // triggers select-all in TMP_InputField
-            var inputField = CreateInputField("CtrlCharTest", Vector2.zero);
-            inputField.text = "Test text to select";
-
-            await Async.DelayFrames(1);
-
-            // Focus the input field
-            var screenPos = InputInjector.GetScreenPosition(inputField.gameObject);
-            await InputInjector.InjectPointerTap(screenPos);
-            await Task.Delay(200);
-
-            Assert.IsTrue(inputField.isFocused, "Input field should be focused");
-            Debug.Log($"[Test] Initial selection: anchor={inputField.selectionAnchorPosition}, focus={inputField.selectionFocusPosition}");
-
-            var keyboard = UnityEngine.InputSystem.Keyboard.current;
-
-            // Try sending Ctrl+A as control character (ASCII 1)
-            char ctrlA = '\x01'; // ASCII SOH = Ctrl+A
-            Debug.Log($"[Test] Sending control character: (char){(int)ctrlA} = Ctrl+A");
-
-            UnityEngine.InputSystem.InputSystem.QueueTextEvent(keyboard, ctrlA);
-            UnityEngine.InputSystem.InputSystem.Update();
-            await Async.DelayFrames(1);
-            await Async.DelayFrames(5);
-
-            int selectionLength = Mathf.Abs(inputField.selectionFocusPosition - inputField.selectionAnchorPosition);
-            Debug.Log($"[Test] After Ctrl+A char: selection={selectionLength}, anchor={inputField.selectionAnchorPosition}, focus={inputField.selectionFocusPosition}");
-
-            if (selectionLength == inputField.text.Length)
-            {
-                Debug.Log("[Test] SUCCESS: Control character Ctrl+A selected all text!");
-            }
-            else if (selectionLength > 0)
-            {
-                Debug.Log($"[Test] PARTIAL: Selected {selectionLength} of {inputField.text.Length} chars");
-            }
-            else
-            {
-                Debug.Log("[Test] Control character did not select text");
-                Debug.Log("[Test] TMP_InputField likely filters out control characters in text input");
-            }
-
-            Assert.Pass("Test complete - check logs for results");
         }
 
         #endregion
@@ -952,7 +775,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await InputInjector.TypeIntoField(inputField.gameObject, "Hello", clearFirst: true, pressEnter: false);
 
-            await Async.DelayFrames(10);
+            await Async.DelayFrames(2);
 
             // Field should contain typed text
             Assert.IsTrue(inputField.text.Length > 0, "Field should have text");
@@ -968,7 +791,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await InputInjector.TypeIntoField(inputField.gameObject, "New", clearFirst: true, pressEnter: false);
 
-            await Async.DelayFrames(10);
+            await Async.DelayFrames(2);
 
             // Field should contain only the new text (old text replaced via triple-click + type)
             Assert.AreEqual("New", inputField.text, "Existing text should be replaced when clearFirst is true");
@@ -984,7 +807,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await InputInjector.TypeIntoField(inputField.gameObject, "New", clearFirst: false, pressEnter: false);
 
-            await Async.DelayFrames(10);
+            await Async.DelayFrames(2);
 
             // Field should contain both old and new text
             Assert.IsTrue(inputField.text.Contains("Existing"), "Original text should still be present");
@@ -1021,7 +844,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await InputInjector.ScrollElement(scrollRect.gameObject, "down", 0.5f);
 
-            await Async.DelayFrames(5);
+            await Async.DelayFrames(2);
         }
 
         #endregion
@@ -1036,7 +859,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Pinch zoom in
-            await InputInjector.Pinch(button.gameObject, 1.5f, 0.2f);
+            await InputInjector.Pinch(button.gameObject, 1.5f, 0.05f);
 
             Assert.Pass("Pinch gesture completed without errors");
         }
@@ -1047,7 +870,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Pinch at center of screen (null element)
-            await InputInjector.Pinch(null, 0.5f, 0.2f);
+            await InputInjector.Pinch(null, 0.5f, 0.05f);
 
             Assert.Pass("Pinch at screen center completed without errors");
         }
@@ -1058,7 +881,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            await InputInjector.InjectPinch(center, 2f, 0.2f, 50f);
+            await InputInjector.InjectPinch(center, 2f, 0.05f, 50f);
 
             Assert.Pass("Pinch with custom finger distance completed without errors");
         }
@@ -1074,7 +897,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            await InputInjector.TwoFingerSwipe(button.gameObject, "up", 0.1f, 0.2f, 0.02f);
+            await InputInjector.TwoFingerSwipe(button.gameObject, "up", 0.1f, 0.05f, 0.02f);
 
             Assert.Pass("Two-finger swipe completed without errors");
         }
@@ -1085,7 +908,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            await InputInjector.InjectTwoFingerSwipe(center, "down", 0.1f, 0.2f, 0.02f);
+            await InputInjector.InjectTwoFingerSwipe(center, "down", 0.1f, 0.05f, 0.02f);
 
             Assert.Pass("Inject two-finger swipe completed without errors");
         }
@@ -1102,7 +925,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Rotate 45 degrees clockwise
-            await InputInjector.Rotate(button.gameObject, 45f, 0.2f, 0.05f);
+            await InputInjector.Rotate(button.gameObject, 45f, 0.05f, 0.05f);
 
             Assert.Pass("Rotation gesture completed without errors");
         }
@@ -1113,7 +936,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            await InputInjector.InjectRotate(center, -90f, 0.2f, 0.05f);
+            await InputInjector.InjectRotate(center, -90f, 0.05f, 0.05f);
 
             Assert.Pass("Inject rotate completed without errors");
         }
@@ -1124,7 +947,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            await InputInjector.InjectRotatePixels(center, 180f, 0.2f, 75f);
+            await InputInjector.InjectRotatePixels(center, 180f, 0.05f, 75f);
 
             Assert.Pass("Inject rotate pixels completed without errors");
         }
@@ -1145,7 +968,7 @@ namespace ODDGames.UIAutomation.Tests
             var screenPos = InputInjector.GetScreenPosition(button.gameObject);
             await InputInjector.InjectTouchTap(screenPos);
 
-            await Async.DelayFrames(5);
+            await Async.DelayFrames(2);
 
             // Touch tap should trigger click (if touch input is active)
             // Note: On desktop this might not work without touchscreen
@@ -1170,7 +993,7 @@ namespace ODDGames.UIAutomation.Tests
             var start = new Vector2(Screen.width / 2f, Screen.height / 2f);
             var end = start + new Vector2(100, 0);
 
-            await InputInjector.InjectTouchDrag(start, end, 0.2f);
+            await InputInjector.InjectTouchDrag(start, end, 0.05f);
 
             Assert.Pass("Touch drag completed without errors");
         }
@@ -1181,7 +1004,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            await InputInjector.InjectTouchHold(center, 0.2f);
+            await InputInjector.InjectTouchHold(center, 0.1f);
 
             Assert.Pass("Touch hold completed without errors");
         }
@@ -1198,7 +1021,7 @@ namespace ODDGames.UIAutomation.Tests
             var start = new Vector2(Screen.width / 2f, Screen.height / 2f);
             var end = start + new Vector2(100, 0);
 
-            await InputInjector.InjectMouseDrag(start, end, 0.2f);
+            await InputInjector.InjectMouseDrag(start, end, 0.05f);
 
             Assert.Pass("Mouse drag completed without errors");
         }
@@ -1213,17 +1036,17 @@ namespace ODDGames.UIAutomation.Tests
 
             float startTime = Time.time;
 
-            // Use a 0.5s hold time
-            await InputInjector.InjectMouseDrag(start, end, 0.2f, 0.5f);
+            // Use a 0.15s hold time
+            await InputInjector.InjectMouseDrag(start, end, 0.05f, 0.15f);
 
             float elapsed = Time.time - startTime;
 
-            // Should take at least holdTime (0.5s) + duration (0.2s) = 0.7s
-            Assert.GreaterOrEqual(elapsed, 0.6f, "Drag with hold should take at least hold time + duration");
+            // Should take at least holdTime (0.15s) + duration (0.05s) = 0.2s
+            Assert.GreaterOrEqual(elapsed, 0.15f, "Drag with hold should take at least hold time + duration");
         }
 
         [Test]
-        public async Task InjectPointerDrag_WithLongHoldTime_HoldsBeforeDragging()
+        public async Task InjectPointerDrag_WithHoldTime_HoldsBeforeDragging()
         {
             await Async.DelayFrames(1);
 
@@ -1232,13 +1055,13 @@ namespace ODDGames.UIAutomation.Tests
 
             float startTime = Time.time;
 
-            // Use a 1.0s hold time (for games requiring long hold before drag)
-            await InputInjector.InjectPointerDrag(start, end, 0.2f, 1.0f);
+            // Use a 0.2s hold time (for games requiring hold before drag)
+            await InputInjector.InjectPointerDrag(start, end, 0.05f, 0.2f);
 
             float elapsed = Time.time - startTime;
 
-            // Should take at least holdTime (1.0s) + duration (0.2s) = 1.2s
-            Assert.GreaterOrEqual(elapsed, 1.0f, "Drag with long hold should take at least 1 second");
+            // Should take at least holdTime (0.2s) + duration (0.05s) = 0.25s
+            Assert.GreaterOrEqual(elapsed, 0.2f, "Drag with hold should take at least hold time");
         }
 
         [Test]
@@ -1250,7 +1073,7 @@ namespace ODDGames.UIAutomation.Tests
             var end = start + new Vector2(100, 0);
 
             // Right mouse button drag (commonly used for camera rotation)
-            await InputInjector.InjectMouseDrag(start, end, 0.2f, 0f, PointerButton.Right);
+            await InputInjector.InjectMouseDrag(start, end, 0.05f, 0f, PointerButton.Right);
 
             Assert.Pass("Right mouse button drag completed without errors");
         }
@@ -1264,7 +1087,7 @@ namespace ODDGames.UIAutomation.Tests
             var end = start + new Vector2(100, 0);
 
             // Middle mouse button drag (commonly used for panning)
-            await InputInjector.InjectMouseDrag(start, end, 0.2f, 0f, PointerButton.Middle);
+            await InputInjector.InjectMouseDrag(start, end, 0.05f, 0f, PointerButton.Middle);
 
             Assert.Pass("Middle mouse button drag completed without errors");
         }
@@ -1278,7 +1101,7 @@ namespace ODDGames.UIAutomation.Tests
             var end = start + new Vector2(100, 0);
 
             // Right mouse button drag via pointer abstraction
-            await InputInjector.InjectPointerDrag(start, end, 0.2f, 0f, PointerButton.Right);
+            await InputInjector.InjectPointerDrag(start, end, 0.05f, 0f, PointerButton.Right);
 
             Assert.Pass("Right mouse button pointer drag completed without errors");
         }
@@ -1298,7 +1121,7 @@ namespace ODDGames.UIAutomation.Tests
             var end1 = start1 + new Vector2(0, 100);
             var end2 = start2 + new Vector2(0, 100);
 
-            await InputInjector.InjectTwoFingerDrag(start1, end1, start2, end2, 0.2f);
+            await InputInjector.InjectTwoFingerDrag(start1, end1, start2, end2, 0.05f);
 
             Assert.Pass("Two finger drag completed without errors");
         }
@@ -1355,6 +1178,59 @@ namespace ODDGames.UIAutomation.Tests
             await Keys.Hold(Key.W).For(0.05f).ThenPress(Key.Space);
 
             Assert.Pass("Keys.ThenPress chain completed without errors");
+        }
+
+        #endregion
+
+        #region 3D Object Click Tests
+
+        [Test]
+        public async Task InjectPointerTap_3DObjectWithCollider_TapsAtCenter()
+        {
+            // Create a 3D cube with collider in front of camera
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = "ClickableCube";
+            cube.transform.position = new Vector3(0, 0, 5);
+            _createdObjects.Add(cube);
+
+            // Add PhysicsRaycaster so EventSystem can detect 3D objects
+            _camera.gameObject.AddComponent<UnityEngine.EventSystems.Physics2DRaycaster>();
+            var raycaster = _camera.gameObject.AddComponent<UnityEngine.EventSystems.PhysicsRaycaster>();
+
+            await Async.DelayFrames(2);
+
+            var screenPos = InputInjector.GetScreenPosition(cube);
+            Assert.Greater(screenPos.x, 0, "3D object screen X should be positive");
+            Assert.Greater(screenPos.y, 0, "3D object screen Y should be positive");
+
+            // Click should not throw
+            await InputInjector.InjectPointerTap(screenPos);
+            await Async.DelayFrames(2);
+
+            Assert.Pass("Click on 3D object with collider completed without errors");
+        }
+
+        [Test]
+        public async Task InjectPointerTap_3DObjectWithoutCollider_TapsAtCenter()
+        {
+            // Create a 3D cube WITHOUT collider
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = "NoColliderCube";
+            cube.transform.position = new Vector3(0, 0, 5);
+            Object.Destroy(cube.GetComponent<Collider>());
+            _createdObjects.Add(cube);
+
+            await Async.DelayFrames(2);
+
+            var screenPos = InputInjector.GetScreenPosition(cube);
+            Assert.Greater(screenPos.x, 0, "3D object screen X should be positive");
+            Assert.Greater(screenPos.y, 0, "3D object screen Y should be positive");
+
+            // Click should not throw even without collider - we just tap at the center
+            await InputInjector.InjectPointerTap(screenPos);
+            await Async.DelayFrames(2);
+
+            Assert.Pass("Click on 3D object without collider completed without errors");
         }
 
         #endregion

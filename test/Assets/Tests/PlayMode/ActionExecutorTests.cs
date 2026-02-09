@@ -9,6 +9,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 
 using TMPro;
@@ -78,7 +79,7 @@ namespace ODDGames.UIAutomation.Tests
             button.onClick.AddListener(() => clicked = true);
 
             await Async.DelayFrames(1);
-            await ActionExecutor.Click(new Search().Name("TestButton"), searchTime: 2f);
+            await ActionExecutor.Click(new Search().Name("TestButton"), searchTime: 0.5f);
 
             Assert.IsTrue(clicked, "Button should have been clicked");
         }
@@ -91,7 +92,7 @@ namespace ODDGames.UIAutomation.Tests
             button.onClick.AddListener(() => clicked = true);
 
             await Async.DelayFrames(1);
-            await ActionExecutor.Click(new Search().Name("ClickMeButton"), searchTime: 2f);
+            await ActionExecutor.Click(new Search().Name("ClickMeButton"), searchTime: 0.5f);
 
             Assert.IsTrue(clicked, "Button should have been clicked");
         }
@@ -100,6 +101,7 @@ namespace ODDGames.UIAutomation.Tests
         public async Task ClickAsync_WithSearch_ThrowsWhenNotFound()
         {
             await Async.DelayFrames(1);
+            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
             try
             {
                 await ActionExecutor.Click(new Search().Name("NonExistentButton"), searchTime: 0.5f);
@@ -142,7 +144,7 @@ namespace ODDGames.UIAutomation.Tests
             button.onClick.AddListener(() => clickCount++);
 
             await Async.DelayFrames(1);
-            await ActionExecutor.DoubleClick(new Search().Name("DoubleClickButton"), searchTime: 2f);
+            await ActionExecutor.DoubleClick(new Search().Name("DoubleClickButton"), searchTime: 0.5f);
 
             Assert.AreEqual(2, clickCount, "Button should have been clicked twice");
         }
@@ -155,7 +157,7 @@ namespace ODDGames.UIAutomation.Tests
             button.onClick.AddListener(() => clickCount++);
 
             await Async.DelayFrames(1);
-            await ActionExecutor.DoubleClick(new Search().Name("DoubleClickMe"), searchTime: 2f);
+            await ActionExecutor.DoubleClick(new Search().Name("DoubleClickMe"), searchTime: 0.5f);
 
             Assert.AreEqual(2, clickCount, "Button should have been clicked twice");
         }
@@ -172,7 +174,7 @@ namespace ODDGames.UIAutomation.Tests
             button.onClick.AddListener(() => clicked = true);
 
             await Async.DelayFrames(1);
-            await ActionExecutor.Hold(new Search().Name("HoldButton"), 0.2f, searchTime: 2f);
+            await ActionExecutor.Hold(new Search().Name("HoldButton"), 0.2f, searchTime: 0.5f);
 
             // Hold should trigger click on release
             Assert.IsTrue(clicked, "Button should have been clicked after hold");
@@ -186,7 +188,7 @@ namespace ODDGames.UIAutomation.Tests
             button.onClick.AddListener(() => clicked = true);
 
             await Async.DelayFrames(1);
-            await ActionExecutor.Hold(new Search().Name("HoldMe"), 0.2f, searchTime: 2f);
+            await ActionExecutor.Hold(new Search().Name("HoldMe"), 0.2f, searchTime: 0.5f);
 
             Assert.IsTrue(clicked, "Button should have been clicked after hold");
         }
@@ -201,7 +203,7 @@ namespace ODDGames.UIAutomation.Tests
             var inputField = CreateTMPInputField("TypeInput", new Vector2(0, 0));
 
             await Async.DelayFrames(1);
-            await ActionExecutor.Type(new Search().Name("TypeInput"), "Hello World", searchTime: 2f);
+            await ActionExecutor.Type(new Search().Name("TypeInput"), "Hello World", searchTime: 0.5f);
 
             // Wait for text input to be processed
             await Async.DelayFrames(10);
@@ -215,7 +217,7 @@ namespace ODDGames.UIAutomation.Tests
             var inputField = CreateTMPInputField("SearchTypeInput", new Vector2(0, 0));
 
             await Async.DelayFrames(1);
-            await ActionExecutor.Type(new Search().Name("SearchTypeInput"), "Test Text", searchTime: 2f);
+            await ActionExecutor.Type(new Search().Name("SearchTypeInput"), "Test Text", searchTime: 0.5f);
 
             // Wait for text input to be processed
             await Async.DelayFrames(10);
@@ -230,7 +232,7 @@ namespace ODDGames.UIAutomation.Tests
             inputField.text = "Existing Text";
 
             await Async.DelayFrames(1);
-            await ActionExecutor.Type(new Search().Name("ClearInput"), "New Text", clearFirst: true, searchTime: 2f);
+            await ActionExecutor.Type(new Search().Name("ClearInput"), "New Text", clearFirst: true, searchTime: 0.5f);
 
             // Wait for text input to be processed
             await Async.DelayFrames(10);
@@ -245,7 +247,7 @@ namespace ODDGames.UIAutomation.Tests
             inputField.text = "Hello ";
 
             await Async.DelayFrames(1);
-            await ActionExecutor.Type(new Search().Name("AppendInput"), "World", clearFirst: false, searchTime: 2f);
+            await ActionExecutor.Type(new Search().Name("AppendInput"), "World", clearFirst: false, searchTime: 0.5f);
 
             // Wait for text input to be processed
             await Async.DelayFrames(10);
@@ -298,7 +300,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Start drag and track max position reached during operation
-            var dragTask = ActionExecutor.Drag(new Search().Name("DirectionDrag"), new Vector2(100, 0), 1.0f, searchTime: 2f, holdTime: 0f); // Skip hold for faster test
+            var dragTask = ActionExecutor.Drag(new Search().Name("DirectionDrag"), new Vector2(100, 0), 1.0f, searchTime: 0.5f, holdTime: 0f); // Skip hold for faster test
 
             // Poll position every frame during drag
             while (!dragTask.IsCompleted)
@@ -327,7 +329,7 @@ namespace ODDGames.UIAutomation.Tests
             // Verify Scroll finds the element and completes without throwing
             // Note: Actual scroll wheel input may not work in test environment due to
             // Input System UI Module limitations, but we verify the action completes
-            await ActionExecutor.Scroll(new Search().Name("TestScroll"), -120f, searchTime: 2f);
+            await ActionExecutor.Scroll(new Search().Name("TestScroll"), -120f, searchTime: 0.5f);
         }
 
         #endregion
@@ -341,7 +343,7 @@ namespace ODDGames.UIAutomation.Tests
             slider.value = 0f;
 
             await Async.DelayFrames(1);
-            await ActionExecutor.SetSlider(new Search().Name("TestSlider"), 0.75f, searchTime: 2f);
+            await ActionExecutor.SetSlider(new Search().Name("TestSlider"), 0.75f, searchTime: 0.5f);
 
             Assert.AreEqual(0.75f, slider.value, 0.1f, "Slider should be at 75%");
         }
@@ -353,7 +355,7 @@ namespace ODDGames.UIAutomation.Tests
             slider.value = 0f;
 
             await Async.DelayFrames(1);
-            await ActionExecutor.ClickSlider(new Search().Name("ClickSlider"), 0.5f, searchTime: 2f);
+            await ActionExecutor.ClickSlider(new Search().Name("ClickSlider"), 0.5f, searchTime: 0.5f);
 
             Assert.AreEqual(0.5f, slider.value, 0.15f, "Slider should be near 50%");
         }
@@ -365,7 +367,7 @@ namespace ODDGames.UIAutomation.Tests
             slider.value = 0f;
 
             await Async.DelayFrames(1);
-            await ActionExecutor.ClickSlider(new Search().Name("SearchSlider"), 0.8f, searchTime: 2f);
+            await ActionExecutor.ClickSlider(new Search().Name("SearchSlider"), 0.8f, searchTime: 0.5f);
 
             Assert.AreEqual(0.8f, slider.value, 0.15f, "Slider should be near 80%");
         }
@@ -377,7 +379,7 @@ namespace ODDGames.UIAutomation.Tests
             slider.value = 0.2f;
 
             await Async.DelayFrames(1);
-            await ActionExecutor.DragSlider(new Search().Name("DragSlider"), 0.2f, 0.9f, 1.0f, searchTime: 2f, holdTime: 0f); // Skip hold for faster test
+            await ActionExecutor.DragSlider(new Search().Name("DragSlider"), 0.2f, 0.9f, 1.0f, searchTime: 0.5f, holdTime: 0f); // Skip hold for faster test
 
             Assert.Greater(slider.value, 0.5f, "Slider should have moved toward 90%");
         }
@@ -393,7 +395,7 @@ namespace ODDGames.UIAutomation.Tests
             scrollbar.value = 0f;
 
             await Async.DelayFrames(1);
-            await ActionExecutor.SetScrollbar(new Search().Name("TestScrollbar"), 0.5f, searchTime: 2f);
+            await ActionExecutor.SetScrollbar(new Search().Name("TestScrollbar"), 0.5f, searchTime: 0.5f);
 
             Assert.AreEqual(0.5f, scrollbar.value, 0.1f, "Scrollbar should be at 50%");
         }
@@ -405,7 +407,7 @@ namespace ODDGames.UIAutomation.Tests
             scrollbar.value = 0f;
 
             await Async.DelayFrames(1);
-            await ActionExecutor.SetScrollbar(new Search().Name("SearchScrollbar"), 0.7f, searchTime: 2f);
+            await ActionExecutor.SetScrollbar(new Search().Name("SearchScrollbar"), 0.7f, searchTime: 0.5f);
 
             Assert.AreEqual(0.7f, scrollbar.value, 0.1f, "Scrollbar should be at 70%");
         }
@@ -421,7 +423,7 @@ namespace ODDGames.UIAutomation.Tests
             dropdown.value = 0;
 
             await Async.DelayFrames(1);
-            await ActionExecutor.ClickDropdown(new Search().Name("IndexDropdown"), 2, searchTime: 2f);
+            await ActionExecutor.ClickDropdown(new Search().Name("IndexDropdown"), 2, searchTime: 0.5f);
 
             Assert.AreEqual(2, dropdown.value, "Should have selected option 2");
         }
@@ -433,7 +435,7 @@ namespace ODDGames.UIAutomation.Tests
             dropdown.value = 0;
 
             await Async.DelayFrames(1);
-            await ActionExecutor.ClickDropdown(new Search().Name("LabelDropdown"), "Option 2", searchTime: 2f);
+            await ActionExecutor.ClickDropdown(new Search().Name("LabelDropdown"), "Option 2", searchTime: 0.5f);
 
             Assert.AreEqual(1, dropdown.value, "Should have selected 'Option 2' (index 1)");
         }
@@ -933,7 +935,7 @@ namespace ODDGames.UIAutomation.Tests
             CreateButton("WaitForButton", new Vector2(0, 0));
             await Async.DelayFrames(1);
 
-            await ActionExecutor.WaitFor(new Search().Name("WaitForButton"), timeout: 1f);
+            await ActionExecutor.WaitFor(new Search().Name("WaitForButton"), timeout: 0.5f);
             // No exception means success
         }
 
@@ -941,6 +943,7 @@ namespace ODDGames.UIAutomation.Tests
         public async Task WaitFor_WithMissingElement_Throws()
         {
             await Async.DelayFrames(1);
+            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
 
             try
             {
@@ -959,7 +962,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Start wait and create button after a delay
-            var waitTask = ActionExecutor.WaitFor(new Search().Name("DelayedButton"), timeout: 2f);
+            var waitTask = ActionExecutor.WaitFor(new Search().Name("DelayedButton"), timeout: 1f);
 
             // Create button after 200ms
             await Task.Delay(200);
@@ -975,7 +978,7 @@ namespace ODDGames.UIAutomation.Tests
             CreateTextElement("WaitText", "Expected Text", new Vector2(0, 0));
             await Async.DelayFrames(1);
 
-            await ActionExecutor.WaitFor(new Search().Name("WaitText"), "Expected Text", timeout: 1f);
+            await ActionExecutor.WaitFor(new Search().Name("WaitText"), "Expected Text", timeout: 0.5f);
             // No exception means success
         }
 
@@ -984,6 +987,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             CreateTextElement("WaitText", "Actual Text", new Vector2(0, 0));
             await Async.DelayFrames(1);
+            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
 
             try
             {
@@ -1003,7 +1007,7 @@ namespace ODDGames.UIAutomation.Tests
             toggle.isOn = true;
             await Async.DelayFrames(1);
 
-            await ActionExecutor.WaitFor(new Search().Name("WaitToggle"), timeout: 1f);
+            await ActionExecutor.WaitFor(new Search().Name("WaitToggle"), timeout: 0.5f);
             // No exception means success
         }
 
@@ -1012,7 +1016,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             await Async.DelayFrames(1);
 
-            await ActionExecutor.WaitForNot(new Search().Name("NonExistent"), timeout: 1f);
+            await ActionExecutor.WaitForNot(new Search().Name("NonExistent"), timeout: 0.5f);
             // No exception means success
         }
 
@@ -1021,6 +1025,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             CreateButton("ExistingButton", new Vector2(0, 0));
             await Async.DelayFrames(1);
+            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
 
             try
             {
@@ -1040,7 +1045,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Start wait and destroy button after a delay
-            var waitTask = ActionExecutor.WaitForNot(new Search().Name("ToBeRemoved"), timeout: 2f);
+            var waitTask = ActionExecutor.WaitForNot(new Search().Name("ToBeRemoved"), timeout: 1f);
 
             // Destroy after 200ms
             await Task.Delay(200);
@@ -1239,7 +1244,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             await Async.DelayFrames(1);
 
-            await ActionExecutor.WaitFor("Application.isPlaying", timeout: 1f);
+            await ActionExecutor.WaitFor("Application.isPlaying", timeout: 0.5f);
             // No exception means success
         }
 
@@ -1248,7 +1253,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             await Async.DelayFrames(1);
 
-            await ActionExecutor.WaitFor("Application.isPlaying", true, timeout: 1f);
+            await ActionExecutor.WaitFor("Application.isPlaying", true, timeout: 0.5f);
             // No exception means success
         }
 
@@ -1256,6 +1261,7 @@ namespace ODDGames.UIAutomation.Tests
         public async Task WaitForStaticPathGeneric_WithMismatchedValue_Throws()
         {
             await Async.DelayFrames(1);
+            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
 
             try
             {

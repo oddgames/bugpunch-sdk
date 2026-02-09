@@ -233,9 +233,9 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Gets or sets the delay in milliseconds after a successful action.
-        /// Default is 200ms. Increase for slower, more visible test playback.
+        /// Default is 50ms. Increase for slower, more visible test playback.
         /// </summary>
-        public static int Interval { get; set; } = 200;
+        public static int Interval { get; set; } = 50;
 
         /// <summary>
         /// Gets or sets the polling interval in milliseconds during search/wait operations.
@@ -483,6 +483,17 @@ namespace ODDGames.UIAutomation
         {
             RandomGenerator = new System.Random(seed);
             Debug.Log($"[UIAutomation] RandomSeed set to {seed}");
+        }
+
+        #endregion
+
+        #region Validation Helpers
+
+        private static void ValidateNormalized(float value, string paramName)
+        {
+            if (value < 0f || value > 1f)
+                throw new ArgumentOutOfRangeException(paramName, value,
+                    $"{paramName} must be between 0 and 1, got {value}");
         }
 
         #endregion
@@ -1498,6 +1509,8 @@ namespace ODDGames.UIAutomation
         /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
         public static async Task ClickAt(Vector2 normalizedPosition, bool requireReceivers = false)
         {
+            ValidateNormalized(normalizedPosition.x, nameof(normalizedPosition) + ".x");
+            ValidateNormalized(normalizedPosition.y, nameof(normalizedPosition) + ".y");
             var screenPosition = new Vector2(Screen.width * normalizedPosition.x, Screen.height * normalizedPosition.y);
             await using var action = await RunAction($"ClickAt(({screenPosition.x:F0},{screenPosition.y:F0}))");
             await InputInjector.InjectPointerTap(screenPosition);
@@ -1517,6 +1530,8 @@ namespace ODDGames.UIAutomation
         /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
         public static async Task ClickAt(float xPercent, float yPercent, bool requireReceivers = false)
         {
+            ValidateNormalized(xPercent, nameof(xPercent));
+            ValidateNormalized(yPercent, nameof(yPercent));
             await ClickAt(new Vector2(xPercent, yPercent), requireReceivers);
         }
 
@@ -1731,7 +1746,7 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found within searchTime</exception>
-        public static async Task Drag(Search search, Vector2 direction, float duration = 0.3f, float searchTime = 10f, int index = 0, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
+        public static async Task Drag(Search search, Vector2 direction, float duration = 0.15f, float searchTime = 10f, int index = 0, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             await using var action = await RunAction($"Drag({search}, direction=({direction.x:F0},{direction.y:F0}))");
 
@@ -1761,7 +1776,7 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging (for elements requiring hold-to-drag)</param>
         /// <param name="button">Which mouse button to use for dragging</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when source or target element is not found within searchTime</exception>
-        public static async Task DragTo(Search fromSearch, Search toSearch, float duration = 0.3f, float searchTime = 10f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
+        public static async Task DragTo(Search fromSearch, Search toSearch, float duration = 0.15f, float searchTime = 10f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             await using var action = await RunAction($"DragTo({fromSearch} -> {toSearch})");
 
@@ -1788,7 +1803,7 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
         /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
-        public static async Task DragFromTo(Vector2 startPosition, Vector2 endPosition, float duration = 0.3f, float holdTime = 0.05f, PointerButton button = PointerButton.Left, bool requireReceivers = false)
+        public static async Task DragFromTo(Vector2 startPosition, Vector2 endPosition, float duration = 0.15f, float holdTime = 0.05f, PointerButton button = PointerButton.Left, bool requireReceivers = false)
         {
             await using var action = await RunAction($"DragFromTo(({startPosition.x:F0},{startPosition.y:F0}) -> ({endPosition.x:F0},{endPosition.y:F0}))");
             await InputInjector.InjectPointerDrag(startPosition, endPosition, duration, holdTime, button);
@@ -1855,6 +1870,7 @@ namespace ODDGames.UIAutomation
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found within searchTime</exception>
         public static async Task Scroll(Search search, string direction, float amount = 0.3f, float searchTime = 10f, int index = 0)
         {
+            ValidateNormalized(amount, nameof(amount));
             await using var action = await RunAction($"Scroll({search}, {direction}, amount={amount})");
 
             var element = await search.Find(searchTime, index);
@@ -1884,6 +1900,7 @@ namespace ODDGames.UIAutomation
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when slider is not found within searchTime</exception>
         public static async Task ClickSlider(Search search, float normalizedValue, float searchTime = 10f)
         {
+            ValidateNormalized(normalizedValue, nameof(normalizedValue));
             await using var action = await RunAction($"ClickSlider({search}, {normalizedValue:F2})");
 
             var slider = await FindComponent<Slider>(search, searchTime);
@@ -1908,8 +1925,10 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag</param>
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when slider is not found within searchTime</exception>
-        public static async Task DragSlider(Search search, float fromValue, float toValue, float duration = 0.3f, float searchTime = 10f, float holdTime = 0.05f)
+        public static async Task DragSlider(Search search, float fromValue, float toValue, float duration = 0.15f, float searchTime = 10f, float holdTime = 0.05f)
         {
+            ValidateNormalized(fromValue, nameof(fromValue));
+            ValidateNormalized(toValue, nameof(toValue));
             await using var action = await RunAction($"DragSlider({search}, {fromValue:F2} -> {toValue:F2})");
 
             var slider = await FindComponent<Slider>(search, searchTime);
@@ -1935,6 +1954,7 @@ namespace ODDGames.UIAutomation
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when slider is not found within searchTime</exception>
         public static async Task SetSlider(Search search, float normalizedValue, float searchTime = 10f)
         {
+            ValidateNormalized(normalizedValue, nameof(normalizedValue));
             await using var action = await RunAction($"SetSlider({search}, {normalizedValue:F2})");
 
             var slider = await FindComponent<Slider>(search, searchTime);
@@ -1958,6 +1978,7 @@ namespace ODDGames.UIAutomation
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when scrollbar is not found within searchTime</exception>
         public static async Task SetScrollbar(Search search, float normalizedValue, float searchTime = 10f)
         {
+            ValidateNormalized(normalizedValue, nameof(normalizedValue));
             await using var action = await RunAction($"SetScrollbar({search}, {normalizedValue:F2})");
 
             var scrollbar = await FindComponent<Scrollbar>(search, searchTime);
@@ -1998,8 +2019,9 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a swipe gesture at a specific screen position (pixels).
         /// </summary>
-        public static async Task SwipeAt(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
+        public static async Task SwipeAt(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 0.15f)
         {
+            ValidateNormalized(normalizedDistance, nameof(normalizedDistance));
             await using (await RunAction($"SwipeAt(({position.x:F0},{position.y:F0}), {direction})"))
             {
                 await SwipeAtInternal(position, direction, normalizedDistance, duration);
@@ -2012,7 +2034,7 @@ namespace ODDGames.UIAutomation
         /// <param name="position">Screen position for the pinch center</param>
         /// <param name="scale">Scale factor</param>
         /// <param name="duration">Duration of the pinch</param>
-        public static async Task PinchAt(Vector2 position, float scale, float duration = 0.3f)
+        public static async Task PinchAt(Vector2 position, float scale, float duration = 0.15f)
         {
             await using (await RunAction($"PinchAt(({position.x:F0},{position.y:F0}), scale={scale})"))
             {
@@ -2040,7 +2062,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         /// <param name="scale">Scale factor (less than 1 = zoom out, greater than 1 = zoom in)</param>
         /// <param name="duration">Duration of the pinch</param>
-        public static async Task Pinch(float scale, float duration = 0.3f)
+        public static async Task Pinch(float scale, float duration = 0.15f)
         {
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
             await using (await RunAction($"Pinch(scale={scale}) at center"))
@@ -2056,8 +2078,10 @@ namespace ODDGames.UIAutomation
         /// <param name="yPercent">Vertical position as percentage (0-1)</param>
         /// <param name="scale">Scale factor</param>
         /// <param name="duration">Duration of the pinch</param>
-        public static async Task PinchAt(float xPercent, float yPercent, float scale, float duration = 0.3f)
+        public static async Task PinchAt(float xPercent, float yPercent, float scale, float duration = 0.15f)
         {
+            ValidateNormalized(xPercent, nameof(xPercent));
+            ValidateNormalized(yPercent, nameof(yPercent));
             var position = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
             await PinchAt(position, scale, duration);
         }
@@ -2070,8 +2094,10 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
-        public static async Task TwoFingerSwipeAt(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        public static async Task TwoFingerSwipeAt(Vector2 position, string direction, float normalizedDistance = 0.2f, float duration = 0.15f, float fingerSpacing = 0.03f)
         {
+            ValidateNormalized(normalizedDistance, nameof(normalizedDistance));
+            ValidateNormalized(fingerSpacing, nameof(fingerSpacing));
             await using (await RunAction($"TwoFingerSwipeAt(({position.x:F0},{position.y:F0}), {direction})"))
             {
                 await InputInjector.InjectTwoFingerSwipe(position, direction, normalizedDistance, duration, fingerSpacing);
@@ -2085,8 +2111,10 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
-        public static async Task TwoFingerSwipe(SwipeDirection direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        public static async Task TwoFingerSwipe(SwipeDirection direction, float normalizedDistance = 0.2f, float duration = 0.15f, float fingerSpacing = 0.03f)
         {
+            ValidateNormalized(normalizedDistance, nameof(normalizedDistance));
+            ValidateNormalized(fingerSpacing, nameof(fingerSpacing));
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
             await using (await RunAction($"TwoFingerSwipe({direction}) at center"))
             {
@@ -2103,8 +2131,12 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedDistance">Distance as fraction of screen (0-1)</param>
         /// <param name="duration">Duration of the swipe</param>
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1)</param>
-        public static async Task TwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
+        public static async Task TwoFingerSwipeAt(float xPercent, float yPercent, SwipeDirection direction, float normalizedDistance = 0.2f, float duration = 0.15f, float fingerSpacing = 0.03f)
         {
+            ValidateNormalized(xPercent, nameof(xPercent));
+            ValidateNormalized(yPercent, nameof(yPercent));
+            ValidateNormalized(normalizedDistance, nameof(normalizedDistance));
+            ValidateNormalized(fingerSpacing, nameof(fingerSpacing));
             var position = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
             await TwoFingerSwipeAt(position, direction.ToString().ToLower(), normalizedDistance, duration, fingerSpacing);
         }
@@ -2116,8 +2148,9 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle</param>
         /// <param name="duration">Duration of the rotation</param>
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
-        public static async Task RotateAt(Vector2 position, float degrees, float duration = 0.3f, float fingerDistance = 0.05f)
+        public static async Task RotateAt(Vector2 position, float degrees, float duration = 0.15f, float fingerDistance = 0.05f)
         {
+            ValidateNormalized(fingerDistance, nameof(fingerDistance));
             await using (await RunAction($"RotateAt(({position.x:F0},{position.y:F0}), {degrees}°, {duration}s)"))
             {
                 await InputInjector.InjectRotate(position, degrees, duration, fingerDistance);
@@ -2132,8 +2165,11 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle</param>
         /// <param name="duration">Duration of the rotation</param>
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
-        public static async Task RotateAt(float xPercent, float yPercent, float degrees, float duration = 0.3f, float fingerDistance = 0.05f)
+        public static async Task RotateAt(float xPercent, float yPercent, float degrees, float duration = 0.15f, float fingerDistance = 0.05f)
         {
+            ValidateNormalized(xPercent, nameof(xPercent));
+            ValidateNormalized(yPercent, nameof(yPercent));
+            ValidateNormalized(fingerDistance, nameof(fingerDistance));
             var position = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
             await RotateAt(position, degrees, duration, fingerDistance);
         }
@@ -2159,8 +2195,9 @@ namespace ODDGames.UIAutomation
         /// <param name="degrees">Rotation angle (positive = clockwise, negative = counter-clockwise)</param>
         /// <param name="duration">Duration of the rotation</param>
         /// <param name="fingerDistance">Normalized distance from center for fingers (0-1)</param>
-        public static async Task Rotate(float degrees, float duration = 0.3f, float fingerDistance = 0.05f)
+        public static async Task Rotate(float degrees, float duration = 0.15f, float fingerDistance = 0.05f)
         {
+            ValidateNormalized(fingerDistance, nameof(fingerDistance));
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
             await using (await RunAction($"Rotate({degrees}°) at center"))
             {
@@ -2175,7 +2212,7 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag in seconds</param>
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="requireReceivers">Whether to log receiver information (default false)</param>
-        public static async Task Drag(Vector2 direction, float duration = 0.3f, float holdTime = 0.05f, bool requireReceivers = false)
+        public static async Task Drag(Vector2 direction, float duration = 0.15f, float holdTime = 0.05f, bool requireReceivers = false)
         {
             var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
             var endPos = center + direction;
@@ -3079,7 +3116,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a swipe gesture on an element.
         /// </summary>
-        public static async Task Swipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f, bool throwIfMissing = true, float searchTime = 10)
+        public static async Task Swipe(Search search, SwipeDirection direction, float distance = 0.2f, float duration = 0.15f, bool throwIfMissing = true, float searchTime = 10)
         {
             await using var action = await RunAction($"Swipe({search}, {direction})");
 
@@ -3099,7 +3136,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a swipe gesture at screen center.
         /// </summary>
-        public static async Task Swipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        public static async Task Swipe(SwipeDirection direction, float distance = 0.2f, float duration = 0.15f)
         {
             await using (await RunAction($"Swipe({direction}) at center"))
             {
@@ -3111,8 +3148,11 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a swipe gesture at a specific screen position.
         /// </summary>
-        public static async Task SwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.3f)
+        public static async Task SwipeAt(float xPercent, float yPercent, SwipeDirection direction, float distance = 0.2f, float duration = 0.15f)
         {
+            ValidateNormalized(xPercent, nameof(xPercent));
+            ValidateNormalized(yPercent, nameof(yPercent));
+            ValidateNormalized(distance, nameof(distance));
             await using (await RunAction($"SwipeAt({xPercent:P0}, {yPercent:P0}, {direction})"))
             {
                 var startPos = new Vector2(Screen.width * xPercent, Screen.height * yPercent);
@@ -3123,7 +3163,7 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a pinch gesture on an element.
         /// </summary>
-        public static async Task Pinch(Search search, float scale, float duration = 0.3f, bool throwIfMissing = true, float searchTime = 10)
+        public static async Task Pinch(Search search, float scale, float duration = 0.15f, bool throwIfMissing = true, float searchTime = 10)
         {
             await using var action = await RunAction($"Pinch({search}, scale={scale})");
 
@@ -3144,8 +3184,10 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a two-finger swipe gesture on an element.
         /// </summary>
-        public static async Task TwoFingerSwipe(Search search, string direction, float distance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f, bool throwIfMissing = true, float searchTime = 10)
+        public static async Task TwoFingerSwipe(Search search, string direction, float distance = 0.2f, float duration = 0.15f, float fingerSpacing = 0.03f, bool throwIfMissing = true, float searchTime = 10)
         {
+            ValidateNormalized(distance, nameof(distance));
+            ValidateNormalized(fingerSpacing, nameof(fingerSpacing));
             await using var action = await RunAction($"TwoFingerSwipe({search}, {direction})");
 
             var element = await Find<RectTransform>(search, throwIfMissing, searchTime);
@@ -3165,8 +3207,9 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Performs a rotation gesture on an element.
         /// </summary>
-        public static async Task Rotate(Search search, float degrees, float duration = 0.3f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
+        public static async Task Rotate(Search search, float degrees, float duration = 0.15f, float fingerDistance = 0.05f, bool throwIfMissing = true, float searchTime = 10)
         {
+            ValidateNormalized(fingerDistance, nameof(fingerDistance));
             await using var action = await RunAction($"Rotate({search}, {degrees}°)");
 
             var element = await Find<RectTransform>(search, throwIfMissing, searchTime);

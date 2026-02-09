@@ -250,7 +250,7 @@ namespace ODDGames.UIAutomation.Tests
             var orders = new List<string>();
             for (int trial = 0; trial < 5; trial++)
             {
-                var results = await new Search().Name("RandBtn*").Randomize().FindAll(timeout: 2f);
+                var results = await new Search().Name("RandBtn*").Randomize().FindAll(timeout: 0.5f);
                 orders.Add(string.Join(",", results.Select(r => r.name)));
             }
 
@@ -358,7 +358,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var results = await new Search().Name("NonExistent*").FindAll();
+            var results = await new Search().Name("NonExistent*").FindAll(timeout: 0.5f);
             Assert.AreEqual(0, results.Count, "Should return empty list");
             Assert.IsNotNull(results, "Should not return null");
         }
@@ -387,7 +387,7 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            var result = await new Search().Name("NonExistent*").Find(1f);
+            var result = await new Search().Name("NonExistent*").Find(0.5f);
             Assert.IsNull(result, "Should return null when no matches");
         }
 
@@ -433,7 +433,7 @@ namespace ODDGames.UIAutomation.Tests
             // GetScreenPosition throws TimeoutException when element not found
             try
             {
-                await new Search().Name("NonExistentElement").GetScreenPosition(1f);
+                await new Search().Name("NonExistentElement").GetScreenPosition(0.5f);
                 Assert.Fail("Should have thrown TimeoutException");
             }
             catch (System.TimeoutException ex)
@@ -521,11 +521,11 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            // Verify exact match
-            var results = await new Search().Name("SpriteRendererObj").Texture("unique_player_idle_anim_xyz").FindAll();
+            // Verify exact match (IncludeOffScreen since 3D objects may not be in camera view)
+            var results = await new Search().Name("SpriteRendererObj").Texture("unique_player_idle_anim_xyz").IncludeOffScreen().FindAll();
             Assert.AreEqual(1, results.Count, "Should find SpriteRenderer by sprite name");
 
-            results = await new Search().Name("SpriteRendererObj").Texture("*idle*").FindAll();
+            results = await new Search().Name("SpriteRendererObj").Texture("*idle*").IncludeOffScreen().FindAll();
             Assert.AreEqual(1, results.Count, "Should find SpriteRenderer by wildcard");
         }
 
@@ -545,11 +545,11 @@ namespace ODDGames.UIAutomation.Tests
 
             await Async.DelayFrames(1);
 
-            // Verify the specific cube is found
-            var results = await new Search().Name("TexturedCubeUnique").Texture("unique_wood_diffuse_01_xyz").FindAll();
+            // Verify the specific cube is found (IncludeOffScreen since 3D objects may not be in camera view)
+            var results = await new Search().Name("TexturedCubeUnique").Texture("unique_wood_diffuse_01_xyz").IncludeOffScreen().FindAll();
             Assert.AreEqual(1, results.Count, "Should find MeshRenderer by material texture name");
 
-            results = await new Search().Name("TexturedCubeUnique").Texture("unique_wood_*").FindAll();
+            results = await new Search().Name("TexturedCubeUnique").Texture("unique_wood_*").IncludeOffScreen().FindAll();
             Assert.AreEqual(1, results.Count, "Should find MeshRenderer by texture wildcard");
         }
 
@@ -609,7 +609,7 @@ namespace ODDGames.UIAutomation.Tests
             await Async.DelayFrames(1);
 
             // Search for our specific button and verify it doesn't match any texture pattern
-            var results = await new Search().Name("NoTextureBtnUnique").Texture("*anytexture*").FindAll();
+            var results = await new Search().Name("NoTextureBtnUnique").Texture("*anytexture*").FindAll(timeout: 0.5f);
             Assert.AreEqual(0, results.Count, "Should not match element with no texture");
         }
 
