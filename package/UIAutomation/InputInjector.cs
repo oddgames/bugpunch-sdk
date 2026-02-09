@@ -1702,36 +1702,7 @@ namespace ODDGames.UIAutomation
         /// <param name="delta">Scroll delta (positive = up, negative = down)</param>
         public static async Task InjectScroll(Vector2 position, float delta)
         {
-            InputVisualizer.RecordScroll(position, new Vector2(0, delta));
-            await EnsureGameViewFocusAsync();
-
-            var mouse = GetMouse();
-            if (mouse == null)
-            {
-                Debug.LogWarning("[InputInjector] Scroll - No mouse device found");
-                return;
-            }
-
-            // Use MouseState struct for explicit control - no buttons pressed during scroll
-            var mouseState = new MouseState { position = position, delta = Vector2.zero };
-
-            // Move mouse to position first - simulate user moving to scroll target (~80ms)
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(3, 0.08f);
-
-            // Send scroll event with delta value - no buttons pressed
-            // Scroll wheel tick duration (~50ms per notch)
-            mouseState.scroll = new Vector2(0, delta);
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(2, 0.05f);
-
-            // Reset scroll to zero (scroll is a delta, needs to return to zero)
-            mouseState.scroll = Vector2.zero;
-            InputSystem.QueueStateEvent(mouse, mouseState);
-            InputSystem.Update();
-            await Async.Delay(2, 0.03f);
+            await InjectScroll(position, new Vector2(0, delta));
         }
 
         /// <summary>
@@ -1751,24 +1722,38 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Use MouseState struct for explicit control - no buttons pressed during scroll
-            var mouseState = new MouseState { position = position, delta = Vector2.zero };
+            // Scale to actual Game View window coordinates in Editor
+            var scaledPosition = ScaleToGameViewWindow(position);
 
-            // Move to position first - simulate user moving to scroll target (~80ms)
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            // Move mouse to position first so EventSystem establishes pointerEnter
+            // on the element under the cursor. Without this, scroll events are dropped
+            // because InputSystemUIInputModule requires a valid pointerEnter target.
+            using (StateEvent.From(mouse, out var movePtr))
+            {
+                mouse.position.WriteValueIntoEvent(scaledPosition, movePtr);
+                mouse.delta.WriteValueIntoEvent(Vector2.zero, movePtr);
+                InputSystem.QueueEvent(movePtr);
+            }
             InputSystem.Update();
-            await Async.Delay(3, 0.08f);
+            await Async.Delay(3, 0.05f);
 
-            // Send scroll event - no buttons pressed
-            // Scroll wheel tick duration (~50ms per notch)
-            mouseState.scroll = scrollDelta;
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            // Send scroll event at the same position
+            using (StateEvent.From(mouse, out var scrollPtr))
+            {
+                mouse.position.WriteValueIntoEvent(scaledPosition, scrollPtr);
+                mouse.scroll.WriteValueIntoEvent(scrollDelta, scrollPtr);
+                InputSystem.QueueEvent(scrollPtr);
+            }
             InputSystem.Update();
             await Async.Delay(2, 0.05f);
 
             // Reset scroll to zero (scroll is a delta, needs to return to zero)
-            mouseState.scroll = Vector2.zero;
-            InputSystem.QueueStateEvent(mouse, mouseState);
+            using (StateEvent.From(mouse, out var resetPtr))
+            {
+                mouse.position.WriteValueIntoEvent(scaledPosition, resetPtr);
+                mouse.scroll.WriteValueIntoEvent(Vector2.zero, resetPtr);
+                InputSystem.QueueEvent(resetPtr);
+            }
             InputSystem.Update();
             await Async.Delay(2, 0.03f);
         }

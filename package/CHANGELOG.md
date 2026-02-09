@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.42] - 2026-02-09
+
+### Fixed
+- **`InjectScroll()` now actually scrolls** - Added `ScaleToGameViewWindow()` for correct mouse positioning in the Editor (matching `InjectPointerTap`), and wait frames after moving mouse so the EventSystem establishes `pointerEnter` before sending scroll events. Previously scroll events were silently dropped because the mouse was at wrong coordinates and `ProcessPointerScroll()` requires `pointerEnter` to be set.
+- **`LoadTestData()` now clears PlayerPrefs** - Clear all PlayerPrefs before restoring test data, while preserving Unity-internal keys (Addressables, Unity Services, IAP). Previously leftover PlayerPrefs from prior test runs would persist and pollute test state.
+
 ## [1.1.41] - 2026-02-09
 
 ### Fixed
