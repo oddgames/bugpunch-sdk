@@ -737,6 +737,12 @@ namespace ODDGames.UIAutomation
                 }
             }
 
+            // Clear PlayerPrefs safely: snapshot Unity-internal keys, DeleteAll, restore them
+            if (clearFiles)
+            {
+                ClearPlayerPrefsSafe();
+            }
+
             int fileCount = 0;
             bool restoredPrefs = false;
 
@@ -777,6 +783,46 @@ namespace ODDGames.UIAutomation
 
             Resources.UnloadAsset(zipAsset);
             action.SetResult($"{fileCount} files" + (restoredPrefs ? " + PlayerPrefs" : ""));
+        }
+
+        /// <summary>
+        /// Unity-internal PlayerPrefs keys that must survive DeleteAll.
+        /// Addressables, Unity Services, and IAP store state in these keys.
+        /// </summary>
+        private static readonly string[] UnityInternalPlayerPrefsKeys =
+        {
+            "AddressablesRuntimeDataPath",
+            "AddressablesRuntimeBuildLog",
+            "UnityInstallationId",
+            "unity.cloud_userid",
+            "unity.player_sessionid"
+        };
+
+        /// <summary>
+        /// Clears all PlayerPrefs while preserving Unity-internal keys (e.g. Addressables).
+        /// Snapshots known Unity keys, calls DeleteAll, then restores them.
+        /// </summary>
+        private static void ClearPlayerPrefsSafe()
+        {
+            // Snapshot Unity-internal keys before clearing
+            var saved = new System.Collections.Generic.List<(string key, string value)>();
+            foreach (var key in UnityInternalPlayerPrefsKeys)
+            {
+                if (UnityEngine.PlayerPrefs.HasKey(key))
+                {
+                    saved.Add((key, UnityEngine.PlayerPrefs.GetString(key)));
+                }
+            }
+
+            UnityEngine.PlayerPrefs.DeleteAll();
+
+            // Restore Unity-internal keys
+            foreach (var (key, value) in saved)
+            {
+                UnityEngine.PlayerPrefs.SetString(key, value);
+            }
+
+            UnityEngine.PlayerPrefs.Save();
         }
 
         private static void RestorePlayerPrefsFromJson(string json)

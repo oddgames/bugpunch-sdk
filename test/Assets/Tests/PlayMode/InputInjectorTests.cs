@@ -433,7 +433,6 @@ namespace ODDGames.UIAutomation.Tests
         #region InjectScroll Tests
 
         [Test]
-        [Ignore("ScrollRect doesn't respond to injected scroll events - needs investigation")]
         public async Task InjectScroll_FloatDelta_ScrollsAtPosition()
         {
             var scrollRect = CreateScrollRect("ScrollTest", Vector2.zero);
@@ -456,7 +455,6 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [Test]
-        [Ignore("ScrollRect doesn't respond to injected scroll events - needs investigation")]
         public async Task InjectScroll_NegativeDelta_ScrollsDown()
         {
             var scrollRect = CreateScrollRect("ScrollDownTest", Vector2.zero);
