@@ -41,13 +41,6 @@ namespace ODDGames.UIAutomation
         /// </summary>
         protected virtual bool DisableHardwareInput => true;
 
-        /// <summary>
-        /// Override to ignore error/exception log messages during the test.
-        /// When true, LogAssert.ignoreFailingMessages is set to true.
-        /// Default is true (errors won't fail the test).
-        /// </summary>
-        protected virtual bool IgnoreErrorLogs => true;
-
         [SetUp]
         public virtual void SetUp()
         {
@@ -56,15 +49,6 @@ namespace ODDGames.UIAutomation
             UnityEngine.Profiling.Profiler.enabled = false;
 
             Debug.Log($"[UIAutomationTestFixture] SetUp starting (frame {Time.frameCount})");
-
-            // Ignore error logs by default - game errors shouldn't fail UI tests
-            // LogAssert is editor-only (UnityEngine.TestTools)
-#if UNITY_EDITOR
-            if (IgnoreErrorLogs)
-            {
-                UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
-            }
-#endif
 
             if (CaptureUnobservedException)
             {

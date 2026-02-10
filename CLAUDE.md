@@ -99,7 +99,5 @@ Track changes methodically as you work. Used to generate CHANGELOG.md during `/d
 
 ### Current Local Changes
 
-- **Added**: `UIUtility` public static class — single source of truth for `GetScreenPosition()`, `GetScreenBounds()`, `GetHitsAtPosition()`, `GetReceiversAtPosition()`
-- **Added**: `UIUtility.GetScreenPosition(Component)` overload for convenience
-- **Changed**: `InputInjector.GetScreenPosition/GetScreenBounds/GetHitsAtPosition/GetReceiversAtPosition` now delegate to `UIUtility`
+(None - cleared after v1.2.2 deploy)
 - **Changed**: `Search.GetScreenCenter/GetScreenBounds` and private `GetScreenPosition` now delegate to `UIUtility`
