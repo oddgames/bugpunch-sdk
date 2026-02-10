@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-02-10
+
+### Breaking Changes
+- **`UITestBase` renamed to `UIAutomationTestFixture`** — Class renamed and moved from `ODDGames.UIAutomation.Testing` namespace to `ODDGames.UIAutomation`. Update: `using ODDGames.UIAutomation;` and change class name in test declarations.
+- **`ODDGames.UIAutomation.Testing` assembly removed** — Test fixture now lives in the main `ODDGames.UIAutomation` assembly. Remove `ODDGames.UIAutomation.Testing` from asmdef references.
+- **`InputInjector` is now `internal`** — No longer accessible from external assemblies. Use `UIAutomationTestFixture` base class instead, which handles input setup/teardown automatically.
+- **`InputInjector.DisableHardwareInput()` / `EnableHardwareInput()` removed** — Replaced by `InputInjector.Setup()` / `TearDown()` lifecycle (called automatically by `UIAutomationTestFixture`).
+
+### Changed
+- **`InputInjector` follows `InputTestFixture` pattern** — Explicit `Setup()`/`TearDown()` lifecycle instead of eager initialization on domain reload. `OnDomainReload()` now only cleans up orphaned devices.
+- **`InputInjector.Setup()` saves and restores `InputSystem.settings`** — Settings are snapshotted before modification and restored in `TearDown()`, preventing permanent clobbering of game settings like `backgroundBehavior`.
+- **`UIAutomationTestFixture` handles full input lifecycle** — `SetUp()` calls `InputInjector.Setup()` (virtual devices, hardware isolation, settings). `TearDown()` calls `InputInjector.TearDown()` (restore everything).
+- **All test classes extend `UIAutomationTestFixture`** — Standardized input setup across all tests, removing duplicate manual mouse reset and EventSystem cleanup boilerplate.
+- **Consolidated to two assemblies** — `ODDGames.UIAutomation` (runtime) and `ODDGames.UIAutomation.Editor` (editor). Removed AI, Recording, VisualBuilder, and Testing assemblies.
+
+### Removed
+- **AI Testing module** — Entire `AI/` directory (actions, models, navigation, screen analysis, strategy, debug, editor panels)
+- **Recording module** — `Recording/` directory (input interceptor, recorder, generator, settings)
+- **Visual Builder module** — `VisualBuilder/` directory (element selector, visual blocks, runtime compiler, editor panels)
+- **Auto Explorer** — `AutoExplorer.cs`
+- **Editor hooks** — `InputInjectorEditorHooks.cs`, `UITestLiveRecorder.cs`
+
 ## [1.1.43] - 2026-02-09
 
 ### Fixed

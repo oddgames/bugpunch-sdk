@@ -1,3 +1,4 @@
+#if UNITY_INCLUDE_TESTS
 using System;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -6,14 +7,15 @@ using UnityEngine;
 namespace ODDGames.UIAutomation
 {
     /// <summary>
-    /// Base class for UI automation tests. Provides:
+    /// Base class for UI automation tests. Follows Unity's InputTestFixture pattern.
+    /// Provides:
+    /// - Input system setup/teardown (virtual devices, hardware isolation)
     /// - Unobserved exception capture
-    /// - Hardware input isolation
     /// - Scene loading with frame rate stabilization
     ///
     /// Usage:
     /// <code>
-    /// public class MyTests : UITestBase
+    /// public class MyTests : UIAutomationTestFixture
     /// {
     ///     [Test]
     ///     public async Task TestSomething()
@@ -24,7 +26,7 @@ namespace ODDGames.UIAutomation
     /// }
     /// </code>
     /// </summary>
-    public abstract class UITestBase
+    public abstract class UIAutomationTestFixture
     {
 
         /// <summary>
@@ -53,10 +55,10 @@ namespace ODDGames.UIAutomation
             // caused by async operations crossing frame boundaries (UniTask issue)
             UnityEngine.Profiling.Profiler.enabled = false;
 
-            Debug.Log($"[UITestBase] SetUp starting (frame {Time.frameCount})");
+            Debug.Log($"[UIAutomationTestFixture] SetUp starting (frame {Time.frameCount})");
 
             // Ignore error logs by default - game errors shouldn't fail UI tests
-            // LogAssert is in UnityEngine.TestRunner which is editor-only
+            // LogAssert is editor-only (UnityEngine.TestTools)
 #if UNITY_EDITOR
             if (IgnoreErrorLogs)
             {
@@ -72,16 +74,16 @@ namespace ODDGames.UIAutomation
 
             if (DisableHardwareInput)
             {
-                InputInjector.DisableHardwareInput();
+                InputInjector.Setup();
             }
 
-            Debug.Log("[UITestBase] SetUp complete");
+            Debug.Log("[UIAutomationTestFixture] SetUp complete");
         }
 
         [TearDown]
         public virtual void TearDown()
         {
-            Debug.Log($"[UITestBase] TearDown starting (frame {Time.frameCount})");
+            Debug.Log($"[UIAutomationTestFixture] TearDown starting (frame {Time.frameCount})");
 
             if (CaptureUnobservedException)
             {
@@ -90,16 +92,13 @@ namespace ODDGames.UIAutomation
 
             if (DisableHardwareInput)
             {
-                InputInjector.EnableHardwareInput();
+                InputInjector.TearDown();
             }
-
-            // Clean up any virtual devices created during the test
-            InputInjector.CleanupVirtualDevices();
 
             // Re-enable profiler
             UnityEngine.Profiling.Profiler.enabled = true;
 
-            Debug.Log("[UITestBase] TearDown complete");
+            Debug.Log("[UIAutomationTestFixture] TearDown complete");
         }
 
 
@@ -111,13 +110,13 @@ namespace ODDGames.UIAutomation
         /// <param name="minFps">Minimum stable frame rate before considering scene ready. Set to 0 to skip FPS check.</param>
         protected async Task LoadScene(string sceneName, float minFps = 20f)
         {
-            Debug.Log($"[UITestBase] LoadScene({sceneName}) starting (frame {Time.frameCount})");
+            Debug.Log($"[UIAutomationTestFixture] LoadScene({sceneName}) starting (frame {Time.frameCount})");
             var op = UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(sceneName);
             while (!op.isDone)
             {
                 await Task.Yield();
             }
-            Debug.Log($"[UITestBase] LoadScene({sceneName}) scene loaded (frame {Time.frameCount})");
+            Debug.Log($"[UIAutomationTestFixture] LoadScene({sceneName}) scene loaded (frame {Time.frameCount})");
 
             // Wait for stable frame rate
             if (minFps > 0)
@@ -132,7 +131,7 @@ namespace ODDGames.UIAutomation
                     await Task.Yield();
                 }
             }
-            Debug.Log($"[UITestBase] LoadScene({sceneName}) complete (frame {Time.frameCount})");
+            Debug.Log($"[UIAutomationTestFixture] LoadScene({sceneName}) complete (frame {Time.frameCount})");
         }
 
         /// <summary>
@@ -142,21 +141,21 @@ namespace ODDGames.UIAutomation
         protected void ClearPersistentFiles()
         {
             var path = Application.persistentDataPath;
-            Debug.Log($"[UITestBase] Clearing persistent data: {path}");
+            Debug.Log($"[UIAutomationTestFixture] Clearing persistent data: {path}");
             if (System.IO.Directory.Exists(path))
             {
                 foreach (var file in System.IO.Directory.GetFiles(path, "*", System.IO.SearchOption.AllDirectories))
                 {
                     try { System.IO.File.Delete(file); }
-                    catch (Exception ex) { Debug.LogWarning($"[UITestBase] Failed to delete {file}: {ex.Message}"); }
+                    catch (Exception ex) { Debug.LogWarning($"[UIAutomationTestFixture] Failed to delete {file}: {ex.Message}"); }
                 }
                 foreach (var dir in System.IO.Directory.GetDirectories(path))
                 {
                     try { System.IO.Directory.Delete(dir, true); }
-                    catch (Exception ex) { Debug.LogWarning($"[UITestBase] Failed to delete {dir}: {ex.Message}"); }
+                    catch (Exception ex) { Debug.LogWarning($"[UIAutomationTestFixture] Failed to delete {dir}: {ex.Message}"); }
                 }
             }
-            Debug.Log("[UITestBase] Persistent data files cleared");
+            Debug.Log("[UIAutomationTestFixture] Persistent data files cleared");
         }
 
         /// <summary>
@@ -209,3 +208,4 @@ namespace ODDGames.UIAutomation
         }
     }
 }
+#endif // UNITY_INCLUDE_TESTS

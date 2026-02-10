@@ -13,6 +13,10 @@ using UnityEngine.UI;
 
 using Debug = UnityEngine.Debug;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
 namespace ODDGames.UIAutomation
 {
     /// <summary>
@@ -72,7 +76,7 @@ namespace ODDGames.UIAutomation
             while (Time.frameCount < target)
             {
                 ct.ThrowIfCancellationRequested();
-                await InputInjector.EnsureGameViewFocusAsync();
+
                 await Task.Yield();
             }
         }
@@ -95,7 +99,7 @@ namespace ODDGames.UIAutomation
             while (Time.frameCount < targetFrame || Stopwatch.GetTimestamp() < targetTicks)
             {
                 ct.ThrowIfCancellationRequested();
-                await InputInjector.EnsureGameViewFocusAsync();
+
                 await Task.Yield();
             }
         }
@@ -258,67 +262,72 @@ namespace ODDGames.UIAutomation
     }
 
     /// <summary>
-    /// Public utility class for injecting input events using Unity's Input System.
-    /// Used by UIAutomation and AI testing systems.
+    /// Internal utility class for injecting input events using Unity's Input System.
+    /// Used by ActionExecutor and UIAutomationTestFixture. Call Setup()/TearDown() to manage lifecycle.
     /// </summary>
-    public static class InputInjector
+    internal static class InputInjector
     {
         private static List<InputDevice> _disabledDevices = new List<InputDevice>();
+
         private static Mouse _virtualMouse;
         private static Keyboard _virtualKeyboard;
         private static Touchscreen _virtualTouchscreen;
+        private static InputSettings _savedSettings;
 
         /// <summary>
-        /// Clean up any orphaned virtual devices on domain reload.
-        /// This handles devices that persist in InputSystem after our static references are lost.
+        /// Clean up orphaned virtual devices on domain reload.
+        /// Does NOT set up input — call Setup() explicitly when testing begins.
         /// </summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void OnDomainReload()
         {
-            // Clear our static references (they may point to invalid devices)
+            // Clear stale static references (they may point to invalid devices)
             _virtualMouse = null;
             _virtualKeyboard = null;
             _virtualTouchscreen = null;
             _disabledDevices = new List<InputDevice>();
-
-            // Ensure InputSystemUIInputModule processes events even when Game View is unfocused
-            // (in Editor, Application.isFocused is false when Game View doesn't have focus,
-            // which causes EventSystem to skip processing our injected input events)
-            InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
-#if UNITY_EDITOR
-            // Route all device input to Game View during play mode (matches InputTestFixture behavior).
-            // Without this, input from virtual devices could be routed to Editor windows instead.
-            InputSystem.settings.editorInputBehaviorInPlayMode =
-                InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
-#endif
+            _savedSettings = null;
 
             // Remove any orphaned virtual devices from previous runs
-            var devicesToRemove = new List<InputDevice>();
-            foreach (var device in InputSystem.devices)
-            {
-                if (device.name.StartsWith("UIAutomation_Mouse") ||
-                    device.name.StartsWith("UIAutomation_Keyboard") ||
-                    device.name.StartsWith("UIAutomation_Touchscreen"))
-                {
-                    devicesToRemove.Add(device);
-                }
-            }
+            CleanupOrphanedVirtualDevices();
+        }
 
-            foreach (var device in devicesToRemove)
-            {
-                Debug.Log($"[InputInjector] Cleaning up orphaned device from previous run: {device.name}");
-                InputSystem.RemoveDevice(device);
-            }
+        /// <summary>
+        /// Configures input for UI automation testing. Call once before tests begin.
+        /// Matches Unity's InputTestFixture.Setup() pattern:
+        /// - Configures input settings for background/editor behavior
+        /// - Creates virtual devices
+        /// - Disables hardware input
+        /// </summary>
+        public static void Setup()
+        {
+            // Snapshot settings so TearDown() can restore them exactly
+            _savedSettings = ScriptableObject.Instantiate(InputSystem.settings);
 
-            // Create virtual devices and disable all hardware devices so only our
-            // virtual ones are active. This guarantees InputAction bindings like
-            // <Mouse>/position resolve to our virtual device — no .current race,
-            // no Editor windows consuming injected events.
+            // Ensure InputSystemUIInputModule processes events even when Game View is unfocused
+            InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
+
+#if UNITY_EDITOR
+            // Route all device input to Game View during play mode — matches InputTestFixture behavior
+            InputSystem.settings.editorInputBehaviorInPlayMode =
+                InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+
+            // Safety: re-enable hardware input when exiting play mode (in case test crashed)
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+#endif
+
+            // Clean up any orphaned virtual devices before creating new ones
+            CleanupOrphanedVirtualDevices();
+
+            // Create virtual devices so InputAction bindings like <Mouse>/position
+            // resolve to our virtual device — no .current race, no Editor windows
+            // consuming injected events.
             _virtualMouse = InputSystem.AddDevice<Mouse>("UIAutomation_Mouse");
             _virtualKeyboard = InputSystem.AddDevice<Keyboard>("UIAutomation_Keyboard");
             _virtualTouchscreen = InputSystem.AddDevice<Touchscreen>("UIAutomation_Touchscreen");
 
             // Disable hardware so bindings can only resolve to our virtual devices
+            _disabledDevices.Clear();
             foreach (var device in InputSystem.devices)
             {
                 if (device.name.StartsWith("UIAutomation_")) continue;
@@ -329,27 +338,40 @@ namespace ODDGames.UIAutomation
                 }
             }
 
-#if UNITY_EDITOR
-            // Safety: re-enable hardware input when exiting play mode (in case test crashed)
-            UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
-            UnityEditor.EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-#endif
+            // Safety: re-enable hardware input when app quits (in case test crashed)
+            Application.quitting += OnApplicationQuitting;
         }
 
-#if UNITY_EDITOR
-        private static void OnPlayModeStateChanged(UnityEditor.PlayModeStateChange state)
+        /// <summary>
+        /// Restores input state after testing. Call once after tests complete.
+        /// Matches Unity's InputTestFixture.TearDown() pattern.
+        /// </summary>
+        public static void TearDown()
         {
-            if (state == UnityEditor.PlayModeStateChange.ExitingPlayMode)
+#if UNITY_EDITOR
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+#endif
+            Application.quitting -= OnApplicationQuitting;
+
+            EnableHardwareInput();
+            CleanupVirtualDevices();
+
+            // Restore original InputSystem.settings (backgroundBehavior, editorInputBehaviorInPlayMode, etc.)
+            if (_savedSettings != null)
             {
-                // Re-enable any hardware devices that were disabled during testing
-                if (_disabledDevices.Count > 0)
-                {
-                    Debug.Log("[InputInjector] Exiting play mode - restoring hardware input devices");
-                    EnableHardwareInput();
-                }
+                InputSystem.settings = _savedSettings;
+                _savedSettings = null;
             }
         }
-#endif
+
+        private static void OnApplicationQuitting()
+        {
+            if (_disabledDevices.Count > 0)
+            {
+                Debug.Log("[InputInjector] Application quitting - restoring hardware input devices");
+                EnableHardwareInput();
+            }
+        }
 
         /// <summary>
         /// Gets a working mouse device, creating a virtual one if necessary.
@@ -392,11 +414,7 @@ namespace ODDGames.UIAutomation
             return _virtualTouchscreen;
         }
 
-        /// <summary>
-        /// Cleans up any virtual devices created by InputInjector.
-        /// Call this when done with testing to avoid device accumulation.
-        /// </summary>
-        public static void CleanupVirtualDevices()
+        private static void CleanupVirtualDevices()
         {
             if (_virtualMouse != null && _virtualMouse.added)
             {
@@ -412,31 +430,6 @@ namespace ODDGames.UIAutomation
             {
                 InputSystem.RemoveDevice(_virtualTouchscreen);
                 _virtualTouchscreen = null;
-            }
-        }
-
-        /// <summary>
-        /// Disables all hardware input devices (mouse, keyboard, gamepad, touchscreen).
-        /// Only simulated input will work after calling this.
-        /// Call EnableHardwareInput() to restore.
-        /// </summary>
-        public static void DisableHardwareInput()
-        {
-            // First, clean up any orphaned virtual devices from previous runs
-            CleanupOrphanedVirtualDevices();
-
-            _disabledDevices.Clear();
-            foreach (var device in InputSystem.devices)
-            {
-                // Skip our virtual devices
-                if (device.name.StartsWith("UIAutomation_")) continue;
-
-                if (device.enabled)
-                {
-                    _disabledDevices.Add(device);
-                    InputSystem.DisableDevice(device);
-                    Debug.Log($"[InputInjector] Disabled hardware device: {device.name}");
-                }
             }
         }
 
@@ -469,10 +462,7 @@ namespace ODDGames.UIAutomation
             }
         }
 
-        /// <summary>
-        /// Re-enables all hardware input devices that were disabled by DisableHardwareInput().
-        /// </summary>
-        public static void EnableHardwareInput()
+        private static void EnableHardwareInput()
         {
             foreach (var device in _disabledDevices)
             {
@@ -484,6 +474,16 @@ namespace ODDGames.UIAutomation
             }
             _disabledDevices.Clear();
         }
+
+#if UNITY_EDITOR
+        private static void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingPlayMode)
+            {
+                TearDown();
+            }
+        }
+#endif
 
         /// <summary>
         /// Logs a debug message only when ActionExecutor.DebugMode is enabled.
@@ -814,7 +814,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task PressKeyWithModifier(Key modifier, Key key)
         {
-            await EnsureGameViewFocusAsync();
+
 
             var keyboard = GetKeyboard();
             if (keyboard == null)
@@ -912,7 +912,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task Swipe(GameObject element, string direction, float normalizedDistance = 0.2f, float duration = 0.3f)
         {
-            await EnsureGameViewFocusAsync();
+
             var startPos = GetScreenPosition(element);
             var offset = GetDirectionOffset(direction, normalizedDistance);
             var endPos = startPos + offset;
@@ -987,7 +987,7 @@ namespace ODDGames.UIAutomation
         /// <param name="fingerSpacing">Normalized spacing between fingers (0-1).</param>
         public static async Task InjectTwoFingerSwipe(Vector2 centerPosition, string direction, float normalizedDistance = 0.2f, float duration = 0.3f, float fingerSpacing = 0.03f)
         {
-            await EnsureGameViewFocusAsync();
+
 
             var offset = GetDirectionOffset(direction, normalizedDistance);
 
@@ -1015,110 +1015,6 @@ namespace ODDGames.UIAutomation
 
         #endregion
 
-        /// <summary>
-        /// Ensures the Game View has focus before injecting input events.
-        /// Without this, input events may be consumed by other Editor windows.
-        /// Polls until focus is confirmed or timeout is reached.
-        /// </summary>
-        public static async Task EnsureGameViewFocusAsync()
-        {
-#if UNITY_EDITOR
-            // Cache Game View reference to avoid reflection every call
-            // (this runs in every delay loop iteration)
-            if (_cachedGameView == null || !_cachedGameView)
-            {
-                var gameViewType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
-                if (gameViewType == null) return;
-                _cachedGameView = UnityEditor.EditorWindow.GetWindow(gameViewType, false, null, false);
-                if (_cachedGameView == null) return;
-            }
-
-            // Already focused — early return
-            if (UnityEditor.EditorWindow.focusedWindow == _cachedGameView) return;
-
-            _cachedGameView.Focus();
-
-            // Poll until focus is confirmed (max ~30 frames / 0.5s)
-            for (int i = 0; i < 30; i++)
-            {
-                await Task.Yield();
-                if (UnityEditor.EditorWindow.focusedWindow == _cachedGameView)
-                    return;
-            }
-
-            // Last resort: try once more
-            _cachedGameView.Focus();
-            await Task.Yield();
-#else
-            await Task.CompletedTask;
-#endif
-        }
-
-#if UNITY_EDITOR
-        private static UnityEditor.EditorWindow _cachedGameView;
-#endif
-
-        /// <summary>
-        /// Scales screen coordinates to match the actual Game View window size in the Editor.
-        /// In builds, returns the coordinates unchanged.
-        /// </summary>
-        /// <param name="screenPos">Position in Screen.width/height coordinate space</param>
-        /// <returns>Position scaled to actual Game View window coordinates</returns>
-        public static Vector2 ScaleToGameViewWindow(Vector2 screenPos)
-        {
-#if UNITY_EDITOR
-            // Get the actual Game View render area size
-            var gameViewType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
-            if (gameViewType != null)
-            {
-                var gameView = UnityEditor.EditorWindow.GetWindow(gameViewType, false, null, false);
-                if (gameView != null)
-                {
-                    // Try to get the actual viewport rect (the area where the game renders)
-                    // This accounts for letterboxing, toolbar, etc.
-                    var viewportProperty = gameViewType.GetProperty("targetRenderSize",
-                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-                    Vector2 viewportSize = Vector2.zero;
-
-                    if (viewportProperty != null)
-                    {
-                        viewportSize = (Vector2)viewportProperty.GetValue(gameView);
-                    }
-                    else
-                    {
-                        // Fallback: try GetMainGameViewTargetSize
-                        var getSizeOfMainGameView = gameViewType.GetMethod("GetMainGameViewTargetSize",
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-
-                        if (getSizeOfMainGameView != null)
-                        {
-                            viewportSize = (Vector2)getSizeOfMainGameView.Invoke(null, null);
-                        }
-                    }
-
-                    if (viewportSize.x > 0 && viewportSize.y > 0)
-                    {
-                        // If viewport matches Screen size, no scaling needed
-                        if (Mathf.Approximately(viewportSize.x, Screen.width) &&
-                            Mathf.Approximately(viewportSize.y, Screen.height))
-                        {
-                            return screenPos;
-                        }
-
-                        // Scale from Screen coordinates to viewport coordinates
-                        float scaleX = viewportSize.x / Screen.width;
-                        float scaleY = viewportSize.y / Screen.height;
-
-                        var scaled = new Vector2(screenPos.x * scaleX, screenPos.y * scaleY);
-                        LogDebug($"ScaleToGameViewWindow: ({screenPos.x:F0},{screenPos.y:F0}) -> ({scaled.x:F0},{scaled.y:F0}) scale=({scaleX:F3},{scaleY:F3}) viewport={viewportSize} screen={Screen.width}x{Screen.height}");
-                        return scaled;
-                    }
-                }
-            }
-#endif
-            return screenPos;
-        }
 
         /// <summary>
         /// Returns true if we should use touch input instead of mouse.
@@ -1143,7 +1039,7 @@ namespace ODDGames.UIAutomation
             LogDebug($"InjectPointerTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             InputVisualizer.RecordClick(screenPosition, 1);
             InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
-            await EnsureGameViewFocusAsync();
+
 
             if (ShouldUseTouchInput())
             {
@@ -1201,7 +1097,7 @@ namespace ODDGames.UIAutomation
             LogDebug($"InjectPointerDoubleTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             InputVisualizer.RecordClick(screenPosition, 2);
             InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
-            await EnsureGameViewFocusAsync();
+
 
             if (ShouldUseTouchInput())
             {
@@ -1248,7 +1144,7 @@ namespace ODDGames.UIAutomation
             // Inter-click gap — must be within double-click speed threshold (~300ms)
             await Async.Delay(2, 0.05f);
 
-            await EnsureGameViewFocusAsync();
+
 
             // Second click
             using (DeltaStateEvent.From(mouse.leftButton, out var d2))
@@ -1290,7 +1186,7 @@ namespace ODDGames.UIAutomation
             LogDebug($"InjectPointerTripleTap at ({screenPosition.x:F0},{screenPosition.y:F0})");
             InputVisualizer.RecordClick(screenPosition, 3);
             InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
-            await EnsureGameViewFocusAsync();
+
 
             if (ShouldUseTouchInput())
             {
@@ -1323,7 +1219,7 @@ namespace ODDGames.UIAutomation
                 if (click > 0)
                 {
                     await Async.Delay(2, 0.05f);
-                    await EnsureGameViewFocusAsync();
+        
                 }
 
                 using (DeltaStateEvent.From(mouse.leftButton, out var down))
@@ -1415,7 +1311,7 @@ namespace ODDGames.UIAutomation
         {
             InputVisualizer.RecordDragStart(startPos);
             InputVisualizer.RecordCursorPosition(startPos, !ShouldUseTouchInput());
-            await EnsureGameViewFocusAsync();
+
 
             if (ShouldUseTouchInput())
             {
@@ -1732,7 +1628,7 @@ namespace ODDGames.UIAutomation
         public static async Task InjectScroll(Vector2 position, Vector2 scrollDelta)
         {
             InputVisualizer.RecordScroll(position, scrollDelta);
-            await EnsureGameViewFocusAsync();
+
 
             var mouse = GetMouse();
             if (mouse == null)
@@ -1779,7 +1675,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static async Task TypeText(string text)
         {
-            await EnsureGameViewFocusAsync();
+
             LogDebug($"TypeText '{text}' ({text?.Length ?? 0} chars)");
 
             var keyboard = GetKeyboard();
@@ -1842,7 +1738,7 @@ namespace ODDGames.UIAutomation
         public static async Task PressKey(Key key)
         {
             InputVisualizer.RecordKeyPress(key.ToString());
-            await EnsureGameViewFocusAsync();
+
 
             var keyboard = GetKeyboard();
             if (keyboard == null)
@@ -1870,7 +1766,7 @@ namespace ODDGames.UIAutomation
         public static async Task HoldKey(Key key, float duration)
         {
             InputVisualizer.RecordKeyHoldStart(key.ToString());
-            await EnsureGameViewFocusAsync();
+
 
             var keyboard = GetKeyboard();
             if (keyboard == null)
@@ -1915,7 +1811,7 @@ namespace ODDGames.UIAutomation
 
             string keyNames = string.Join("+", System.Array.ConvertAll(keys, k => k.ToString()));
             InputVisualizer.RecordKeyHoldStart(keyNames);
-            await EnsureGameViewFocusAsync();
+
 
             var keyboard = GetKeyboard();
             if (keyboard == null)
@@ -1955,7 +1851,7 @@ namespace ODDGames.UIAutomation
         public static async Task InjectPointerHold(Vector2 screenPosition, float holdSeconds)
         {
             InputVisualizer.RecordHoldStart(screenPosition);
-            await EnsureGameViewFocusAsync();
+
 
             if (ShouldUseTouchInput())
             {
@@ -2078,7 +1974,7 @@ namespace ODDGames.UIAutomation
         {
             const float startOffset = 100f; // Initial distance from center
             InputVisualizer.RecordPinchStart(centerPosition, startOffset * 2f);
-            await EnsureGameViewFocusAsync();
+
 
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
@@ -2174,7 +2070,7 @@ namespace ODDGames.UIAutomation
         public static async Task InjectPinch(Vector2 centerPosition, float scale, float duration, float fingerDistancePixels)
         {
             InputVisualizer.RecordPinchStart(centerPosition, fingerDistancePixels * 2f);
-            await EnsureGameViewFocusAsync();
+
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {
@@ -2266,7 +2162,7 @@ namespace ODDGames.UIAutomation
         public static async Task InjectTwoFingerDrag(Vector2 start1, Vector2 end1, Vector2 start2, Vector2 end2, float duration)
         {
             InputVisualizer.RecordTwoFingerStart(start1, start2);
-            await EnsureGameViewFocusAsync();
+
 
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
@@ -2355,7 +2251,7 @@ namespace ODDGames.UIAutomation
             // Calculate the radius based on screen size and finger distance
             float radiusPixels = fingerDistance * Mathf.Min(Screen.width, Screen.height);
             InputVisualizer.RecordRotateStart(centerPosition, radiusPixels);
-            await EnsureGameViewFocusAsync();
+
 
             await InjectRotatePixels(centerPosition, degrees, duration, radiusPixels);
             InputVisualizer.RecordRotateEnd(degrees);
@@ -2370,7 +2266,7 @@ namespace ODDGames.UIAutomation
         /// <param name="radiusPixels">Distance from center in pixels for finger positions.</param>
         public static async Task InjectRotatePixels(Vector2 centerPosition, float degrees, float duration, float radiusPixels)
         {
-            await EnsureGameViewFocusAsync();
+
             var touchscreen = GetTouchscreen();
             if (touchscreen == null)
             {

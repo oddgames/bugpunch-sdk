@@ -7,7 +7,6 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
-using UnityEngine.InputSystem.LowLevel;
 using TMPro;
 using static ODDGames.UIAutomation.ActionExecutor;
 
@@ -18,7 +17,7 @@ namespace ODDGames.UIAutomation.Tests
     /// Verifies that all test actions work correctly when accessed via 'using static'.
     /// </summary>
     [TestFixture]
-    public class UIAutomationStaticTests
+    public class UIAutomationStaticTests : UIAutomationTestFixture
     {
         private GameObject _canvas;
         private Canvas _canvasComponent;
@@ -26,32 +25,11 @@ namespace ODDGames.UIAutomation.Tests
         private List<GameObject> _createdObjects;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
+            base.SetUp();
+
             _createdObjects = new List<GameObject>();
-
-            // Destroy any lingering EventSystems
-            var existingEventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None);
-            foreach (var es in existingEventSystems)
-            {
-                Object.DestroyImmediate(es.gameObject);
-            }
-
-            // Reset Input System state
-            var mouse = Mouse.current;
-            if (mouse != null)
-            {
-                using (StateEvent.From(mouse, out var statePtr))
-                {
-                    mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
-                    mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
-                    mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
-                    mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
-                    mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
-                    InputSystem.QueueEvent(statePtr);
-                }
-                InputSystem.Update();
-            }
 
             // Create EventSystem
             var esGO = new GameObject("EventSystem");
@@ -71,24 +49,8 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
-            // Reset Input System state
-            var mouse = Mouse.current;
-            if (mouse != null)
-            {
-                using (StateEvent.From(mouse, out var statePtr))
-                {
-                    mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
-                    mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
-                    mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
-                    mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
-                    mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
-                    InputSystem.QueueEvent(statePtr);
-                }
-                InputSystem.Update();
-            }
-
             // Destroy in reverse order
             for (int i = _createdObjects.Count - 1; i >= 0; i--)
             {
@@ -97,6 +59,8 @@ namespace ODDGames.UIAutomation.Tests
                     Object.DestroyImmediate(obj);
             }
             _createdObjects.Clear();
+
+            base.TearDown();
         }
 
         #region Helper Methods

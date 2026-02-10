@@ -17,15 +17,17 @@ namespace ODDGames.UIAutomation.Tests
     /// Randomize, Visible, Interactable, Or, FindAll, FindFirst, GetScreenPosition.
     /// </summary>
     [TestFixture]
-    public class SearchExtendedTests
+    public class SearchExtendedTests : UIAutomationTestFixture
     {
         private Canvas _canvas;
         private EventSystem _eventSystem;
         private List<GameObject> _createdObjects;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
+            base.SetUp();
+
             _createdObjects = new List<GameObject>();
 
             // Create EventSystem
@@ -44,7 +46,7 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
             foreach (var obj in _createdObjects)
             {
@@ -52,6 +54,8 @@ namespace ODDGames.UIAutomation.Tests
                     Object.Destroy(obj);
             }
             _createdObjects.Clear();
+
+            base.TearDown();
         }
 
         #region IncludeInactive Tests

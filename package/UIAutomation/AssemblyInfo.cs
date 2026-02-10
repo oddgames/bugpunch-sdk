@@ -5,4 +5,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("ODDGames.UIAutomation.Tests.PlayMode")]
 
 // Allow sub-assemblies to access internals
-[assembly: InternalsVisibleTo("ODDGames.UIAutomation.VisualBuilder")]
+[assembly: InternalsVisibleTo("ODDGames.UIAutomation.Editor")]

@@ -23,7 +23,7 @@ namespace ODDGames.UIAutomation.Tests
     /// Tests all action methods: Click, DoubleClick, Hold, Type, Drag, Scroll, Slider, Dropdown, etc.
     /// </summary>
     [TestFixture]
-    public class ActionExecutorTests
+    public class ActionExecutorTests : UIAutomationTestFixture
     {
         private Canvas _canvas;
         private EventSystem _eventSystem;
@@ -32,12 +32,12 @@ namespace ODDGames.UIAutomation.Tests
         private Mouse _mouse;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
-            _createdObjects = new List<GameObject>();
+            base.SetUp();
 
-            // Ensure mouse device exists for input injection
-            _mouse = Mouse.current ?? InputSystem.AddDevice<Mouse>();
+            _createdObjects = new List<GameObject>();
+            _mouse = Mouse.current;
 
             // Create EventSystem with Input System module
             var esGO = new GameObject("EventSystem");
@@ -55,7 +55,7 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
             foreach (var obj in _createdObjects)
             {
@@ -67,6 +67,8 @@ namespace ODDGames.UIAutomation.Tests
             // Clean up static test data
             TestTrucks.PlayerTruck = null;
             TestTrucks.PlayerTrucks = null;
+
+            base.TearDown();
         }
 
         #region Click Tests
@@ -488,6 +490,289 @@ namespace ODDGames.UIAutomation.Tests
             float elapsed = Time.realtimeSinceStartup - startTime;
 
             Assert.GreaterOrEqual(elapsed, 0.15f, "Should have held keys for approximately 0.2s");
+        }
+
+        #endregion
+
+        #region Triple Click Tests
+
+        [Test]
+        public async Task TripleClickAsync_WithSearch_TripleClicksElement()
+        {
+            var button = CreateButton("TripleClickButton", new Vector2(0, 0));
+            int clickCount = 0;
+            button.onClick.AddListener(() => clickCount++);
+
+            await Async.DelayFrames(1);
+            await ActionExecutor.TripleClick(new Search().Name("TripleClickButton"), searchTime: 0.5f);
+
+            Assert.AreEqual(3, clickCount, "Button should have been clicked three times");
+        }
+
+        [Test]
+        public async Task TripleClickAtAsync_OnEmptyArea_DoesNotThrow()
+        {
+            await Async.DelayFrames(1);
+
+            // Click at center of screen where nothing exists - should not throw
+            await ActionExecutor.TripleClickAt(new Vector2(Screen.width / 2f, Screen.height / 2f));
+        }
+
+        #endregion
+
+        #region InputField Focus Tests
+
+        [Test]
+        public async Task ClickAsync_InputField_IsFocusedAfterClick()
+        {
+            var inputField = CreateTMPInputField("FocusInput", new Vector2(0, 0));
+
+            await Async.DelayFrames(1);
+            await ActionExecutor.Click(new Search().Name("FocusInput"), searchTime: 0.5f);
+            await Async.DelayFrames(5);
+
+            Assert.IsTrue(inputField.isFocused, "Input field should be focused after click");
+        }
+
+        #endregion
+
+        #region Scroll Variant Tests
+
+        [Test]
+        public async Task ScrollAsync_NegativeDelta_ScrollsDown()
+        {
+            CreateScrollView("NegScrollView", new Vector2(0, 0));
+
+            await Async.DelayFrames(2);
+
+            // Should complete without error
+            await ActionExecutor.Scroll(new Search().Name("NegScrollView"), -240f, searchTime: 0.5f);
+        }
+
+        [Test]
+        public async Task ScrollAsync_WithDirection_ScrollsElement()
+        {
+            CreateScrollView("DirScrollView", new Vector2(0, 0));
+
+            await Async.DelayFrames(2);
+
+            // Direction-based scroll should complete without error
+            await ActionExecutor.Scroll(new Search().Name("DirScrollView"), "down", 0.3f, searchTime: 0.5f);
+        }
+
+        [Test]
+        public async Task ScrollAtAsync_ScrollsAtPosition()
+        {
+            CreateScrollView("ScrollAtView", new Vector2(0, 0));
+
+            await Async.DelayFrames(2);
+
+            // Scroll at screen center
+            await ActionExecutor.ScrollAt(new Vector2(Screen.width / 2f, Screen.height / 2f), -120f);
+        }
+
+        #endregion
+
+        #region Swipe Tests
+
+        [Test]
+        public async Task SwipeAsync_WithSearch_SwipesElement()
+        {
+            var panel = CreateDraggablePanel("SwipePanel", new Vector2(0, 0));
+
+            await Async.DelayFrames(1);
+
+            // Should complete without error
+            await ActionExecutor.Swipe(new Search().Name("SwipePanel"), SwipeDirection.Left, 0.2f, 0.15f);
+        }
+
+        [Test]
+        public async Task SwipeAsync_WithoutSearch_SwipesFromCenter()
+        {
+            await Async.DelayFrames(1);
+
+            // Swipe from screen center
+            await ActionExecutor.Swipe(SwipeDirection.Right, 0.2f, 0.15f);
+        }
+
+        #endregion
+
+        #region Pinch Tests
+
+        [Test]
+        public async Task PinchAsync_WithSearch_PerformsPinchGesture()
+        {
+            var panel = CreateDraggablePanel("PinchPanel", new Vector2(0, 0));
+
+            await Async.DelayFrames(1);
+
+            await ActionExecutor.Pinch(new Search().Name("PinchPanel"), 1.5f, 0.15f);
+        }
+
+        [Test]
+        public async Task PinchAsync_WithoutSearch_UsesCenterOfScreen()
+        {
+            await Async.DelayFrames(1);
+
+            await ActionExecutor.Pinch(0.5f, 0.15f);
+        }
+
+        [Test]
+        public async Task PinchAtAsync_WithCustomFingerDistance()
+        {
+            await Async.DelayFrames(1);
+
+            var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            await ActionExecutor.PinchAt(center, 2.0f, 0.15f, 100f);
+        }
+
+        #endregion
+
+        #region Two-Finger Swipe Tests
+
+        [Test]
+        public async Task TwoFingerSwipeAsync_WithSearch_SwipesWithTwoFingers()
+        {
+            var panel = CreateDraggablePanel("TFSwipePanel", new Vector2(0, 0));
+
+            await Async.DelayFrames(1);
+
+            await ActionExecutor.TwoFingerSwipe(new Search().Name("TFSwipePanel"), "up", 0.2f, 0.15f, 0.03f);
+        }
+
+        [Test]
+        public async Task TwoFingerSwipeAtAsync_SwipesAtPosition()
+        {
+            await Async.DelayFrames(1);
+
+            await ActionExecutor.TwoFingerSwipeAt(0.5f, 0.5f, SwipeDirection.Down, 0.2f, 0.15f);
+        }
+
+        #endregion
+
+        #region Rotate Tests
+
+        [Test]
+        public async Task RotateAsync_WithSearch_PerformsRotation()
+        {
+            var panel = CreateDraggablePanel("RotatePanel", new Vector2(0, 0));
+
+            await Async.DelayFrames(1);
+
+            await ActionExecutor.Rotate(new Search().Name("RotatePanel"), 45f, 0.15f, 0.05f);
+        }
+
+        [Test]
+        public async Task RotateAtAsync_RotatesAtPosition()
+        {
+            await Async.DelayFrames(1);
+
+            var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            await ActionExecutor.RotateAt(center, 90f, 0.15f, 0.05f);
+        }
+
+        [Test]
+        public async Task RotateAtPixelsAsync_RotatesWithPixelRadius()
+        {
+            await Async.DelayFrames(1);
+
+            var center = new Vector2(Screen.width / 2f, Screen.height / 2f);
+            await ActionExecutor.RotateAtPixels(center, 60f, 0.15f, 50f);
+        }
+
+        #endregion
+
+        #region Drag Variant Tests
+
+        [Test]
+        public async Task DragAsync_WithHoldTime_HoldsBeforeDragging()
+        {
+            var draggable = CreateDraggablePanel("HoldDrag", new Vector2(0, 0));
+            var rt = draggable.GetComponent<RectTransform>();
+            var initialPos = rt.anchoredPosition;
+
+            await Async.DelayFrames(1);
+
+            float startTime = Time.realtimeSinceStartup;
+            await ActionExecutor.Drag(new Search().Name("HoldDrag"), new Vector2(100, 0), 0.5f, searchTime: 0.5f, holdTime: 0.2f);
+            float elapsed = Time.realtimeSinceStartup - startTime;
+
+            Assert.Greater(elapsed, 0.15f, "Should have held before dragging");
+        }
+
+        [Test]
+        public async Task DragToAsync_DragsBetweenSearchTargets()
+        {
+            var from = CreateDraggablePanel("DragFrom", new Vector2(-100, 0));
+            var to = CreateButton("DragTo", new Vector2(100, 0));
+            var rt = from.GetComponent<RectTransform>();
+            var initialPos = rt.anchoredPosition;
+            float maxX = initialPos.x;
+
+            await Async.DelayFrames(1);
+
+            var dragTask = ActionExecutor.DragTo(
+                new Search().Name("DragFrom"),
+                new Search().Name("DragTo"),
+                duration: 1.0f, searchTime: 0.5f, holdTime: 0f);
+
+            while (!dragTask.IsCompleted)
+            {
+                maxX = Mathf.Max(maxX, rt.anchoredPosition.x);
+                await Async.DelayFrames(1);
+            }
+            await dragTask;
+
+            maxX = Mathf.Max(maxX, rt.anchoredPosition.x);
+            Assert.Greater(maxX, initialPos.x, "Element should have moved right toward target");
+        }
+
+        #endregion
+
+        #region Keys Builder Tests
+
+        [Test]
+        public async Task KeysBuilder_SingleKeyHold_CompletesWithoutError()
+        {
+            await Async.DelayFrames(1);
+
+            await Keys.Hold(Key.W).For(0.1f);
+        }
+
+        [Test]
+        public async Task KeysBuilder_ChainedSequence_ExecutesInOrder()
+        {
+            await Async.DelayFrames(1);
+
+            await Keys.Hold(Key.LeftShift).For(0.1f)
+                .ThenPress(Key.A);
+        }
+
+        [Test]
+        public async Task KeysBuilder_PressAndThenHold_ChainsCorrectly()
+        {
+            await Async.DelayFrames(1);
+
+            await Keys.Press(Key.Space)
+                .Then(Key.W).For(0.1f)
+                .ThenPress(Key.E);
+        }
+
+        #endregion
+
+        #region Text Input Edge Case Tests
+
+        [Test]
+        public async Task TypeAsync_ClearFirstWithEmptyText_ClearsField()
+        {
+            var inputField = CreateTMPInputField("ClearEmptyInput", new Vector2(0, 0));
+            inputField.text = "Existing Text";
+
+            await Async.DelayFrames(1);
+            await ActionExecutor.Type(new Search().Name("ClearEmptyInput"), "", clearFirst: true, searchTime: 0.5f);
+            await Async.DelayFrames(10);
+
+            Assert.AreEqual("", inputField.text, "Input field should be empty after clearing with empty text");
         }
 
         #endregion

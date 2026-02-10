@@ -7,7 +7,6 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
-using UnityEngine.InputSystem.LowLevel;
 using TMPro;
 
 using ODDGames.UIAutomation;
@@ -21,7 +20,7 @@ namespace ODDGames.UIAutomation.Tests
     /// All tests run in PlayMode to ensure proper runtime behavior.
     /// </summary>
     [TestFixture]
-    public class SearchPlayModeTests
+    public class SearchPlayModeTests : UIAutomationTestFixture
     {
         private GameObject _canvas;
         private Canvas _canvasComponent;
@@ -29,34 +28,11 @@ namespace ODDGames.UIAutomation.Tests
         private List<GameObject> _createdObjects;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
+            base.SetUp();
+
             _createdObjects = new List<GameObject>();
-
-            // Destroy any lingering EventSystems from previous failed tests
-            var existingEventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None);
-            foreach (var es in existingEventSystems)
-            {
-            Object.DestroyImmediate(es.gameObject);
-            }
-
-            // Reset Input System state to clear any leftover mouse button/touch states
-            // This is critical for run-all mode where previous tests may leave mouse buttons pressed
-            var mouse = Mouse.current;
-            if (mouse != null)
-            {
-            // Reset mouse state by queueing a clean state event
-            using (StateEvent.From(mouse, out var statePtr))
-            {
-                mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
-                mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
-                mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
-                mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
-                mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
-                InputSystem.QueueEvent(statePtr);
-            }
-            InputSystem.Update();
-            }
 
             // Create EventSystem
             var esGO = new GameObject("EventSystem");
@@ -76,25 +52,8 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
-            // Reset Input System state before destroying objects
-            // This ensures the next test starts with a clean input state
-            var mouse = Mouse.current;
-            if (mouse != null)
-            {
-            using (StateEvent.From(mouse, out var statePtr))
-            {
-                mouse.position.WriteValueIntoEvent(Vector2.zero, statePtr);
-                mouse.delta.WriteValueIntoEvent(Vector2.zero, statePtr);
-                mouse.leftButton.WriteValueIntoEvent(0f, statePtr);
-                mouse.rightButton.WriteValueIntoEvent(0f, statePtr);
-                mouse.middleButton.WriteValueIntoEvent(0f, statePtr);
-                InputSystem.QueueEvent(statePtr);
-            }
-            InputSystem.Update();
-            }
-
             // Destroy in reverse order (children before parents for safety)
             for (int i = _createdObjects.Count - 1; i >= 0; i--)
             {
@@ -104,22 +63,11 @@ namespace ODDGames.UIAutomation.Tests
             }
             _createdObjects.Clear();
 
-            // Clear references to destroyed objects
             _canvas = null;
             _canvasComponent = null;
             _eventSystem = null;
 
-            // Force cleanup any orphaned test objects by name pattern
-            var orphans = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-            foreach (var go in orphans)
-            {
-            if (go != null && (go.name.StartsWith("Test") || go.name.StartsWith("Diag") ||
-                go.name == "EventSystem" || go.name == "TestCanvas" ||
-                go.name.Contains("Helper") || go.name.Contains("Debugger")))
-            {
-                Object.DestroyImmediate(go);
-            }
-            }
+            base.TearDown();
         }
 
         #region Static Factory Tests - ByName
