@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
@@ -56,7 +57,7 @@ namespace ODDGames.UIAutomation.Tests
             {
                 var obj = _createdObjects[i];
                 if (obj != null)
-                    Object.DestroyImmediate(obj);
+                    UnityEngine.Object.DestroyImmediate(obj);
             }
             _createdObjects.Clear();
 
@@ -785,6 +786,78 @@ namespace ODDGames.UIAutomation.Tests
             Assert.IsNotNull(search);
         }
 
+        [Test]
+        public void Invoke_StaticMethod_CallsSuccessfully()
+        {
+            ReflectTestHelper.ResetState();
+            Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke("StaticVoidMethod");
+            Assert.IsTrue(ReflectTestHelper.WasCalled, "Static method should have been called");
+        }
+
+        [Test]
+        public void Invoke_StaticMethodWithArgs_PassesArguments()
+        {
+            ReflectTestHelper.ResetState();
+            Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke("StaticMethodWithArgs", "hello", 42);
+            Assert.AreEqual("hello", ReflectTestHelper.LastString);
+            Assert.AreEqual(42, ReflectTestHelper.LastInt);
+        }
+
+        [Test]
+        public void Invoke_StaticMethodWithReturn_ReturnsValue()
+        {
+            var result = Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke<int>("StaticAdd", 3, 7);
+            Assert.AreEqual(10, result);
+        }
+
+        [Test]
+        public void Invoke_InstanceMethod_CallsSuccessfully()
+        {
+            var instance = ReflectTestHelper.Instance;
+            Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper.Instance").Invoke("InstanceMethod");
+            Assert.IsTrue(instance.InstanceWasCalled, "Instance method should have been called");
+        }
+
+        [Test]
+        public async Task InvokeAsync_StaticAsyncMethod_AwaitsCompletion()
+        {
+            ReflectTestHelper.ResetState();
+            await Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").InvokeAsync("StaticAsyncMethod");
+            Assert.IsTrue(ReflectTestHelper.WasCalled, "Async method should have completed");
+        }
+
+        [Test]
+        public async Task InvokeAsync_WithReturn_ReturnsValue()
+        {
+            var result = await Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").InvokeAsync<int>("StaticAsyncAdd", 5, 3);
+            Assert.AreEqual(8, result);
+        }
+
+        [Test]
+        public void Invoke_DefaultParams_FillsDefaults()
+        {
+            // Call with only required arg, optional params should use defaults
+            var result = Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke<string>("MethodWithDefaults", "hello");
+            Assert.AreEqual("hello|42|true", result);
+        }
+
+        [Test]
+        public void Invoke_DefaultParams_PartialOverride()
+        {
+            // Call with required + first optional
+            var result = Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke<string>("MethodWithDefaults", "hello", 99);
+            Assert.AreEqual("hello|99|true", result);
+        }
+
+        [Test]
+        public void Invoke_NoMatchingSignature_ListsAvailable()
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+                Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke("StaticAdd", "wrong", "types"));
+            Assert.That(ex.Message, Does.Contain("Available signatures"));
+            Assert.That(ex.Message, Does.Contain("StaticAdd"));
+        }
+
         #endregion
 
         #region RandomClick Tests
@@ -970,7 +1043,7 @@ namespace ODDGames.UIAutomation.Tests
 
             // Destroy element, then verify WaitForNot succeeds
             await Task.Delay(100);
-            Object.Destroy(button.gameObject);
+            UnityEngine.Object.Destroy(button.gameObject);
 
             await WaitForNot(Name("DisappearingButton"), timeout: 3);
             // No exception means element disappeared
@@ -1093,5 +1166,60 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// Helper class for testing Reflect/Invoke with static and instance methods.
+    /// </summary>
+    public static class ReflectTestHelper
+    {
+        public static bool WasCalled { get; private set; }
+        public static string LastString { get; private set; }
+        public static int LastInt { get; private set; }
+
+        private static readonly ReflectTestInstance _instance = new();
+        public static ReflectTestInstance Instance => _instance;
+
+        public static void ResetState()
+        {
+            WasCalled = false;
+            LastString = null;
+            LastInt = 0;
+        }
+
+        public static void StaticVoidMethod() => WasCalled = true;
+
+        public static void StaticMethodWithArgs(string s, int i)
+        {
+            LastString = s;
+            LastInt = i;
+        }
+
+        public static int StaticAdd(int a, int b) => a + b;
+
+        public static string MethodWithDefaults(string required, int optional1 = 42, bool optional2 = true)
+            => $"{required}|{optional1}|{optional2.ToString().ToLower()}";
+
+        public static async Task StaticAsyncMethod()
+        {
+            await Task.Yield();
+            WasCalled = true;
+        }
+
+        public static async Task<int> StaticAsyncAdd(int a, int b)
+        {
+            await Task.Yield();
+            return a + b;
+        }
+    }
+
+    public class ReflectTestInstance
+    {
+        public bool InstanceWasCalled { get; private set; }
+
+        public void InstanceMethod()
+        {
+            InstanceWasCalled = true;
+        }
     }
 }

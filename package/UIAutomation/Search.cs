@@ -2676,8 +2676,17 @@ namespace ODDGames.UIAutomation
                 if (_staticValue == null)
                     throw new InvalidOperationException($"Invoke failed: Static path '{_staticPath}' resolved to null, cannot invoke '{methodName}'");
 
-                target = _staticValue;
-                targetType = target.GetType();
+                // If _staticValue is a Type, invoke static methods on that type
+                if (_staticValue is Type typeRef)
+                {
+                    target = null; // static call
+                    targetType = typeRef;
+                }
+                else
+                {
+                    target = _staticValue;
+                    targetType = target.GetType();
+                }
             }
             else
             {
@@ -2686,24 +2695,109 @@ namespace ODDGames.UIAutomation
             }
 
             // Find and invoke the method
+            var bindingFlags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+                | (target == null ? System.Reflection.BindingFlags.Static : System.Reflection.BindingFlags.Instance);
+            var argCount = args?.Length ?? 0;
             var argTypes = args?.Select(a => a?.GetType() ?? typeof(object)).ToArray() ?? System.Type.EmptyTypes;
-            var methodInfo = targetType.GetMethod(methodName,
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
-                null, argTypes, null);
 
-            // Try without specific arg types if exact match not found
-            methodInfo ??= targetType.GetMethod(methodName,
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            // Try exact arg type match first
+            var methodInfo = targetType.GetMethod(methodName, bindingFlags, null, argTypes, null);
+
+            // If no exact match, find best candidate considering optional/default params and type compatibility
+            if (methodInfo == null)
+            {
+                var candidates = targetType.GetMethods(bindingFlags).Where(m => m.Name == methodName).ToArray();
+                System.Reflection.MethodInfo bestMatch = null;
+                int bestScore = -1;
+
+                foreach (var candidate in candidates)
+                {
+                    var parameters = candidate.GetParameters();
+
+                    // Must have at least as many params as provided args
+                    if (parameters.Length < argCount)
+                        continue;
+
+                    // Extra params beyond provided args must be optional
+                    bool valid = true;
+                    int score = 0;
+                    for (int p = 0; p < parameters.Length; p++)
+                    {
+                        if (p < argCount)
+                        {
+                            var paramType = parameters[p].ParameterType;
+                            var argValue = args[p];
+                            if (argValue == null)
+                            {
+                                if (paramType.IsValueType && Nullable.GetUnderlyingType(paramType) == null)
+                                    { valid = false; break; }
+                                score += 1;
+                            }
+                            else if (paramType.IsAssignableFrom(argValue.GetType()))
+                            {
+                                score += paramType == argValue.GetType() ? 3 : 2; // exact match scores higher
+                            }
+                            else if (IsImplicitlyConvertible(argValue.GetType(), paramType))
+                            {
+                                score += 1;
+                            }
+                            else
+                            {
+                                valid = false; break;
+                            }
+                        }
+                        else if (!parameters[p].HasDefaultValue)
+                        {
+                            valid = false; break;
+                        }
+                    }
+
+                    if (valid && score > bestScore)
+                    {
+                        bestScore = score;
+                        bestMatch = candidate;
+                    }
+                }
+
+                methodInfo = bestMatch;
+            }
 
             if (methodInfo == null)
             {
-                var argTypesStr = args?.Length > 0 ? string.Join(", ", argTypes.Select(t => t.Name)) : "none";
-                throw new InvalidOperationException($"Invoke failed: Method '{methodName}' not found on type '{targetType.Name}'. Arg types: [{argTypesStr}]");
+                var argTypesStr = argCount > 0 ? string.Join(", ", argTypes.Select(t => t.Name)) : "none";
+                var allMethods = targetType.GetMethods(bindingFlags).Where(m => m.Name == methodName).ToArray();
+                var sigList = "";
+                if (allMethods.Length > 0)
+                {
+                    var sigs = allMethods.Select(m =>
+                    {
+                        var ps = m.GetParameters();
+                        var paramStr = ps.Length == 0 ? "" : string.Join(", ", ps.Select(p =>
+                            (p.HasDefaultValue ? "[" : "") + p.ParameterType.Name + " " + p.Name + (p.HasDefaultValue ? "]" : "")));
+                        return $"  {m.ReturnType.Name} {methodName}({paramStr})";
+                    });
+                    sigList = $"\nAvailable signatures:\n{string.Join("\n", sigs)}";
+                }
+                throw new InvalidOperationException($"Invoke failed: Method '{methodName}' not found on type '{targetType.Name}' matching arg types [{argTypesStr}].{sigList}");
+            }
+
+            // Build final args array, filling in default values for optional params
+            var methodParams = methodInfo.GetParameters();
+            object[] finalArgs;
+            if (methodParams.Length == argCount)
+            {
+                finalArgs = args ?? Array.Empty<object>();
+            }
+            else
+            {
+                finalArgs = new object[methodParams.Length];
+                for (int i = 0; i < methodParams.Length; i++)
+                    finalArgs[i] = i < argCount ? args[i] : methodParams[i].DefaultValue;
             }
 
             try
             {
-                var result = methodInfo.Invoke(target, args);
+                var result = methodInfo.Invoke(target, finalArgs);
                 return new Search(result, $"{_staticPath ?? "element"}.{methodName}()");
             }
             catch (Exception ex)
@@ -2738,6 +2832,59 @@ namespace ODDGames.UIAutomation
 
             try { return (T)Convert.ChangeType(value, typeof(T)); }
             catch { return default; }
+        }
+
+        /// <summary>
+        /// Invokes a method that returns a Task and awaits it.
+        /// Use this for async methods accessed via Reflect paths.
+        /// </summary>
+        /// <param name="methodName">The name of the async method to invoke</param>
+        /// <param name="args">Optional arguments to pass to the method</param>
+        /// <example>
+        /// <code>
+        /// // Call an async static method
+        /// await Search.Reflect("ParseAccountAPI").InvokeAsync("LogoutAsync");
+        ///
+        /// // Call an async instance method
+        /// await Search.Reflect("GameManager.Instance").InvokeAsync("SaveAsync");
+        /// </code>
+        /// </example>
+        public async Task InvokeAsync(string methodName, params object[] args)
+        {
+            var result = Invoke(methodName, args);
+            if (result.Value is Task task)
+                await task;
+        }
+
+        /// <summary>
+        /// Invokes a method that returns a Task&lt;T&gt; and awaits it, returning the typed result.
+        /// </summary>
+        /// <typeparam name="T">The expected return type from the async method</typeparam>
+        /// <param name="methodName">The name of the async method to invoke</param>
+        /// <param name="args">Optional arguments to pass to the method</param>
+        /// <example>
+        /// <code>
+        /// // Call an async method and get the result
+        /// var user = await Search.Reflect("UserService").InvokeAsync&lt;User&gt;("GetCurrentUserAsync");
+        /// </code>
+        /// </example>
+        public async Task<T> InvokeAsync<T>(string methodName, params object[] args)
+        {
+            var result = Invoke(methodName, args);
+            if (result.Value is Task<T> typedTask)
+                return await typedTask;
+            if (result.Value is Task task)
+            {
+                await task;
+                // Try to extract result from Task via reflection (for Task<Response<T>> etc.)
+                var resultProp = task.GetType().GetProperty("Result");
+                if (resultProp != null)
+                {
+                    var taskResult = resultProp.GetValue(task);
+                    if (taskResult is T typedResult) return typedResult;
+                }
+            }
+            return default;
         }
 
         /// <summary>
@@ -3300,6 +3447,27 @@ namespace ODDGames.UIAutomation
         }
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private static bool IsImplicitlyConvertible(Type from, Type to)
+        {
+            if (to.IsAssignableFrom(from)) return true;
+
+            // Numeric widening (int->long, int->float, float->double, etc.)
+            var numericConversions = new (Type from, Type to)[]
+            {
+                (typeof(byte), typeof(short)), (typeof(byte), typeof(int)), (typeof(byte), typeof(long)), (typeof(byte), typeof(float)), (typeof(byte), typeof(double)),
+                (typeof(short), typeof(int)), (typeof(short), typeof(long)), (typeof(short), typeof(float)), (typeof(short), typeof(double)),
+                (typeof(int), typeof(long)), (typeof(int), typeof(float)), (typeof(int), typeof(double)),
+                (typeof(long), typeof(float)), (typeof(long), typeof(double)),
+                (typeof(float), typeof(double)),
+            };
+
+            foreach (var c in numericConversions)
+                if (c.from == from && c.to == to)
+                    return true;
+
+            return false;
+        }
 
         private static object NavigateProperty(object current, string path)
         {

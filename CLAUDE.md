@@ -99,5 +99,4 @@ Track changes methodically as you work. Used to generate CHANGELOG.md during `/d
 
 ### Current Local Changes
 
-(None - cleared after v1.2.2 deploy)
-- **Changed**: `Search.GetScreenCenter/GetScreenBounds` and private `GetScreenPosition` now delegate to `UIUtility`
+(None - cleared after v1.2.3 deploy)

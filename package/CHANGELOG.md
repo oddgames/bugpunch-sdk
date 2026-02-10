@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.3] - 2026-02-10
+
+### Added
+- **`Search.InvokeAsync()` and `Search.InvokeAsync<T>()`** — Await async methods invoked via Reflect paths. `await Search.Reflect("ParseAccountAPI").InvokeAsync("LogoutAsync")` calls the method and awaits the returned Task. `InvokeAsync<T>` returns the typed result from `Task<T>`.
+
+### Changed
+- **`Search.Invoke()` now supports static methods** — When `Reflect()` resolves to a type name (e.g., `Search.Reflect("PlayerPrefs")`), `Invoke` uses `BindingFlags.Static` to call static methods directly without an instance.
+- **`Search.Invoke()` smart method resolution** — Method matching now handles optional/default parameters (omitted args filled with defaults), implicit numeric conversions (int→long, float→double, etc.), and type-compatible arguments. Exact type matches are preferred over widening conversions.
+- **`Search.Invoke()` error messages list available signatures** — When no matching method is found, the error message now includes all available overloads with parameter types and names, making it easier to diagnose mismatched arguments.
+
 ## [1.2.2] - 2026-02-10
 
 ### Fixed
