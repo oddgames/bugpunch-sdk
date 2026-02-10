@@ -573,6 +573,14 @@ namespace ODDGames.UIAutomation
         static void LogFail(string action, string reason) => Debug.LogWarning($"[UIAutomation] FAILED: {action} - {reason}");
 
         /// <summary>
+        /// Throws a test failure exception for proper Unity Test Runner integration.
+        /// </summary>
+        static void ThrowTestFailure(string message)
+        {
+            throw new NUnit.Framework.AssertionException(message);
+        }
+
+        /// <summary>
         /// Async disposable action scope that logs START on creation, syncs to main thread, and logs COMPLETE on disposal.
         /// Use with 'await using' statement for automatic cleanup.
         /// </summary>
@@ -606,8 +614,8 @@ namespace ODDGames.UIAutomation
                 var message = $"{_action} failed: {reason}";
                 // Log before throwing so the failure message is visible in console
                 Debug.LogError($"[UIAutomation] FAILED: {message}");
-                // Throw AssertionException directly - properly fails tests in Unity Test Runner
-                throw new NUnit.Framework.AssertionException(message);
+                // Throw test failure - uses NUnit in test builds, InvalidOperationException in player builds
+                ThrowTestFailure(message);
             }
 
             public async ValueTask DisposeAsync()
@@ -728,7 +736,7 @@ namespace ODDGames.UIAutomation
             if (zipAsset == null)
             {
                 action.Warn("resource not found");
-                throw new NUnit.Framework.AssertionException($"Test data resource not found: {resourcePath} (tried with and without .zip suffix)");
+                ThrowTestFailure($"Test data resource not found: {resourcePath} (tried with and without .zip suffix)");
             }
 
             var path = Application.persistentDataPath;
@@ -2694,7 +2702,7 @@ namespace ODDGames.UIAutomation
         {
             LogDebug($"Reflect(\"{path}\")");
             if (string.IsNullOrWhiteSpace(path))
-                throw new NUnit.Framework.AssertionException("Reflect path cannot be null or empty");
+                ThrowTestFailure("Reflect path cannot be null or empty");
 
             var parts = path.Split('.');
 
@@ -2730,7 +2738,7 @@ namespace ODDGames.UIAutomation
                     var hint = matches.Count > 1
                         ? $" Multiple types found: {string.Join(", ", matches.Select(t => t.FullName).Take(5))}. Use full namespace to disambiguate."
                         : " Make sure to include the full namespace (e.g., 'MyNamespace.MyClass.Property').";
-                    throw new NUnit.Framework.AssertionException($"Reflect: Could not find type '{firstPart}' in path: {path}.{hint}");
+                    ThrowTestFailure($"Reflect: Could not find type '{firstPart}' in path: {path}.{hint}");
                 }
             }
 

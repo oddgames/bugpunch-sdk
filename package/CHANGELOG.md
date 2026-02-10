@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.4] - 2026-02-10
+
+### Fixed
+- **Player build failure: IL2CPP linker cannot resolve `nunit.framework`** — Removed `#if UNITY_INCLUDE_TESTS` guards and `overrideReferences`/`precompiledReferences` from the asmdef. NUnit is now provided unconditionally via auto-reference, requiring a Custom NUnit package (or equivalent) that ships `nunit.framework.dll` in player builds.
+
+### Changed
+- **`UIAutomationTestFixture` no longer conditional** — The test fixture class is always compiled, removing the `#if UNITY_INCLUDE_TESTS` wrapper.
+- **`ThrowTestFailure` always throws `AssertionException`** — No longer falls back to `InvalidOperationException` in non-test builds.
+
 ## [1.2.3] - 2026-02-10
 
 ### Added

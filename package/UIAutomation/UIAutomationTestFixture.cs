@@ -1,4 +1,3 @@
-#if UNITY_INCLUDE_TESTS
 using System;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -192,4 +191,3 @@ namespace ODDGames.UIAutomation
         }
     }
 }
-#endif // UNITY_INCLUDE_TESTS
