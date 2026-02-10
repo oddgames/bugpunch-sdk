@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] - 2026-02-10
+
+### Added
+- **`UIUtility` public static class** — Single source of truth for screen-space utility methods: `GetScreenPosition(GameObject)`, `GetScreenPosition(Component)`, `GetScreenBounds()`, `GetHitsAtPosition()`, `GetReceiversAtPosition()`. Use this instead of `InputInjector` (which is now internal).
+
+### Changed
+- **`InputInjector` screen utilities delegate to `UIUtility`** — `GetScreenPosition`, `GetScreenBounds`, `GetHitsAtPosition`, `GetReceiversAtPosition` are still available on `InputInjector` internally but now delegate to `UIUtility`.
+- **`Search` screen utilities delegate to `UIUtility`** — `GetScreenCenter`, `GetScreenBounds`, and private `GetScreenPosition` eliminated duplicate implementations.
+
 ## [1.2.0] - 2026-02-10
 
 ### Breaking Changes
