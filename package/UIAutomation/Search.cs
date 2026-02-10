@@ -1791,7 +1791,7 @@ namespace ODDGames.UIAutomation
             var go = await Find(searchTime);
             if (go == null)
                 throw new TimeoutException($"No element found matching '{this}' within {searchTime}s");
-            return GetScreenPosition(go);
+            return UIUtility.GetScreenPosition(go);
         }
 
         #endregion
@@ -1800,76 +1800,13 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Gets the screen-space center position of a GameObject.
-        /// For UI elements (RectTransform), returns the center of the rect.
-        /// For 3D objects, projects the transform position to screen space.
         /// </summary>
-        public static Vector2 GetScreenCenter(GameObject go)
-        {
-            if (go == null)
-                throw new ArgumentNullException(nameof(go));
-
-            var rt = go.GetComponent<RectTransform>();
-            if (rt != null)
-            {
-                var corners = new Vector3[4];
-                rt.GetWorldCorners(corners);
-                var center = (corners[0] + corners[2]) / 2f;
-                var canvas = rt.GetComponentInParent<Canvas>();
-                if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay && canvas.worldCamera != null)
-                    return RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, center);
-                return center;
-            }
-
-            // For 3D objects, project to screen
-            var cam = Camera.main;
-            if (cam != null)
-                return cam.WorldToScreenPoint(go.transform.position);
-
-            return go.transform.position;
-        }
+        public static Vector2 GetScreenCenter(GameObject go) => UIUtility.GetScreenPosition(go);
 
         /// <summary>
         /// Gets the screen-space bounds of a GameObject as a Rect.
         /// </summary>
-        public static Rect GetScreenBounds(GameObject go)
-        {
-            if (go == null)
-                throw new ArgumentNullException(nameof(go));
-
-            var rt = go.GetComponent<RectTransform>();
-            if (rt != null)
-            {
-                var corners = new Vector3[4];
-                rt.GetWorldCorners(corners);
-                var canvas = rt.GetComponentInParent<Canvas>();
-                if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay && canvas.worldCamera != null)
-                {
-                    for (int i = 0; i < 4; i++)
-                        corners[i] = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, corners[i]);
-                }
-                float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
-                float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
-                float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
-                float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
-                return new Rect(minX, minY, maxX - minX, maxY - minY);
-            }
-
-            // For 3D objects, use renderer bounds projected to screen
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                var cam = Camera.main;
-                if (cam != null)
-                {
-                    var bounds = renderer.bounds;
-                    var min = cam.WorldToScreenPoint(bounds.min);
-                    var max = cam.WorldToScreenPoint(bounds.max);
-                    return new Rect(min.x, min.y, max.x - min.x, max.y - min.y);
-                }
-            }
-
-            return new Rect(go.transform.position.x, go.transform.position.y, 0, 0);
-        }
+        public static Rect GetScreenBounds(GameObject go) => UIUtility.GetScreenBounds(go);
 
         /// <summary>
         /// Gets the world-space bounds of a GameObject from Renderer or Collider.
@@ -2103,33 +2040,7 @@ namespace ODDGames.UIAutomation
             return false;
         }
 
-        static Vector2 GetScreenPosition(GameObject go)
-        {
-            if (go.TryGetComponent<RectTransform>(out var rect))
-            {
-                Vector3[] corners = new Vector3[4];
-                rect.GetWorldCorners(corners);
-                Vector3 center = (corners[0] + corners[2]) / 2f;
-
-                var canvas = go.GetComponentInParent<Canvas>();
-                if (canvas != null && canvas.renderMode == RenderMode.ScreenSpaceOverlay)
-                    return center;
-
-                Camera cam = canvas?.worldCamera ?? Camera.main;
-                return cam != null ? RectTransformUtility.WorldToScreenPoint(cam, center) : (Vector2)center;
-            }
-
-            if (go.TryGetComponent<Renderer>(out var renderer))
-            {
-                Camera cam = Camera.main;
-                if (cam != null) return cam.WorldToScreenPoint(renderer.bounds.center);
-            }
-
-            {
-                Camera cam = Camera.main;
-                return cam != null ? (Vector2)cam.WorldToScreenPoint(go.transform.position) : Vector2.zero;
-            }
-        }
+        static Vector2 GetScreenPosition(GameObject go) => UIUtility.GetScreenPosition(go);
 
         static bool IsInScreenRegion(GameObject go, ScreenRegion region)
         {
