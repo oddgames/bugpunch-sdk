@@ -13,10 +13,6 @@ using UnityEngine.UI;
 
 using Debug = UnityEngine.Debug;
 
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
-
 namespace ODDGames.UIAutomation
 {
     /// <summary>
@@ -307,14 +303,9 @@ namespace ODDGames.UIAutomation
             // Ensure InputSystemUIInputModule processes events even when Game View is unfocused
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
 
-#if UNITY_EDITOR
             // Route all device input to Game View during play mode — matches InputTestFixture behavior
             InputSystem.settings.editorInputBehaviorInPlayMode =
                 InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
-
-            // Safety: re-enable hardware input when exiting play mode (in case test crashed)
-            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-#endif
 
             // Clean up any orphaned virtual devices before creating new ones
             CleanupOrphanedVirtualDevices();
@@ -348,9 +339,6 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static void TearDown()
         {
-#if UNITY_EDITOR
-            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
-#endif
             Application.quitting -= OnApplicationQuitting;
 
             EnableHardwareInput();
@@ -474,16 +462,6 @@ namespace ODDGames.UIAutomation
             }
             _disabledDevices.Clear();
         }
-
-#if UNITY_EDITOR
-        private static void OnPlayModeStateChanged(PlayModeStateChange state)
-        {
-            if (state == PlayModeStateChange.ExitingPlayMode)
-            {
-                TearDown();
-            }
-        }
-#endif
 
         /// <summary>
         /// Logs a debug message only when ActionExecutor.DebugMode is enabled.

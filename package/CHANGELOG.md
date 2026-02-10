@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.2] - 2026-02-10
+
+### Fixed
+- **Player build failure: "UnityEditor.dll assembly is referenced by user code"** — Root cause was `UnityEngine.TestRunner` in the main assembly's asmdef references, which chains to `UnityEditor.CoreModule`. Removed the reference entirely; NUnit is now provided via `precompiledReferences: ["nunit.framework.dll"]`.
+
+### Changed
+- **`editorInputBehaviorInPlayMode` no longer wrapped in `#if UNITY_EDITOR`** — This setting is in the `UnityEngine.InputSystem` namespace (runtime assembly), not `UnityEditor`. Removed the unnecessary guard.
+
+### Removed
+- **`IgnoreErrorLogs` virtual property** — Removed from `UIAutomationTestFixture`. This property set `LogAssert.ignoreFailingMessages` which required `UnityEngine.TestRunner`. If needed, set `UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true` directly in your test's `SetUp()`.
+- **`EditorApplication.playModeStateChanged` safety hook** — Removed from `InputInjector`. The `Application.quitting` callback and `InputSystem.settings` restore in `TearDown()` provide sufficient cleanup.
+- **All `#if UNITY_EDITOR` / `using UnityEditor` from `InputInjector`** — No editor code remains in the runtime assembly.
+
 ## [1.2.1] - 2026-02-10
 
 ### Added
