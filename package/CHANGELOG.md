@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.5] - 2026-02-10
+
+### Fixed
+- **Hardware input not restored after test crash** — Added `EditorApplication.playModeStateChanged` hook to restore hardware devices, remove virtual devices, and reset input settings when exiting play mode. Prevents keyboard/mouse from staying disabled if TearDown didn't run.
+- **Domain reload leaves hardware devices disabled** — `OnDomainReload` now re-enables all disabled hardware devices (previously only cleaned up virtual devices and cleared stale references).
+
 ## [1.2.4] - 2026-02-10
 
 ### Fixed

@@ -271,12 +271,22 @@ namespace ODDGames.UIAutomation
         private static InputSettings _savedSettings;
 
         /// <summary>
-        /// Clean up orphaned virtual devices on domain reload.
-        /// Does NOT set up input — call Setup() explicitly when testing begins.
+        /// Full cleanup on domain reload: re-enable hardware, remove virtual devices, restore settings.
+        /// Handles the case where a test crashed or play mode exited without TearDown running.
         /// </summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void OnDomainReload()
         {
+            // Re-enable any hardware devices that may still be disabled
+            // (stale _disabledDevices list is lost on reload, so scan all devices)
+            foreach (var device in InputSystem.devices)
+            {
+                if (!device.enabled && !device.name.StartsWith("UIAutomation_"))
+                {
+                    InputSystem.EnableDevice(device);
+                }
+            }
+
             // Clear stale static references (they may point to invalid devices)
             _virtualMouse = null;
             _virtualKeyboard = null;
@@ -331,6 +341,11 @@ namespace ODDGames.UIAutomation
 
             // Safety: re-enable hardware input when app quits (in case test crashed)
             Application.quitting += OnApplicationQuitting;
+
+#if UNITY_EDITOR
+            // Safety: restore input when exiting play mode (in case TearDown didn't run)
+            UnityEditor.EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+#endif
         }
 
         /// <summary>
@@ -340,6 +355,9 @@ namespace ODDGames.UIAutomation
         public static void TearDown()
         {
             Application.quitting -= OnApplicationQuitting;
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+#endif
 
             EnableHardwareInput();
             CleanupVirtualDevices();
@@ -360,6 +378,25 @@ namespace ODDGames.UIAutomation
                 EnableHardwareInput();
             }
         }
+
+#if UNITY_EDITOR
+        private static void OnPlayModeStateChanged(UnityEditor.PlayModeStateChange state)
+        {
+            if (state == UnityEditor.PlayModeStateChange.ExitingPlayMode)
+            {
+                Debug.Log("[InputInjector] Exiting play mode - restoring input state");
+                UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+                EnableHardwareInput();
+                CleanupVirtualDevices();
+
+                if (_savedSettings != null)
+                {
+                    InputSystem.settings = _savedSettings;
+                    _savedSettings = null;
+                }
+            }
+        }
+#endif
 
         /// <summary>
         /// Gets a working mouse device, creating a virtual one if necessary.
