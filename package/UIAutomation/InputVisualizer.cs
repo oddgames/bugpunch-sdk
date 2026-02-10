@@ -672,7 +672,7 @@ namespace ODDGames.UIAutomation
                     float size = CursorSize * (1f + t * 0.2f);
                     float yOffset = t * 15f * (scrollUp ? -1f : 1f); // Flip for GUI coords
                     var guiPos = ScreenToGUI(scroll.Position) + new Vector2(0, yOffset);
-                    DrawIcon(icon, guiPos, size, alpha);
+                    DrawIcon(icon, guiPos, size, alpha, new Vector2(0.5f, 0.5f));
                 }
             }
         }
@@ -683,14 +683,25 @@ namespace ODDGames.UIAutomation
 
             var cursor = _activeCursor.Value;
             Texture2D icon;
+            Vector2 hotspot;
 
             if (cursor.IsMouse)
             {
-                icon = cursor.IsPressed ? _mouseClickIcon : _mouseCursorIcon;
+                if (cursor.IsPressed)
+                {
+                    icon = _mouseClickIcon;
+                    hotspot = new Vector2(0.5f, 0.5f); // Starburst centered on click point
+                }
+                else
+                {
+                    icon = _mouseCursorIcon;
+                    hotspot = new Vector2(0.15f, 0.05f); // Arrow tip near top-left
+                }
             }
             else
             {
                 icon = cursor.IsPressed ? _touchTapIcon : _touchIcon;
+                hotspot = new Vector2(0.42f, 0.08f); // Fingertip near top-center
             }
 
             if (icon != null)
@@ -705,7 +716,7 @@ namespace ODDGames.UIAutomation
                     alpha = Mathf.Clamp01(1f - fadeProgress);
                 }
 
-                DrawIcon(icon, guiPos, CursorSize, alpha);
+                DrawIcon(icon, guiPos, CursorSize, alpha, hotspot);
             }
         }
 
@@ -842,7 +853,11 @@ namespace ODDGames.UIAutomation
 
         #region Drawing Primitives
 
-        private void DrawIcon(Texture2D icon, Vector2 guiPos, float size, float alpha)
+        /// <summary>
+        /// Draws an icon at the given GUI position.
+        /// hotspotNormalized defines where the "point" of the icon is in normalized coords (0,0 = top-left, 0.5,0.5 = center).
+        /// </summary>
+        private void DrawIcon(Texture2D icon, Vector2 guiPos, float size, float alpha, Vector2 hotspotNormalized = default)
         {
             if (icon == null) return;
 
@@ -850,8 +865,11 @@ namespace ODDGames.UIAutomation
             float width = size * aspect;
             float height = size;
 
-            // Position with hotspot at top-left
-            var rect = new Rect(guiPos.x, guiPos.y, width, height);
+            // Offset so the hotspot aligns with guiPos
+            var rect = new Rect(
+                guiPos.x - width * hotspotNormalized.x,
+                guiPos.y - height * hotspotNormalized.y,
+                width, height);
 
             var oldColor = GUI.color;
             GUI.color = new Color(1f, 1f, 1f, alpha);

@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.6] - 2026-02-10
+
+### Fixed
+- **Mouse position teleport causes camera jumps** — Replaced `DeltaStateEvent` with full `StateEvent` in `InjectPointerTap`, `InjectPointerDoubleTap`, `InjectPointerTripleTap`, `InjectPointerHold`, and `InjectScroll`. Every mouse event now explicitly sets position, delta=zero, and button state, preventing stale state from triggering game camera controllers between actions.
+- **Visualizer icon pivot offsets** — `DrawIcon` now uses per-icon hotspot offsets. Mouse-click starburst centers on click point, touch finger aligns fingertip to position, scroll icons center on scroll point.
+- **Consecutive drags bleed into each other** — Increased settle time to 4 frames after button release (was 2) and 2 frames before drag start (was 1).
+
+### Added
+- **`ClampToScreen()` helper** — Keeps all injected screen positions at least 1px inside screen edges. Applied to all drag, pinch, rotate, and two-finger gesture methods.
+
+### Changed
+- **Removed all manual `InputSystem.Update()` calls** — Events are now queued and processed by Unity's natural update cycle, ensuring all scripts (including those checking `wasPressedThisFrame`/`wasReleasedThisFrame`) see each state change correctly.
+- **Realistic input timing** — `InjectPointerTap` spreads press/release over ~8 frames (~133ms at 60fps). `InjectTouchTap` spans ~6 frames. All keyboard, gesture, and drag methods use similar realistic spacing.
+- **Minimum drag frames increased** — Drag interpolation uses 10 minimum frames (was 5), ~167ms at 60fps for more realistic drag speed.
+
 ## [1.2.5] - 2026-02-10
 
 ### Fixed
