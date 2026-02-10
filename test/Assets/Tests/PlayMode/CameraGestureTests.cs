@@ -17,7 +17,7 @@ namespace ODDGames.UIAutomation.Tests
     /// Tests all gesture types: swipe, pinch, rotate, two-finger swipe.
     /// </summary>
     [TestFixture]
-    public class CameraGestureTests
+    public class CameraGestureTests : UIAutomationTestFixture
     {
         private Camera _camera;
         private GameObject _cameraGO;
@@ -26,8 +26,10 @@ namespace ODDGames.UIAutomation.Tests
         private List<GameObject> _createdObjects;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
+            base.SetUp();
+
             _createdObjects = new List<GameObject>();
 
             // Create EventSystem with Input System module
@@ -110,7 +112,7 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
             foreach (var obj in _createdObjects)
             {
@@ -118,6 +120,8 @@ namespace ODDGames.UIAutomation.Tests
                 Object.Destroy(obj);
             }
             _createdObjects.Clear();
+
+            base.TearDown();
         }
 
         #region Swipe Tests

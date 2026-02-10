@@ -14,17 +14,19 @@ using TMPro;
 namespace ODDGames.UIAutomation.Tests
 {
     /// <summary>
-    /// Tests for UITestBase - the base class for UI automation tests.
+    /// Tests for UIAutomationTestFixture - the base class for UI automation tests.
     /// </summary>
     [TestFixture]
-    public class UITestBaseTests
+    public class UIAutomationTestFixtureTests : UIAutomationTestFixture
     {
         private Canvas _canvas;
         private List<GameObject> _createdObjects;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
+            base.SetUp();
+
             _createdObjects = new List<GameObject>();
 
             // Create EventSystem with Input System module
@@ -43,7 +45,7 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
             foreach (var obj in _createdObjects)
             {
@@ -51,6 +53,8 @@ namespace ODDGames.UIAutomation.Tests
                     UnityEngine.Object.Destroy(obj);
             }
             _createdObjects.Clear();
+
+            base.TearDown();
         }
 
         #region Click Tests
