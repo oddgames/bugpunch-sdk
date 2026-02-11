@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Linq;
@@ -1615,8 +1616,8 @@ namespace ODDGames.UIAutomation.Tests
         [Test]
         public void AllPublicAsyncMethods_UseRunAction()
         {
-            // Read the ActionExecutor.cs source file
-            var sourceFile = Path.GetFullPath(Path.Combine(Application.dataPath, "../../package/UIAutomation/ActionExecutor.cs"));
+            // Read the ActionExecutor.cs source file - navigate from this test file's location
+            var sourceFile = FindActionExecutorSource();
             Assert.That(File.Exists(sourceFile), Is.True, $"Source file not found: {sourceFile}");
 
             var sourceCode = File.ReadAllText(sourceFile);
@@ -1786,6 +1787,23 @@ namespace ODDGames.UIAutomation.Tests
                 return null;
 
             return source.Substring(startIndex, currentIndex - startIndex - 1);
+        }
+
+        /// <summary>
+        /// Locates ActionExecutor.cs by navigating from this test file's compile-time path.
+        /// Works even when the package is imported via file: reference (which uses temp paths at runtime).
+        /// </summary>
+        private static string FindActionExecutorSource([CallerFilePath] string testFilePath = null)
+        {
+            // testFilePath = .../test/Assets/Tests/PlayMode/ActionExecutorTests.cs
+            // Navigate up to repo root, then into package
+            var dir = Path.GetDirectoryName(testFilePath);
+            var candidate = Path.GetFullPath(Path.Combine(dir, "../../../../package/UIAutomation/ActionExecutor.cs"));
+            if (File.Exists(candidate))
+                return candidate;
+
+            // Fallback: try from Application.dataPath (works when package is embedded)
+            return Path.GetFullPath(Path.Combine(Application.dataPath, "../../package/UIAutomation/ActionExecutor.cs"));
         }
 
         #endregion

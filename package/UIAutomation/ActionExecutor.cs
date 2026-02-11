@@ -1,3 +1,4 @@
+#if UNITY_INCLUDE_TESTS
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using System;
@@ -7,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 
+using NUnit.Framework;
 using TMPro;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -577,7 +579,7 @@ namespace ODDGames.UIAutomation
         /// </summary>
         static void ThrowTestFailure(string message)
         {
-            throw new NUnit.Framework.AssertionException(message);
+            throw new AssertionException(message);
         }
 
         /// <summary>
@@ -3900,3 +3902,4 @@ namespace ODDGames.UIAutomation
         #endregion
     }
 }
+#endif

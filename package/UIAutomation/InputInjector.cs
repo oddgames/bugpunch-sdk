@@ -1,3 +1,4 @@
+#if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -2238,3 +2239,4 @@ namespace ODDGames.UIAutomation
         }
     }
 }
+#endif
