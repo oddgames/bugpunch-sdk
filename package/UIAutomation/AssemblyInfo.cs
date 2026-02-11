@@ -1,3 +1,4 @@
+#if UNITY_INCLUDE_TESTS
 using System.Runtime.CompilerServices;
 
 // Allow tests to access internals
@@ -6,3 +7,4 @@ using System.Runtime.CompilerServices;
 
 // Allow sub-assemblies to access internals
 [assembly: InternalsVisibleTo("ODDGames.UIAutomation.Editor")]
+#endif

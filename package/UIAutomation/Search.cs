@@ -1,3 +1,4 @@
+#if UNITY_INCLUDE_TESTS
 using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
@@ -3770,3 +3771,4 @@ namespace ODDGames.UIAutomation
             Found ? $"Found: {Element?.name ?? "null"}" : $"Not found: {SearchQuery}";
     }
 }
+#endif

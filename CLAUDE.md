@@ -10,7 +10,9 @@
 The primary project used to exercise/test the library in a real game:
 - **Path**: `C:\Workspaces\game_monster_truck_destruction_steam\UnityProj_MTD`
 - PlayMode tests live in `Assets/Tests/PlayMode/` with a `PlayModeTests.asmdef`
-- References the UIAutomation package via Git URL in `Packages/manifest.json`
+- References the UIAutomation package via **PAT-authenticated** Git URL in `Packages/manifest.json`
+- **PAT URL prefix**: `https://oddgamesbuilds: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@github.com/oddgames/ui-automation.git?path=package`
+- When updating the version tag during `/deploy`, preserve the full authenticated URL prefix and append `#v{version}`
 
 ## Core Philosophy
 
@@ -99,4 +101,4 @@ Track changes methodically as you work. Used to generate CHANGELOG.md during `/d
 
 ### Current Local Changes
 
-(None - cleared after v1.2.6 deploy)
+(None - cleared after v1.2.7 deploy)

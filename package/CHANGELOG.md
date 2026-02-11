@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.7] - 2026-02-11
+
+### Fixed
+- **Player build IL2CPP linker errors** — All source files in the main assembly are now wrapped in `#if UNITY_INCLUDE_TESTS`, so the entire API only compiles in editor and test player builds. Regular player builds no longer fail from NUnit references.
+- **`ThrowTestFailure` exception type mismatch** — Now throws `NUnit.Framework.AssertionException` instead of `UnityEngine.Assertions.AssertionException`. Test `catch (AssertionException)` blocks (which resolve to the NUnit type via `using NUnit.Framework`) now correctly catch action failures.
+- **`AllPublicAsyncMethods_UseRunAction` test source file not found** — Uses `[CallerFilePath]` to locate `ActionExecutor.cs` instead of `Application.dataPath`, which returns temp paths when the package is imported via `file:` reference.
+
+### Added
+- **`link.xml`** — Preserves `nunit.framework` from IL2CPP managed code stripping in test player builds.
+- **`com.unity.ext.nunit` package dependency** — Provides AOT-compatible `nunit.framework.dll` for player builds.
+
+### Changed
+- **asmdef uses explicit NUnit reference** — `overrideReferences: true` with `precompiledReferences: ["nunit.framework.dll"]` ensures the NUnit DLL is included in test player builds.
+
 ## [1.2.6] - 2026-02-10
 
 ### Fixed

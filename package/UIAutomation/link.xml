@@ -1,0 +1,4 @@
+<linker>
+  <!-- Preserve nunit.framework for player builds (used by UIAutomationTestFixture) -->
+  <assembly fullname="nunit.framework" preserve="all" ignoreIfMissing="1"/>
+</linker>

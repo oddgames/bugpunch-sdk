@@ -1,3 +1,4 @@
+#if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -931,3 +932,4 @@ namespace ODDGames.UIAutomation
         #endregion
     }
 }
+#endif
