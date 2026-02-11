@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.8] - 2026-02-11
+
+### Changed
+- **`Search.Texture()` dynamic shader property discovery** — Material texture matching now dynamically enumerates all texture properties declared by the shader via `Shader.GetPropertyCount()`/`GetPropertyType()`, replacing the previous hardcoded list of 16 property names. Works with any render pipeline (Standard, URP, HDRP) and custom shaders without maintenance.
+
 ## [1.2.7] - 2026-02-11
 
 ### Fixed

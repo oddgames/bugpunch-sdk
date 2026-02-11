@@ -499,13 +499,6 @@ namespace ODDGames.UIAutomation.Tests
         private Camera _camera;
         private float _initialOrthoSize;
 
-        private InputAction _pointerPositionAction;
-        private InputAction _pointerPressAction;
-        private InputAction _touch0PositionAction;
-        private InputAction _touch1PositionAction;
-        private InputAction _touch0PressAction;
-        private InputAction _touch1PressAction;
-
         private Vector2? _lastMousePosition;
         private Vector2? _lastTouch0Position;
         private Vector2? _lastTouch1Position;
@@ -519,41 +512,6 @@ namespace ODDGames.UIAutomation.Tests
             _initialOrthoSize = _camera.orthographicSize;
         }
 
-        private void OnEnable()
-        {
-            // Create InputActions that will properly receive injected events
-            _pointerPositionAction = new InputAction("PointerPosition", InputActionType.Value, "<Mouse>/position");
-            _pointerPressAction = new InputAction("PointerPress", InputActionType.Button, "<Mouse>/leftButton");
-            _touch0PositionAction = new InputAction("Touch0Position", InputActionType.Value, "<Touchscreen>/touch0/position");
-            _touch1PositionAction = new InputAction("Touch1Position", InputActionType.Value, "<Touchscreen>/touch1/position");
-            _touch0PressAction = new InputAction("Touch0Press", InputActionType.Button, "<Touchscreen>/touch0/press");
-            _touch1PressAction = new InputAction("Touch1Press", InputActionType.Button, "<Touchscreen>/touch1/press");
-
-            _pointerPositionAction.Enable();
-            _pointerPressAction.Enable();
-            _touch0PositionAction.Enable();
-            _touch1PositionAction.Enable();
-            _touch0PressAction.Enable();
-            _touch1PressAction.Enable();
-        }
-
-        private void OnDisable()
-        {
-            _pointerPositionAction?.Disable();
-            _pointerPressAction?.Disable();
-            _touch0PositionAction?.Disable();
-            _touch1PositionAction?.Disable();
-            _touch0PressAction?.Disable();
-            _touch1PressAction?.Disable();
-
-            _pointerPositionAction?.Dispose();
-            _pointerPressAction?.Dispose();
-            _touch0PositionAction?.Dispose();
-            _touch1PositionAction?.Dispose();
-            _touch0PressAction?.Dispose();
-            _touch1PressAction?.Dispose();
-        }
-
         private void Update()
         {
             ProcessMouseInput();
@@ -562,10 +520,14 @@ namespace ODDGames.UIAutomation.Tests
 
         private void ProcessMouseInput()
         {
-            if (_pointerPositionAction == null || _pointerPressAction == null) return;
+            // Read directly from Mouse device (not InputActions) to match how
+            // ProcessTouchInput reads from Touchscreen.current. This ensures
+            // we see queued StateEvents from InputInjector's virtual mouse.
+            var mouse = Mouse.current;
+            if (mouse == null) return;
 
-            var currentPos = _pointerPositionAction.ReadValue<Vector2>();
-            var isPressed = _pointerPressAction.IsPressed();
+            var currentPos = mouse.position.ReadValue();
+            var isPressed = mouse.leftButton.isPressed;
 
             if (isPressed)
             {

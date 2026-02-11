@@ -540,7 +540,8 @@ namespace ODDGames.UIAutomation.Tests
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = "TexturedCubeUnique";
             var renderer = go.GetComponent<MeshRenderer>();
-            var material = new Material(Shader.Find("Standard"));
+            // Use Sprites/Default — a built-in shader guaranteed to exist in all pipelines with a _MainTex property
+            var material = new Material(Shader.Find("Sprites/Default"));
             var texture = new Texture2D(64, 64);
             texture.name = "unique_wood_diffuse_01_xyz";
             material.mainTexture = texture;

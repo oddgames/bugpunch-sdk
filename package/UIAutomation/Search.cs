@@ -1948,27 +1948,6 @@ namespace ODDGames.UIAutomation
             return false;
         }
 
-        // Cached shader property IDs for texture lookups (initialized once)
-        static readonly int[] TexturePropertyIds = new[]
-        {
-            Shader.PropertyToID("_MainTex"),
-            Shader.PropertyToID("_BaseMap"),
-            Shader.PropertyToID("_BaseColorMap"),
-            Shader.PropertyToID("_BumpMap"),
-            Shader.PropertyToID("_NormalMap"),
-            Shader.PropertyToID("_DetailNormalMap"),
-            Shader.PropertyToID("_EmissionMap"),
-            Shader.PropertyToID("_EmissiveColorMap"),
-            Shader.PropertyToID("_MetallicGlossMap"),
-            Shader.PropertyToID("_MaskMap"),
-            Shader.PropertyToID("_OcclusionMap"),
-            Shader.PropertyToID("_ParallaxMap"),
-            Shader.PropertyToID("_HeightMap"),
-            Shader.PropertyToID("_DetailAlbedoMap"),
-            Shader.PropertyToID("_DetailMask"),
-            Shader.PropertyToID("_SpecGlossMap"),
-        };
-
         static bool MatchTexture(GameObject go, string pattern)
         {
             // Unity UI Image (uses Sprite)
@@ -1997,19 +1976,20 @@ namespace ODDGames.UIAutomation
                 {
                     if (mat == null) continue;
 
-                    // Check main texture (uses cached property internally)
+                    // Check mainTexture (uses shader's [MainTexture] attribute)
                     if (mat.mainTexture != null && WildcardMatch(mat.mainTexture.name, pattern))
                         return true;
 
-                    // Check common texture properties using cached property IDs
-                    foreach (var propId in TexturePropertyIds)
+                    // Enumerate all texture properties declared by the shader
+                    var shader = mat.shader;
+                    int propCount = shader.GetPropertyCount();
+                    for (int i = 0; i < propCount; i++)
                     {
-                        if (mat.HasProperty(propId))
-                        {
-                            var tex = mat.GetTexture(propId);
-                            if (tex != null && WildcardMatch(tex.name, pattern))
-                                return true;
-                        }
+                        if (shader.GetPropertyType(i) != UnityEngine.Rendering.ShaderPropertyType.Texture)
+                            continue;
+                        var tex = mat.GetTexture(shader.GetPropertyNameId(i));
+                        if (tex != null && WildcardMatch(tex.name, pattern))
+                            return true;
                     }
                 }
             }

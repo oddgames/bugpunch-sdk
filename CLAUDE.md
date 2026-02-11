@@ -101,4 +101,4 @@ Track changes methodically as you work. Used to generate CHANGELOG.md during `/d
 
 ### Current Local Changes
 
-(None - cleared after v1.2.7 deploy)
+(None - cleared after v1.2.8 deploy)
