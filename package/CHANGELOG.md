@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-02-13
+
+### Added
+- **`HierarchyNode.instanceId`** — `GameObject.GetInstanceID()` for unique identification of duplicate-named objects in hierarchy snapshots.
+- **`HierarchyNode.depth`** — Camera distance for front-to-back rendering order (lower = closer). 3D objects use camera Z-distance; UI elements use negative canvas sort order + hierarchy order.
+- **`HierarchyNode.worldBounds`** — Raw world-space AABB `[cx, cy, cz, ex, ey, ez]` for 3D objects with visible Renderers. Projected to screen-space client-side.
+- **`HierarchySnapshot.cameraMatrix`** — 4x4 view-projection matrix (row-major) for client-side 3D→screen coordinate projection.
+- **Unfocused play mode** — `Application.runInBackground = true` is set automatically before tests start (`RunStarted`) and restored after tests finish (`RunFinished`), ensuring tests continue running when the Unity editor loses focus.
+
+### Changed
+- **3D bounds use client-side projection** — Hierarchy snapshots store raw world-space AABBs and the camera VP matrix instead of projecting per-object with `WorldToScreenPoint`. Eliminates expensive per-object native interop calls in `BuildHierarchy`.
+- **`GetHierarchyOrder()` simplified** — Uses `depth * 1000 + siblingIndex` (zero-allocation) instead of root-to-leaf walk with `Transform[]` allocation per call.
+- **Test run creation deferred** — `RunBatchCallbacks` creates server runs on the first actual test method (`TestStarted`) instead of `RunStarted`, preventing empty "0 tests" runs from Test Runner scans and recompilations.
+- **Upload timeout unlimited** — `HttpClient.Timeout` set to `InfiniteTimeSpan` for diagnostic zip uploads, preventing timeouts on large video recordings over slow connections.
+
 ## [1.2.9] - 2026-02-13
 
 ### Added

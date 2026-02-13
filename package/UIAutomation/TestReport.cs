@@ -92,6 +92,7 @@ namespace ODDGames.UIAutomation
         {
             public int screenWidth;
             public int screenHeight;
+            public float[] cameraMatrix;    // 4x4 view-projection matrix (column-major) for 3D→screen projection
             public List<HierarchyNode> roots = new(); // nested tree — matches web viewer format
         }
 
@@ -103,7 +104,10 @@ namespace ODDGames.UIAutomation
             public string text;             // text content from TMP_Text or legacy Text (null if no text)
             public bool active;
             public bool isScene;            // true for scene header nodes (top-level grouping)
-            public float x, y, w, h; // screen-space bounds (unused — retained for web viewer compat)
+            public int instanceId;          // GameObject.GetInstanceID() for unique identification
+            public float x, y, w, h;       // screen-space bounds (for UI elements in screen space)
+            public float depth;             // rendering order (lower = closer/frontmost for 3D, negative for UI)
+            public float[] worldBounds;     // [cx, cy, cz, ex, ey, ez] — world-space AABB center+extents (3D objects only)
             public string[] annotations;
             public int childCount;          // total direct children
             public int siblingIndex;        // sibling index in parent — for Unity Hierarchy ordering
@@ -163,7 +167,7 @@ namespace ODDGames.UIAutomation
         static string _lastSessionFolder;
         static RecordingSession _recordingSession;
         static float _recordingStartTime;
-        static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(60) };
+        static readonly HttpClient _httpClient = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
         static DateTime _uploadBackoffUntil;
 
         /// <summary>Whether diagnostics are currently active (interactive editor only).</summary>
@@ -732,6 +736,21 @@ namespace ODDGames.UIAutomation
         static readonly Dictionary<Transform, HierarchyNode> _nodeMap = new();
 
         /// <summary>
+        /// Computes a stable rendering order for a UI element within its canvas.
+        /// Uses transform depth (distance from root) as primary order — deeper elements
+        /// render on top. Sibling index as tiebreaker. Avoids allocations.
+        /// </summary>
+        static float GetHierarchyOrder(Transform t)
+        {
+            // Count depth (distance from root) — deeper = rendered later
+            int depth = 0;
+            var current = t.parent;
+            while (current != null) { depth++; current = current.parent; }
+            // Combine: depth dominates, sibling index breaks ties
+            return depth * 1000f + t.GetSiblingIndex();
+        }
+
+        /// <summary>
         /// Captures a structured hierarchy snapshot in memory.
         /// Uses FindObjectsByType to get ALL transforms in one native call,
         /// then builds a nested tree matching the web viewer format.
@@ -786,9 +805,20 @@ namespace ODDGames.UIAutomation
                 FindObjectsSortMode.None);
 
             // Pass 1: Create a node for every Transform (skip HideInHierarchy objects)
-            // Lightweight: name, active, text content, screen bounds (for UI elements).
+            // Lightweight: name, active, instanceId, text content, screen bounds, depth.
             // No annotations, no properties. Paths are reconstructed by the front end.
             var corners = new Vector3[4];
+            var mainCam = Camera.main;
+
+            // Store camera VP matrix for client-side 3D→screen projection
+            if (mainCam != null)
+            {
+                var vp = mainCam.projectionMatrix * mainCam.worldToCameraMatrix;
+                snapshot.cameraMatrix = new float[16];
+                for (int r = 0; r < 4; r++)
+                    for (int c = 0; c < 4; c++)
+                        snapshot.cameraMatrix[r * 4 + c] = vp[r, c];
+            }
             for (int i = 0; i < allTransforms.Length; i++)
             {
                 var t = allTransforms[i];
@@ -801,6 +831,7 @@ namespace ODDGames.UIAutomation
                 {
                     name = t.name,
                     active = go.activeInHierarchy,
+                    instanceId = go.GetInstanceID(),
                     childCount = t.childCount,
                     siblingIndex = t.GetSiblingIndex()
                 };
@@ -818,7 +849,7 @@ namespace ODDGames.UIAutomation
                     var canvas = go.GetComponentInParent<Canvas>();
                     Camera cam = null;
                     if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
-                        cam = canvas.worldCamera ?? Camera.main;
+                        cam = canvas.worldCamera != null ? canvas.worldCamera : mainCam;
 
                     float minX = float.MaxValue, maxX = float.MinValue;
                     float minY = float.MaxValue, maxY = float.MinValue;
@@ -836,6 +867,16 @@ namespace ODDGames.UIAutomation
                     node.y = minY;
                     node.w = maxX - minX;
                     node.h = maxY - minY;
+
+                    // Depth for UI: negative sort order so higher sort order = lower depth = in front
+                    if (canvas != null)
+                        node.depth = -(canvas.sortingOrder * 10000f + GetHierarchyOrder(t));
+                }
+                // World-space bounds for 3D objects — projected client-side using cameraMatrix
+                else if (go.TryGetComponent<Renderer>(out var renderer) && renderer.isVisible)
+                {
+                    var b = renderer.bounds;
+                    node.worldBounds = new[] { b.center.x, b.center.y, b.center.z, b.extents.x, b.extents.y, b.extents.z };
                 }
 
                 _nodeMap[t] = node;
