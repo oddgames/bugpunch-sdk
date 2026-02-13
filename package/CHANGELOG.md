@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2026-02-13
+
+### Added
+- **Video timestamp sidecar (`video_timestamps.csv`)** — Per-game-frame session timestamps captured during video recording via `VideoTimestampTracker`. Enables accurate video-to-log synchronization even when the encoder drops frames or stalls.
+- **`videoStartOffset` in session JSON** — Seconds between session start and recording start, used by the web viewer to map between session timeline and video playback position.
+- **`videoTimestampsFile` in session JSON** — Reference to the sidecar CSV filename in the diagnostic zip.
+
+### Changed
+- **Web viewer video sync uses offset mapping** — `VideoPanel` now maps between session time and video time via `sessionToVideo()`/`videoToSession()` functions instead of assuming 1:1 alignment. Correctly handles recordings that start after the session begins and detects when the timeline position is past video coverage.
+
 ## [1.3.0] - 2026-02-13
 
 ### Added
