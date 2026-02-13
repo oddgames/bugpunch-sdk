@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.9] - 2026-02-13
+
+### Added
+- **`TestReport` diagnostic system** — Automatic test session capture with video recording, screenshots, hierarchy snapshots, and structured console logs. Sessions are packaged as `.zip` archives in `temporaryCachePath/UIAutomation_Diagnostics/`.
+- **Cross-platform video recorder (`MediaRecorder`)** — Integrated under `Recorder/` and `Plugins/`. Supports Windows (Media Foundation), Android (MediaCodec), iOS/macOS (AVAssetWriter). Editor uses Unity Recorder backend at 1280x720, 15 FPS.
+- **Server integration** — Auto-upload diagnostic sessions to a centralized ASP.NET Core server. Configurable via **Edit > Project Settings > UI Automation** (server URL, API key, auto-upload toggle, upload passes toggle).
+- **Test run lifecycle** — `RunBatchCallbacks` hooks Unity Test Runner to create/finish test runs on the server. Sessions are grouped by run.
+- **Upload queue** — `AutoUploadHook` queues uploads on thread pool instead of blocking per-test. `DrainUploadQueue()` waits for all uploads before the test batch exits.
+- **`ActionExecutor.Snapshot()`** — Captures detailed hierarchy snapshot with full component properties (text, colors, sizes, interactable states, layout settings).
+- **Console log capture** — `Application.logMessageReceived` hooked during sessions. All Unity console output stored as `LogEntry` with extended logTypes: Screenshot (5), Snapshot (6), ActionStart (7), ActionSuccess (8), ActionWarn (9), ActionFailure (10).
+- **Code location tracking** — `DiagEvent` captures `callerFile`, `callerLine`, `callerMethod` via stack walking to identify test source code.
+- **Hierarchy snapshots capture all GameObjects** — Uses `FindObjectsByType<Transform>` for full scene capture. 3D objects get annotations for Camera, Light, MeshRenderer, Collider, Rigidbody, Animator, AudioSource, ParticleSystem.
+- **Persistent data capture** — On test failure, `Application.persistentDataPath` contents are optionally included in diagnostic zips (max 50 MB, 3 levels deep). Toggle via Project Settings.
+- **Custom metadata** — `TestReport.MetadataCallback` for project-specific metadata. `TestReport.AutoDetectVCS` for Git/Plastic SCM auto-detection.
+- **`com.unity.nuget.newtonsoft-json` dependency** — For hierarchy JSON serialization (no depth limit).
+
+### Changed
+- **`FailureDiagnostics` renamed to `TestReport`** — Better reflects that it captures all test results, not just failures.
+- **`UIAutomationTestFixture.TearDown()` is now `async Task`** — Awaits session end and upload before next test starts.
+- **`UIAutomationTestFixture.SetUp()` creates fallback camera** — Auto-creates depth -100 camera when none exists, ensuring recordings/screenshots always have a depth buffer.
+- **Hierarchy snapshots use nested `roots`/`children` format** — Serialized with Newtonsoft.Json instead of JsonUtility (no 10-level depth cap).
+- **`InputInjector` saves/restores individual settings** — Saves `backgroundBehavior` and `editorInputBehaviorInPlayMode` individually instead of cloning the entire `InputSettings` ScriptableObject.
+- **`InputVisualizer` icons have transparent backgrounds** — Cursor icons (mouse, click, touch, scroll) converted from black to transparent backgrounds.
+- **`InputVisualizer` scales by screen resolution** — All sizes scale by `Screen.height / 1080f`. Base cursor size reduced from 48px to 32px at 1080p.
+- **`BuildFailureReport` returns short assertion message** — Full report in `FAILURE_REPORT.txt`, not the exception message.
+- **Diagnostic zips use `CompressionLevel.NoCompression`** — Faster packaging.
+- **Screenshots captured via `WaitForEndOfFrame` coroutine** — Replaces mid-frame `ScreenCapture.CaptureScreenshotAsTexture()` that caused gray/empty captures.
+
+### Fixed
+- **`InputInjector.OnPlayModeStateChanged`** — No longer touches InputSystem APIs during `ExitingPlayMode`, preventing native assertion spam.
+- **`InputInjector.TearDown()`** — Device cleanup wrapped in try/catch to prevent assertion crashes.
+- **`Near()` and `Adjacent()` spatial filters** — Now use `UIUtility.GetScreenBounds()` for proper screen-space coordinates on all canvas types.
+- **`FindBestAdjacentElement()`** — Iterates `Selectable` components directly instead of walking `RectTransform` hierarchies.
+- **`Near()` direction filter** — Changed from strict edge-based to center-based check, matching `Adjacent()` behavior.
+- **Native crash in complex scenes** — `Search.Find()`/`FindAll()` now do `await Task.Delay(1)` before first `FindObjectsByType` call to break out of the `ExecuteTasks` pipeline.
+- **Screenshots missing from zips** — PNG writes now tracked in `_pendingFileWrites` and awaited before zipping.
+- **Action events logged twice** — Removed duplicate `Log()` calls from `ActionExecutor`; `TestReport.LogAction` handles all console output.
+- **Video recording stall** — `EditorRecorderBackend` uses `FrameRatePlayback.Variable` to avoid Media Foundation rate control backpressure.
+- **Audio capture always enabled** — Uses `MovieRecorderSettings.CaptureAudio` property setter instead of `AudioInputSettings.PreserveAudio`.
+- **Double `.mp4.mp4` extension** — `OutputPath` now passes filename without extension.
+- **Video playback stopping early** — `GetDuration()` prefers actual `VideoPlayer.length` over session metadata.
+- **Encoder odd resolution crash** — Resolution rounded to even values with `& ~1`.
+
+### Removed
+- **`DiagnosticsViewerWindow`** — Built-in Unity EditorWindow viewer replaced by web-based viewer.
+- **`ClearScreen()` from `SetUp()`** — `Camera.Render()` during SetUp could corrupt native state.
+
+### Breaking
+- **`com.unity.recorder` is now a required dependency** (was previously optional).
+
 ## [1.2.8] - 2026-02-11
 
 ### Changed

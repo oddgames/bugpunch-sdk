@@ -28,6 +28,7 @@ namespace ODDGames.UIAutomation
     /// </summary>
     public abstract class UIAutomationTestFixture
     {
+        private Camera _fixtureCamera;
 
         /// <summary>
         /// Override to return false if you don't want to capture unobserved exceptions.
@@ -44,11 +45,20 @@ namespace ODDGames.UIAutomation
         [SetUp]
         public virtual void SetUp()
         {
-            // Disable profiler to avoid "Non-matching Profiler.EndSample" errors
-            // caused by async operations crossing frame boundaries (UniTask issue)
-            UnityEngine.Profiling.Profiler.enabled = false;
 
-            Debug.Log($"[UIAutomationTestFixture] SetUp starting (frame {Time.frameCount})");
+            // Ensure a camera exists so recordings/screenshots have proper depth buffer.
+            // Tests that need a specific camera setup can destroy this and create their own.
+            if (Camera.allCamerasCount == 0)
+            {
+                var camGO = new GameObject("TestCamera");
+                _fixtureCamera = camGO.AddComponent<Camera>();
+                _fixtureCamera.clearFlags = CameraClearFlags.SolidColor;
+                _fixtureCamera.backgroundColor = Color.black;
+                _fixtureCamera.depth = -100;
+            }
+
+            // Start diagnostic session (no-op in batch mode)
+            TestReport.StartSession(TestContext.CurrentContext.Test.Name);
 
             if (CaptureUnobservedException)
             {
@@ -61,11 +71,10 @@ namespace ODDGames.UIAutomation
                 InputInjector.Setup();
             }
 
-            Debug.Log("[UIAutomationTestFixture] SetUp complete");
         }
 
         [TearDown]
-        public virtual void TearDown()
+        public virtual async Task TearDown()
         {
             Debug.Log($"[UIAutomationTestFixture] TearDown starting (frame {Time.frameCount})");
 
@@ -79,12 +88,18 @@ namespace ODDGames.UIAutomation
                 InputInjector.TearDown();
             }
 
-            // Re-enable profiler
-            UnityEngine.Profiling.Profiler.enabled = true;
+            // End diagnostic session last — awaits upload so it completes before next test
+            await TestReport.EndSession();
+
+            // Destroy the fixture camera if we created one
+            if (_fixtureCamera != null)
+            {
+                UnityEngine.Object.DestroyImmediate(_fixtureCamera.gameObject);
+                _fixtureCamera = null;
+            }
 
             Debug.Log("[UIAutomationTestFixture] TearDown complete");
         }
-
 
         /// <summary>
         /// Loads a scene by name and waits for it to complete.
@@ -94,13 +109,11 @@ namespace ODDGames.UIAutomation
         /// <param name="minFps">Minimum stable frame rate before considering scene ready. Set to 0 to skip FPS check.</param>
         protected async Task LoadScene(string sceneName, float minFps = 20f)
         {
-            Debug.Log($"[UIAutomationTestFixture] LoadScene({sceneName}) starting (frame {Time.frameCount})");
             var op = UnityEngine.SceneManagement.SceneManager.LoadSceneAsync(sceneName);
             while (!op.isDone)
             {
                 await Task.Yield();
             }
-            Debug.Log($"[UIAutomationTestFixture] LoadScene({sceneName}) scene loaded (frame {Time.frameCount})");
 
             // Wait for stable frame rate
             if (minFps > 0)
@@ -115,7 +128,6 @@ namespace ODDGames.UIAutomation
                     await Task.Yield();
                 }
             }
-            Debug.Log($"[UIAutomationTestFixture] LoadScene({sceneName}) complete (frame {Time.frameCount})");
         }
 
         /// <summary>

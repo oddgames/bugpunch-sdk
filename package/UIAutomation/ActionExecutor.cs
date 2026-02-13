@@ -569,9 +569,6 @@ namespace ODDGames.UIAutomation
                 Debug.Log($"[UIAutomation:DEBUG] {message}");
         }
 
-        static void LogStart(string action) => Log($"START: {action} (frame {Time.frameCount})");
-        static void LogComplete(string action) => Log($"COMPLETE: {action} (frame {Time.frameCount})");
-        static void LogComplete(string action, string result) => Log($"COMPLETE: {action} -> {result} (frame {Time.frameCount})");
         static void LogFail(string action, string reason) => Debug.LogWarning($"[UIAutomation] FAILED: {action} - {reason}");
 
         /// <summary>
@@ -589,33 +586,67 @@ namespace ODDGames.UIAutomation
         private class ActionScopeInner
         {
             private readonly string _action;
+            private readonly string _callerFile;
+            private readonly int _callerLine;
+            private readonly string _callerMethod;
             private string _result;
             private bool _disposed;
             private bool _failed;
 
-            public ActionScopeInner(string action)
+            public ActionScopeInner(string action, string callerFile, int callerLine, string callerMethod)
             {
                 _action = action;
-                Log($"START: {action}");
+
+                // Walk the stack to find the test caller (first frame outside UIAutomation namespace)
+                if (callerFile == null)
+                {
+                    var trace = new StackTrace(true);
+                    for (int i = 0; i < trace.FrameCount; i++)
+                    {
+                        var frame = trace.GetFrame(i);
+                        var method = frame.GetMethod();
+                        if (method == null) continue;
+                        var ns = method.DeclaringType?.Namespace;
+                        if (ns != null && ns.StartsWith("ODDGames.UIAutomation")) continue;
+                        // Skip system/runtime frames
+                        if (ns != null && (ns.StartsWith("System") || ns.StartsWith("Microsoft"))) continue;
+                        if (string.IsNullOrEmpty(frame.GetFileName())) continue;
+
+                        callerFile = frame.GetFileName();
+                        callerLine = frame.GetFileLineNumber();
+                        callerMethod = method.Name;
+                        break;
+                    }
+                }
+
+                _callerFile = callerFile;
+                _callerLine = callerLine;
+                _callerMethod = callerMethod;
+                TestReport.LogAction($"START: {action}", callerFile, callerLine, callerMethod);
             }
 
             /// <summary>Sets a result message to be included in the COMPLETE log.</summary>
-            public void SetResult(string result) => _result = result;
+            public void SetResult(string result)
+            {
+                _result = result;
+                TestReport.CaptureScreenshot($"{_action}_success");
+                TestReport.LogAction($"COMPLETE: {_action} -> {result}", _callerFile, _callerLine, _callerMethod);
+            }
 
             /// <summary>Marks the action as failed with a reason. Logs warning only, does not throw.</summary>
             public void Warn(string reason)
             {
                 _failed = true;
-                Debug.LogWarning($"[UIAutomation] FAILED: {_action} - {reason}");
+                TestReport.LogAction($"WARN: {_action} - {reason}", _callerFile, _callerLine, _callerMethod);
             }
 
             /// <summary>Marks the action as failed with a reason.</summary>
             public void Fail(string reason)
             {
                 _failed = true;
+                TestReport.RecordFailure();
+                TestReport.LogAction($"FAILED: {_action} - {reason}", _callerFile, _callerLine, _callerMethod);
                 var message = $"{_action} failed: {reason}";
-                // Log before throwing so the failure message is visible in console
-                Debug.LogError($"[UIAutomation] FAILED: {message}");
                 // Throw test failure - uses NUnit in test builds, InvalidOperationException in player builds
                 ThrowTestFailure(message);
             }
@@ -633,12 +664,9 @@ namespace ODDGames.UIAutomation
                 if (delay > 0)
                     await Task.Delay(delay);
 
-                if (!_failed)
+                if (!_failed && _result == null)
                 {
-                    if (_result != null)
-                        Log($"COMPLETE: {_action} -> {_result}");
-                    else
-                        Log($"COMPLETE: {_action}");
+                    TestReport.LogAction($"COMPLETE: {_action}", _callerFile, _callerLine, _callerMethod);
                 }
             }
         }
@@ -650,11 +678,17 @@ namespace ODDGames.UIAutomation
         private struct ActionScope : IAsyncDisposable
         {
             private readonly string _action;
+            private readonly string _callerFile;
+            private readonly int _callerLine;
+            private readonly string _callerMethod;
             private ActionScopeInner _inner;
 
-            public ActionScope(string action)
+            public ActionScope(string action, string callerFile, int callerLine, string callerMethod)
             {
                 _action = action;
+                _callerFile = callerFile;
+                _callerLine = callerLine;
+                _callerMethod = callerMethod;
                 _inner = null;
             }
 
@@ -701,14 +735,14 @@ namespace ODDGames.UIAutomation
                 {
                     _innerAwaiter.GetResult();
                     var result = _scope;
-                    result._inner = new ActionScopeInner(_scope._action);
+                    result._inner = new ActionScopeInner(_scope._action, _scope._callerFile, _scope._callerLine, _scope._callerMethod);
                     return result;
                 }
             }
         }
 
         /// <summary>Creates an ActionScope that ensures main thread, logs START now, and syncs/logs COMPLETE when disposed.</summary>
-        private static ActionScope RunAction(string action) => new ActionScope(action);
+        private static ActionScope RunAction(string action) => new ActionScope(action, null, 0, null);
 
         #endregion
 
@@ -1445,6 +1479,10 @@ namespace ODDGames.UIAutomation
         /// </summary>
         static string BuildSearchFailureMessage(Search search, float searchTime)
         {
+            // Use rich diagnostics when available (interactive editor mode)
+            if (TestReport.IsActive)
+                return TestReport.BuildFailureReport(search, searchTime);
+
             var msg = $"Element not found within {searchTime}s";
 
             // If the search uses RequiresReceiver, provide additional context
@@ -3571,6 +3609,34 @@ namespace ODDGames.UIAutomation
             ScreenCapture.CaptureScreenshot(path);
             action.SetResult(path);
             return path;
+        }
+
+        #endregion
+
+        #region Hierarchy Snapshot
+
+        /// <summary>
+        /// Captures a detailed hierarchy snapshot of the current UI state.
+        /// Records component properties (text, colors, sizes, interactable states),
+        /// child counts, and screen-space bounds for every UI element.
+        /// The snapshot is stored in the current diagnostic session and viewable
+        /// in the Diagnostics Viewer.
+        /// </summary>
+        /// <param name="maxDepth">Maximum tree depth to capture. -1 for unlimited (default).</param>
+        public static async Task Snapshot(int maxDepth = -1)
+        {
+            await using var action = await RunAction($"Snapshot(depth={((maxDepth < 0) ? "unlimited" : maxDepth.ToString())})");
+
+            // Wait for rendering to complete so bounds are accurate
+            await Task.Yield();
+
+            var filename = TestReport.CaptureDetailedSnapshot(maxDepth);
+            TestReport.CaptureScreenshot("snapshot");
+
+            if (filename != null)
+                action.SetResult($"captured {filename}");
+            else
+                action.Warn("no active diagnostic session");
         }
 
         #endregion
