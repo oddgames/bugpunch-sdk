@@ -25,10 +25,27 @@ namespace ODDGames.UIAutomation.Editor
 
         private class Callbacks : ICallbacks
         {
+            bool _runCreated;
+            bool _savedRunInBackground;
+
             public void RunStarted(ITestAdaptor testsToRun)
             {
-                if (!ServerSettings.AutoUpload) return;
+                _runCreated = false;
 
+                // Ensure Unity keeps running when the editor loses focus —
+                // must be set here (before any test SetUp) so the player loop
+                // doesn't pause if the user clicks away during test execution.
+                _savedRunInBackground = Application.runInBackground;
+                Application.runInBackground = true;
+            }
+
+            public void TestStarted(ITestAdaptor test)
+            {
+                // Only create a run for actual test methods (not suites/fixtures)
+                if (_runCreated || test.IsSuite) return;
+                _runCreated = true;
+
+                if (!ServerSettings.AutoUpload) return;
                 var serverUrl = ServerSettings.ServerUrl;
                 if (string.IsNullOrEmpty(serverUrl)) return;
 
@@ -44,12 +61,14 @@ namespace ODDGames.UIAutomation.Editor
                 catch (Exception ex)
                 {
                     Debug.LogWarning($"[UIAutomation] Failed to start run on server: {ex.Message}");
-                    // Graceful degradation — tests still work without runId
                 }
             }
 
             public void RunFinished(ITestResultAdaptor result)
             {
+                // Restore runInBackground to its original value
+                Application.runInBackground = _savedRunInBackground;
+
                 // Drain upload queue before finishing the run — ensures all
                 // session uploads complete before the batch exits.
                 AutoUploadHook.DrainUploadQueue();
@@ -73,7 +92,6 @@ namespace ODDGames.UIAutomation.Editor
                 }
             }
 
-            public void TestStarted(ITestAdaptor test) { }
             public void TestFinished(ITestResultAdaptor result) { }
         }
 
