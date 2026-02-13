@@ -57,6 +57,8 @@ namespace ODDGames.UIAutomation
             public string startTime;
             public string videoFile;      // relative path to recording MP4
             public float videoDuration;   // video duration in seconds
+            public float videoStartOffset; // seconds between session start and recording start
+            public string videoTimestampsFile; // relative path to frame timestamp CSV sidecar
             public SessionMetadata metadata;
             public List<DiagEvent> events = new();
             public List<LogEntry> logs = new();
@@ -167,6 +169,7 @@ namespace ODDGames.UIAutomation
         static string _lastSessionFolder;
         static RecordingSession _recordingSession;
         static float _recordingStartTime;
+        static VideoTimestampTracker _timestampTracker;
         static readonly HttpClient _httpClient = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
         static DateTime _uploadBackoffUntil;
 
@@ -1317,6 +1320,7 @@ namespace ODDGames.UIAutomation
                 };
                 _recordingSession = await MediaRecorder.StartAsync(settings);
                 _recordingStartTime = Time.realtimeSinceStartup;
+                _timestampTracker = VideoTimestampTracker.Begin(_sessionStartTime);
                 LogMessage("Recording started");
             }
             catch (Exception ex)
@@ -1333,6 +1337,21 @@ namespace ODDGames.UIAutomation
 
             try
             {
+                // Stop the timestamp tracker and write the sidecar CSV before stopping the recorder
+                if (_timestampTracker != null)
+                {
+                    var csvPath = Path.Combine(_sessionFolder, "video_timestamps.csv");
+                    _timestampTracker.StopAndWrite(csvPath);
+                    UnityEngine.Object.Destroy(_timestampTracker.gameObject);
+                    _timestampTracker = null;
+
+                    if (_session != null && File.Exists(csvPath))
+                    {
+                        _session.videoTimestampsFile = "video_timestamps.csv";
+                        _session.videoStartOffset = _recordingStartTime - _sessionStartTime;
+                    }
+                }
+
                 if (_recordingSession.IsRecording)
                 {
                     var stopTask = _recordingSession.StopAsync();
