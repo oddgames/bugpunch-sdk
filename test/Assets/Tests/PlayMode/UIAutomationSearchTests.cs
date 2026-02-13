@@ -49,7 +49,7 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public override void TearDown()
+        public override async Task TearDown()
         {
             foreach (var obj in _createdObjects)
             {
@@ -58,7 +58,7 @@ namespace ODDGames.UIAutomation.Tests
             }
             _createdObjects.Clear();
 
-            base.TearDown();
+            await base.TearDown();
         }
 
         #region Search() Helper Tests

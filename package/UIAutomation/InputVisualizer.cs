@@ -52,8 +52,9 @@ namespace ODDGames.UIAutomation
         /// <summary>Duration in seconds for click ripple animation.</summary>
         public static float ClickDuration = 0.3f;
 
-        /// <summary>Maximum radius for click ripple in pixels.</summary>
-        public static float ClickRadius = 25f;
+        /// <summary>Base click ripple radius at 1080p. Scales with screen height.</summary>
+        public static float BaseClickRadius = 18f;
+        static float ClickRadius => BaseClickRadius * (Screen.height / 1080f);
 
         /// <summary>Duration in seconds for cursor trail to fade.</summary>
         public static float TrailDuration = 0.4f;
@@ -61,8 +62,14 @@ namespace ODDGames.UIAutomation
         /// <summary>Maximum number of trail points to keep.</summary>
         public static int MaxTrailPoints = 40;
 
-        /// <summary>Size of the cursor icon in pixels.</summary>
-        public static float CursorSize = 48f;
+        /// <summary>
+        /// Base cursor size at 1080p reference resolution.
+        /// Actual size scales proportionally with screen height.
+        /// </summary>
+        public static float BaseCursorSize = 32f;
+
+        /// <summary>Effective cursor size in pixels, scaled to current screen resolution.</summary>
+        public static float CursorSize => BaseCursorSize * (Screen.height / 1080f);
 
         /// <summary>Color for click ripple effect.</summary>
         public static Color ClickColor = new Color(0.3f, 0.85f, 1f, 0.6f);
@@ -582,6 +589,9 @@ namespace ODDGames.UIAutomation
             return new Vector2(screenPos.x, Screen.height - screenPos.y);
         }
 
+        /// <summary>Scale factor relative to 1080p reference resolution.</summary>
+        private static float Scale => Screen.height / 1080f;
+
         private void DrawTrail()
         {
             if (_trail.Count < 2 || _pixelTexture == null) return;
@@ -603,7 +613,7 @@ namespace ODDGames.UIAutomation
                 {
                     var color = TrailColor;
                     color.a = alpha;
-                    float thickness = 1f + posAlpha * 2f;
+                    float thickness = (1f + posAlpha * 2f) * Scale;
                     DrawLine(ScreenToGUI(p1.Position), ScreenToGUI(p2.Position), color, thickness);
                 }
             }
@@ -621,7 +631,7 @@ namespace ODDGames.UIAutomation
                 {
                     var color = TrailColor;
                     color.a = alpha;
-                    float radius = 2f + posAlpha * 4f;
+                    float radius = (2f + posAlpha * 4f) * Scale;
                     DrawFilledCircle(ScreenToGUI(p.Position), radius, color);
                 }
             }
@@ -637,7 +647,7 @@ namespace ODDGames.UIAutomation
             {
                 float t = (now - click.StartTime) / ClickDuration;
                 float alpha = Mathf.Clamp01(1f - t) * ClickColor.a;
-                float radius = Mathf.Lerp(8f, ClickRadius, t);
+                float radius = Mathf.Lerp(6f * Scale, ClickRadius, t);
 
                 var color = ClickColor;
                 color.a = alpha;
@@ -646,7 +656,7 @@ namespace ODDGames.UIAutomation
 
                 for (int ring = 0; ring < click.TapCount; ring++)
                 {
-                    float ringRadius = radius - ring * 6f;
+                    float ringRadius = radius - ring * 6f * Scale;
                     if (ringRadius > 0)
                     {
                         DrawRing(guiPos, ringRadius, color);
@@ -671,7 +681,7 @@ namespace ODDGames.UIAutomation
                 if (icon != null)
                 {
                     float size = CursorSize * (1f + t * 0.2f);
-                    float yOffset = t * 15f * (scrollUp ? -1f : 1f); // Flip for GUI coords
+                    float yOffset = t * 15f * Scale * (scrollUp ? -1f : 1f); // Flip for GUI coords
                     var guiPos = ScreenToGUI(scroll.Position) + new Vector2(0, yOffset);
                     DrawIcon(icon, guiPos, size, alpha, new Vector2(0.5f, 0.5f));
                 }
@@ -744,18 +754,18 @@ namespace ODDGames.UIAutomation
             var guiCenter = ScreenToGUI(gesture.Center);
 
             // Draw finger dots
-            float dotRadius = 8f;
+            float dotRadius = 8f * Scale;
             DrawFilledCircle(guiF1, dotRadius, color);
             DrawFilledCircle(guiF2, dotRadius, color);
 
             // Draw lines from fingers to center
             var lineColor = color;
             lineColor.a *= 0.5f;
-            DrawLine(guiF1, guiCenter, lineColor, 2f);
-            DrawLine(guiF2, guiCenter, lineColor, 2f);
+            DrawLine(guiF1, guiCenter, lineColor, 2f * Scale);
+            DrawLine(guiF2, guiCenter, lineColor, 2f * Scale);
 
             // Draw center marker
-            DrawRing(guiCenter, 6f, lineColor);
+            DrawRing(guiCenter, 6f * Scale, lineColor);
 
             // Draw gesture type label
             string label = gesture.Type switch
@@ -768,15 +778,16 @@ namespace ODDGames.UIAutomation
 
             if (label.Length > 0)
             {
+                float s = Scale;
                 var labelStyle = new GUIStyle(GUI.skin.label)
                 {
                     alignment = TextAnchor.MiddleCenter,
-                    fontSize = 12,
+                    fontSize = Mathf.RoundToInt(12 * s),
                     fontStyle = FontStyle.Bold
                 };
                 labelStyle.normal.textColor = new Color(1f, 1f, 1f, alpha * 0.8f);
 
-                var labelRect = new Rect(guiCenter.x - 40, guiCenter.y - 25, 80, 20);
+                var labelRect = new Rect(guiCenter.x - 40 * s, guiCenter.y - 25 * s, 80 * s, 20 * s);
                 GUI.Label(labelRect, label, labelStyle);
             }
         }
@@ -786,12 +797,13 @@ namespace ODDGames.UIAutomation
             if (_keys.Count == 0) return;
 
             float now = Time.unscaledTime;
-            float yOffset = 10f;
+            float s = Scale;
+            float yOffset = 10f * s;
 
             var style = new GUIStyle(GUI.skin.label)
             {
                 alignment = TextAnchor.MiddleLeft,
-                fontSize = 14,
+                fontSize = Mathf.RoundToInt(14 * s),
                 fontStyle = FontStyle.Bold
             };
 
@@ -817,9 +829,9 @@ namespace ODDGames.UIAutomation
                     : $"[{key.KeyName}]";
 
                 style.normal.textColor = new Color(KeyColor.r, KeyColor.g, KeyColor.b, alpha);
-                var rect = new Rect(10, yOffset, 200, 22);
+                var rect = new Rect(10 * s, yOffset, 200 * s, 22 * s);
                 GUI.Label(rect, label, style);
-                yOffset += 24f;
+                yOffset += 24f * s;
             }
         }
 
@@ -828,11 +840,12 @@ namespace ODDGames.UIAutomation
             if (_texts.Count == 0) return;
 
             float now = Time.unscaledTime;
+            float s = Scale;
 
             var style = new GUIStyle(GUI.skin.label)
             {
                 alignment = TextAnchor.MiddleCenter,
-                fontSize = 12,
+                fontSize = Mathf.RoundToInt(12 * s),
                 fontStyle = FontStyle.Bold
             };
 
@@ -845,7 +858,7 @@ namespace ODDGames.UIAutomation
                 var guiPos = ScreenToGUI(textEvent.Position);
                 style.normal.textColor = new Color(1f, 1f, 1f, alpha);
 
-                var rect = new Rect(guiPos.x - 100, guiPos.y - 30, 200, 20);
+                var rect = new Rect(guiPos.x - 100 * s, guiPos.y - 30 * s, 200 * s, 20 * s);
                 GUI.Label(rect, $"\"{textEvent.Text}\"", style);
             }
         }

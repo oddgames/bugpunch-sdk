@@ -52,7 +52,7 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public override void TearDown()
+        public override async Task TearDown()
         {
             // Destroy in reverse order (children before parents for safety)
             for (int i = _createdObjects.Count - 1; i >= 0; i--)
@@ -67,7 +67,7 @@ namespace ODDGames.UIAutomation.Tests
             _canvasComponent = null;
             _eventSystem = null;
 
-            base.TearDown();
+            await base.TearDown();
         }
 
         #region Static Factory Tests - ByName
@@ -2423,6 +2423,89 @@ namespace ODDGames.UIAutomation.Tests
 
             var resultAbove = await test.TestFind<Button>(new Search().Near("Center", Direction.Above));
             Assert.AreEqual("AboveClose", resultAbove.name, "Should find closest button above");
+        }
+
+        [Test]
+        public async Task Adjacent_IgnoresChildRectTransforms_MatchesInteractable()
+        {
+            // Create a label and a button (with child Image+Text RectTransforms)
+            // Also add a standalone Image RectTransform that's closer to the label
+            // Adjacent should pick the Button (Selectable), not the closer non-interactable Image
+            var label = CreateLabel("Pick:", new Vector2(-150, 0));
+
+            // Non-interactable Image closer to the label (no Selectable component)
+            var decoy = new GameObject("DecoyImage");
+            decoy.transform.SetParent(_canvas.transform, false);
+            _createdObjects.Add(decoy);
+            var decoyRect = decoy.AddComponent<RectTransform>();
+            decoyRect.sizeDelta = new Vector2(40, 40);
+            decoyRect.anchoredPosition = new Vector2(-20, 0); // Very close to label
+            decoy.AddComponent<Image>();
+
+            // Actual button further away
+            var button = CreateButton("TargetButton", "Click", _canvas.transform, new Vector2(100, 0));
+
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            await Async.DelayFrames(1);
+
+            var search = new Search().Adjacent("Pick:", Direction.Right);
+            Assert.IsTrue(search.Matches(button.gameObject), "Adjacent should match the Button (Selectable)");
+            Assert.IsFalse(search.Matches(decoy), "Adjacent should NOT match non-interactable Image");
+        }
+
+        [Test]
+        public async Task Near_DirectionRight_ElementAtTextEdge_Matches()
+        {
+            // Element whose center is between text center and text right edge
+            // This tests that the center-based direction check (not strict edge-based) works
+            var label = CreateLabel("Wide Label Here", new Vector2(-50, 0));
+            // label is 100px wide, so its RectTransform goes from -100 to 0
+            // Button center at x=20, which is past label center (-50) but NOT past label right edge (0)
+            // Old strict filter (elementCenter.x > textBounds.xMax) would reject this
+            // New center-based filter (elementCenter.x >= textCenter.x) accepts it
+            var button = CreateButton("EdgeButton", new Vector2(20, 0));
+
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            await Async.DelayFrames(1);
+
+            var search = new Search().Near("Wide Label Here", Direction.Right);
+            Assert.IsTrue(search.Matches(button), "Near(Right) should match element past text center (not requiring past text edge)");
+        }
+
+        [Test]
+        public async Task Adjacent_PrefersAlignedSelectable()
+        {
+            // Two buttons at roughly same distance from label but one is aligned (same row)
+            var label = CreateLabel("Aligned:", new Vector2(-150, 0));
+            var alignedBtn = CreateButton("AlignedBtn", "A", _canvas.transform, new Vector2(50, 0));     // Same row
+            var offsetBtn = CreateButton("OffsetBtn", "B", _canvas.transform, new Vector2(50, -80));      // Different row, same X distance
+
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            await Async.DelayFrames(1);
+
+            var search = new Search().Adjacent("Aligned:", Direction.Right);
+            Assert.IsTrue(search.Matches(alignedBtn.gameObject), "Adjacent should prefer aligned button (same row)");
+            Assert.IsFalse(search.Matches(offsetBtn.gameObject), "Adjacent should not match offset button (different row)");
+        }
+
+        [Test]
+        public async Task Near_OverlappingElement_DirectionRight_Matches()
+        {
+            // Element that horizontally overlaps the text anchor but is centered to its right
+            var label = CreateLabel("Overlap:", new Vector2(-50, 0));
+            // Label rect is at x=-100 to x=0. Button is at x=-20 to x=80, center at x=30
+            // Overlaps horizontally but center is to the right of label center (-50)
+            var button = CreateButton("OverlapBtn", new Vector2(30, 0));
+
+            await Async.DelayFrames(1);
+            Canvas.ForceUpdateCanvases();
+            await Async.DelayFrames(1);
+
+            var search = new Search().Near("Overlap:", Direction.Right);
+            Assert.IsTrue(search.Matches(button), "Near(Right) should match overlapping element centered to the right");
         }
 
         #endregion

@@ -28,10 +28,18 @@ Use the appropriate helper instead: `ClickDropdown()`, `ClickSlider()`, `Click()
 
 **Search is Central** - The `Search` class (fluent query builder) is the backbone of the framework. All element finding flows through it. Invest in keeping its API clean, expressive, and well-tested.
 
-**No External Dependencies** - The package uses only standard .NET and Unity APIs:
+**Minimal External Dependencies** - The package uses standard .NET, Unity APIs, and Newtonsoft.Json (via `com.unity.nuget.newtonsoft-json`):
 - Use `System.Threading.Tasks` (async/await) - NOT UniTask
-- Use `System.Text.Json` or manual JSON - NOT Newtonsoft.Json
+- Use `Newtonsoft.Json` for complex/nested JSON, `JsonUtility` for simple flat objects
 - Use `IAsyncDisposable` pattern for action lifecycle management
+
+## Web Infrastructure
+
+- `server/` - .NET 8 ASP.NET Core API server for test session storage
+- `web/` - React + Vite + Tailwind frontend for browsing test results
+- `cli/` - CLI tool for uploading diagnostic zips
+
+**Server Restart**: After changing server C# code, restart the server process. After changing web frontend code, the Vite dev server hot-reloads automatically. You are allowed to restart the servers after making changes.
 
 ## Key Commands
 
@@ -45,10 +53,17 @@ Use the appropriate helper instead: `ClickDropdown()`, `ClickSlider()`, `Click()
 
 **Samples** (`package/UITest/Samples/`) - Demonstrations only, not for framework testing.
 
+## Dependencies
+
+- `com.unity.recorder` - **Hard dependency** for video recording in diagnostics
+- `com.unity.ext.nunit` - AOT-compatible NUnit for all platforms
+- `com.unity.inputsystem` - New Input System for input injection
+- `com.unity.textmeshpro` - TMP support in Search
+- `com.unity.nuget.newtonsoft-json` - JSON serialization for hierarchy snapshots (no depth limit)
+
 ## Conditional Compilation
 
 Auto-detected via `versionDefines`:
-- `UNITY_RECORDER` - when `com.unity.recorder` installed
 - `HAS_TOOLBAR_EXTENDER` - when `com.marijnzwemmer.unity-toolbar-extender` installed
 
 ## GitHub Wiki
@@ -101,4 +116,4 @@ Track changes methodically as you work. Used to generate CHANGELOG.md during `/d
 
 ### Current Local Changes
 
-(None - cleared after v1.2.8 deploy)
+(None - cleared after v1.2.9 deploy)

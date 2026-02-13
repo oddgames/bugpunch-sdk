@@ -78,6 +78,12 @@ namespace ODDGames.UIAutomation
     {
         readonly List<Func<GameObject, bool>> _conditions = new();
         readonly List<string> _descriptionParts = new();
+
+        /// <summary>Search conditions for diagnostic near-miss analysis.</summary>
+        internal IReadOnlyList<Func<GameObject, bool>> Conditions => _conditions;
+
+        /// <summary>Description parts for diagnostic near-miss reporting.</summary>
+        internal IReadOnlyList<string> DescriptionParts => _descriptionParts;
         bool _nextNegate;
         bool _includeInactive;
         bool _includeDisabled;
@@ -1566,6 +1572,13 @@ namespace ODDGames.UIAutomation
         /// </example>
         public async Task<GameObject> Find(float timeout = 10f, int index = 0)
         {
+
+            // Wait before querying scene objects — ensures we're not in the same
+            // ExecuteTasks batch as scene loading or other heavy async continuations.
+            // Task.Yield() alone is insufficient because it re-enters the same ExecuteTasks call.
+            // Task.Delay with a real delay forces scheduling on a future frame's timer callback.
+            await Task.Delay(1);
+
             float startTime = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
             var findMode = ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
 
@@ -1574,19 +1587,30 @@ namespace ODDGames.UIAutomation
             int stableFrameCount = 0;
             const int requiredStableFrames = 3;
             bool loggedOnce = false;
+            float nextSnapshotTime = 2f; // First diagnostic screenshot at 2s
 
             while (((float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime) < timeout && Application.isPlaying)
             {
 
+                // Periodic diagnostic screenshots during search timeout
+                float elapsed = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime;
+                if (elapsed >= nextSnapshotTime)
+                {
+                    TestReport.CaptureSearchSnapshot(ToString(), elapsed);
+                    nextSnapshotTime = elapsed + 2f;
+                }
+
                 // Search all Transform objects (includes RectTransform) to support both UI and non-UI objects
-                var allMatching = UnityEngine.Object.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None)
+                var allTransforms = UnityEngine.Object.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None);
+                int totalTransformCount = allTransforms.Length;
+                var allMatching = allTransforms
                     .Where(t => t != null && Matches(t.gameObject))
                     .Select(t => t.gameObject)
                     .ToList();
 
                 // Filter to on-screen objects only (off-screen can't be interacted with)
                 // using corner-based bounds so partially visible objects are included
-                if (!_includeOffScreen)
+                if (!_includeOffScreen && allMatching.Count > 0)
                 {
                     var screenRect = new Rect(0, 0, Screen.width, Screen.height);
                     allMatching = allMatching
@@ -1672,6 +1696,9 @@ namespace ODDGames.UIAutomation
         /// <returns>List of matching GameObjects, or empty list if none found within timeout.</returns>
         public async Task<List<GameObject>> FindAll(float timeout = 10f)
         {
+            // Wait before querying scene objects (same reason as Find)
+            await Task.Delay(1);
+
             float startTime = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency;
             var findMode = ShouldIncludeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
 
@@ -1679,9 +1706,18 @@ namespace ODDGames.UIAutomation
             List<GameObject> stableResults = null;
             int stableFrameCount = 0;
             const int requiredStableFrames = 3;
+            float nextSnapshotTime = 2f; // First diagnostic screenshot at 2s
 
             while (((float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime) < timeout && Application.isPlaying)
             {
+                // Periodic diagnostic screenshots during search timeout
+                float elapsed = (float)Stopwatch.GetTimestamp() / Stopwatch.Frequency - startTime;
+                if (elapsed >= nextSnapshotTime)
+                {
+                    TestReport.CaptureSearchSnapshot(ToString(), elapsed);
+                    nextSnapshotTime = elapsed + 2f;
+                }
+
                 // Search all Transform objects (includes RectTransform) to support both UI and non-UI objects
                 var results = UnityEngine.Object.FindObjectsByType<Transform>(findMode, FindObjectsSortMode.None)
                     .Where(t => t != null && Matches(t.gameObject))
@@ -1856,7 +1892,7 @@ namespace ODDGames.UIAutomation
             return float.MaxValue;
         }
 
-        static string GetHierarchyPath(Transform transform)
+        internal static string GetHierarchyPath(Transform transform)
         {
             if (transform == null) return string.Empty;
             var path = new StringBuilder();
@@ -2096,63 +2132,25 @@ namespace ODDGames.UIAutomation
         {
             var results = new List<(GameObject, Rect)>();
 
-            var allTmpTexts = UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None);
-
-            foreach (var tmp in allTmpTexts)
+            // Use UIUtility.GetScreenBounds for proper screen-space coordinates
+            // on all canvas types (Overlay, Camera, World Space)
+            foreach (var tmp in UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None))
             {
                 if (WildcardMatch(tmp.text, pattern))
                 {
-                    var rect = tmp.GetComponent<RectTransform>();
-                    if (rect != null)
-                    {
-                        // Use RectTransform world corners for consistent bounds calculation
-                        // This handles canvas scaling correctly (unlike TransformVector)
-                        Vector3[] corners = new Vector3[4];
-                        rect.GetWorldCorners(corners);
-                        var bounds = new Rect(
-                            corners[0].x,
-                            corners[0].y,
-                            corners[2].x - corners[0].x,
-                            corners[2].y - corners[0].y);
+                    var bounds = UIUtility.GetScreenBounds(tmp.gameObject);
+                    if (bounds.width > 0 && bounds.height > 0)
                         results.Add((tmp.gameObject, bounds));
-                    }
                 }
             }
 
-            var allLegacyTexts = UnityEngine.Object.FindObjectsByType<Text>(FindObjectsSortMode.None);
-            foreach (var text in allLegacyTexts)
+            foreach (var text in UnityEngine.Object.FindObjectsByType<Text>(FindObjectsSortMode.None))
             {
                 if (WildcardMatch(text.text, pattern))
                 {
-                    var rect = text.GetComponent<RectTransform>();
-                    if (rect != null)
-                    {
-                        // For legacy Text, use preferred width/height for actual text size
-                        var generator = text.cachedTextGenerator;
-                        float width = generator.GetPreferredWidth(text.text, text.GetGenerationSettings(rect.rect.size));
-                        float height = generator.GetPreferredHeight(text.text, text.GetGenerationSettings(rect.rect.size));
-
-                        // Get position based on alignment and pivot
-                        Vector3[] corners = new Vector3[4];
-                        rect.GetWorldCorners(corners);
-                        Vector2 rectCenter = new Vector2(
-                            (corners[0].x + corners[2].x) / 2,
-                            (corners[0].y + corners[2].y) / 2);
-
-                        // Adjust center based on text alignment
-                        float xOffset = 0;
-                        if (text.alignment == TextAnchor.UpperLeft || text.alignment == TextAnchor.MiddleLeft || text.alignment == TextAnchor.LowerLeft)
-                            xOffset = (rect.rect.width - width) / 2 * rect.lossyScale.x;
-                        else if (text.alignment == TextAnchor.UpperRight || text.alignment == TextAnchor.MiddleRight || text.alignment == TextAnchor.LowerRight)
-                            xOffset = -(rect.rect.width - width) / 2 * rect.lossyScale.x;
-
-                        var bounds = new Rect(
-                            rectCenter.x - width * rect.lossyScale.x / 2 - xOffset,
-                            rectCenter.y - height * rect.lossyScale.y / 2,
-                            width * rect.lossyScale.x,
-                            height * rect.lossyScale.y);
+                    var bounds = UIUtility.GetScreenBounds(text.gameObject);
+                    if (bounds.width > 0 && bounds.height > 0)
                         results.Add((text.gameObject, bounds));
-                    }
                 }
             }
 
@@ -2181,22 +2179,28 @@ namespace ODDGames.UIAutomation
             GameObject bestElement = null;
             float bestScore = float.MaxValue;
 
-            // Adjacent() is for UI form fields, so we search RectTransform (uses GetWorldCorners)
-            var allRects = UnityEngine.Object.FindObjectsByType<RectTransform>(FindObjectsSortMode.None);
+            // Score Selectables directly — Selectable is the base class for all
+            // standard Unity UI interactables (Button, Toggle, Slider, InputField, etc.)
+            // This avoids the old bug where tiny child RectTransforms (text glyphs,
+            // images inside buttons) would win scoring and walk-up found the wrong parent.
+            var allSelectables = UnityEngine.Object.FindObjectsByType<Selectable>(FindObjectsSortMode.None);
             Vector2 textCenter = textBounds.center;
 
-            foreach (var rect in allRects)
+            foreach (var selectable in allSelectables)
             {
-                if (rect == null) continue;
+                if (selectable == null || !selectable.interactable) continue;
 
-                // Skip the source text and its parent hierarchy
-                if (rect.gameObject == sourceTextGo || sourceTextGo.transform.IsChildOf(rect.transform))
+                var go = selectable.gameObject;
+
+                // Skip the source text and its ancestors/descendants
+                if (go == sourceTextGo ||
+                    sourceTextGo.transform.IsChildOf(go.transform) ||
+                    go.transform.IsChildOf(sourceTextGo.transform))
                     continue;
 
-                Vector3[] corners = new Vector3[4];
-                rect.GetWorldCorners(corners);
-                var elementBounds = new Rect(corners[0].x, corners[0].y,
-                    corners[2].x - corners[0].x, corners[2].y - corners[0].y);
+                // Screen-space bounds — works on all canvas types (Overlay, Camera, World)
+                var elementBounds = UIUtility.GetScreenBounds(go);
+                if (elementBounds.width <= 0 || elementBounds.height <= 0) continue;
                 Vector2 elementCenter = elementBounds.center;
 
                 // Check if element center is in the correct direction from text center
@@ -2217,20 +2221,20 @@ namespace ODDGames.UIAutomation
                 switch (direction)
                 {
                     case Direction.Below:
-                        elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMax); // top edge center
-                        textEdgeCenter = new Vector2(textCenter.x, textBounds.yMin);          // bottom edge center
+                        elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMax);
+                        textEdgeCenter = new Vector2(textCenter.x, textBounds.yMin);
                         break;
                     case Direction.Above:
-                        elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMin); // bottom edge center
-                        textEdgeCenter = new Vector2(textCenter.x, textBounds.yMax);          // top edge center
+                        elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMin);
+                        textEdgeCenter = new Vector2(textCenter.x, textBounds.yMax);
                         break;
                     case Direction.Right:
-                        elementEdgeCenter = new Vector2(elementBounds.xMin, elementCenter.y); // left edge center
-                        textEdgeCenter = new Vector2(textBounds.xMax, textCenter.y);          // right edge center
+                        elementEdgeCenter = new Vector2(elementBounds.xMin, elementCenter.y);
+                        textEdgeCenter = new Vector2(textBounds.xMax, textCenter.y);
                         break;
                     case Direction.Left:
-                        elementEdgeCenter = new Vector2(elementBounds.xMax, elementCenter.y); // right edge center
-                        textEdgeCenter = new Vector2(textBounds.xMin, textCenter.y);          // left edge center
+                        elementEdgeCenter = new Vector2(elementBounds.xMax, elementCenter.y);
+                        textEdgeCenter = new Vector2(textBounds.xMin, textCenter.y);
                         break;
                     default:
                         elementEdgeCenter = elementCenter;
@@ -2239,7 +2243,7 @@ namespace ODDGames.UIAutomation
                 }
                 float distance = Vector2.Distance(elementEdgeCenter, textEdgeCenter);
 
-                // Calculate alignment penalty (misalignment in perpendicular axis)
+                // Alignment penalty (misalignment in perpendicular axis)
                 float alignmentPenalty = direction switch
                 {
                     Direction.Right or Direction.Left => Mathf.Abs(elementCenter.y - textCenter.y),
@@ -2247,35 +2251,12 @@ namespace ODDGames.UIAutomation
                     _ => 0
                 };
 
-                // Score: lower is better. Distance + alignment penalty weighted heavily
                 float score = distance + alignmentPenalty * 3;
 
                 if (score < bestScore)
                 {
                     bestScore = score;
-                    bestElement = rect.gameObject;
-                }
-            }
-
-            // Walk up hierarchy to find interactable parent if needed
-            if (bestElement != null)
-            {
-                var current = bestElement.transform;
-                while (current != null)
-                {
-                    var go = current.gameObject;
-                    if (go.GetComponent<TMP_InputField>() != null ||
-                        go.GetComponent<InputField>() != null ||
-                        go.GetComponent<Button>() != null ||
-                        go.GetComponent<Toggle>() != null ||
-                        go.GetComponent<Slider>() != null ||
-                        go.GetComponent<TMP_Dropdown>() != null ||
-                        go.GetComponent<Dropdown>() != null ||
-                        go.GetComponent<Selectable>() != null)
-                    {
-                        return go;
-                    }
-                    current = current.parent;
+                    bestElement = go;
                 }
             }
 
@@ -2290,37 +2271,23 @@ namespace ODDGames.UIAutomation
 
         static float GetDistanceToNearestText(GameObject element, string textPattern, Direction? direction)
         {
-            var elementRect = element.GetComponent<RectTransform>();
-            if (elementRect == null)
+            // Screen-space bounds — works on all canvas types (Overlay, Camera, World)
+            var elementBounds = UIUtility.GetScreenBounds(element);
+            if (elementBounds.width <= 0 || elementBounds.height <= 0)
                 return float.MaxValue;
 
             var matchingTexts = FindTextsMatchingPattern(textPattern);
             if (matchingTexts.Count == 0)
                 return float.MaxValue;
 
-            Vector3[] elementCorners = new Vector3[4];
-            elementRect.GetWorldCorners(elementCorners);
-            Vector2 elementCenter = new Vector2(
-                (elementCorners[0].x + elementCorners[2].x) / 2,
-                (elementCorners[0].y + elementCorners[2].y) / 2);
-            Rect elementBounds = new Rect(
-                elementCorners[0].x,
-                elementCorners[0].y,
-                elementCorners[2].x - elementCorners[0].x,
-                elementCorners[2].y - elementCorners[0].y);
+            Vector2 elementCenter = elementBounds.center;
 
-            // Find the closest matching anchor text to this element that satisfies direction constraint
             float closestDistance = float.MaxValue;
             foreach (var (textGo, textBounds) in matchingTexts)
             {
-                // Skip if the element is the anchor text itself or contains it
                 if (element == textGo || textGo.transform.IsChildOf(element.transform) || element.transform.IsChildOf(textGo.transform))
                     continue;
-                // Calculate distance from element's edge center to text's edge center based on direction
-                // For Below: element top edge center to text bottom edge center
-                // For Above: element bottom edge center to text top edge center
-                // For Right: element left edge center to text right edge center
-                // For Left: element right edge center to text left edge center
+
                 float distance;
                 if (direction.HasValue)
                 {
@@ -2329,20 +2296,20 @@ namespace ODDGames.UIAutomation
                     switch (direction.Value)
                     {
                         case Direction.Below:
-                            elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMax); // top edge center
-                            textEdgeCenter = new Vector2(textBounds.center.x, textBounds.yMin);   // bottom edge center
+                            elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMax);
+                            textEdgeCenter = new Vector2(textBounds.center.x, textBounds.yMin);
                             break;
                         case Direction.Above:
-                            elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMin); // bottom edge center
-                            textEdgeCenter = new Vector2(textBounds.center.x, textBounds.yMax);   // top edge center
+                            elementEdgeCenter = new Vector2(elementCenter.x, elementBounds.yMin);
+                            textEdgeCenter = new Vector2(textBounds.center.x, textBounds.yMax);
                             break;
                         case Direction.Right:
-                            elementEdgeCenter = new Vector2(elementBounds.xMin, elementCenter.y); // left edge center
-                            textEdgeCenter = new Vector2(textBounds.xMax, textBounds.center.y);   // right edge center
+                            elementEdgeCenter = new Vector2(elementBounds.xMin, elementCenter.y);
+                            textEdgeCenter = new Vector2(textBounds.xMax, textBounds.center.y);
                             break;
                         case Direction.Left:
-                            elementEdgeCenter = new Vector2(elementBounds.xMax, elementCenter.y); // right edge center
-                            textEdgeCenter = new Vector2(textBounds.xMin, textBounds.center.y);   // left edge center
+                            elementEdgeCenter = new Vector2(elementBounds.xMax, elementCenter.y);
+                            textEdgeCenter = new Vector2(textBounds.xMin, textBounds.center.y);
                             break;
                         default:
                             elementEdgeCenter = elementCenter;
@@ -2351,29 +2318,26 @@ namespace ODDGames.UIAutomation
                     }
                     distance = Vector2.Distance(elementEdgeCenter, textEdgeCenter);
 
-                    // Check element center is in the correct direction from text bounds edge
-                    // Use the text bounds edge (not center) as the reference point for direction checks
-                    // This ensures elements must be truly beyond the text to match
+                    // Center-based direction check — consistent with Adjacent().
+                    // The distance scoring already handles preferring elements truly
+                    // in the target direction; this is just a coarse filter.
                     bool isInDirection = direction.Value switch
                     {
-                        Direction.Right => elementCenter.x > textBounds.xMax,
-                        Direction.Left => elementCenter.x < textBounds.xMin,
-                        Direction.Below => elementCenter.y < textBounds.yMin,
-                        Direction.Above => elementCenter.y > textBounds.yMax,
+                        Direction.Right => elementCenter.x >= textBounds.center.x,
+                        Direction.Left => elementCenter.x <= textBounds.center.x,
+                        Direction.Below => elementCenter.y <= textBounds.center.y,
+                        Direction.Above => elementCenter.y >= textBounds.center.y,
                         _ => true
                     };
                     if (!isInDirection) continue;
                 }
                 else
                 {
-                    // No direction - use center to center distance
                     distance = Vector2.Distance(elementCenter, textBounds.center);
                 }
 
                 if (distance < closestDistance)
-                {
                     closestDistance = distance;
-                }
             }
 
             return closestDistance;

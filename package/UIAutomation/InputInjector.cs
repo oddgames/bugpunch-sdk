@@ -269,7 +269,11 @@ namespace ODDGames.UIAutomation
         private static Mouse _virtualMouse;
         private static Keyboard _virtualKeyboard;
         private static Touchscreen _virtualTouchscreen;
-        private static InputSettings _savedSettings;
+        // Store only the individual values we change (not the entire InputSettings SO)
+        // to avoid ScriptableObject lifecycle issues during play mode exit.
+        private static InputSettings.BackgroundBehavior _savedBackgroundBehavior;
+        private static InputSettings.EditorInputBehaviorInPlayMode _savedEditorInputBehavior;
+        private static bool _settingsSaved;
 
         /// <summary>
         /// Full cleanup on domain reload: re-enable hardware, remove virtual devices, restore settings.
@@ -298,7 +302,7 @@ namespace ODDGames.UIAutomation
             _virtualKeyboard = null;
             _virtualTouchscreen = null;
             _disabledDevices = new List<InputDevice>();
-            _savedSettings = null;
+            _settingsSaved = false;
 
             // Remove any orphaned virtual devices from previous runs
             CleanupOrphanedVirtualDevices();
@@ -313,8 +317,12 @@ namespace ODDGames.UIAutomation
         /// </summary>
         public static void Setup()
         {
-            // Snapshot settings so TearDown() can restore them exactly
-            _savedSettings = ScriptableObject.Instantiate(InputSystem.settings);
+
+            // Snapshot only the values we're about to change (not the full InputSettings SO,
+            // which causes ScriptableObject lifecycle issues during play mode exit).
+            _savedBackgroundBehavior = InputSystem.settings.backgroundBehavior;
+            _savedEditorInputBehavior = InputSystem.settings.editorInputBehaviorInPlayMode;
+            _settingsSaved = true;
 
             // Ensure InputSystemUIInputModule processes events even when Game View is unfocused
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
@@ -365,14 +373,26 @@ namespace ODDGames.UIAutomation
             UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
 #endif
 
-            EnableHardwareInput();
-            CleanupVirtualDevices();
-
-            // Restore original InputSystem.settings (backgroundBehavior, editorInputBehaviorInPlayMode, etc.)
-            if (_savedSettings != null)
+            // Restore only the values we changed — avoids replacing the entire InputSettings
+            // ScriptableObject, which can trigger native assertion failures from update ticks.
+            if (_settingsSaved)
             {
-                InputSystem.settings = _savedSettings;
-                _savedSettings = null;
+                try
+                {
+                    InputSystem.settings.backgroundBehavior = _savedBackgroundBehavior;
+                    InputSystem.settings.editorInputBehaviorInPlayMode = _savedEditorInputBehavior;
+                }
+                catch { }
+                _settingsSaved = false;
+            }
+
+            try { EnableHardwareInput(); } catch { _disabledDevices.Clear(); }
+            try { CleanupVirtualDevices(); }
+            catch
+            {
+                _virtualMouse = null;
+                _virtualKeyboard = null;
+                _virtualTouchscreen = null;
             }
         }
 
@@ -392,18 +412,15 @@ namespace ODDGames.UIAutomation
 
             UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
 
-            // Only restore if we have state to restore (Setup was called in this session)
-            if (_disabledDevices.Count == 0 && _virtualMouse == null && _savedSettings == null) return;
-
-            Debug.Log("[InputInjector] Exiting play mode - restoring input state");
-            EnableHardwareInput();
-            CleanupVirtualDevices();
-
-            if (_savedSettings != null)
-            {
-                InputSystem.settings = _savedSettings;
-                _savedSettings = null;
-            }
+            // During ExitingPlayMode the InputSystem is being torn down — ANY InputSystem
+            // API call (settings, devices, etc.) can trigger native assertion failures from
+            // update ticks that fire mid-transition. Don't touch anything.
+            // Just clear our references; domain reload via OnDomainReload() handles full cleanup.
+            _disabledDevices.Clear();
+            _virtualMouse = null;
+            _virtualKeyboard = null;
+            _virtualTouchscreen = null;
+            _settingsSaved = false;
         }
 #endif
 
@@ -2073,6 +2090,7 @@ namespace ODDGames.UIAutomation
             // Interpolate movement
             for (int i = 1; i < totalFrames; i++)
             {
+                UnityEngine.Profiling.Profiler.BeginSample("InputInjector.TwoFingerDrag.Frame");
                 float t = (float)i / totalFrames;
                 Vector2 current1 = ClampToScreen(Vector2.Lerp(start1, end1, t));
                 Vector2 current2 = ClampToScreen(Vector2.Lerp(start2, end2, t));
@@ -2092,6 +2110,7 @@ namespace ODDGames.UIAutomation
                     InputSystem.QueueEvent(movePtr);
                 }
                 InputVisualizer.RecordTwoFingerUpdate(current1, current2);
+                UnityEngine.Profiling.Profiler.EndSample();
                 await Async.DelayFrames(1);
             }
 

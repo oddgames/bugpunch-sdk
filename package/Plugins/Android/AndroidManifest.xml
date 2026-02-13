@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="au.com.oddgames.recorder">
+    <!-- No permissions required.
+         This plugin uses MediaCodec directly to encode frames provided by Unity
+         via a shared EGL context. It does NOT use MediaProjection or screen capture,
+         so no RECORD_AUDIO, FOREGROUND_SERVICE, or other runtime permissions are needed.
+         Game audio is captured on the C# side via OnAudioFilterRead and passed in as PCM data. -->
+</manifest>

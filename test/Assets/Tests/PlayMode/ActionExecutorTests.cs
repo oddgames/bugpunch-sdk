@@ -56,7 +56,7 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public override void TearDown()
+        public override async Task TearDown()
         {
             foreach (var obj in _createdObjects)
             {
@@ -69,7 +69,7 @@ namespace ODDGames.UIAutomation.Tests
             TestTrucks.PlayerTruck = null;
             TestTrucks.PlayerTrucks = null;
 
-            base.TearDown();
+            await base.TearDown();
         }
 
         #region Click Tests
@@ -104,7 +104,7 @@ namespace ODDGames.UIAutomation.Tests
         public async Task ClickAsync_WithSearch_ThrowsWhenNotFound()
         {
             await Async.DelayFrames(1);
-            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
+            LogAssert.Expect(LogType.Error, new Regex(@"FAILED.*Element not found"));
             try
             {
                 await ActionExecutor.Click(new Search().Name("NonExistentButton"), searchTime: 0.5f);
@@ -1229,7 +1229,7 @@ namespace ODDGames.UIAutomation.Tests
         public async Task WaitFor_WithMissingElement_Throws()
         {
             await Async.DelayFrames(1);
-            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
+            LogAssert.Expect(LogType.Error, new Regex(@"FAILED.*Element not found"));
 
             try
             {
@@ -1273,7 +1273,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             CreateTextElement("WaitText", "Actual Text", new Vector2(0, 0));
             await Async.DelayFrames(1);
-            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
+            LogAssert.Expect(LogType.Error, new Regex(@"FAILED.*Element not found"));
 
             try
             {
@@ -1311,7 +1311,7 @@ namespace ODDGames.UIAutomation.Tests
         {
             CreateButton("ExistingButton", new Vector2(0, 0));
             await Async.DelayFrames(1);
-            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
+            LogAssert.Expect(LogType.Error, new Regex(@"FAILED.*Element not found"));
 
             try
             {
@@ -1547,7 +1547,7 @@ namespace ODDGames.UIAutomation.Tests
         public async Task WaitForStaticPathGeneric_WithMismatchedValue_Throws()
         {
             await Async.DelayFrames(1);
-            LogAssert.Expect(LogType.Error, new Regex(@"\[UIAutomation\] FAILED:.*failed:"));
+            LogAssert.Expect(LogType.Error, new Regex(@"FAILED.*Element not found"));
 
             try
             {

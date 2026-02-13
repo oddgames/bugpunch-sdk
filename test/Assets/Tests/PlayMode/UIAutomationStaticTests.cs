@@ -50,7 +50,7 @@ namespace ODDGames.UIAutomation.Tests
         }
 
         [TearDown]
-        public override void TearDown()
+        public override async Task TearDown()
         {
             // Destroy in reverse order
             for (int i = _createdObjects.Count - 1; i >= 0; i--)
@@ -61,7 +61,7 @@ namespace ODDGames.UIAutomation.Tests
             }
             _createdObjects.Clear();
 
-            base.TearDown();
+            await base.TearDown();
         }
 
         #region Helper Methods
