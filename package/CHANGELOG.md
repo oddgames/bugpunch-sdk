@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.2] - 2026-02-15
+
+### Fixed
+- **Version bump to invalidate stale Unity package cache** — CI builds were failing with CS0246 (`VideoTimestampTracker` not found) because the v1.3.1 tag was force-updated after initial creation, and Unity's global git package cache retained the old resolution missing the `.meta` file.
+
 ## [1.3.1] - 2026-02-13
 
 ### Added
