@@ -1,0 +1,27 @@
+{
+    "name": "ODDGames.UIAutomation.Bridge",
+    "rootNamespace": "ODDGames.UIAutomation.Bridge",
+    "references": [
+        "ODDGames.UIAutomation",
+        "clibridge4unity.Core"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "CLIBRIDGE4UNITY"
+    ],
+    "versionDefines": [
+        {
+            "name": "au.com.oddgames.clibridge4unity",
+            "expression": "",
+            "define": "CLIBRIDGE4UNITY"
+        }
+    ],
+    "noEngineReferences": false
+}
