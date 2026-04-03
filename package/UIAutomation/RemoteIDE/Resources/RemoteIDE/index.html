@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>RemoteIDE</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/css/goldenlayout-base.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/css/goldenlayout-dark-theme.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.9/goldenlayout.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.36/dist/codicon.css">
+
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Segoe UI', -apple-system, sans-serif; font-size: 13px; background: #1e1e1e; color: #cccccc; }
+
+:root {
+	--bg: #1e1e1e; --panel: #1e1e1e; --panel-alt: #252526; --border: #3c3c3c;
+	--text: #cccccc; --muted: #858585; --accent: #0078d4; --accent-hover: #1a8cff;
+	--selection: #264f78; --input: #3c3c3c;
+	--error: #f14c4c; --warning: #cca700; --info: #3794ff;
+	--tab-bg: #2d2d2d; --tab-active-bg: #1e1e1e; --tab-border: #252526;
+	--titlebar: #323233; --sidebarBg: #252526; --editorBg: #1e1e1e;
+	--activitybar: #333333; --statusbar: #007acc;
+}
+
+/* App shell */
+#app-shell { display: flex; flex-direction: column; height: 100%; }
+#app-main { display: flex; flex: 1; overflow: hidden; }
+#layout-root { flex: 1; }
+
+
+/* Status bar */
+#status-bar {
+	height: 22px; background: var(--statusbar); color: #fff; display: flex; align-items: center;
+	padding: 0 10px; font-size: 12px; gap: 12px; flex-shrink: 0;
+}
+#status-bar .spacer { flex: 1; }
+#status-bar .status-item { display: flex; align-items: center; gap: 4px; cursor: default; }
+#status-bar .status-item:hover { background: #ffffff20; padding: 0 4px; margin: 0 -4px; }
+.status-ok { color: #89d185; }
+.status-err { color: #f14c4c; }
+
+/* === GoldenLayout VS Code-style tabs === */
+.lm_goldenlayout { background: var(--bg) !important; }
+.lm_header { height: 35px !important; background: var(--tab-border) !important; padding: 0 !important; }
+.lm_header .lm_tabs { padding: 0 !important; }
+.lm_tab {
+	font-size: 12px !important; height: 35px !important; line-height: 35px !important;
+	padding: 0 16px !important; margin: 0 !important; border: none !important;
+	background: var(--tab-bg) !important; color: var(--muted) !important;
+	border-right: 1px solid var(--tab-border) !important; border-radius: 0 !important;
+	font-family: 'Segoe UI', sans-serif !important;
+}
+.lm_tab.lm_active { background: var(--tab-active-bg) !important; color: #fff !important; border-top: 2px solid var(--accent) !important; border-bottom: none !important; }
+.lm_tab:hover:not(.lm_active) { background: #2a2d2e !important; }
+.lm_controls { display: none !important; }
+.lm_close_tab { display: none !important; }
+.lm_tab .lm_title { padding: 0 !important; }
+.lm_content { background: var(--panel) !important; overflow: hidden !important; border: none !important; }
+.lm_splitter { background: var(--border) !important; opacity: 1 !important; min-width: 1px !important; min-height: 1px !important; }
+.lm_splitter:hover { background: var(--accent) !important; }
+.lm_dragProxy .lm_content { background: var(--panel) !important; }
+.lm_dropTargetIndicator { outline: 2px solid var(--accent) !important; }
+
+/* Toolbar */
+.toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--panel-alt); border-bottom: 1px solid var(--border); min-height: 32px; flex-shrink: 0; }
+.toolbar select, .toolbar input[type=text] { background: var(--input); color: var(--text); border: 1px solid var(--border); border-radius: 3px; padding: 2px 6px; height: 24px; font-size: 12px; outline: none; }
+.toolbar select:focus, .toolbar input[type=text]:focus { border-color: var(--accent); }
+.toolbar .spacer { flex: 1; }
+.btn { background: transparent; color: var(--text); border: 1px solid transparent; border-radius: 3px; padding: 2px 8px; height: 24px; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.btn:hover { background: #ffffff15; }
+.btn.active { background: var(--accent); color: #fff; }
+.btn.success { background: #2ea04350; color: #2ea043; }
+.btn.danger { background: #f14c4c30; color: var(--error); }
+.btn i { font-size: 11px; }
+
+/* Tree */
+.tree { overflow: auto; height: 100%; padding: 4px 0; user-select: none; }
+.tree-row { display: flex; align-items: center; padding: 2px 4px; cursor: pointer; white-space: nowrap; height: 22px; }
+.tree-row:hover { background: #2a2d2e; }
+.tree-row.selected { background: var(--selection); }
+.tree-arrow { width: 16px; text-align: center; font-size: 10px; color: var(--muted); flex-shrink: 0; cursor: pointer; }
+.tree-arrow.has-children:hover { color: var(--accent); }
+.tree-icon { margin-right: 4px; font-size: 11px; color: var(--muted); }
+.tree-icon.scene { color: var(--info); }
+.tree-label { overflow: hidden; text-overflow: ellipsis; }
+.tree-children { padding-left: 16px; }
+.tree-loading { color: var(--muted); font-style: italic; padding: 2px 20px; font-size: 11px; }
+.tree-search { width: 100%; margin: 0; border-radius: 0; border-left: none; border-right: none; border-top: none; }
+
+/* Log */
+.log-panel { display: flex; flex-direction: column; height: 100%; }
+.log-entries { flex: 1; overflow-y: auto; font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; }
+.log-entry { display: flex; padding: 1px 8px; border-bottom: 1px solid #ffffff06; cursor: pointer; }
+.log-entry:hover { background: #2a2d2e; }
+.log-entry.error, .log-entry.exception { background: #f14c4c12; }
+.log-entry.warning { background: #cca70008; }
+.log-time { color: var(--muted); width: 70px; flex-shrink: 0; }
+.log-type { width: 55px; flex-shrink: 0; font-size: 11px; }
+.log-type.error, .log-type.exception { color: var(--error); }
+.log-type.warning { color: var(--warning); }
+.log-type.log { color: var(--muted); }
+.log-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.log-count { background: var(--accent); color: #fff; border-radius: 8px; padding: 0 6px; font-size: 10px; margin-left: 4px; min-width: 16px; text-align: center; }
+
+/* Log detail popup */
+.log-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #00000080; z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.log-detail { background: var(--panel-alt); border: 1px solid var(--border); border-radius: 4px; width: 80%; max-height: 70%; display: flex; flex-direction: column; }
+.log-detail-header { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+.log-detail-header h3 { margin: 0; font-size: 13px; flex: 1; }
+.log-detail-body { padding: 16px; overflow: auto; flex: 1; font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+
+/* Camera */
+.camera-panel { display: flex; flex-direction: column; height: 100%; }
+.camera-view { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; }
+.camera-view img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.camera-view img.walking { cursor: crosshair; }
+
+/* Inspector */
+.inspector-panel { display: flex; flex-direction: column; height: 100%; }
+.inspector-form { flex: 1; overflow-y: auto; padding: 0; }
+.field-section { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px 4px; border-bottom: 1px solid var(--border); }
+.field-group { display: flex; align-items: center; padding: 3px 12px; min-height: 26px; border-bottom: 1px solid #ffffff06; }
+.field-group:hover { background: #2a2d2e; }
+.field-label { width: 110px; flex-shrink: 0; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; }
+.field-value { flex: 1; display: flex; align-items: center; gap: 4px; }
+.field-value input[type="number"], .field-value input[type="text"] {
+	background: var(--input); color: var(--text); border: 1px solid var(--border);
+	border-radius: 2px; padding: 2px 6px; height: 22px; font-size: 12px; outline: none; width: 100%;
+	font-family: 'Cascadia Mono', 'Consolas', monospace;
+}
+.field-value input[type="number"]:focus, .field-value input[type="text"]:focus { border-color: var(--accent); }
+.field-value input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.field-value select {
+	background: var(--input); color: var(--text); border: 1px solid var(--border);
+	border-radius: 2px; padding: 2px 6px; height: 22px; font-size: 12px; outline: none; width: 100%;
+}
+.vector-row { display: flex; gap: 2px; align-items: center; }
+.vector-row label { color: var(--muted); font-size: 10px; min-width: 12px; text-align: center; font-weight: bold; }
+.vector-row .vec-x label { color: #f14c4c; }
+.vector-row .vec-y label { color: #73c991; }
+.vector-row .vec-z label { color: #569cd6; }
+.vector-row .vec-w label { color: #dcdcaa; }
+.vec-x, .vec-y, .vec-z, .vec-w { display: flex; align-items: center; flex: 1; gap: 2px; }
+.vec-x input, .vec-y input, .vec-z input, .vec-w input { width: 0; flex: 1; }
+.color-swatch {
+	width: 22px; height: 22px; border-radius: 2px; border: 1px solid var(--border);
+	flex-shrink: 0; cursor: pointer; position: relative; overflow: hidden;
+}
+.color-swatch input[type="color"] { position: absolute; top: -4px; left: -4px; width: 30px; height: 30px; border: none; cursor: pointer; opacity: 0; }
+.field-readonly { color: var(--muted); font-style: italic; font-size: 12px; padding: 2px 0; }
+.field-empty { color: var(--muted); font-style: italic; padding: 16px; text-align: center; }
+
+/* Component sections */
+.component-section { border-bottom: 1px solid var(--border); }
+.component-header { display: flex; align-items: center; padding: 6px 12px; cursor: pointer; background: var(--panel-alt); user-select: none; }
+.component-header:hover { background: #2a2d2e; }
+.component-arrow { width: 16px; font-size: 10px; color: var(--muted); flex-shrink: 0; }
+.component-name { font-weight: 600; font-size: 12px; flex: 1; }
+.component-body { padding: 0; }
+.component-actions { padding: 4px 12px; display: flex; gap: 4px; justify-content: flex-end; border-top: 1px solid #ffffff06; }
+
+/* Panel fill */
+.panel-fill { display: flex; flex-direction: column; height: 100%; }
+.editor-fill { flex: 1; position: relative; }
+</style>
+</head>
+<body>
+
+<div id="app-shell">
+	<div id="app-main">
+		<div id="layout-root"></div>
+	</div>
+	<div id="status-bar">
+		<span class="status-item" id="status-connection"><i class="codicon codicon-circle-filled status-err"></i> Connecting</span>
+		<span class="status-item" id="status-gameobject"></span>
+		<span class="spacer"></span>
+		<span class="status-item">C#</span>
+		<span class="status-item">RemoteIDE</span>
+	</div>
+</div>
+
+<script>
+// === State ===
+var state = {
+	cameraId: -1, cameraScale: 0.5, cameraInterval: 100, cameraQuality: 50, cameraWs: null,
+	logId: -1, logTail: true, logFilters: { Log: true, Warning: true, Error: true, Exception: true },
+	gameObjectId: -1, componentId: -1, lastFetchedComponentId: -1,
+	walking: false, isDragging: false, lastMouseX: 0, lastMouseY: 0,
+	lookDeltaX: 0, lookDeltaY: 0, keysDown: {},
+	inspectorFields: [], inspectorValues: {}, codeEditor: null, cameras: [],
+	debugMode: false
+};
+
+// === Monaco Editor Setup ===
+require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+var monacoReady = $.Deferred();
+require(['vs/editor/editor.main'], function() {
+	monaco.editor.defineTheme('remoteide-dark', {
+		base: 'vs-dark',
+		inherit: true,
+		rules: [],
+		colors: { 'editor.background': '#1e1e1e' }
+	});
+	monaco.editor.setTheme('remoteide-dark');
+	registerCSharpCompletions();
+	monacoReady.resolve();
+});
+
+function registerCSharpCompletions() {
+	var typeCompletions = [];
+	var memberCache = {};
+
+	var csharpKeywords = [
+		'abstract','as','base','bool','break','byte','case','catch','char','checked','class','const',
+		'continue','decimal','default','delegate','do','double','else','enum','event','explicit',
+		'extern','false','finally','fixed','float','for','foreach','goto','if','implicit','in','int',
+		'interface','internal','is','lock','long','namespace','new','null','object','operator','out',
+		'override','params','private','protected','public','readonly','ref','return','sbyte','sealed',
+		'short','sizeof','stackalloc','static','string','struct','switch','this','throw','true','try',
+		'typeof','uint','ulong','unchecked','unsafe','ushort','using','var','virtual','void','volatile',
+		'while','yield','async','await','dynamic','nameof'
+	];
+	var keywordCompletions = csharpKeywords.map(function(kw) {
+		return { label: kw, kind: monaco.languages.CompletionItemKind.Keyword, insertText: kw, sortText: '2_' + kw };
+	});
+
+	var snippetCompletions = [
+		{ label: 'if', detail: 'if statement', insertText: 'if (${1:condition})\n{\n\t$0\n}' },
+		{ label: 'ifelse', detail: 'if-else statement', insertText: 'if (${1:condition})\n{\n\t$2\n}\nelse\n{\n\t$0\n}' },
+		{ label: 'for', detail: 'for loop', insertText: 'for (int ${1:i} = 0; ${1:i} < ${2:length}; ${1:i}++)\n{\n\t$0\n}' },
+		{ label: 'foreach', detail: 'foreach loop', insertText: 'foreach (var ${1:item} in ${2:collection})\n{\n\t$0\n}' },
+		{ label: 'while', detail: 'while loop', insertText: 'while (${1:condition})\n{\n\t$0\n}' },
+		{ label: 'do', detail: 'do-while loop', insertText: 'do\n{\n\t$0\n} while (${1:condition});' },
+		{ label: 'try', detail: 'try-catch block', insertText: 'try\n{\n\t$1\n}\ncatch (${2:Exception} ${3:e})\n{\n\t$0\n}' },
+		{ label: 'tryf', detail: 'try-finally block', insertText: 'try\n{\n\t$1\n}\nfinally\n{\n\t$0\n}' },
+		{ label: 'switch', detail: 'switch statement', insertText: 'switch (${1:expression})\n{\n\tcase ${2:value}:\n\t\t$0\n\t\tbreak;\n\tdefault:\n\t\tbreak;\n}' },
+		{ label: 'lock', detail: 'lock statement', insertText: 'lock (${1:obj})\n{\n\t$0\n}' },
+		{ label: 'using', detail: 'using statement', insertText: 'using (${1:var resource = new Resource()})\n{\n\t$0\n}' },
+		{ label: 'class', detail: 'class definition', insertText: '${1:public} class ${2:ClassName}\n{\n\t$0\n}' },
+		{ label: 'struct', detail: 'struct definition', insertText: '${1:public} struct ${2:Name}\n{\n\t$0\n}' },
+		{ label: 'enum', detail: 'enum definition', insertText: '${1:public} enum ${2:Name}\n{\n\t$0\n}' },
+		{ label: 'interface', detail: 'interface definition', insertText: '${1:public} interface ${2:IName}\n{\n\t$0\n}' },
+		{ label: 'prop', detail: 'auto property', insertText: '${1:public} ${2:int} ${3:Name} { get; set; }' },
+		{ label: 'propfull', detail: 'property with backing field', insertText: 'private ${1:int} _${2:name};\n${3:public} ${1:int} ${4:Name}\n{\n\tget { return _${2:name}; }\n\tset { _${2:name} = value; }\n}' },
+		{ label: 'ctor', detail: 'constructor', insertText: '${1:public} ${2:ClassName}(${3})\n{\n\t$0\n}' },
+		{ label: 'log', detail: 'Debug.Log()', insertText: 'Debug.Log($"${1:message}");' },
+		{ label: 'logw', detail: 'Debug.LogWarning()', insertText: 'Debug.LogWarning($"${1:message}");' },
+		{ label: 'loge', detail: 'Debug.LogError()', insertText: 'Debug.LogError($"${1:message}");' },
+		{ label: 'coro', detail: 'coroutine method', insertText: 'IEnumerator ${1:CoroutineName}()\n{\n\t$0\n\tyield return null;\n}' },
+		{ label: '#region', detail: 'region block', insertText: '#region ${1:Region Name}\n$0\n#endregion' }
+	].map(function(s) {
+		s.kind = monaco.languages.CompletionItemKind.Snippet;
+		s.insertTextRules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+		s.sortText = '0_' + s.label;
+		return s;
+	});
+
+	// Fetch all type names with namespace info for using-aware filtering
+	$.get('types', function(data) {
+		var types = typeof data === 'string' ? JSON.parse(data) : data;
+		typeCompletions = (types || []).map(function(t) {
+			return { label: t.n, kind: monaco.languages.CompletionItemKind.Class, insertText: t.n, sortText: '1_' + t.n, _ns: t.ns };
+		});
+	});
+
+	// Fetch namespace names so they always appear (needed for qualified access like UnityEngine.Debug)
+	$.get('namespaces', function(data) {
+		var namespaces = typeof data === 'string' ? JSON.parse(data) : data;
+		(namespaces || []).forEach(function(ns) {
+			typeCompletions.push({ label: ns, kind: monaco.languages.CompletionItemKind.Module, insertText: ns, sortText: '0_' + ns, _ns: '' });
+		});
+	});
+
+	// Parse using statements from the editor to filter completions
+	function parseUsings(model) {
+		var usings = [];
+		var lineCount = Math.min(model.getLineCount(), 50);
+		for (var i = 1; i <= lineCount; i++) {
+			var line = model.getLineContent(i).trim();
+			var m = line.match(/^using\s+([\w.]+)\s*;/);
+			if (m) usings.push(m[1]);
+			// Stop scanning after first non-using, non-blank line
+			if (line && !m && !line.startsWith('//') && !line.startsWith('using')) break;
+		}
+		return usings;
+	}
+
+	// Preload common Unity types
+	var preloadTypes = ['Debug','Application','GameObject','Transform','Camera','Input','Physics','Physics2D','Mathf','Time','Vector2','Vector3','Vector4','Color','Screen','PlayerPrefs','Quaternion','Random','Resources','SceneManager','MonoBehaviour','Component','Rigidbody','Collider','Renderer','Material','Shader','Texture2D','RenderTexture','AudioSource','Light','AnimationCurve','Bounds','Rect','Ray','RaycastHit','GUILayout','GUI','String','Math','Console','Array','Convert','Environment','File','Path','Directory'];
+	preloadTypes.forEach(function(t) {
+		$.get('members?type=' + encodeURIComponent(t), function(data) {
+			memberCache[t] = parseMemberResponse(data);
+		});
+	});
+
+	function parseMemberResponse(data) {
+		var members = typeof data === 'string' ? JSON.parse(data) : data;
+		return (members || []).map(function(m) {
+			var kind;
+			switch (m.kind) {
+				case 'method': kind = monaco.languages.CompletionItemKind.Method; break;
+				case 'property': kind = monaco.languages.CompletionItemKind.Property; break;
+				case 'field': kind = monaco.languages.CompletionItemKind.Field; break;
+				case 'type': kind = monaco.languages.CompletionItemKind.Class; break;
+				case 'namespace': kind = monaco.languages.CompletionItemKind.Module; break;
+				default: kind = monaco.languages.CompletionItemKind.Text;
+			}
+			var item = {
+				label: m.name,
+				kind: kind,
+				insertText: m.name,
+				detail: m.returns ? m.kind + ' : ' + m.returns : m.kind,
+				sortText: '0_' + m.name
+			};
+			if (m.signature) item.detail = m.signature;
+			if (m.isStatic) item.detail = (item.detail || '') + ' (static)';
+			return item;
+		});
+	}
+
+	function fetchMembers(typeName) {
+		var deferred = $.Deferred();
+		if (memberCache[typeName]) {
+			deferred.resolve(memberCache[typeName]);
+		} else {
+			$.get('members?type=' + encodeURIComponent(typeName), function(data) {
+				memberCache[typeName] = parseMemberResponse(data);
+				deferred.resolve(memberCache[typeName]);
+			}).fail(function() { deferred.resolve([]); });
+		}
+		return deferred.promise();
+	}
+
+	// Resolve a member chain to its final type via return types (e.g. Transform.position → Vector3)
+	function resolveChain(chain) {
+		var deferred = $.Deferred();
+		$.get('resolve?chain=' + encodeURIComponent(chain), function(data) {
+			var typeName = typeof data === 'string' ? data.replace(/^"|"$/g, '') : data;
+			if (typeName) fetchMembers(typeName).then(function(items) { deferred.resolve(items); });
+			else deferred.resolve([]);
+		}).fail(function() { deferred.resolve([]); });
+		return deferred.promise();
+	}
+
+	// Resolve a chain to type info for assignment context
+	function resolveTypeInfo(chain) {
+		var deferred = $.Deferred();
+		$.get('resolve?chain=' + encodeURIComponent(chain) + '&info=true', function(data) {
+			var info = typeof data === 'string' ? JSON.parse(data) : data;
+			if (info && info.type) deferred.resolve(info);
+			else deferred.resolve(null);
+		}).fail(function() { deferred.resolve(null); });
+		return deferred.promise();
+	}
+
+	monaco.languages.registerCompletionItemProvider('csharp', {
+		triggerCharacters: ['.', '=', ' '],
+		provideCompletionItems: function(model, position) {
+			var textUntilPosition = model.getValueInRange({
+				startLineNumber: position.lineNumber, startColumn: 1,
+				endLineNumber: position.lineNumber, endColumn: position.column
+			});
+			var word = model.getWordUntilPosition(position);
+			var range = {
+				startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+				startColumn: word.startColumn, endColumn: word.endColumn
+			};
+
+			// Assignment context: something = (resolve LHS type, suggest values)
+			var assignMatch = textUntilPosition.match(/([\w.]+)\s*=\s*(\w*)$/);
+			if (assignMatch && !textUntilPosition.match(/[=!<>]=\s*\w*$/)) {
+				var lhs = assignMatch[1];
+				lhs = lhs.replace(/^(this|base)\./, '');
+				return new Promise(function(resolve) {
+					resolveTypeInfo(lhs).then(function(info) {
+						if (!info) { resolve({ suggestions: [] }); return; }
+						var suggestions = [];
+						var typeName = info.type;
+
+						if (typeName === 'Boolean') {
+							suggestions.push({ label: 'true', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'true', sortText: '0_a', range: range });
+							suggestions.push({ label: 'false', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'false', sortText: '0_b', range: range });
+						}
+
+						if (!info.isValueType) {
+							suggestions.push({ label: 'null', kind: monaco.languages.CompletionItemKind.Keyword, insertText: 'null', sortText: '0_c', range: range });
+							suggestions.push({ label: 'new ' + typeName + '()', kind: monaco.languages.CompletionItemKind.Constructor, insertText: 'new ' + typeName + '($0)', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '0_d', range: range });
+						}
+
+						// Fetch static members of the type (enum values, static fields like Color.red)
+						fetchMembers(typeName).then(function(items) {
+							items.forEach(function(it) {
+								if (it.detail && it.detail.indexOf('(static)') >= 0) {
+									suggestions.push({
+										label: typeName + '.' + it.label,
+										kind: it.kind,
+										insertText: typeName + '.' + it.label,
+										detail: it.detail,
+										sortText: '0_e_' + it.label,
+										range: range
+									});
+								}
+							});
+							resolve({ suggestions: suggestions });
+						});
+					});
+				});
+			}
+
+			// Generic method pattern: GetComponent<TypeName>().
+			var genericMatch = textUntilPosition.match(/<(\w+)>\(\)\s*\.(\w*)$/);
+			if (genericMatch) {
+				return new Promise(function(resolve) {
+					fetchMembers(genericMatch[1]).then(function(items) {
+						resolve({ suggestions: items.map(function(it) { return $.extend({}, it, { range: range }); }) });
+					});
+				});
+			}
+
+			// Dot completion: resolve chain like UnityEngine.Debug.Log or Transform.position.normalized
+			var dotMatch = textUntilPosition.match(/([\w.]+)\.(\w*)$/);
+			if (dotMatch) {
+				var chain = dotMatch[1];
+				// Strip this./base. prefix — resolve remainder as type chain
+				chain = chain.replace(/^(this|base)\./, '');
+				// Strip trailing method call parens: .GetType() → .GetType
+				chain = chain.replace(/\(\)$/, '');
+
+				return new Promise(function(resolve) {
+					function done(items) {
+						resolve({ suggestions: items.map(function(it) { return $.extend({}, it, { range: range }); }) });
+					}
+					// Try direct lookup (type name or namespace)
+					fetchMembers(chain).then(function(items) {
+						if (items.length > 0) return done(items);
+						// Try last segment as type name
+						var lastDot = chain.lastIndexOf('.');
+						if (lastDot >= 0) {
+							fetchMembers(chain.substring(lastDot + 1)).then(function(items2) {
+								if (items2.length > 0) return done(items2);
+								// Resolve via return types (e.g. Transform.position → Vector3)
+								resolveChain(chain).then(done);
+							});
+						} else {
+							resolveChain(chain).then(done);
+						}
+					});
+				});
+			}
+
+			// Bare identifier: filter types by using statements (like a real editor)
+			if (word.word.length < 1) return { suggestions: [] };
+			var usings = parseUsings(model);
+			var filtered = typeCompletions.filter(function(t) {
+				if (!t._ns && t._ns !== '') return true; // keywords/snippets
+				if (t._ns === '') return true; // global types + namespaces
+				// Show type if its namespace matches a using directive
+				return usings.indexOf(t._ns) >= 0;
+			});
+			var suggestions = filtered.concat(keywordCompletions).concat(snippetCompletions)
+				.map(function(it) { return $.extend({}, it, { range: range }); });
+			return { suggestions: suggestions };
+		}
+	});
+
+	// === Signature Help: show parameter info when typing inside ( ) ===
+	monaco.languages.registerSignatureHelpProvider('csharp', {
+		signatureHelpTriggerCharacters: ['(', ','],
+		signatureHelpRetriggerCharacters: [','],
+		provideSignatureHelp: function(model, position) {
+			var text = model.getValueInRange({
+				startLineNumber: 1, startColumn: 1,
+				endLineNumber: position.lineNumber, endColumn: position.column
+			});
+
+			// Find the unclosed paren and count commas for active parameter
+			var depth = 0, parenPos = -1, commaCount = 0;
+			for (var i = text.length - 1; i >= 0; i--) {
+				var ch = text[i];
+				if (ch === ')') depth++;
+				else if (ch === '(') {
+					if (depth === 0) { parenPos = i; break; }
+					depth--;
+				}
+				else if (ch === ',' && depth === 0) commaCount++;
+			}
+			if (parenPos < 0) return null;
+
+			// Extract Type.Method or new Type before the paren
+			var before = text.substring(0, parenPos);
+
+			return new Promise(function(resolve) {
+				function makeSigResult(sigs) {
+					if (!sigs || !sigs.length) { resolve(null); return; }
+					resolve({
+						value: {
+							signatures: sigs.map(function(s) {
+								return {
+									label: s.label,
+									parameters: (s.parameters || []).map(function(p) { return { label: p.label }; })
+								};
+							}),
+							activeSignature: 0,
+							activeParameter: commaCount
+						},
+						dispose: function() {}
+					});
+				}
+
+				function fetchSigs(typeName, methodName) {
+					$.get('signatures?type=' + encodeURIComponent(typeName) + '&method=' + encodeURIComponent(methodName), function(data) {
+						makeSigResult(typeof data === 'string' ? JSON.parse(data) : data);
+					}).fail(function() { resolve(null); });
+				}
+
+				// Constructor: new Type(
+				var newMatch = before.match(/new\s+([\w.]+)\s*$/);
+				if (newMatch) {
+					var ctorParts = newMatch[1].split('.');
+					var ctorName = ctorParts[ctorParts.length - 1];
+					return fetchSigs(ctorName, ctorName);
+				}
+
+				var match = before.match(/([\w.]+)\s*$/);
+				if (!match) { resolve(null); return; }
+
+				var fullChain = match[1].replace(/^(this|base)\./, '');
+				var parts = fullChain.split('.');
+				if (parts.length < 2) { resolve(null); return; }
+				var methodName = parts[parts.length - 1];
+				var typePart = parts.slice(0, parts.length - 1).join('.');
+
+				// Try direct type name first, then resolve chain
+				if (parts.length === 2) {
+					fetchSigs(typePart, methodName);
+				} else {
+					$.get('resolve?chain=' + encodeURIComponent(typePart), function(data) {
+						var tn = typeof data === 'string' ? data.replace(/^"|"$/g, '') : data;
+						if (tn) fetchSigs(tn, methodName);
+						else resolve(null);
+					}).fail(function() { resolve(null); });
+				}
+			});
+		}
+	});
+
+	// === Hover: show type/member info on hover ===
+	monaco.languages.registerHoverProvider('csharp', {
+		provideHover: function(model, position) {
+			var word = model.getWordAtPosition(position);
+			if (!word) return null;
+			var wordText = word.word;
+			var range = {
+				startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+				startColumn: word.startColumn, endColumn: word.endColumn
+			};
+
+			var lineContent = model.getLineContent(position.lineNumber);
+			var charBefore = word.startColumn > 1 ? lineContent[word.startColumn - 2] : '';
+
+			// Member hover: word after a dot (e.g. Debug.Log → hover on Log)
+			if (charBefore === '.') {
+				var textBefore = model.getValueInRange({
+					startLineNumber: position.lineNumber, startColumn: 1,
+					endLineNumber: position.lineNumber, endColumn: word.startColumn - 1
+				});
+				var m = textBefore.match(/([\w.]+)\.$/);
+				if (m) {
+					var chain = m[1];
+					return new Promise(function(resolve) {
+						function lookupMember(items) {
+							var member = items.find(function(it) { return it.label === wordText; });
+							if (member) resolve({ range: range, contents: [{ value: '```csharp\n' + (member.detail || member.label) + '\n```' }] });
+							else resolve(null);
+						}
+						fetchMembers(chain).then(function(items) {
+							if (items.length > 0) return lookupMember(items);
+							resolveChain(chain).then(function(items2) {
+								if (items2.length > 0) return lookupMember(items2);
+								resolve(null);
+							});
+						});
+					});
+				}
+			}
+
+			// Type or namespace hover
+			var typeItem = typeCompletions.find(function(t) { return t.label === wordText; });
+			if (typeItem) {
+				var prefix = typeItem.kind === monaco.languages.CompletionItemKind.Module ? 'namespace' : 'class';
+				return { range: range, contents: [{ value: '```csharp\n' + prefix + ' ' + wordText + '\n```' }] };
+			}
+
+			// Keyword hover
+			if (csharpKeywords.indexOf(wordText) >= 0) {
+				return { range: range, contents: [{ value: '*keyword* `' + wordText + '`' }] };
+			}
+			return null;
+		}
+	});
+}
+
+function escapeHtml(s) { return $('<span>').text(s || '').html(); }
+function formatTime(sec) {
+	var m = Math.floor(sec / 60) % 60, s = Math.floor(sec) % 60, ms = ((sec % 1) * 1000).toFixed(0);
+	return ('0'+m).slice(-2) + ':' + ('0'+s).slice(-2) + '.' + ('00'+ms).slice(-3);
+}
+
+// === Color helpers ===
+function rgbaToHex(r, g, b) {
+	function c(v) { return ('0' + Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16)).slice(-2); }
+	return '#' + c(r) + c(g) + c(b);
+}
+function hexToRgb(hex) {
+	return { r: parseInt(hex.substring(1,3),16)/255, g: parseInt(hex.substring(3,5),16)/255, b: parseInt(hex.substring(5,7),16)/255 };
+}
+
+// === Inspector form renderer ===
+function renderInspectorForm($container, fields, values) {
+	$container.empty();
+	if (!fields || !fields.length) {
+		$container.append('<div class="field-empty">No serializable fields</div>');
+		return;
+	}
+	fields.forEach(function(f) {
+		var val = values[f.name];
+		var $group = $('<div class="field-group"></div>');
+		var $label = $('<div class="field-label" title="' + escapeHtml(f.name) + ' (' + f.type + ')"></div>');
+		if (f.isPrivate) {
+			$label.css('color', 'var(--muted)').html('<i class="codicon codicon-lock" style="font-size:10px;margin-right:3px;opacity:0.6"></i>').append(document.createTextNode(f.name));
+		} else {
+			$label.text(f.name);
+		}
+		var $value = $('<div class="field-value"></div>');
+
+		switch (f.type) {
+			case 'int':
+				$value.append($('<input type="number" step="1">').attr('data-field', f.name).attr('data-type', 'int').val(val != null ? val : 0));
+				break;
+			case 'float':
+				$value.append($('<input type="number" step="0.01">').attr('data-field', f.name).attr('data-type', 'float').val(val != null ? val : 0));
+				break;
+			case 'bool':
+				$value.append($('<input type="checkbox">').attr('data-field', f.name).attr('data-type', 'bool').prop('checked', !!val));
+				break;
+			case 'string':
+				$value.append($('<input type="text">').attr('data-field', f.name).attr('data-type', 'string').val(val != null ? val : ''));
+				break;
+			case 'Vector2':
+				$value.addClass('vector-row');
+				buildVectorInputs($value, f.name, ['x','y'], val);
+				break;
+			case 'Vector3':
+				$value.addClass('vector-row');
+				buildVectorInputs($value, f.name, ['x','y','z'], val);
+				break;
+			case 'Vector4':
+			case 'Quaternion':
+				$value.addClass('vector-row');
+				buildVectorInputs($value, f.name, ['x','y','z','w'], val);
+				break;
+			case 'Color':
+				var hex = val ? rgbaToHex(val.r, val.g, val.b) : '#ffffff';
+				var $swatch = $('<div class="color-swatch"></div>').css('background', hex);
+				var $picker = $('<input type="color">').val(hex);
+				$swatch.append($picker);
+				$picker.on('input', function() {
+					$swatch.css('background', this.value);
+					var rgb = hexToRgb(this.value);
+					$value.find('[data-component="r"]').val(rgb.r.toFixed(3));
+					$value.find('[data-component="g"]').val(rgb.g.toFixed(3));
+					$value.find('[data-component="b"]').val(rgb.b.toFixed(3));
+				});
+				$value.addClass('vector-row').append($swatch);
+				['r','g','b','a'].forEach(function(c) {
+					var cls = c === 'r' ? 'vec-x' : c === 'g' ? 'vec-y' : c === 'b' ? 'vec-z' : 'vec-w';
+					var $wrap = $('<div class="' + cls + '"></div>');
+					$wrap.append($('<label></label>').text(c.toUpperCase()));
+					var $input = $('<input type="number" step="0.01" min="0" max="1">').attr('data-field', f.name).attr('data-component', c).attr('data-type', 'color').val(val ? parseFloat(val[c] || 0).toFixed(3) : (c === 'a' ? '1.000' : '0.000'));
+					$wrap.append($input);
+					$value.append($wrap);
+					$input.on('input', function() {
+						var r = parseFloat($value.find('[data-component="r"]').val()) || 0;
+						var g = parseFloat($value.find('[data-component="g"]').val()) || 0;
+						var b = parseFloat($value.find('[data-component="b"]').val()) || 0;
+						var newHex = rgbaToHex(r, g, b);
+						$swatch.css('background', newHex);
+						$picker.val(newHex);
+					});
+				});
+				break;
+			case 'Rect':
+				$value.addClass('vector-row');
+				buildVectorInputs($value, f.name, ['x','y','width','height'], val, { width: 'W', height: 'H' });
+				break;
+			case 'enum':
+				var $select = $('<select></select>').attr('data-field', f.name).attr('data-type', 'enum');
+				(f.options || []).forEach(function(opt, idx) {
+					$select.append($('<option></option>').val(idx).text(opt));
+				});
+				$select.val(val != null ? val : 0);
+				$value.append($select);
+				break;
+			default:
+				$value.append($('<span class="field-readonly"></span>').text(JSON.stringify(val)));
+				break;
+		}
+
+		$group.append($label, $value);
+		$container.append($group);
+	});
+}
+
+function buildVectorInputs($container, fieldName, components, val, labelOverrides) {
+	var clsMap = { x: 'vec-x', y: 'vec-y', z: 'vec-z', w: 'vec-w', width: 'vec-z', height: 'vec-w' };
+	components.forEach(function(c) {
+		var cls = clsMap[c] || 'vec-x';
+		var $wrap = $('<div class="' + cls + '"></div>');
+		var lbl = (labelOverrides && labelOverrides[c]) || c.toUpperCase();
+		$wrap.append($('<label></label>').text(lbl));
+		$wrap.append($('<input type="number" step="0.01">').attr('data-field', fieldName).attr('data-component', c).attr('data-type', 'vector').val(val ? val[c] || 0 : 0));
+		$container.append($wrap);
+	});
+}
+
+function collectFormValues($container, fields) {
+	var obj = {};
+	fields.forEach(function(f) {
+		var $els = $container.find('[data-field="' + f.name + '"]');
+		if (!$els.length) return;
+		switch (f.type) {
+			case 'int':
+				obj[f.name] = parseInt($els.val()) || 0;
+				break;
+			case 'float':
+				obj[f.name] = parseFloat($els.val()) || 0;
+				break;
+			case 'bool':
+				obj[f.name] = $els.is(':checked');
+				break;
+			case 'string':
+				obj[f.name] = $els.val() || '';
+				break;
+			case 'Vector2': case 'Vector3': case 'Vector4': case 'Quaternion': case 'Rect':
+				var sub = {};
+				$els.each(function() { sub[$(this).attr('data-component')] = parseFloat($(this).val()) || 0; });
+				obj[f.name] = sub;
+				break;
+			case 'Color':
+				var col = {};
+				$els.each(function() { col[$(this).attr('data-component')] = parseFloat($(this).val()) || 0; });
+				obj[f.name] = col;
+				break;
+			case 'enum':
+				obj[f.name] = parseInt($els.val()) || 0;
+				break;
+		}
+	});
+	return obj;
+}
+
+// === GoldenLayout ===
+var defaultConfig = {
+	settings: { showPopoutIcon: false, showCloseIcon: false, showMaximiseIcon: false },
+	dimensions: { borderWidth: 2 },
+	content: [{
+		type: 'row',
+		content: [
+			{ type: 'component', componentName: 'hierarchy', title: 'Hierarchy', width: 20, isClosable: false },
+			{
+				type: 'column', width: 55,
+				content: [
+					{ type: 'component', componentName: 'camera', title: 'Camera', height: 55, isClosable: false },
+					{
+						type: 'stack', height: 45,
+						content: [
+							{ type: 'component', componentName: 'code', title: 'Code', isClosable: false },
+							{ type: 'component', componentName: 'log', title: 'Log', isClosable: false }
+						]
+					}
+				]
+			},
+			{ type: 'component', componentName: 'inspector', title: 'Inspector', width: 25, isClosable: false }
+		]
+	}]
+};
+
+var savedLayout = localStorage.getItem('remoteide-layout');
+var config;
+try { config = savedLayout ? JSON.parse(savedLayout) : defaultConfig; } catch(e) { config = defaultConfig; }
+
+// Ensure all items are not closable when restoring saved layouts
+function ensureNotClosable(item) {
+	if (item.isClosable !== undefined) item.isClosable = false;
+	if (item.content) item.content.forEach(ensureNotClosable);
+}
+ensureNotClosable(config);
+config.dimensions = config.dimensions || {};
+config.dimensions.borderWidth = 2;
+
+var layout = new GoldenLayout(config, $('#layout-root'));
+
+// Save layout on change
+var saveTimeout;
+layout.on('stateChanged', function() {
+	clearTimeout(saveTimeout);
+	saveTimeout = setTimeout(function() {
+		try { localStorage.setItem('remoteide-layout', JSON.stringify(layout.toConfig())); } catch(e) {}
+	}, 500);
+});
+
+// === Hierarchy Component ===
+layout.registerComponent('hierarchy', function(container) {
+	var $panel = $('<div class="panel-fill"></div>');
+	var $search = $('<input type="text" class="tree-search" placeholder="Search hierarchy...">');
+	var $toolbar = $('<div class="toolbar"></div>').append(
+		$search,
+		$('<button class="btn" title="Refresh"><i class="codicon codicon-refresh"></i></button>').on('click', function() { refreshTree(); })
+	);
+	var $tree = $('<div class="tree"></div>');
+	$panel.append($toolbar, $tree);
+	container.getElement().append($panel);
+
+	var childCache = {};
+
+	function loadNodes($parent, parentId) {
+		var url = parentId === null ? 'scenes' : 'children?id=' + parentId;
+		var $loading = $('<div class="tree-loading">Loading...</div>');
+		$parent.append($loading);
+		$.get(url, function(nodes) {
+			$loading.remove();
+			if (parentId !== null) childCache[parentId] = true;
+			nodes.forEach(function(node) {
+				var isScene = node.id < 0;
+				var $row = $('<div class="tree-row" data-id="' + node.id + '"></div>');
+				var $arrow = $('<span class="tree-arrow ' + (node.hasChildren ? 'has-children' : '') + '">' + (node.hasChildren ? '\u25B6' : '') + '</span>');
+				var $icon = $('<i class="tree-icon ' + (isScene ? 'codicon codicon-folder scene' : 'codicon codicon-circle-outline') + '"></i>');
+				var $label = $('<span class="tree-label"></span>').text(node.name);
+				$row.append($arrow, $icon, $label);
+				var $children = $('<div class="tree-children" style="display:none"></div>');
+				var $item = $('<div class="tree-item"></div>').append($row, $children);
+				$parent.append($item);
+			});
+		}).fail(function() { $loading.text('Failed to load'); });
+	}
+
+	$tree.on('click', '.tree-arrow.has-children', function(e) {
+		e.stopPropagation();
+		var $item = $(this).closest('.tree-item');
+		var $children = $item.find('> .tree-children');
+		var id = $item.find('> .tree-row').data('id');
+		if ($(this).hasClass('expanded')) {
+			$children.slideUp(80);
+			$(this).removeClass('expanded').html('\u25B6');
+		} else {
+			if (!childCache[id]) loadNodes($children, id);
+			$children.slideDown(80);
+			$(this).addClass('expanded').html('\u25BC');
+		}
+	});
+
+	$tree.on('click', '.tree-row', function() {
+		$tree.find('.tree-row.selected').removeClass('selected');
+		$(this).addClass('selected');
+		var id = $(this).data('id');
+		if (id > 0) selectGameObject(id);
+	});
+
+	$search.on('input', function() {
+		var q = $(this).val().toLowerCase();
+		$tree.find('.tree-row').each(function() {
+			var name = $(this).find('.tree-label').text().toLowerCase();
+			$(this).toggle(!q || name.indexOf(q) >= 0);
+		});
+	});
+
+	function refreshTree() {
+		$tree.empty();
+		childCache = {};
+		loadNodes($tree, null);
+	}
+
+	refreshTree();
+});
+
+function selectGameObject(id) {
+	state.gameObjectId = id;
+	var selectedName = $('.tree-row[data-id="' + id + '"] .tree-label').text();
+	$('#status-gameobject').html('<i class="codicon codicon-symbol-class"></i> ' + (selectedName || 'GameObject'));
+	$.get('inspect?instanceid=' + id, function(data) {
+		var $form = $('#inspector-form');
+		$form.empty();
+		if (!Array.isArray(data) || data.length === 0) {
+			$form.append('<div class="field-empty">No components</div>');
+			return;
+		}
+		data.forEach(function(c) {
+			var shortName = c.text.split('.').pop();
+			var $section = $('<div class="component-section"></div>');
+			var $header = $('<div class="component-header"></div>');
+			var $arrow = $('<span class="component-arrow">\u25BC</span>');
+			var $name = $('<span class="component-name"></span>').text(shortName);
+			$header.append($arrow, $name);
+			var $body = $('<div class="component-body"></div>');
+			$section.append($header, $body);
+			$form.append($section);
+			$header.on('click', function() {
+				if ($body.is(':visible')) {
+					$body.slideUp(80); $arrow.text('\u25B6');
+				} else {
+					$body.slideDown(80); $arrow.text('\u25BC');
+				}
+			});
+			loadComponentSection($body, id, c.id);
+		});
+	});
+}
+
+function loadComponentSection($body, goId, compId) {
+	$body.data('loaded', true);
+	$body.html('<div class="tree-loading">Loading...</div>');
+	var debugParam = state.debugMode ? '&debug=true' : '';
+	$.when(
+		$.get('fields?instanceid=' + goId + '&componentid=' + compId + debugParam),
+		$.get('component?instanceid=' + goId + '&componentid=' + compId),
+		$.get('methods?instanceid=' + goId + '&componentid=' + compId + debugParam)
+	).done(function(fieldsRes, jsonRes, methodsRes) {
+		var fields = Array.isArray(fieldsRes[0]) ? fieldsRes[0] : [];
+		var raw = jsonRes[0];
+		var values = {};
+		try { values = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch(e) {}
+		var methods = Array.isArray(methodsRes[0]) ? methodsRes[0] : [];
+		$body.empty();
+		var $fields = $('<div></div>');
+		renderInspectorForm($fields, fields, values);
+		$body.append($fields);
+
+		// Method invoke buttons
+		if (methods.length > 0) {
+			var $methodSection = $('<div style="border-top:1px solid var(--border);padding:4px 12px 8px"></div>');
+			$methodSection.append('<div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Methods</div>');
+			var $methodGrid = $('<div style="display:flex;flex-wrap:wrap;gap:4px"></div>');
+			methods.forEach(function(m) {
+				var $btn = $('<button class="btn" style="font-size:11px"></button>');
+				var icon = '<i class="codicon codicon-play"></i> ';
+				var badges = '';
+				if (m.isStatic) badges += '<i class="codicon codicon-symbol-constant" style="font-size:10px;margin-right:2px" title="static"></i>';
+				if (m.isPrivate) {
+					badges += '<i class="codicon codicon-lock" style="font-size:10px;margin-right:2px;opacity:0.6" title="private"></i>';
+					$btn.css('opacity', '0.7');
+				}
+				$btn.html(icon + badges + escapeHtml(m.name));
+				$btn.attr('title', m.signature);
+				var debugParam = state.debugMode ? '&debug=true' : '';
+				$btn.on('click', function() {
+					var argsParam = '';
+					if (m.hasParams) {
+						var input = window.prompt('Enter arguments (comma-separated):\n' + m.signature);
+						if (input === null) return;
+						argsParam = '&args=' + encodeURIComponent(input);
+					}
+					$btn.prop('disabled', true).html('<i class="codicon codicon-loading codicon-modifier-spin"></i> ' + escapeHtml(m.name));
+					$.post('invoke?instanceid=' + goId + '&componentid=' + compId + '&method=' + encodeURIComponent(m.name) + debugParam + argsParam)
+						.done(function(data) {
+							var res = typeof data === 'string' ? JSON.parse(data) : data;
+							if (res.ok) {
+								$btn.addClass('success').html('<i class="codicon codicon-check"></i> ' + escapeHtml(m.name) + (res.result !== 'void' ? ' \u2192 ' + escapeHtml(res.result) : ''));
+							} else {
+								$btn.addClass('danger').html('<i class="codicon codicon-error"></i> ' + escapeHtml(m.name));
+								$btn.attr('title', res.error);
+							}
+						})
+						.fail(function() {
+							$btn.addClass('danger').html('<i class="codicon codicon-error"></i> ' + escapeHtml(m.name));
+						})
+						.always(function() {
+							$btn.prop('disabled', false);
+							setTimeout(function() {
+								$btn.removeClass('success danger').html(icon + badges + escapeHtml(m.name));
+							}, 2000);
+						});
+				});
+				$methodGrid.append($btn);
+			});
+			$methodSection.append($methodGrid);
+			$body.append($methodSection);
+		}
+
+		if (fields.length > 0) {
+			var $actions = $('<div class="component-actions"></div>');
+			var $applyBtn = $('<button class="btn"><i class="codicon codicon-check"></i> Apply</button>');
+			$applyBtn.on('click', function() {
+				var json = JSON.stringify(collectFormValues($fields, fields));
+				$.post('/apply?instanceId=' + goId + '&componentId=' + compId, json)
+					.done(function() { $applyBtn.addClass('success'); setTimeout(function() { $applyBtn.removeClass('success'); }, 1200); })
+					.fail(function() { $applyBtn.addClass('danger'); setTimeout(function() { $applyBtn.removeClass('danger'); }, 1200); });
+			});
+			$actions.append($applyBtn);
+			$body.append($actions);
+		}
+	}).fail(function() {
+		$body.html('<div class="field-empty">Failed to load</div>');
+	});
+}
+
+// === Camera Component ===
+layout.registerComponent('camera', function(container) {
+	var $panel = $('<div class="camera-panel"></div>');
+	var $camSelect = $('<select id="camera-select"><option value="-1">[Game]</option></select>');
+	var $scaleSelect = $('<select id="scale-select"><option value="0.2">20%</option><option value="0.5" selected>50%</option><option value="0.7">70%</option><option value="1">100%</option></select>');
+	var $rateSelect = $('<select id="rate-select"><option value="33">30 fps</option><option value="66">15 fps</option><option value="100" selected>10 fps</option><option value="250">4 fps</option><option value="500">2 fps</option></select>');
+	var $qualitySelect = $('<select id="quality-select"><option value="30">30%</option><option value="50" selected>50%</option><option value="70">70%</option><option value="90">90%</option></select>');
+	var $walkBtn = $('<button class="btn" id="walk-btn" title="Walk Mode (WASD + Right-drag)"><i class="codicon codicon-person"></i></button>');
+
+	var $toolbar = $('<div class="toolbar"></div>').append(
+		$('<i class="codicon codicon-eye" style="color:var(--muted)"></i>'), $camSelect,
+		$('<span class="spacer"></span>'),
+		$('<i class="codicon codicon-screen-normal" style="color:var(--muted)"></i>'), $scaleSelect,
+		$('<i class="codicon codicon-dashboard" style="color:var(--muted)"></i>'), $rateSelect,
+		$('<i class="codicon codicon-settings-gear" style="color:var(--muted)"></i>'), $qualitySelect,
+		$walkBtn
+	);
+	var $img = $('<img id="capture">');
+	var $view = $('<div class="camera-view"></div>').append($img);
+	$panel.append($toolbar, $view);
+	container.getElement().append($panel);
+
+	$camSelect.on('change', function() { state.cameraId = parseInt(this.value); sendCameraConfig(); });
+	$scaleSelect.on('change', function() { state.cameraScale = parseFloat(this.value); sendCameraConfig(); });
+	$rateSelect.on('change', function() { state.cameraInterval = parseInt(this.value); sendCameraConfig(); });
+	$qualitySelect.on('change', function() { state.cameraQuality = parseInt(this.value); sendCameraConfig(); });
+	$walkBtn.on('click', function() {
+		state.walking = !state.walking;
+		$(this).toggleClass('active', state.walking);
+		$img.toggleClass('walking', state.walking);
+	});
+
+	// Poll cameras
+	setInterval(function() {
+		$.post('cameras', function(data) {
+			var val = $camSelect.val();
+			$camSelect.empty();
+			data.forEach(function(c) { $camSelect.append($('<option></option>').val(c.id).text(c.text)); });
+			$camSelect.val(val);
+		});
+	}, 5000);
+});
+
+// === Camera Stream (HTTP polling) ===
+var cameraMode = 'http';
+var cameraPolling = false;
+
+function startHttpPolling() {
+	if (cameraPolling) return;
+	cameraPolling = true;
+	pollCamera();
+}
+
+function pollCamera() {
+	if (cameraMode !== 'http') { cameraPolling = false; return; }
+	var img = document.getElementById('capture');
+	if (!img) { cameraPolling = false; return; }
+	var url = 'capture?id=' + state.cameraId + '&scale=' + state.cameraScale + '&quality=' + state.cameraQuality + '&_t=' + Date.now();
+	var tmp = new Image();
+	tmp.onload = function() {
+		if (img) img.src = tmp.src;
+		cameraPolling = false;
+		if (cameraMode === 'http') setTimeout(startHttpPolling, state.cameraInterval);
+	};
+	tmp.onerror = function() {
+		cameraPolling = false;
+		if (cameraMode === 'http') setTimeout(startHttpPolling, 2000);
+	};
+	tmp.src = url;
+}
+
+function sendCameraConfig() {
+	if (cameraMode === 'http') startHttpPolling();
+}
+
+// Flying camera
+$(document).on('contextmenu', '#capture', function(e) { if (state.walking) e.preventDefault(); });
+$(document).on('mousedown', '#capture', function(e) {
+	if (!state.walking || e.which !== 3) return;
+	state.isDragging = true; state.lastMouseX = e.clientX; state.lastMouseY = e.clientY; e.preventDefault();
+});
+$(document).on('mousemove', function(e) {
+	if (!state.isDragging) return;
+	state.lookDeltaX += (e.clientX - state.lastMouseX) / 5;
+	state.lookDeltaY += (e.clientY - state.lastMouseY) / 5;
+	state.lastMouseX = e.clientX; state.lastMouseY = e.clientY;
+});
+$(document).on('mouseup', function(e) { if (e.which === 3) state.isDragging = false; });
+$(document).on('keydown', function(e) { if (state.walking) state.keysDown[e.key] = true; });
+$(document).on('keyup', function(e) { delete state.keysDown[e.key]; });
+setInterval(function() {
+	if (!state.walking) return;
+	var mx = 0, my = 0, k = state.keysDown;
+	if (k['w']||k['W']) my--; if (k['s']||k['S']) my++;
+	if (k['a']||k['A']) mx--; if (k['d']||k['D']) mx++;
+	var lx = state.lookDeltaX, ly = state.lookDeltaY;
+	state.lookDeltaX = 0; state.lookDeltaY = 0;
+	if (!lx && !ly && !mx && !my) return;
+	if (state.cameraWs && state.cameraWs.readyState === WebSocket.OPEN)
+		state.cameraWs.send(JSON.stringify({ lx: lx, ly: ly, mx: mx, my: my }));
+}, 50);
+
+// === Inspector Component ===
+layout.registerComponent('inspector', function(container) {
+	var $panel = $('<div class="inspector-panel"></div>');
+	var $debugBtn = $('<button class="btn" title="Debug Mode"><i class="codicon codicon-bug"></i></button>').css('display', 'none').on('click', function() {
+		state.debugMode = !state.debugMode;
+		$(this).toggleClass('active', state.debugMode).css('color', state.debugMode ? '#f14c4c' : '');
+		if (state.gameObjectId > 0) selectGameObject(state.gameObjectId);
+	});
+	// Triple-click the Inspector label to reveal the debug button
+	var _dbgClicks = 0, _dbgTimer;
+	var $inspLabel = $('<span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Inspector</span>').on('click', function() {
+		_dbgClicks++;
+		clearTimeout(_dbgTimer);
+		_dbgTimer = setTimeout(function() { _dbgClicks = 0; }, 400);
+		if (_dbgClicks >= 3) { $debugBtn.css('display', ''); _dbgClicks = 0; }
+	});
+	var $toolbar = $('<div class="toolbar"></div>').append(
+		$inspLabel,
+		$('<span class="spacer"></span>'),
+		$debugBtn,
+		$('<button class="btn" title="Refresh"><i class="codicon codicon-refresh"></i></button>').on('click', function() {
+			if (state.gameObjectId > 0) selectGameObject(state.gameObjectId);
+		})
+	);
+	var $form = $('<div class="inspector-form" id="inspector-form"><div class="field-empty">Select a GameObject</div></div>');
+	$panel.append($toolbar, $form);
+	container.getElement().append($panel);
+});
+
+// === Code Component ===
+layout.registerComponent('code', function(container) {
+	var $panel = $('<div class="panel-fill"></div>');
+	var $runBtn = $('<button class="btn"><i class="codicon codicon-play"></i> Run</button>');
+	var $toolbar = $('<div class="toolbar"></div>').append($runBtn);
+	var $editor = $('<div class="editor-fill"></div>');
+	$panel.append($toolbar, $editor);
+	container.getElement().append($panel);
+
+	container.on('open', function() {
+		monacoReady.then(function() {
+			state.codeEditor = monaco.editor.create($editor[0], {
+				value: 'using UnityEngine;\nusing System;\n\n',
+				language: 'csharp',
+				theme: 'remoteide-dark',
+				fontSize: 13,
+				minimap: { enabled: false },
+				scrollBeyondLastLine: false,
+				automaticLayout: false,
+				suggestOnTriggerCharacters: true,
+				quickSuggestions: { other: true, comments: false, strings: false },
+				wordBasedSuggestions: 'off',
+				parameterHints: { enabled: true },
+				fixedOverflowWidgets: true
+			});
+			container.on('resize', function() { if (state.codeEditor) state.codeEditor.layout(); });
+			setTimeout(function() { if (state.codeEditor) state.codeEditor.layout(); }, 100);
+		});
+	});
+
+	$runBtn.on('click', function() {
+		if (!state.codeEditor || $runBtn.prop('disabled')) return;
+		$runBtn.prop('disabled', true).html('<i class="codicon codicon-loading codicon-modifier-spin"></i> Running...');
+		// Clear previous error markers
+		monaco.editor.setModelMarkers(state.codeEditor.getModel(), 'script', []);
+		var startTime = performance.now();
+		$.post('run', state.codeEditor.getValue())
+			.done(function(data) {
+				var result = typeof data === 'string' ? JSON.parse(data) : data;
+				var elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+				if (result && result.ok === false && result.errors && result.errors.length) {
+					var markers = result.errors.map(function(err) {
+						var lineNum = Math.max(1, Math.min(err.line, state.codeEditor.getModel().getLineCount()));
+						var lineLen = state.codeEditor.getModel().getLineLength(lineNum);
+						return {
+							severity: monaco.MarkerSeverity.Error,
+							message: err.message,
+							startLineNumber: lineNum, startColumn: 1,
+							endLineNumber: lineNum, endColumn: lineLen + 1
+						};
+					});
+					monaco.editor.setModelMarkers(state.codeEditor.getModel(), 'script', markers);
+					$runBtn.addClass('danger').html('<i class="codicon codicon-error"></i> ' + result.errors.length + ' error' + (result.errors.length > 1 ? 's' : '') + ' (' + elapsed + 's)');
+				} else {
+					$runBtn.addClass('success').html('<i class="codicon codicon-check"></i> Done (' + elapsed + 's)');
+				}
+			})
+			.fail(function() {
+				$runBtn.addClass('danger').html('<i class="codicon codicon-error"></i> Failed');
+			})
+			.always(function() {
+				$runBtn.prop('disabled', false);
+				setTimeout(function() {
+					$runBtn.removeClass('success danger').html('<i class="codicon codicon-play"></i> Run');
+				}, 2500);
+			});
+	});
+});
+
+// === Log Component ===
+layout.registerComponent('log', function(container) {
+	var $panel = $('<div class="log-panel"></div>');
+	var $search = $('<input type="text" placeholder="Filter..." style="width:140px">');
+	var $errBtn = $('<button class="btn active" data-type="Error"><i class="codicon codicon-error" style="color:var(--error)"></i></button>');
+	var $warnBtn = $('<button class="btn active" data-type="Warning"><i class="codicon codicon-warning" style="color:var(--warning)"></i></button>');
+	var $infoBtn = $('<button class="btn active" data-type="Log"><i class="codicon codicon-info" style="color:var(--info)"></i></button>');
+	var $tailBtn = $('<button class="btn active" title="Auto-scroll"><i class="codicon codicon-arrow-down"></i></button>');
+	var $clearBtn = $('<button class="btn" title="Clear"><i class="codicon codicon-trash"></i></button>');
+	var $errCount = $('<span class="log-count" style="background:var(--error)">0</span>');
+	var $warnCount = $('<span class="log-count" style="background:var(--warning);color:#000">0</span>');
+
+	var $toolbar = $('<div class="toolbar"></div>').append($clearBtn, $errBtn, $errCount, $warnBtn, $warnCount, $infoBtn, $('<span class="spacer"></span>'), $search, $tailBtn);
+	var $entries = $('<div class="log-entries"></div>');
+	$panel.append($toolbar, $entries);
+	container.getElement().append($panel);
+
+	var errorCount = 0, warnCount = 0;
+
+	$clearBtn.on('click', function() {
+		$entries.empty(); state.logId = -1; errorCount = 0; warnCount = 0;
+		$errCount.text('0'); $warnCount.text('0');
+	});
+
+	[$errBtn, $warnBtn, $infoBtn].forEach(function($b) {
+		$b.on('click', function() {
+			$(this).toggleClass('active');
+			applyFilters();
+		});
+	});
+	$tailBtn.on('click', function() { state.logTail = !state.logTail; $(this).toggleClass('active', state.logTail); });
+
+	$search.on('input', function() { applyFilters(); });
+
+	function applyFilters() {
+		var showErr = $errBtn.hasClass('active'), showWarn = $warnBtn.hasClass('active'), showInfo = $infoBtn.hasClass('active');
+		var q = $search.val().toLowerCase();
+		$entries.find('.log-entry').each(function() {
+			var $e = $(this), type = $e.data('type'), msg = $e.data('msg').toLowerCase();
+			var typeOk = (type === 'Error' || type === 'Exception') ? showErr : type === 'Warning' ? showWarn : showInfo;
+			$e.toggle(typeOk && (!q || msg.indexOf(q) >= 0));
+		});
+	}
+
+	$entries.on('click', '.log-entry', function() {
+		var $e = $(this);
+		var body = ($e.data('msg') || '') + '\n\n' + ($e.data('stack') || '');
+		body = escapeHtml(body).replace(/\n/g, '<br>');
+		var $overlay = $('<div class="log-overlay"></div>');
+		var $detail = $('<div class="log-detail"></div>');
+		$detail.append(
+			$('<div class="log-detail-header"></div>').append(
+				$('<h3></h3>').text($e.data('type') + ' at ' + formatTime($e.data('sec'))),
+				$('<button class="btn"><i class="codicon codicon-close"></i></button>').on('click', function() { $overlay.remove(); })
+			),
+			$('<div class="log-detail-body"></div>').html(body)
+		);
+		$overlay.append($detail).on('click', function(ev) { if (ev.target === this) $(this).remove(); });
+		$('body').append($overlay);
+	});
+
+	// Poll logs
+	setInterval(function() {
+		$.get('log?logId=' + state.logId, function(logs) {
+			if (!logs.length) return;
+			state.logId = logs[logs.length - 1].recid;
+			var showErr = $errBtn.hasClass('active'), showWarn = $warnBtn.hasClass('active'), showInfo = $infoBtn.hasClass('active');
+			var q = $search.val().toLowerCase();
+			logs.forEach(function(l) {
+				var typeCls = l.type.toLowerCase();
+				if (typeCls === 'error' || typeCls === 'exception') errorCount++;
+				if (typeCls === 'warning') warnCount++;
+				var typeOk = (typeCls === 'error' || typeCls === 'exception') ? showErr : typeCls === 'warning' ? showWarn : showInfo;
+				var msgMatch = !q || (l.message || '').toLowerCase().indexOf(q) >= 0;
+				var $entry = $('<div class="log-entry ' + typeCls + '" ' + (typeOk && msgMatch ? '' : 'style="display:none"') + '></div>');
+				$entry.data({ type: l.type, msg: l.message || '', stack: l.stacktrace || '', sec: l.second });
+				$entry.append(
+					$('<span class="log-time"></span>').text(formatTime(l.second)),
+					$('<span class="log-type ' + typeCls + '"></span>').text(l.type),
+					$('<span class="log-msg"></span>').text(l.message || '')
+				);
+				$entries.append($entry);
+			});
+			$errCount.text(errorCount); $warnCount.text(warnCount);
+			if (state.logTail) $entries.scrollTop($entries[0].scrollHeight);
+		});
+	}, 1000);
+});
+
+// === Init ===
+try { layout.init(); } catch(e) {
+	localStorage.removeItem('remoteide-layout');
+	layout = new GoldenLayout(defaultConfig, $('#layout-root'));
+	location.reload();
+}
+$(window).resize(function() { layout.updateSize(); });
+startHttpPolling();
+
+// HTTP heartbeat for connection status (independent of WebSocket camera stream)
+(function heartbeat() {
+	$.get('namespaces').done(function() {
+		$('#status-connection').html('<i class="codicon codicon-circle-filled status-ok"></i> Connected');
+	}).fail(function() {
+		$('#status-connection').html('<i class="codicon codicon-circle-filled status-err"></i> Disconnected');
+	}).always(function() {
+		setTimeout(heartbeat, 5000);
+	});
+})();
+</script>
+</body>
+</html>
