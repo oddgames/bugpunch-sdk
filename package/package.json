@@ -18,7 +18,8 @@
     "com.unity.inputsystem": "1.7.0",
     "com.unity.ext.nunit": "2.0.5",
     "com.unity.recorder": "5.0.0",
-    "com.unity.nuget.newtonsoft-json": "3.2.1"
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.unity.webrtc": "3.0.0-pre.7"
   },
   "keywords": [
     "ui",

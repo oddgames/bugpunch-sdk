@@ -14,6 +14,7 @@ namespace ODDGames.UIAutomation.DeviceConnect
         public ScreenCaptureService ScreenCapture;
         public InspectorService Inspector;
         public IScriptRunner ScriptRunner;
+        public WebRTCStreamer Streamer;
 
         public struct Response
         {
@@ -149,6 +150,14 @@ namespace ODDGames.UIAutomation.DeviceConnect
                 // Capture — returns null, caller must handle with WaitForEndOfFrame
                 if (path.StartsWith("/capture"))
                     return null;
+
+                // WebRTC signaling
+                if (path.StartsWith("/webrtc-"))
+                {
+                    var sessionId = Q(path, "sessionId") ?? "default";
+                    Streamer?.HandleSignalingMessage(path.Split('?')[0].TrimStart('/'), sessionId, body);
+                    return Response.Json("{\"ok\":true}");
+                }
 
                 // Script execution
                 if (path == "/run" && method == "POST")

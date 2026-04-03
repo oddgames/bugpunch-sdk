@@ -14,6 +14,7 @@ namespace ODDGames.UIAutomation.DeviceConnect
         public OddDevConfig Config { get; private set; }
         public TunnelClient Tunnel { get; private set; }
         public RequestRouter Router { get; private set; }
+        public WebRTCStreamer Streamer { get; private set; }
         public bool IsConnected => Tunnel != null && Tunnel.IsConnected;
 
         public event Action OnConnected;
@@ -66,8 +67,12 @@ namespace ODDGames.UIAutomation.DeviceConnect
                 Console = console,
                 ScreenCapture = screenCapture,
                 Inspector = inspector,
-                ScriptRunner = scriptRunner
+                ScriptRunner = scriptRunner,
+                Streamer = null // set after streamer created
             };
+
+            // Create WebRTC streamer
+            Streamer = gameObject.AddComponent<WebRTCStreamer>();
 
             // Create tunnel
             Tunnel = new TunnelClient(Config);
@@ -75,6 +80,12 @@ namespace ODDGames.UIAutomation.DeviceConnect
             Tunnel.OnDisconnected += () => { Debug.Log("[OddDev] Disconnected"); OnDisconnected?.Invoke(); };
             Tunnel.OnError += e => { Debug.LogError($"[OddDev] {e}"); OnError?.Invoke(e); };
             Tunnel.OnRequest += HandleRequest;
+
+            Router.Streamer = Streamer;
+
+            // Initialize streamer with tunnel for signaling
+            Streamer.Initialize(Tunnel, Config.captureScale > 0 ? (int)(1920 * Config.captureScale) : 1280,
+                Config.captureScale > 0 ? (int)(1080 * Config.captureScale) : 720, Config.streamFps);
 
             StartCoroutine(ConnectLoop());
         }
