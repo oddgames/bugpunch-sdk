@@ -1,4 +1,4 @@
-#if CLIBRIDGE4UNITY
+using System.Threading;
 using System.Threading.Tasks;
 using clibridge4unity;
 using ODDGames.UIAutomation;
@@ -7,6 +7,9 @@ namespace ODDGames.UIAutomation.Bridge
 {
     public static class UIActionCommand
     {
+        // Serialize all UI actions — one at a time, like tests do
+        static readonly SemaphoreSlim _actionLock = new SemaphoreSlim(1, 1);
+
         [BridgeCommand("UIACTION", "Execute a UI automation action (JSON format)",
             Category = "UIAutomation",
             Usage = "UIACTION {\"action\":\"click\", \"text\":\"Settings\"}\n" +
@@ -23,26 +26,45 @@ namespace ODDGames.UIAutomation.Bridge
             if (string.IsNullOrWhiteSpace(data))
                 return Response.Error("Expected JSON. Example: {\"action\":\"click\", \"text\":\"Settings\"}");
 
-            var tcs = new TaskCompletionSource<ActionResult>();
-            await CommandRegistry.RunOnMainThreadAsync<int>(() =>
+            // Wait for our turn in the queue
+            await _actionLock.WaitAsync();
+            try
             {
-                ActionExecutor.Execute(data).ContinueWith(t =>
+                // Execute on main thread
+                var tcs = new TaskCompletionSource<ActionResult>();
+                await CommandRegistry.RunOnMainThreadAsync<int>(() =>
                 {
-                    if (t.IsFaulted)
-                        tcs.SetException(t.Exception.InnerException ?? t.Exception);
-                    else
-                        tcs.SetResult(t.Result);
+                    ActionExecutor.Execute(data).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                            tcs.SetException(t.Exception.InnerException ?? t.Exception);
+                        else
+                            tcs.SetResult(t.Result);
+                    });
+                    return 0;
                 });
-                return 0;
-            });
 
-            var result = await tcs.Task;
+                var result = await tcs.Task;
 
-            if (!result.Success)
-                return Response.Error($"{result.Error} ({result.ElapsedMs:F0}ms)");
+                // Log to active session if one exists
+                if (UISessionState.IsActive)
+                {
+                    try
+                    {
+                        await UISessionState.LogAction(data, result.Success, result.Error, result.ElapsedMs);
+                    }
+                    catch { }
+                }
 
-            return Response.Success($"OK ({result.ElapsedMs:F0}ms)");
+                if (!result.Success)
+                    return Response.Error($"{result.Error} ({result.ElapsedMs:F0}ms)");
+
+                return Response.Success($"OK ({result.ElapsedMs:F0}ms)");
+            }
+            finally
+            {
+                _actionLock.Release();
+            }
         }
     }
 }
-#endif
