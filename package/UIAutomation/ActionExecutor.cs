@@ -229,7 +229,7 @@ namespace ODDGames.UIAutomation
     ///     }
     /// }
     /// </example>
-    public static class ActionExecutor
+    public static partial class ActionExecutor
     {
         #region Configuration
 
