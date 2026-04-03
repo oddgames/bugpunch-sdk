@@ -10,9 +10,9 @@
 The primary project used to exercise/test the library in a real game:
 - **Path**: `C:\Workspaces\game_monster_truck_destruction_steam\UnityProj_MTD`
 - PlayMode tests live in `Assets/Tests/PlayMode/` with a `PlayModeTests.asmdef`
-- References the UIAutomation package via **PAT-authenticated** Git URL in `Packages/manifest.json`
-- **PAT URL prefix**: `https://oddgamesbuilds:***REMOVED***@github.com/oddgames/ui-automation.git?path=package`
-- When updating the version tag during `/deploy`, preserve the full authenticated URL prefix and append `#v{version}`
+- References the UIAutomation package via Git URL in `Packages/manifest.json`
+- **Git URL**: `https://github.com/oddgames/ui-automation.git?path=package`
+- When updating the version tag during `/deploy`, append `#v{version}` to the Git URL
 
 ## Core Philosophy
 
@@ -116,4 +116,14 @@ Track changes methodically as you work. Used to generate CHANGELOG.md during `/d
 
 ### Current Local Changes
 
-(None - cleared after v1.3.2 deploy)
+- **Added**: `direction` field for `adjacent`/`near` in JSON actions (right, left, above/up, below/down)
+- **Added**: `index` param to click/doubleclick/tripleclick/hold JSON actions for Nth element selection
+- **Added**: `button` param to drag JSON action (left, right, middle mouse button)
+- **Added**: `clickslider` JSON action — click slider at normalized position
+- **Added**: `scrolltoandclick` JSON action — scroll to element and click in one step
+- **Added**: `randomclick` JSON action — click a random clickable element with optional filter
+- **Added**: `autoexplore` JSON action — auto-click random elements (time/actions/deadend modes)
+- **Added**: `enable`, `disable`, `freeze`, `teleport`, `noclip`, `clip` JSON actions — GameObject manipulation
+- **Added**: `getvalue` JSON action — read values via static reflection path
+- **Added**: `exists` JSON action — check element existence with optional required flag
+- **Added**: `JSON_ACTIONS.md` — comprehensive AI-focused documentation with prompting guide
