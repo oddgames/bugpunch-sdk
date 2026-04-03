@@ -15,6 +15,7 @@ namespace ODDGames.UIAutomation.DeviceConnect
         public TunnelClient Tunnel { get; private set; }
         public RequestRouter Router { get; private set; }
         public WebRTCStreamer Streamer { get; private set; }
+        public BugReporter Reporter { get; private set; }
         public bool IsConnected => Tunnel != null && Tunnel.IsConnected;
 
         public event Action OnConnected;
@@ -70,6 +71,12 @@ namespace ODDGames.UIAutomation.DeviceConnect
                 ScriptRunner = scriptRunner,
                 Streamer = null // set after streamer created
             };
+
+            // Create bug reporter
+            Reporter = gameObject.AddComponent<BugReporter>();
+            Reporter.shakeToReport = Config.enableShakeToReport;
+            Reporter.videoBufferSeconds = Config.videoBufferSeconds;
+            Reporter.videoFps = Config.bugReportVideoFps;
 
             // Create WebRTC streamer
             Streamer = gameObject.AddComponent<WebRTCStreamer>();

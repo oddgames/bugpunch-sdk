@@ -48,6 +48,16 @@ namespace ODDGames.UIAutomation.DeviceConnect
         [Range(1, 30)]
         public int streamFps = 10;
 
+        [Header("Bug Reporting")]
+        [Tooltip("Enable shake-to-report on mobile")]
+        public bool enableShakeToReport = true;
+
+        [Tooltip("Seconds of video to buffer for bug reports")]
+        public int videoBufferSeconds = 30;
+
+        [Tooltip("Bug report video capture FPS")]
+        public int bugReportVideoFps = 10;
+
         [Header("Connection")]
         [Tooltip("Auto-connect on play mode")]
         public bool autoConnect = true;
