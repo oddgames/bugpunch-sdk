@@ -246,9 +246,18 @@ namespace ODDGames.UIAutomation
         public static int PollInterval { get; set; } = 100;
 
         /// <summary>
+        /// Gets or sets the default search timeout in seconds for finding UI elements.
+        /// Default is 10s for tests. Set to 1s for interactive/bridge usage where fast failure + retry is preferred.
+        /// </summary>
+        public static float DefaultSearchTime { get; set; } = 10f;
+
+        /// <summary>
         /// When true, increases all intervals and enables verbose logging for debugging tests.
         /// </summary>
         public static bool DebugMode { get; set; } = false;
+
+        /// <summary>Resolves -1 sentinel to DefaultSearchTime.</summary>
+        static float ResolveSearchTime(float searchTime) => searchTime < 0 ? DefaultSearchTime : searchTime;
 
         /// <summary>
         /// Multiplier for all intervals when DebugMode is enabled. Default is 3x.
@@ -1483,7 +1492,7 @@ namespace ODDGames.UIAutomation
             if (TestReport.IsActive)
                 return TestReport.BuildFailureReport(search, searchTime);
 
-            var msg = $"Element not found within {searchTime}s";
+            var msg = $"Element not found within {ResolveSearchTime(searchTime)}s";
 
             // If the search uses RequiresReceiver, provide additional context
             if (search.UsesReceiverFilter)
@@ -1515,11 +1524,11 @@ namespace ODDGames.UIAutomation
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <param name="index">Index of the element to click when multiple match (0-based)</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found or not clickable within searchTime</exception>
-        public static async Task Click(Search search, float searchTime = 10f, int index = 0)
+        public static async Task Click(Search search, float searchTime = -1f, int index = 0)
         {
             await using var action = await RunAction($"Click({search})");
 
-            var element = await search.Find(searchTime, index);
+            var element = await search.Find(ResolveSearchTime(searchTime), index);
 
             if (element != null)
             {
@@ -1537,7 +1546,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail(BuildSearchFailureMessage(search, searchTime));
+            action.Fail(BuildSearchFailureMessage(search, ResolveSearchTime(searchTime)));
         }
 
         /// <summary>
@@ -1590,11 +1599,11 @@ namespace ODDGames.UIAutomation
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <param name="index">Index of the element when multiple match (0-based)</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found or not clickable within searchTime</exception>
-        public static async Task DoubleClick(Search search, float searchTime = 10f, int index = 0)
+        public static async Task DoubleClick(Search search, float searchTime = -1f, int index = 0)
         {
             await using var action = await RunAction($"DoubleClick({search})");
 
-            var element = await search.Find(searchTime, index);
+            var element = await search.Find(ResolveSearchTime(searchTime), index);
 
             if (element != null)
             {
@@ -1612,7 +1621,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail(BuildSearchFailureMessage(search, searchTime));
+            action.Fail(BuildSearchFailureMessage(search, ResolveSearchTime(searchTime)));
         }
 
         /// <summary>
@@ -1640,11 +1649,11 @@ namespace ODDGames.UIAutomation
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <param name="index">Index of the element when multiple match (0-based)</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found or not clickable within searchTime</exception>
-        public static async Task TripleClick(Search search, float searchTime = 10f, int index = 0)
+        public static async Task TripleClick(Search search, float searchTime = -1f, int index = 0)
         {
             await using var action = await RunAction($"TripleClick({search})");
 
-            var element = await search.Find(searchTime, index);
+            var element = await search.Find(ResolveSearchTime(searchTime), index);
 
             if (element != null)
             {
@@ -1662,7 +1671,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail(BuildSearchFailureMessage(search, searchTime));
+            action.Fail(BuildSearchFailureMessage(search, ResolveSearchTime(searchTime)));
         }
 
         /// <summary>
@@ -1691,11 +1700,11 @@ namespace ODDGames.UIAutomation
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <param name="index">Index of the element when multiple match (0-based)</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found within searchTime</exception>
-        public static async Task Hold(Search search, float seconds, float searchTime = 10f, int index = 0)
+        public static async Task Hold(Search search, float seconds, float searchTime = -1f, int index = 0)
         {
             await using var action = await RunAction($"Hold({search}, {seconds}s)");
 
-            var element = await search.Find(searchTime, index);
+            var element = await search.Find(ResolveSearchTime(searchTime), index);
 
             if (element != null)
             {
@@ -1707,7 +1716,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail(BuildSearchFailureMessage(search, searchTime));
+            action.Fail(BuildSearchFailureMessage(search, ResolveSearchTime(searchTime)));
         }
 
         /// <summary>
@@ -1742,11 +1751,11 @@ namespace ODDGames.UIAutomation
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <param name="index">Index of the element when multiple match (0-based)</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found within searchTime</exception>
-        public static async Task Type(Search search, string text, bool clearFirst = true, bool pressEnter = false, float searchTime = 10f, int index = 0)
+        public static async Task Type(Search search, string text, bool clearFirst = true, bool pressEnter = false, float searchTime = -1f, int index = 0)
         {
             await using var action = await RunAction($"Type({search}, \"{text}\")");
 
-            var element = await search.Find(searchTime, index);
+            var element = await search.Find(ResolveSearchTime(searchTime), index);
 
             if (element != null)
             {
@@ -1757,7 +1766,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail(BuildSearchFailureMessage(search, searchTime));
+            action.Fail(BuildSearchFailureMessage(search, ResolveSearchTime(searchTime)));
         }
 
         /// <summary>
@@ -1794,11 +1803,11 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging</param>
         /// <param name="button">Which mouse button to use for dragging</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found within searchTime</exception>
-        public static async Task Drag(Search search, Vector2 direction, float duration = 0.15f, float searchTime = 10f, int index = 0, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
+        public static async Task Drag(Search search, Vector2 direction, float duration = 0.15f, float searchTime = -1f, int index = 0, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             await using var action = await RunAction($"Drag({search}, direction=({direction.x:F0},{direction.y:F0}))");
 
-            var element = await search.Find(searchTime, index);
+            var element = await search.Find(ResolveSearchTime(searchTime), index);
 
             if (element != null)
             {
@@ -1811,7 +1820,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail(BuildSearchFailureMessage(search, searchTime));
+            action.Fail(BuildSearchFailureMessage(search, ResolveSearchTime(searchTime)));
         }
 
         /// <summary>
@@ -1824,17 +1833,17 @@ namespace ODDGames.UIAutomation
         /// <param name="holdTime">Time to hold at start position before dragging (for elements requiring hold-to-drag)</param>
         /// <param name="button">Which mouse button to use for dragging</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when source or target element is not found within searchTime</exception>
-        public static async Task DragTo(Search fromSearch, Search toSearch, float duration = 0.15f, float searchTime = 10f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
+        public static async Task DragTo(Search fromSearch, Search toSearch, float duration = 0.15f, float searchTime = -1f, float holdTime = 0.05f, PointerButton button = PointerButton.Left)
         {
             await using var action = await RunAction($"DragTo({fromSearch} -> {toSearch})");
 
-            var fromElement = await fromSearch.Find(searchTime);
+            var fromElement = await fromSearch.Find(ResolveSearchTime(searchTime));
             if (fromElement == null)
-                action.Fail($"Source element not found within {searchTime}s");
+                action.Fail($"Source element not found within {ResolveSearchTime(searchTime)}s");
 
-            var toElement = await toSearch.Find(searchTime);
+            var toElement = await toSearch.Find(ResolveSearchTime(searchTime));
             if (toElement == null)
-                action.Fail($"Target element not found within {searchTime}s");
+                action.Fail($"Target element not found within {ResolveSearchTime(searchTime)}s");
 
             var fromPos = InputInjector.GetScreenPosition(fromElement);
             var toPos = InputInjector.GetScreenPosition(toElement);
@@ -1888,11 +1897,11 @@ namespace ODDGames.UIAutomation
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <param name="index">Index of the element when multiple match (0-based)</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found within searchTime</exception>
-        public static async Task Scroll(Search search, float delta, float searchTime = 10f, int index = 0)
+        public static async Task Scroll(Search search, float delta, float searchTime = -1f, int index = 0)
         {
             await using var action = await RunAction($"Scroll({search}, delta={delta})");
 
-            var element = await search.Find(searchTime, index);
+            var element = await search.Find(ResolveSearchTime(searchTime), index);
 
             if (element != null)
             {
@@ -1904,7 +1913,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail(BuildSearchFailureMessage(search, searchTime));
+            action.Fail(BuildSearchFailureMessage(search, ResolveSearchTime(searchTime)));
         }
 
         /// <summary>
@@ -1916,12 +1925,12 @@ namespace ODDGames.UIAutomation
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <param name="index">Index of the element when multiple match (0-based)</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when element is not found within searchTime</exception>
-        public static async Task Scroll(Search search, string direction, float amount = 0.3f, float searchTime = 10f, int index = 0)
+        public static async Task Scroll(Search search, string direction, float amount = 0.3f, float searchTime = -1f, int index = 0)
         {
             ValidateNormalized(amount, nameof(amount));
             await using var action = await RunAction($"Scroll({search}, {direction}, amount={amount})");
 
-            var element = await search.Find(searchTime, index);
+            var element = await search.Find(ResolveSearchTime(searchTime), index);
 
             if (element != null)
             {
@@ -1932,7 +1941,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail(BuildSearchFailureMessage(search, searchTime));
+            action.Fail(BuildSearchFailureMessage(search, ResolveSearchTime(searchTime)));
         }
 
         #endregion
@@ -1946,12 +1955,12 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedValue">Target value (0-1)</param>
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when slider is not found within searchTime</exception>
-        public static async Task ClickSlider(Search search, float normalizedValue, float searchTime = 10f)
+        public static async Task ClickSlider(Search search, float normalizedValue, float searchTime = -1f)
         {
             ValidateNormalized(normalizedValue, nameof(normalizedValue));
             await using var action = await RunAction($"ClickSlider({search}, {normalizedValue:F2})");
 
-            var slider = await FindComponent<Slider>(search, searchTime);
+            var slider = await FindComponent<Slider>(search, ResolveSearchTime(searchTime));
 
             if (slider != null)
             {
@@ -1961,7 +1970,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Slider not found within {searchTime}s");
+            action.Fail($"Slider not found within {ResolveSearchTime(searchTime)}s");
         }
 
         /// <summary>
@@ -1973,13 +1982,13 @@ namespace ODDGames.UIAutomation
         /// <param name="duration">Duration of the drag</param>
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when slider is not found within searchTime</exception>
-        public static async Task DragSlider(Search search, float fromValue, float toValue, float duration = 0.15f, float searchTime = 10f, float holdTime = 0.05f)
+        public static async Task DragSlider(Search search, float fromValue, float toValue, float duration = 0.15f, float searchTime = -1f, float holdTime = 0.05f)
         {
             ValidateNormalized(fromValue, nameof(fromValue));
             ValidateNormalized(toValue, nameof(toValue));
             await using var action = await RunAction($"DragSlider({search}, {fromValue:F2} -> {toValue:F2})");
 
-            var slider = await FindComponent<Slider>(search, searchTime);
+            var slider = await FindComponent<Slider>(search, ResolveSearchTime(searchTime));
 
             if (slider != null)
             {
@@ -1990,7 +1999,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Slider not found within {searchTime}s");
+            action.Fail($"Slider not found within {ResolveSearchTime(searchTime)}s");
         }
 
         /// <summary>
@@ -2000,12 +2009,12 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedValue">Target value (0-1)</param>
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when slider is not found within searchTime</exception>
-        public static async Task SetSlider(Search search, float normalizedValue, float searchTime = 10f)
+        public static async Task SetSlider(Search search, float normalizedValue, float searchTime = -1f)
         {
             ValidateNormalized(normalizedValue, nameof(normalizedValue));
             await using var action = await RunAction($"SetSlider({search}, {normalizedValue:F2})");
 
-            var slider = await FindComponent<Slider>(search, searchTime);
+            var slider = await FindComponent<Slider>(search, ResolveSearchTime(searchTime));
 
             if (slider != null)
             {
@@ -2014,7 +2023,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Slider not found within {searchTime}s");
+            action.Fail($"Slider not found within {ResolveSearchTime(searchTime)}s");
         }
 
         /// <summary>
@@ -2024,12 +2033,12 @@ namespace ODDGames.UIAutomation
         /// <param name="normalizedValue">Target value (0-1)</param>
         /// <param name="searchTime">Maximum time to search for the element</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when scrollbar is not found within searchTime</exception>
-        public static async Task SetScrollbar(Search search, float normalizedValue, float searchTime = 10f)
+        public static async Task SetScrollbar(Search search, float normalizedValue, float searchTime = -1f)
         {
             ValidateNormalized(normalizedValue, nameof(normalizedValue));
             await using var action = await RunAction($"SetScrollbar({search}, {normalizedValue:F2})");
 
-            var scrollbar = await FindComponent<Scrollbar>(search, searchTime);
+            var scrollbar = await FindComponent<Scrollbar>(search, ResolveSearchTime(searchTime));
 
             if (scrollbar != null)
             {
@@ -2038,7 +2047,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Scrollbar not found within {searchTime}s");
+            action.Fail($"Scrollbar not found within {ResolveSearchTime(searchTime)}s");
         }
 
         #endregion
@@ -2285,7 +2294,7 @@ namespace ODDGames.UIAutomation
         /// <param name="optionIndex">Index of the option to select (0-based)</param>
         /// <param name="searchTime">Maximum time to search for the dropdown</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when dropdown is not found within searchTime</exception>
-        public static async Task ClickDropdown(Search search, int optionIndex, float searchTime = 10f)
+        public static async Task ClickDropdown(Search search, int optionIndex, float searchTime = -1f)
         {
             await using var action = await RunAction($"ClickDropdown({search}, index={optionIndex})");
 
@@ -2300,7 +2309,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Dropdown not found within {searchTime}s");
+            action.Fail($"Dropdown not found within {ResolveSearchTime(searchTime)}s");
         }
 
         /// <summary>
@@ -2310,7 +2319,7 @@ namespace ODDGames.UIAutomation
         /// <param name="optionLabel">The text label of the option to select</param>
         /// <param name="searchTime">Maximum time to search for the dropdown</param>
         /// <exception cref="NUnit.Framework.AssertionException">Thrown when dropdown or option is not found within searchTime</exception>
-        public static async Task ClickDropdown(Search search, string optionLabel, float searchTime = 10f)
+        public static async Task ClickDropdown(Search search, string optionLabel, float searchTime = -1f)
         {
             await using var action = await RunAction($"ClickDropdown({search}, label=\"{optionLabel}\")");
 
@@ -2325,7 +2334,7 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            action.Fail($"Dropdown or option '{optionLabel}' not found within {searchTime}s");
+            action.Fail($"Dropdown or option '{optionLabel}' not found within {ResolveSearchTime(searchTime)}s");
         }
 
         /// <summary>
@@ -3370,7 +3379,7 @@ namespace ODDGames.UIAutomation
         /// <param name="throwIfMissing">If true, throws exception when target not found</param>
         /// <param name="searchTime">Time to search for the scroll view</param>
         /// <returns>The GameObject of the target if found, null otherwise</returns>
-        public static async Task<GameObject> ScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20, bool throwIfMissing = true, float searchTime = 10f)
+        public static async Task<GameObject> ScrollTo(Search scrollViewSearch, Search targetSearch, int maxScrollAttempts = 20, bool throwIfMissing = true, float searchTime = -1f)
         {
             await using var action = await RunAction($"ScrollTo({scrollViewSearch}, {targetSearch})");
             var scrollRect = await Find<ScrollRect>(scrollViewSearch, true, searchTime);
@@ -3773,32 +3782,32 @@ namespace ODDGames.UIAutomation
         /// <summary>
         /// Disables a GameObject found by search.
         /// </summary>
-        public static Task<Search.ActiveState> Disable(Search search, float searchTime = 10f) => search.Disable(searchTime);
+        public static Task<Search.ActiveState> Disable(Search search, float searchTime = -1f) => search.Disable(searchTime);
 
         /// <summary>
         /// Enables a GameObject found by search.
         /// </summary>
-        public static Task<Search.ActiveState> Enable(Search search, float searchTime = 10f) => search.Enable(searchTime);
+        public static Task<Search.ActiveState> Enable(Search search, float searchTime = -1f) => search.Enable(searchTime);
 
         /// <summary>
         /// Freezes a GameObject (zero velocity, kinematic).
         /// </summary>
-        public static Task<Search.FreezeState> Freeze(Search search, bool includeChildren = true, float searchTime = 10f) => search.Freeze(includeChildren, searchTime);
+        public static Task<Search.FreezeState> Freeze(Search search, bool includeChildren = true, float searchTime = -1f) => search.Freeze(includeChildren, searchTime);
 
         /// <summary>
         /// Teleports a GameObject to a world position.
         /// </summary>
-        public static Task<Search.PositionState> Teleport(Search search, Vector3 worldPosition, float searchTime = 10f) => search.Teleport(worldPosition, searchTime);
+        public static Task<Search.PositionState> Teleport(Search search, Vector3 worldPosition, float searchTime = -1f) => search.Teleport(worldPosition, searchTime);
 
         /// <summary>
         /// Disables colliders on a GameObject.
         /// </summary>
-        public static Task<Search.ColliderState> NoClip(Search search, bool includeChildren = true, float searchTime = 10f) => search.NoClip(includeChildren, searchTime);
+        public static Task<Search.ColliderState> NoClip(Search search, bool includeChildren = true, float searchTime = -1f) => search.NoClip(includeChildren, searchTime);
 
         /// <summary>
         /// Enables colliders on a GameObject.
         /// </summary>
-        public static Task<Search.ColliderState> Clip(Search search, bool includeChildren = true, float searchTime = 10f) => search.Clip(includeChildren, searchTime);
+        public static Task<Search.ColliderState> Clip(Search search, bool includeChildren = true, float searchTime = -1f) => search.Clip(includeChildren, searchTime);
 
         #endregion
 

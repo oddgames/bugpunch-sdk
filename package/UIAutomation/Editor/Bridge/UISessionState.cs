@@ -115,66 +115,26 @@ namespace ODDGames.UIAutomation.Bridge
             }
             catch { }
 
-            // Wait for UI to settle after action (animations, transitions)
-            await Task.Delay(500);
-
-            // Capture screenshot as JPEG (smaller files for web viewing)
+            // Capture screenshot as resized PNG — simple and fast
             string screenshotRelative = null;
             try
             {
                 var pngFilename = $"{index:D3}_{actionName}.png";
-                var jpgFilename = $"{index:D3}_{actionName}.jpg";
                 var pngPath = Path.Combine(sessionDir, "screenshots", pngFilename);
-                var jpgPath = Path.Combine(sessionDir, "screenshots", jpgFilename);
 
-                // ScreenCapture writes PNG — capture it first
+                // CaptureScreenshot writes to file asynchronously, use superSize=1 for native res
                 await CommandRegistry.RunOnMainThreadAsync(() =>
                 {
                     UnityEngine.ScreenCapture.CaptureScreenshot(pngPath);
                     return 0;
                 });
 
-                // Wait for PNG to be written
-                for (int wait = 0; wait < 30 && !File.Exists(pngPath); wait++)
-                    await Task.Delay(100);
+                // Wait for file (usually 1-2 frames)
+                for (int wait = 0; wait < 20 && !File.Exists(pngPath); wait++)
+                    await Task.Delay(50);
 
-                // Convert to JPEG on main thread
                 if (File.Exists(pngPath))
-                {
-                    await CommandRegistry.RunOnMainThreadAsync(() =>
-                    {
-                        var pngBytes = File.ReadAllBytes(pngPath);
-                        var tex = new UnityEngine.Texture2D(2, 2);
-                        tex.LoadImage(pngBytes);
-
-                        // Resize to max 1280px wide (keep aspect ratio)
-                        const int maxWidth = 1280;
-                        if (tex.width > maxWidth)
-                        {
-                            int newH = (int)((float)tex.height / tex.width * maxWidth);
-                            var rt = UnityEngine.RenderTexture.GetTemporary(maxWidth, newH);
-                            UnityEngine.Graphics.Blit(tex, rt);
-                            var resized = new UnityEngine.Texture2D(maxWidth, newH);
-                            var prev = UnityEngine.RenderTexture.active;
-                            UnityEngine.RenderTexture.active = rt;
-                            resized.ReadPixels(new UnityEngine.Rect(0, 0, maxWidth, newH), 0, 0);
-                            resized.Apply();
-                            UnityEngine.RenderTexture.active = prev;
-                            UnityEngine.RenderTexture.ReleaseTemporary(rt);
-                            UnityEngine.Object.DestroyImmediate(tex);
-                            tex = resized;
-                        }
-
-                        var jpgBytes = tex.EncodeToJPG(75);
-                        File.WriteAllBytes(jpgPath, jpgBytes);
-                        UnityEngine.Object.DestroyImmediate(tex);
-                        return 0;
-                    });
-                    // Delete PNG, keep JPEG
-                    try { File.Delete(pngPath); } catch { }
-                    if (File.Exists(jpgPath))
-                        screenshotRelative = $"screenshots/{jpgFilename}";
-                }
+                    screenshotRelative = $"screenshots/{pngFilename}";
             }
             catch { }
 
@@ -190,15 +150,23 @@ namespace ODDGames.UIAutomation.Bridge
             };
             actions.Add(entry);
 
+            // Fire-and-forget: persist state and regenerate report without blocking the response
             var actionsJsonStr = JsonConvert.SerializeObject(actions);
-            await CommandRegistry.RunOnMainThreadAsync(() =>
+            var actionsCopy = new List<ActionEntry>(actions);
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    RegenerateReportFiles(sessionId, sessionDir, sessionName, scene, startTime, null, actionsCopy, "running");
+                }
+                catch { }
+            });
+            _ = CommandRegistry.RunOnMainThreadAsync(() =>
             {
                 SessionState.SetInt(SK_ActionCount, actions.Count);
                 SessionState.SetString(SK_ActionsJson, actionsJsonStr);
                 return 0;
             });
-
-            RegenerateReportFiles(sessionId, sessionDir, sessionName, scene, startTime, null, actions, "running");
         }
 
         static async Task<(string sessionId, string sessionDir, string sessionName, string scene, string startTime, List<ActionEntry> actions)> GetSessionData()
@@ -244,28 +212,33 @@ namespace ODDGames.UIAutomation.Bridge
         static string GenerateHtml(SessionJson session)
         {
             var isRunning = session.status == "running";
-            var actionRows = new System.Text.StringBuilder();
+            var actionItems = new System.Text.StringBuilder();
 
-            foreach (var a in session.actions)
+            for (int i = 0; i < session.actions.Count; i++)
             {
+                var a = session.actions[i];
                 var badge = a.result == "success"
                     ? "<span class=\"badge ok\">OK</span>"
-                    : $"<span class=\"badge fail\">FAIL</span>";
+                    : "<span class=\"badge fail\">FAIL</span>";
                 var errorHtml = a.error != null ? $"<div class=\"error\">{Escape(a.error)}</div>" : "";
                 var screenshotHtml = a.screenshot != null
                     ? $"<img src=\"{Escape(a.screenshot)}\" class=\"thumb\" onclick=\"openLightbox(this.src)\" />"
                     : "<span class=\"no-ss\">no screenshot</span>";
 
-                actionRows.Append($@"
+                // Add arrow before each action except the first
+                if (i > 0)
+                    actionItems.Append("<div class=\"arrow\">&rarr;</div>");
+
+                actionItems.Append($@"
 <div class=""action"">
   <div class=""action-header"">
     <span class=""index"">#{a.index}</span>
     {badge}
     <span class=""elapsed"">{a.elapsedMs:F0}ms</span>
   </div>
+  <div class=""screenshot"">{screenshotHtml}</div>
   <pre class=""action-json"">{Escape(a.action)}</pre>
   {errorHtml}
-  <div class=""screenshot"">{screenshotHtml}</div>
 </div>");
             }
 
@@ -298,19 +271,21 @@ body{{background:#0d1117;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemF
 .status.completed{{background:#23863633;color:#3fb950}}
 .summary{{display:flex;gap:24px;margin-bottom:24px;font-size:14px;color:#8b949e}}
 .summary span{{color:#c9d1d9;font-weight:600}}
-.action{{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;margin-bottom:12px}}
-.action-header{{display:flex;align-items:center;gap:12px;margin-bottom:8px}}
-.index{{color:#8b949e;font-weight:600;font-size:14px}}
-.badge{{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-transform:uppercase}}
+.timeline{{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px}}
+.arrow{{display:flex;align-items:center;color:#484f58;font-size:24px;padding:0 2px;align-self:center}}
+.action{{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:10px;width:220px;flex-shrink:0}}
+.action-header{{display:flex;align-items:center;gap:8px;margin-bottom:6px}}
+.index{{color:#8b949e;font-weight:600;font-size:12px}}
+.badge{{padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase}}
 .badge.ok{{background:#23863633;color:#3fb950}}
 .badge.fail{{background:#da363033;color:#f85149}}
-.elapsed{{color:#8b949e;font-size:12px}}
-.action-json{{background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:8px 12px;font-size:12px;color:#c9d1d9;overflow-x:auto;white-space:pre-wrap;word-break:break-all}}
-.error{{color:#f85149;font-size:12px;margin-top:4px;padding:4px 8px;background:#da363010;border-radius:4px}}
-.screenshot{{margin-top:8px}}
-.thumb{{max-width:320px;max-height:180px;border-radius:4px;border:1px solid #21262d;cursor:pointer;transition:opacity .2s}}
+.elapsed{{color:#8b949e;font-size:11px}}
+.action-json{{background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:6px 8px;font-size:11px;color:#c9d1d9;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin-top:6px}}
+.error{{color:#f85149;font-size:11px;margin-top:4px;padding:4px 6px;background:#da363010;border-radius:4px}}
+.screenshot{{margin-bottom:4px}}
+.thumb{{width:200px;border-radius:4px;border:1px solid #21262d;cursor:pointer;transition:opacity .2s}}
 .thumb:hover{{opacity:.8}}
-.no-ss{{color:#484f58;font-size:12px}}
+.no-ss{{color:#484f58;font-size:11px}}
 .lightbox{{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);z-index:1000;cursor:pointer;justify-content:center;align-items:center}}
 .lightbox.show{{display:flex}}
 .lightbox img{{max-width:95%;max-height:95%;border-radius:8px}}
@@ -332,7 +307,7 @@ body{{background:#0d1117;color:#c9d1d9;font-family:-apple-system,BlinkMacSystemF
   <div>Duration: <span>{duration}</span></div>
 </div>
 <div class=""timeline"">
-{(session.actions.Count == 0 ? "<div class=\"empty\">No actions recorded yet.</div>" : actionRows.ToString())}
+{(session.actions.Count == 0 ? "<div class=\"empty\">No actions recorded yet.</div>" : actionItems.ToString())}
 </div>
 <div class=""lightbox"" id=""lb"" onclick=""this.classList.remove('show')"">
   <img id=""lbImg"" src="""" />

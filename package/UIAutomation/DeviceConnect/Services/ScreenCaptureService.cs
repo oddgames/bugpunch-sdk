@@ -67,6 +67,48 @@ namespace ODDGames.UIAutomation.DeviceConnect
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Capture from a specific camera by instance ID. Does not require WaitForEndOfFrame.
+        /// </summary>
+        public byte[] CaptureFromCamera(int instanceId, float scale = 0.5f, int quality = 75)
+        {
+            try
+            {
+                Camera cam = null;
+                foreach (var c in Camera.allCameras)
+                {
+                    if (c.GetInstanceID() == instanceId) { cam = c; break; }
+                }
+                if (cam == null) return null;
+
+                var w = Mathf.Max(1, Mathf.RoundToInt(cam.pixelWidth * scale));
+                var h = Mathf.Max(1, Mathf.RoundToInt(cam.pixelHeight * scale));
+
+                var rt = RenderTexture.GetTemporary(w, h, 24);
+                var prev = cam.targetTexture;
+                cam.targetTexture = rt;
+                cam.Render();
+                cam.targetTexture = prev;
+
+                var prevActive = RenderTexture.active;
+                RenderTexture.active = rt;
+                var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                tex.Apply();
+                RenderTexture.active = prevActive;
+                RenderTexture.ReleaseTemporary(rt);
+
+                var bytes = tex.EncodeToJPG(quality);
+                Destroy(tex);
+                return bytes;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[OddDev] Camera capture failed: {ex.Message}");
+                return null;
+            }
+        }
+
         static Texture2D ScaleTexture(Texture2D source, int targetWidth, int targetHeight)
         {
             var rt = RenderTexture.GetTemporary(targetWidth, targetHeight);

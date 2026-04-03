@@ -277,6 +277,75 @@ namespace ODDGames.UIAutomation.DeviceConnect
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Write field values to a component using JsonUtility.FromJsonOverwrite.
+        /// </summary>
+        public string ApplyComponent(string instanceIdStr, string componentIdStr, string json)
+        {
+            var component = FindComponentById(instanceIdStr, componentIdStr);
+            if (component == null)
+                return "{\"ok\":false,\"error\":\"Component not found\"}";
+
+            try
+            {
+                JsonUtility.FromJsonOverwrite(json, component);
+                return "{\"ok\":true}";
+            }
+            catch (Exception ex)
+            {
+                return $"{{\"ok\":false,\"error\":\"{EscapeJson(ex.Message)}\"}}";
+            }
+        }
+
+        /// <summary>
+        /// Resolve a member chain like "GameObject.transform.position" and return the final type.
+        /// If info=true, return members of the resolved type as well.
+        /// </summary>
+        public string ResolveChain(string chain, bool info)
+        {
+            if (string.IsNullOrEmpty(chain))
+                return "\"\"";
+
+            var parts = chain.Split('.');
+            Type current = null;
+            int start = 0;
+
+            // Find the starting type from the chain
+            for (int i = 0; i < parts.Length; i++)
+            {
+                current = FindType(parts[i]);
+                if (current != null)
+                {
+                    start = i + 1;
+                    break;
+                }
+            }
+
+            if (current == null)
+                return "\"\"";
+
+            var flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.IgnoreCase;
+            for (int i = start; i < parts.Length; i++)
+            {
+                var prop = current.GetProperty(parts[i], flags);
+                if (prop != null) { current = prop.PropertyType; continue; }
+                var fld = current.GetField(parts[i], flags);
+                if (fld != null) { current = fld.FieldType; continue; }
+                var mtd = current.GetMethods(flags)
+                    .FirstOrDefault(m => string.Equals(m.Name, parts[i], StringComparison.OrdinalIgnoreCase) && !m.IsSpecialName);
+                if (mtd != null) { current = mtd.ReturnType; continue; }
+                return "\"\"";
+            }
+
+            if (info)
+            {
+                return "{\"type\":\"" + EscapeJson(current.Name) + "\",\"isEnum\":" + (current.IsEnum ? "true" : "false") +
+                       ",\"isValueType\":" + (current.IsValueType ? "true" : "false") + "}";
+            }
+
+            return "\"" + EscapeJson(current.Name) + "\"";
+        }
+
         // ── Helpers ──
 
         static GameObject FindByInstanceId(string idStr)
@@ -307,26 +376,36 @@ namespace ODDGames.UIAutomation.DeviceConnect
             return null;
         }
 
+        static readonly Dictionary<string, Type> _typeCache = new Dictionary<string, Type>();
+
         static Type FindType(string name)
         {
             if (string.IsNullOrEmpty(name)) return null;
+
+            if (_typeCache.TryGetValue(name, out var cached))
+                return cached;
 
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 try
                 {
                     var type = assembly.GetType(name);
-                    if (type != null) return type;
+                    if (type != null) { _typeCache[name] = type; return type; }
 
                     // Try by name only
                     foreach (var t in assembly.GetExportedTypes())
                     {
                         if (t.Name == name || t.FullName == name)
+                        {
+                            _typeCache[name] = t;
                             return t;
+                        }
                     }
                 }
                 catch { }
             }
+
+            _typeCache[name] = null;
             return null;
         }
 

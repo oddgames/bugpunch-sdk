@@ -35,10 +35,16 @@ namespace ODDGames.UIAutomation.Bridge
             if (string.IsNullOrWhiteSpace(data))
                 return Response.Error("Expected JSON. Example: {\"action\":\"click\", \"text\":\"Settings\"}");
 
+            if (!UnityEditor.EditorApplication.isPlaying)
+                return Response.Error("Not in play mode. Use PLAY first.");
+
             // Wait for our turn in the queue
             await _actionLock.WaitAsync();
             try
             {
+                // Bridge calls prefer fast failure + retry over long waits
+                ActionExecutor.DefaultSearchTime = 1f;
+
                 // Execute on main thread
                 var tcs = new TaskCompletionSource<ActionResult>();
                 await CommandRegistry.RunOnMainThreadAsync<int>(() =>

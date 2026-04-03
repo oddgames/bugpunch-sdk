@@ -1639,6 +1639,8 @@ namespace ODDGames.UIAutomation
 
         /// <summary>
         /// Presses and releases a keyboard key.
+        /// Also sends legacy Input system events (Event.KeyboardEvent) so games using
+        /// the old Input class (Input.anyKeyDown, Input.GetKeyDown) receive the key press.
         /// </summary>
         public static async Task PressKey(Key key)
         {
@@ -1652,13 +1654,108 @@ namespace ODDGames.UIAutomation
                 return;
             }
 
-            // Key down
+            // New Input System: key down
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(key));
+
+            // Legacy Input System: send KeyDown event so Input.anyKeyDown / Input.GetKeyDown works
+            SendLegacyKeyEvent(key);
+
             await Async.DelayFrames(3);
 
-            // Key up
+            // New Input System: key up
             InputSystem.QueueStateEvent(keyboard, new KeyboardState());
             await Async.DelayFrames(2);
+        }
+
+        /// <summary>
+        /// Sends a keyboard event through Unity's IMGUI event system so the legacy
+        /// Input class (Input.anyKeyDown, Input.GetKeyDown) picks it up.
+        /// Uses reflection to access EditorWindow.SendEvent since this is a runtime assembly.
+        /// </summary>
+        static void SendLegacyKeyEvent(Key key)
+        {
+            var legacyKeyCode = KeyToKeyCode(key);
+            if (legacyKeyCode == KeyCode.None) return;
+
+            try
+            {
+                var evt = Event.KeyboardEvent(legacyKeyCode.ToString());
+                evt.type = EventType.KeyDown;
+                evt.keyCode = legacyKeyCode;
+
+                // Use reflection to find GameView and send the event
+                // (runtime assembly can't reference UnityEditor directly)
+                var editorAssembly = System.Reflection.Assembly.Load("UnityEditor");
+                if (editorAssembly == null) return;
+
+                var gameViewType = editorAssembly.GetType("UnityEditor.GameView");
+                if (gameViewType == null) return;
+
+                var allGameViews = Resources.FindObjectsOfTypeAll(gameViewType);
+                if (allGameViews.Length == 0) return;
+
+                // EditorWindow.Focus() + SendEvent(Event)
+                var focusMethod = gameViewType.GetMethod("Focus", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                var sendEventMethod = gameViewType.GetMethod("SendEvent", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+                if (focusMethod != null && sendEventMethod != null)
+                {
+                    var gv = allGameViews[0];
+                    focusMethod.Invoke(gv, null);
+                    sendEventMethod.Invoke(gv, new object[] { evt });
+                }
+            }
+            catch
+            {
+                // Non-critical — new Input System path still works
+            }
+        }
+
+        /// <summary>
+        /// Converts an Input System Key to a legacy KeyCode for the old Input system.
+        /// </summary>
+        static KeyCode KeyToKeyCode(Key key)
+        {
+            return key switch
+            {
+                Key.A => KeyCode.A, Key.B => KeyCode.B, Key.C => KeyCode.C, Key.D => KeyCode.D,
+                Key.E => KeyCode.E, Key.F => KeyCode.F, Key.G => KeyCode.G, Key.H => KeyCode.H,
+                Key.I => KeyCode.I, Key.J => KeyCode.J, Key.K => KeyCode.K, Key.L => KeyCode.L,
+                Key.M => KeyCode.M, Key.N => KeyCode.N, Key.O => KeyCode.O, Key.P => KeyCode.P,
+                Key.Q => KeyCode.Q, Key.R => KeyCode.R, Key.S => KeyCode.S, Key.T => KeyCode.T,
+                Key.U => KeyCode.U, Key.V => KeyCode.V, Key.W => KeyCode.W, Key.X => KeyCode.X,
+                Key.Y => KeyCode.Y, Key.Z => KeyCode.Z,
+                Key.Digit0 => KeyCode.Alpha0, Key.Digit1 => KeyCode.Alpha1,
+                Key.Digit2 => KeyCode.Alpha2, Key.Digit3 => KeyCode.Alpha3,
+                Key.Digit4 => KeyCode.Alpha4, Key.Digit5 => KeyCode.Alpha5,
+                Key.Digit6 => KeyCode.Alpha6, Key.Digit7 => KeyCode.Alpha7,
+                Key.Digit8 => KeyCode.Alpha8, Key.Digit9 => KeyCode.Alpha9,
+                Key.Space => KeyCode.Space,
+                Key.Enter => KeyCode.Return, Key.NumpadEnter => KeyCode.KeypadEnter,
+                Key.Escape => KeyCode.Escape,
+                Key.Tab => KeyCode.Tab,
+                Key.Backspace => KeyCode.Backspace,
+                Key.Delete => KeyCode.Delete,
+                Key.Insert => KeyCode.Insert,
+                Key.Home => KeyCode.Home, Key.End => KeyCode.End,
+                Key.PageUp => KeyCode.PageUp, Key.PageDown => KeyCode.PageDown,
+                Key.UpArrow => KeyCode.UpArrow, Key.DownArrow => KeyCode.DownArrow,
+                Key.LeftArrow => KeyCode.LeftArrow, Key.RightArrow => KeyCode.RightArrow,
+                Key.LeftShift => KeyCode.LeftShift, Key.RightShift => KeyCode.RightShift,
+                Key.LeftCtrl => KeyCode.LeftControl, Key.RightCtrl => KeyCode.RightControl,
+                Key.LeftAlt => KeyCode.LeftAlt, Key.RightAlt => KeyCode.RightAlt,
+                Key.F1 => KeyCode.F1, Key.F2 => KeyCode.F2, Key.F3 => KeyCode.F3,
+                Key.F4 => KeyCode.F4, Key.F5 => KeyCode.F5, Key.F6 => KeyCode.F6,
+                Key.F7 => KeyCode.F7, Key.F8 => KeyCode.F8, Key.F9 => KeyCode.F9,
+                Key.F10 => KeyCode.F10, Key.F11 => KeyCode.F11, Key.F12 => KeyCode.F12,
+                Key.Minus => KeyCode.Minus, Key.Equals => KeyCode.Equals,
+                Key.LeftBracket => KeyCode.LeftBracket, Key.RightBracket => KeyCode.RightBracket,
+                Key.Backslash => KeyCode.Backslash, Key.Semicolon => KeyCode.Semicolon,
+                Key.Quote => KeyCode.Quote, Key.Comma => KeyCode.Comma,
+                Key.Period => KeyCode.Period, Key.Slash => KeyCode.Slash,
+                Key.Backquote => KeyCode.BackQuote,
+                _ => KeyCode.None
+            };
         }
 
         /// <summary>
