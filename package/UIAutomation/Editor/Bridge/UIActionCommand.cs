@@ -13,12 +13,21 @@ namespace ODDGames.UIAutomation.Bridge
         [BridgeCommand("UIACTION", "Execute a UI automation action (JSON format)",
             Category = "UIAutomation",
             Usage = "UIACTION {\"action\":\"click\", \"text\":\"Settings\"}\n" +
+                    "  UIACTION {\"action\":\"click\", \"name\":\"Button\"}\n" +
+                    "  UIACTION {\"action\":\"click\", \"at\":[0.5, 0.5]}\n" +
                     "  UIACTION {\"action\":\"type\", \"name\":\"InputField\", \"value\":\"hello\"}\n" +
+                    "  UIACTION {\"action\":\"key\", \"key\":\"space\"}\n" +
                     "  UIACTION {\"action\":\"swipe\", \"direction\":\"left\"}\n" +
+                    "  UIACTION {\"action\":\"scroll\", \"name\":\"List\", \"delta\":-120}\n" +
                     "  UIACTION {\"action\":\"wait\", \"seconds\":2}\n" +
-                    "  UIACTION {\"action\":\"key\", \"key\":\"escape\"}\n" +
+                    "  UIACTION {\"action\":\"hold\", \"text\":\"Button\", \"seconds\":2}\n" +
                     "  UIACTION {\"action\":\"drag\", \"from\":{\"name\":\"A\"}, \"to\":{\"name\":\"B\"}}\n" +
-                    "  UIACTION {\"action\":\"dropdown\", \"name\":\"DD\", \"option\":2}",
+                    "  UIACTION {\"action\":\"dropdown\", \"name\":\"DD\", \"option\":2}\n" +
+                    "  UIACTION {\"action\":\"pinch\", \"scale\":2.0}\n" +
+                    "  UIACTION {\"action\":\"rotate\", \"degrees\":45}\n" +
+                    "  Search fields: text, name, type, near, adjacent, tag, path, any, at\n" +
+                    "  Actions are queued and executed one at a time.\n" +
+                    "  If a UISESSION is active, screenshots are auto-captured after each action.",
             RequiresMainThread = false,
             TimeoutSeconds = 30)]
         public static async Task<string> UIAction(string data)

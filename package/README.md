@@ -211,6 +211,39 @@ await AutoExplorer.StartExploration(new ExploreSettings
 
 Or use **Window > Analysis > UI Automation > Test Explorer** with the Auto-Explore dropdown.
 
+## CLI Bridge Integration
+
+When [clibridge4unity](https://github.com/oddgames/clibridge4unity) is installed alongside this package, two additional bridge commands become available:
+
+### UIACTION — Execute UI actions via JSON
+
+```bash
+clibridge4unity UIACTION '{"action":"click","text":"Settings"}'
+clibridge4unity UIACTION '{"action":"type","name":"InputField","value":"hello"}'
+clibridge4unity UIACTION '{"action":"swipe","direction":"left"}'
+clibridge4unity UIACTION '{"action":"key","key":"space"}'
+clibridge4unity UIACTION '{"action":"drag","from":{"name":"A"},"to":{"name":"B"}}'
+clibridge4unity UIACTION '{"action":"dropdown","name":"DD","option":2}'
+```
+
+Actions are queued and executed one at a time. Search targets use the same fields as the fluent API: `text`, `name`, `type`, `near`, `adjacent`, `tag`, `path`, `any`.
+
+### UISESSION — Record test sessions with live reports
+
+```bash
+# Start recording
+clibridge4unity UISESSION 'start --name MyTest --desc "Navigate to settings"'
+
+# Execute actions (screenshots auto-captured after each)
+clibridge4unity UIACTION '{"action":"click","text":"Settings"}'
+clibridge4unity UIACTION '{"action":"click","text":"Audio"}'
+
+# Stop recording
+clibridge4unity UISESSION stop
+```
+
+Sessions generate a live HTML report with screenshots, action timeline, and pass/fail badges. View locally or via `clibridge4unity serve` over HTTP.
+
 ## Requirements
 
 - Unity 2022.3+

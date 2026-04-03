@@ -8,7 +8,11 @@ namespace ODDGames.UIAutomation.Bridge
     {
         [BridgeCommand("UISESSION", "Start or stop a UI automation test session",
             Category = "UIAutomation",
-            Usage = "UISESSION start [--name sessionName] [--desc \"goal description\"]\n  UISESSION stop",
+            Usage = "UISESSION start [--name TestName] [--desc \"Navigate to settings and verify\"]\n" +
+                    "  UISESSION stop\n" +
+                    "  Starts a recording session. Each UIACTION auto-captures a JPEG screenshot.\n" +
+                    "  Generates a live HTML report at %TEMP%/clibridge4unity/sessions/{id}/index.html\n" +
+                    "  Use 'clibridge4unity serve' to view reports over HTTP.",
             RequiresMainThread = false,
             TimeoutSeconds = 30)]
         public static async Task<string> UISession(string data)
