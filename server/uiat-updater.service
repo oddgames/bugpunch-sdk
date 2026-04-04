@@ -1,0 +1,13 @@
+[Unit]
+Description=UIAutomation Server Auto-Updater
+After=network.target docker.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /opt/uiat/server/auto-update.sh
+Restart=always
+RestartSec=10
+User=ec2-user
+
+[Install]
+WantedBy=multi-user.target

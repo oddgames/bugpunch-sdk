@@ -1,0 +1,16 @@
+{
+  "name": "au.com.oddgames.recorder",
+  "version": "0.1.0",
+  "displayName": "ODD Games Recorder",
+  "description": "Cross-platform video recording for Unity. Hardware-accelerated encoding on Editor, Windows, Android, and iOS.",
+  "unity": "2022.3",
+  "license": "SEE LICENSE IN LICENSE",
+  "dependencies": {},
+  "keywords": ["recorder", "video", "capture", "screen recording"],
+  "author": { "name": "ODD Games" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oddgames/ui-automation.git",
+    "directory": "recorder"
+  }
+}

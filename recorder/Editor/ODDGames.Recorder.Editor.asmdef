@@ -1,0 +1,23 @@
+{
+    "name": "ODDGames.Recorder.Editor",
+    "rootNamespace": "ODDGames.Recorder.Editor",
+    "references": [
+        "ODDGames.Recorder",
+        "Unity.Recorder.Editor"
+    ],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.recorder",
+            "expression": "",
+            "define": "UNITY_RECORDER"
+        }
+    ],
+    "noEngineReferences": false
+}

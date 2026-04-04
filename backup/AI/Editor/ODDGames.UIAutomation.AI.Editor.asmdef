@@ -1,0 +1,21 @@
+{
+    "name": "ODDGames.UIAutomation.AI.Editor",
+    "rootNamespace": "ODDGames.UIAutomation.AI.Editor",
+    "references": [
+        "ODDGames.UIAutomation",
+        "UnityEngine.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
