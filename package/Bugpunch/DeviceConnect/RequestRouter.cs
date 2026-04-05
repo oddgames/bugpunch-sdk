@@ -342,6 +342,28 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     return Response.NotFound(path);
                 }
 
+                // Test automation
+                if (path == "/test/reset" && method == "POST")
+                {
+                    return Response.Json(InvokeTestResetMethods());
+                }
+
+                if (path.StartsWith("/test/reload-scene") && method == "POST")
+                {
+                    var sceneName = Q(path, "name") ?? JsonVal(body, "name");
+                    if (string.IsNullOrEmpty(sceneName))
+                        return Response.Error("Scene name required", 400);
+                    try
+                    {
+                        UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
+                        return Response.Json("{\"ok\":true}");
+                    }
+                    catch (Exception ex)
+                    {
+                        return Response.Error(ex.Message, 500);
+                    }
+                }
+
                 return Response.NotFound(path);
             }
             catch (Exception ex)
@@ -349,6 +371,44 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Debug.LogError($"[Bugpunch] Route error ({path}): {ex}");
                 return Response.Error(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Find and invoke all static methods marked with [BugpunchTestReset].
+        /// </summary>
+        static string InvokeTestResetMethods()
+        {
+            int called = 0;
+            var errors = new System.Text.StringBuilder();
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    foreach (var type in assembly.GetTypes())
+                    {
+                        foreach (var method in type.GetMethods(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+                        {
+                            if (method.GetCustomAttributes(typeof(BugpunchTestResetAttribute), false).Length > 0)
+                            {
+                                try
+                                {
+                                    method.Invoke(null, null);
+                                    called++;
+                                    Debug.Log($"[Bugpunch] TestReset: called {type.Name}.{method.Name}()");
+                                }
+                                catch (Exception ex)
+                                {
+                                    errors.Append($"{type.Name}.{method.Name}: {ex.InnerException?.Message ?? ex.Message}; ");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { /* skip assemblies that can't be reflected */ }
+            }
+            if (errors.Length > 0)
+                return $"{{\"ok\":false,\"called\":{called},\"error\":\"{EscapeJson(errors.ToString())}\"}}";
+            return $"{{\"ok\":true,\"called\":{called}}}";
         }
 
         /// <summary>
