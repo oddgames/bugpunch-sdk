@@ -151,13 +151,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (path.StartsWith("/capture"))
                     return null;
 
-                // WebRTC signaling
+                // WebRTC signaling — returns null, handled async by BugpunchClient
                 if (path.StartsWith("/webrtc-"))
-                {
-                    var sessionId = Q(path, "sessionId") ?? "default";
-                    Streamer?.HandleSignalingMessage(path.Split('?')[0].TrimStart('/'), sessionId, body);
-                    return Response.Json("{\"ok\":true}");
-                }
+                    return null;
 
                 // Script execution
                 if (path == "/run" && method == "POST")

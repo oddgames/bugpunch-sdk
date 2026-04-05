@@ -57,18 +57,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         /// <summary>
         /// Handle a WebRTC signaling message from the dashboard (via tunnel).
-        /// Called from BugpunchClient when a webrtc-* message arrives.
+        /// Called from BugpunchClient for ICE and stop messages.
         /// </summary>
         public void HandleSignalingMessage(string type, string sessionId, string payload)
         {
             switch (type)
             {
-                case "webrtc-offer":
-                    StartCoroutine(HandleOffer(sessionId, payload));
-                    break;
-                case "webrtc-answer":
-                    StartCoroutine(HandleAnswer(payload));
-                    break;
                 case "webrtc-ice":
                     HandleIceCandidate(payload);
                     break;
@@ -78,12 +72,37 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
-        IEnumerator HandleOffer(string sessionId, string sdpJson)
+        /// <summary>
+        /// Handle an offer asynchronously. Calls onAnswer with the SDP answer JSON,
+        /// or onError if something fails. Used by BugpunchClient to return the answer
+        /// in the same HTTP response as the offer request.
+        /// </summary>
+        public void HandleOfferAsync(string sdpJson, Action<string> onAnswer, Action<string> onError)
+        {
+            StartCoroutine(HandleOffer(sdpJson, onAnswer, onError));
+        }
+
+        IEnumerator HandleOffer(string sdpJson, Action<string> onAnswer, Action<string> onError)
         {
             Debug.Log("[Bugpunch] WebRTC: received offer, creating answer...");
 
-            // Parse the offer SDP
-            var offerData = JsonUtility.FromJson<SdpMessage>(sdpJson);
+            SdpMessage offerData;
+            try
+            {
+                Debug.Log($"[Bugpunch] WebRTC: offer body length={sdpJson?.Length ?? 0}, starts with: {sdpJson?.Substring(0, Math.Min(100, sdpJson?.Length ?? 0))}");
+                offerData = JsonUtility.FromJson<SdpMessage>(sdpJson);
+                if (string.IsNullOrEmpty(offerData.sdp))
+                {
+                    onError?.Invoke("Empty SDP in offer");
+                    yield break;
+                }
+                Debug.Log($"[Bugpunch] WebRTC: parsed SDP, length={offerData.sdp.Length}");
+            }
+            catch (Exception ex)
+            {
+                onError?.Invoke($"Failed to parse offer: {ex.Message}");
+                yield break;
+            }
 
             // Cleanup previous connection
             CleanupPeerConnection();
@@ -99,19 +118,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             _pc = new RTCPeerConnection(ref config);
 
-            // ICE candidate handler — send back through tunnel
+            // ICE candidate handler — queue for later retrieval
             _pc.OnIceCandidate = candidate =>
             {
                 if (candidate == null) return;
-                var iceJson = JsonUtility.ToJson(new IceMessage
-                {
-                    candidate = candidate.Candidate,
-                    sdpMid = candidate.SdpMid,
-                    sdpMLineIndex = candidate.SdpMLineIndex ?? 0
-                });
-                _tunnel?.SendResponse(sessionId, 200,
-                    $"{{\"type\":\"webrtc-ice\",\"payload\":{iceJson}}}",
-                    "application/json");
+                // ICE candidates are sent via separate requests from the browser
+                // Device-side candidates are currently not forwarded back
+                // TODO: implement device→browser ICE via tunnel push
             };
 
             _pc.OnConnectionStateChange = state =>
@@ -131,6 +144,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _pc.AddTrack(_videoTrack);
 
             // Set remote description (the offer)
+            Debug.Log("[Bugpunch] WebRTC: setting remote description...");
             var offerDesc = new RTCSessionDescription
             {
                 type = RTCSdpType.Offer,
@@ -142,8 +156,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (setRemoteOp.IsError)
             {
                 Debug.LogError($"[Bugpunch] WebRTC: SetRemoteDescription failed: {setRemoteOp.Error.message}");
+                onError?.Invoke(setRemoteOp.Error.message);
                 yield break;
             }
+            Debug.Log("[Bugpunch] WebRTC: remote description set, creating answer...");
 
             // Create answer
             var answerOp = _pc.CreateAnswer();
@@ -152,8 +168,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (answerOp.IsError)
             {
                 Debug.LogError($"[Bugpunch] WebRTC: CreateAnswer failed: {answerOp.Error.message}");
+                onError?.Invoke(answerOp.Error.message);
                 yield break;
             }
+            Debug.Log("[Bugpunch] WebRTC: answer created, setting local description...");
 
             var answer = answerOp.Desc;
             var setLocalOp = _pc.SetLocalDescription(ref answer);
@@ -162,14 +180,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (setLocalOp.IsError)
             {
                 Debug.LogError($"[Bugpunch] WebRTC: SetLocalDescription failed: {setLocalOp.Error.message}");
+                onError?.Invoke(setLocalOp.Error.message);
                 yield break;
             }
 
-            // Send answer back through tunnel
+            // Return answer to caller
+            Debug.Log("[Bugpunch] WebRTC: sending answer back...");
             var answerJson = JsonUtility.ToJson(new SdpMessage { sdp = answer.sdp, type = "answer" });
-            _tunnel?.SendResponse(sessionId, 200,
-                $"{{\"type\":\"webrtc-answer\",\"payload\":{answerJson}}}",
-                "application/json");
+            onAnswer?.Invoke(answerJson);
 
             _streaming = true;
             StartCoroutine(RenderLoop());

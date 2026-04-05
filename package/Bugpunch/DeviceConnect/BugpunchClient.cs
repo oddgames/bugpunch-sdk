@@ -148,6 +148,31 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield break;
             }
 
+#if BUGPUNCH_WEBRTC
+            if (response == null && path.StartsWith("/webrtc-"))
+            {
+                var type = path.Split('?')[0].TrimStart('/');
+                if (type == "webrtc-offer" && Streamer != null)
+                {
+                    // Handle offer — response sent asynchronously via tunnel when answer is ready
+                    var rid = requestId;
+                    Streamer.HandleOfferAsync(body,
+                        answer => Tunnel.SendResponse(rid, 200, answer, "application/json"),
+                        err => Tunnel.SendResponse(rid, 500, $"{{\"error\":\"{err}\"}}", "application/json"));
+                }
+                else if (Streamer != null)
+                {
+                    Streamer.HandleSignalingMessage(type, requestId, body);
+                    Tunnel.SendResponse(requestId, 200, "{\"ok\":true}", "application/json");
+                }
+                else
+                {
+                    Tunnel.SendResponse(requestId, 501, "{\"error\":\"WebRTC not available\"}", "application/json");
+                }
+                yield break;
+            }
+#endif
+
             if (response == null)
             {
                 Tunnel.SendResponse(requestId, 404, "{\"error\":\"Not found\"}", "application/json");
