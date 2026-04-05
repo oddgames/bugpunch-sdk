@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text;
 using UnityEngine;
 
@@ -240,11 +241,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var sb = new StringBuilder();
             sb.Append("{");
             sb.Append("\"active\":true,");
-            sb.Append($"\"position\":{{\"x\":{pos.x:F4},\"y\":{pos.y:F4},\"z\":{pos.z:F4}}},");
-            sb.Append($"\"rotation\":{{\"x\":{rot.x:F4},\"y\":{rot.y:F4},\"z\":{rot.z:F4}}},");
-            sb.Append($"\"focusPoint\":{{\"x\":{_focusPoint.x:F4},\"y\":{_focusPoint.y:F4},\"z\":{_focusPoint.z:F4}}},");
-            sb.Append($"\"orbitDistance\":{_orbitDistance:F4},");
-            sb.Append($"\"fov\":{_sceneCamera.fieldOfView:F1}");
+            string F(float v) => v.ToString("F4", CultureInfo.InvariantCulture);
+            sb.Append($"\"position\":{{\"x\":{F(pos.x)},\"y\":{F(pos.y)},\"z\":{F(pos.z)}}},");
+            sb.Append($"\"rotation\":{{\"x\":{F(rot.x)},\"y\":{F(rot.y)},\"z\":{F(rot.z)}}},");
+            sb.Append($"\"focusPoint\":{{\"x\":{F(_focusPoint.x)},\"y\":{F(_focusPoint.y)},\"z\":{F(_focusPoint.z)}}},");
+            sb.Append($"\"orbitDistance\":{F(_orbitDistance)},");
+            sb.Append($"\"fov\":{_sceneCamera.fieldOfView.ToString("F1", CultureInfo.InvariantCulture)}");
             sb.Append("}");
             return sb.ToString();
         }

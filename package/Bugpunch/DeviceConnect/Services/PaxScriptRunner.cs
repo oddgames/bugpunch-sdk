@@ -24,11 +24,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 var scripter = new PaxScripter();
 
-                // Register all loaded assemblies so scripts can access Unity API, etc.
                 foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
                 {
                     try { scripter.RegisterAssembly(assembly); }
-                    catch { /* skip problematic assemblies */ }
+                    catch { }
                 }
 
                 var errors = new StringBuilder();
@@ -47,34 +46,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     errors.AppendLine(ex.Message);
                 };
 
-                // Phase 1: Compile
                 scripter.AddModule("1");
                 scripter.AddCode("1", code);
 
-                // Check compile errors (both from event AND direct property)
+                // Explicit compile → link → run for proper error detection at each phase
+                scripter.Compile();
                 if (scripter.HasErrors || errors.Length > 0)
                 {
-                    // Collect any errors we missed from the event
-                    if (errors.Length == 0 && scripter.Error_List != null)
-                    {
-                        foreach (ScriptError err in scripter.Error_List)
-                            errors.AppendLine($"({err.LineNumber}) {err.Message}");
-                    }
-                    return $"{{\"ok\":false,\"errors\":[{{\"message\":\"{Esc(errors.ToString())}\"}}]}}";
+                    CollectErrors(scripter, errors);
+                    return Error(errors);
                 }
 
-                // Phase 2: Execute
-                scripter.Run(RunMode.Run);
-
-                // Check runtime errors
+                scripter.Link();
                 if (scripter.HasErrors || errors.Length > 0)
                 {
-                    if (errors.Length == 0 && scripter.Error_List != null)
-                    {
-                        foreach (ScriptError err in scripter.Error_List)
-                            errors.AppendLine($"({err.LineNumber}) {err.Message}");
-                    }
-                    return $"{{\"ok\":false,\"errors\":[{{\"message\":\"{Esc(errors.ToString())}\"}}]}}";
+                    CollectErrors(scripter, errors);
+                    return Error(errors);
+                }
+
+                scripter.Run(RunMode.Run);
+                if (scripter.HasErrors || errors.Length > 0)
+                {
+                    CollectErrors(scripter, errors);
+                    return Error(errors);
                 }
 
                 return "{\"ok\":true,\"output\":\"\"}";
@@ -84,6 +78,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 return $"{{\"ok\":false,\"errors\":[{{\"message\":\"{Esc(ex.Message)}\"}}]}}";
             }
         }
+
+        static void CollectErrors(PaxScripter scripter, StringBuilder errors)
+        {
+            if (errors.Length > 0) return;
+            if (scripter.Error_List == null) return;
+            foreach (ScriptError err in scripter.Error_List)
+                errors.AppendLine($"({err.LineNumber}) {err.Message}");
+        }
+
+        static string Error(StringBuilder errors) =>
+            $"{{\"ok\":false,\"errors\":[{{\"message\":\"{Esc(errors.ToString())}\"}}]}}";
 
         static string Esc(string s) =>
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
