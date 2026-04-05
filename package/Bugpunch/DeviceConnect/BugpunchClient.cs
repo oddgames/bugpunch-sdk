@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace ODDGames.Bugpunch.DeviceConnect
 {
@@ -98,7 +99,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 // WebSocket debug mode — full tunnel for live features
                 Tunnel = new TunnelClient(Config);
-                Tunnel.OnConnected += () => { Debug.Log("[Bugpunch] Connected"); OnConnected?.Invoke(); };
+                Tunnel.OnConnected += () =>
+                {
+                    Debug.Log("[Bugpunch] Connected");
+                    StartCoroutine(FetchIceServers());
+                    OnConnected?.Invoke();
+                };
                 Tunnel.OnDisconnected += () => { Debug.Log("[Bugpunch] Disconnected"); OnDisconnected?.Invoke(); };
                 Tunnel.OnError += e => { Debug.LogError($"[Bugpunch] {e}"); OnError?.Invoke(e); };
                 Tunnel.OnRequest += HandleRequest;
@@ -215,6 +221,72 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Debug.Log($"[Bugpunch] Received script via poll: {script.Name}");
                 // TODO: permission check via NativeDialogFactory, then execute via ScriptRunner
             }
+        }
+
+        /// <summary>
+        /// Fetch ICE server config from the server and pass to WebRTC streamer.
+        /// Called once after tunnel connects.
+        /// </summary>
+        IEnumerator FetchIceServers()
+        {
+#if BUGPUNCH_WEBRTC
+            var url = Config.HttpBaseUrl + "/api/devices/ice-servers";
+            using var req = UnityWebRequest.Get(url);
+            req.SetRequestHeader("X-API-Key", Config.apiKey);
+            yield return req.SendWebRequest();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogWarning($"[Bugpunch] Failed to fetch ICE servers: {req.error} — using default STUN");
+                yield break;
+            }
+
+            try
+            {
+                var json = req.downloadHandler.text;
+                var response = JsonUtility.FromJson<IceServersResponse>(json);
+                if (response.iceServers == null || response.iceServers.Length == 0)
+                {
+                    Debug.Log("[Bugpunch] No ICE servers returned, using default STUN");
+                    yield break;
+                }
+
+                var servers = new Unity.WebRTC.RTCIceServer[response.iceServers.Length];
+                for (int i = 0; i < response.iceServers.Length; i++)
+                {
+                    var s = response.iceServers[i];
+                    servers[i] = new Unity.WebRTC.RTCIceServer
+                    {
+                        urls = new[] { s.urls },
+                        username = s.username ?? "",
+                        credential = s.credential ?? ""
+                    };
+                }
+
+                if (Streamer != null)
+                    Streamer.SetIceServers(servers);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Bugpunch] Failed to parse ICE servers: {ex.Message}");
+            }
+#else
+            yield break;
+#endif
+        }
+
+        [Serializable]
+        struct IceServersResponse
+        {
+            public IceServerEntry[] iceServers;
+        }
+
+        [Serializable]
+        struct IceServerEntry
+        {
+            public string urls;
+            public string username;
+            public string credential;
         }
 
         void OnDestroy()

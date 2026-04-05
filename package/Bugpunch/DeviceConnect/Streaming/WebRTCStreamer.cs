@@ -25,6 +25,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         TunnelClient _tunnel;
         readonly Queue<Action> _mainThreadQueue = new();
+        RTCIceServer[] _iceServers;
+
+        /// <summary>
+        /// Set custom ICE servers (STUN + TURN) fetched from the server.
+        /// If not set, falls back to default STUN server.
+        /// </summary>
+        public void SetIceServers(RTCIceServer[] servers)
+        {
+            _iceServers = servers;
+            Debug.Log($"[Bugpunch] WebRTC: configured {servers?.Length ?? 0} ICE server(s)");
+        }
 
         /// <summary>
         /// Initialize the streamer with a tunnel client for signaling.
@@ -107,10 +118,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Cleanup previous connection
             CleanupPeerConnection();
 
-            // Create peer connection
+            // Create peer connection — use custom ICE servers if set, otherwise fallback to STUN
             var config = new RTCConfiguration
             {
-                iceServers = new[]
+                iceServers = _iceServers ?? new[]
                 {
                     new RTCIceServer { urls = new[] { "stun:stun.l.google.com:19302" } }
                 }
