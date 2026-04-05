@@ -13,8 +13,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public ConsoleService Console;
         public ScreenCaptureService ScreenCapture;
         public InspectorService Inspector;
+        public PerformanceService Performance;
         public IScriptRunner ScriptRunner;
         public WebRTCStreamer Streamer;
+        public SceneCameraService SceneCamera;
 
         public struct Response
         {
@@ -136,6 +138,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     return Response.Json(Inspector?.ResolveChain(chain, info) ?? "{}");
                 }
 
+                // Performance
+                if (path == "/perf" || path.StartsWith("/perf?"))
+                    return Response.Json(Performance?.GetMetrics() ?? "{}");
+
                 // Console
                 if (path.StartsWith("/log"))
                 {
@@ -154,6 +160,70 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 // WebRTC signaling — returns null, handled async by BugpunchClient
                 if (path.StartsWith("/webrtc-"))
                     return null;
+
+                // Scene Camera
+                if (path.StartsWith("/scene-camera"))
+                {
+                    if (SceneCamera == null)
+                        return Response.Error("Scene camera service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/scene-camera/start" && method == "POST")
+                    {
+                        return Response.Json(SceneCamera.StartSceneCamera());
+                    }
+
+                    if (subPath == "/scene-camera/stop" && method == "POST")
+                    {
+                        return Response.Json(SceneCamera.StopSceneCamera());
+                    }
+
+                    if (subPath == "/scene-camera/orbit" && method == "POST")
+                    {
+                        var dx = float.TryParse(JsonVal(body, "deltaX"), out var odx) ? odx : 0f;
+                        var dy = float.TryParse(JsonVal(body, "deltaY"), out var ody) ? ody : 0f;
+                        return Response.Json(SceneCamera.Orbit(dx, dy));
+                    }
+
+                    if (subPath == "/scene-camera/pan" && method == "POST")
+                    {
+                        var dx = float.TryParse(JsonVal(body, "deltaX"), out var pdx) ? pdx : 0f;
+                        var dy = float.TryParse(JsonVal(body, "deltaY"), out var pdy) ? pdy : 0f;
+                        return Response.Json(SceneCamera.Pan(dx, dy));
+                    }
+
+                    if (subPath == "/scene-camera/zoom" && method == "POST")
+                    {
+                        var d = float.TryParse(JsonVal(body, "delta"), out var zd) ? zd : 0f;
+                        return Response.Json(SceneCamera.Zoom(d));
+                    }
+
+                    if (subPath == "/scene-camera/transform" && method == "POST")
+                    {
+                        var px = float.TryParse(JsonVal(body, "px"), out var tpx) ? tpx : 0f;
+                        var py = float.TryParse(JsonVal(body, "py"), out var tpy) ? tpy : 0f;
+                        var pz = float.TryParse(JsonVal(body, "pz"), out var tpz) ? tpz : 0f;
+                        var rx = float.TryParse(JsonVal(body, "rx"), out var trx) ? trx : 0f;
+                        var ry = float.TryParse(JsonVal(body, "ry"), out var try_) ? try_ : 0f;
+                        var rz = float.TryParse(JsonVal(body, "rz"), out var trz) ? trz : 0f;
+                        return Response.Json(SceneCamera.UpdateTransform(
+                            new Vector3(tpx, tpy, tpz), new Vector3(trx, try_, trz)));
+                    }
+
+                    if (subPath == "/scene-camera/focus" && method == "POST")
+                    {
+                        var id = int.TryParse(JsonVal(body, "instanceId"), out var fid) ? fid : 0;
+                        return Response.Json(SceneCamera.FocusOn(id));
+                    }
+
+                    if (subPath == "/scene-camera/state")
+                    {
+                        return Response.Json(SceneCamera.GetState());
+                    }
+
+                    return Response.NotFound(path);
+                }
 
                 // Script execution
                 if (path == "/run" && method == "POST")
@@ -208,5 +278,38 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         static string Esc(string s) =>
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
+
+        /// <summary>
+        /// Minimal JSON value extractor for flat objects. Returns the raw string value for a key.
+        /// Handles strings, numbers, booleans. Not a full parser — good enough for simple request bodies.
+        /// </summary>
+        static string JsonVal(string json, string key)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            var needle = $"\"{key}\"";
+            var ki = json.IndexOf(needle, StringComparison.Ordinal);
+            if (ki < 0) return null;
+
+            var ci = json.IndexOf(':', ki + needle.Length);
+            if (ci < 0) return null;
+
+            // Skip whitespace after colon
+            var vi = ci + 1;
+            while (vi < json.Length && (json[vi] == ' ' || json[vi] == '\t')) vi++;
+            if (vi >= json.Length) return null;
+
+            if (json[vi] == '"')
+            {
+                // String value
+                var end = json.IndexOf('"', vi + 1);
+                return end > vi ? json.Substring(vi + 1, end - vi - 1) : null;
+            }
+
+            // Number or boolean — read until comma, brace, or end
+            var start = vi;
+            while (vi < json.Length && json[vi] != ',' && json[vi] != '}' && json[vi] != ']')
+                vi++;
+            return json.Substring(start, vi - start).Trim();
+        }
     }
 }

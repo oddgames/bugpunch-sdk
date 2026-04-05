@@ -15,6 +15,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public TunnelClient Tunnel { get; private set; }
         public RequestRouter Router { get; private set; }
         public WebRTCStreamer Streamer { get; private set; }
+        public SceneCameraService SceneCamera { get; private set; }
         public BugReporter Reporter { get; private set; }
         public DeviceRegistration Registration { get; private set; }
         public bool IsConnected => (Tunnel != null && Tunnel.IsConnected) || (Registration != null && Registration.IsRegistered);
@@ -60,11 +61,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var console = Config.enableConsole ? new ConsoleService() : null;
             var screenCapture = Config.enableScreenCapture ? gameObject.AddComponent<ScreenCaptureService>() : null;
             var inspector = Config.enableInspector ? new InspectorService() : null;
+            var perf = new PerformanceService();
             IScriptRunner scriptRunner = null;
 #if BUGPUNCH_HAS_PAXSCRIPT
             if (Config.enableScriptRunner)
                 scriptRunner = new PaxScriptRunner();
 #endif
+
+            // Create scene camera service
+            SceneCamera = gameObject.AddComponent<SceneCameraService>();
 
             // Create router
             Router = new RequestRouter
@@ -73,7 +78,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Console = console,
                 ScreenCapture = screenCapture,
                 Inspector = inspector,
+                Performance = perf,
                 ScriptRunner = scriptRunner,
+                SceneCamera = SceneCamera,
                 Streamer = null // set after streamer created
             };
 
@@ -85,6 +92,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             // Create WebRTC streamer
             Streamer = gameObject.AddComponent<WebRTCStreamer>();
+            SceneCamera.SetStreamer(Streamer);
 
             if (Config.ShouldUseWebSocket)
             {
