@@ -359,6 +359,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(Files.UnzipToDirectory(Q(path, "path"), body, clearFirst));
                     }
 
+                    if (subPath == "/files/prefs/export" && method == "POST")
+                        return Response.Json(Files.ExportPlayerPrefs(body));
+
+                    if (subPath == "/files/prefs/import" && method == "POST")
+                    {
+                        var clear = Q(path, "clear") == "true";
+                        return Response.Json(Files.ImportPlayerPrefs(body, clear));
+                    }
+
                     return Response.NotFound(path);
                 }
 

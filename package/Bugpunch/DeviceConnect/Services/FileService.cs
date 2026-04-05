@@ -457,6 +457,127 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         // ------------------------------------------------------------------
+        // PlayerPrefs Export/Import
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Export all known PlayerPrefs keys as JSON.
+        /// Since Unity doesn't provide a way to enumerate all keys,
+        /// we export a provided list of keys or use common patterns.
+        /// </summary>
+        public string ExportPlayerPrefs(string keysJson)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.Append("{\"ok\":true,\"prefs\":{");
+                bool first = true;
+
+                // Parse key list from JSON array, or use empty
+                string[] keys = null;
+                if (!string.IsNullOrEmpty(keysJson))
+                {
+                    // Simple JSON array parse: ["key1","key2"]
+                    var trimmed = keysJson.Trim();
+                    if (trimmed.StartsWith("[") && trimmed.EndsWith("]"))
+                    {
+                        var inner = trimmed.Substring(1, trimmed.Length - 2);
+                        keys = inner.Split(',');
+                        for (int i = 0; i < keys.Length; i++)
+                            keys[i] = keys[i].Trim().Trim('"');
+                    }
+                }
+
+                if (keys != null)
+                {
+                    foreach (var key in keys)
+                    {
+                        if (string.IsNullOrEmpty(key)) continue;
+                        if (!UnityEngine.PlayerPrefs.HasKey(key)) continue;
+
+                        if (!first) sb.Append(",");
+                        first = false;
+
+                        // Try int, then float, then string
+                        var intVal = UnityEngine.PlayerPrefs.GetInt(key, int.MinValue);
+                        var floatVal = UnityEngine.PlayerPrefs.GetFloat(key, float.MinValue);
+                        var strVal = UnityEngine.PlayerPrefs.GetString(key, null);
+
+                        sb.Append($"\"{Esc(key)}\":");
+                        if (strVal != null)
+                            sb.Append($"{{\"type\":\"string\",\"value\":\"{Esc(strVal)}\"}}");
+                        else if (intVal != int.MinValue)
+                            sb.Append($"{{\"type\":\"int\",\"value\":{intVal}}}");
+                        else if (floatVal != float.MinValue)
+                            sb.Append($"{{\"type\":\"float\",\"value\":{floatVal.ToString("G", CultureInfo.InvariantCulture)}}}");
+                    }
+                }
+
+                sb.Append("}}");
+                return sb.ToString();
+            }
+            catch (Exception ex)
+            {
+                return Error(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Import PlayerPrefs from a JSON object.
+        /// </summary>
+        public string ImportPlayerPrefs(string prefsJson, bool clearFirst = false)
+        {
+            try
+            {
+                if (clearFirst)
+                    UnityEngine.PlayerPrefs.DeleteAll();
+
+                // Simple parsing — expects {"key":{"type":"string","value":"val"}, ...}
+                // For robustness, use the JsonVal helper pattern
+                int imported = 0;
+                // Crude but works for flat key-value prefs
+                var pairs = prefsJson.Trim().TrimStart('{').TrimEnd('}').Split(new[] { "}," }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var pair in pairs)
+                {
+                    var colonIdx = pair.IndexOf(':');
+                    if (colonIdx < 0) continue;
+                    var key = pair.Substring(0, colonIdx).Trim().Trim('"');
+                    var rest = pair.Substring(colonIdx + 1).TrimEnd('}');
+
+                    var typeStart = rest.IndexOf("\"type\":\"") + 8;
+                    var typeEnd = rest.IndexOf("\"", typeStart);
+                    if (typeStart < 8 || typeEnd < 0) continue;
+                    var type = rest.Substring(typeStart, typeEnd - typeStart);
+
+                    var valStart = rest.IndexOf("\"value\":") + 8;
+                    if (valStart < 8) continue;
+                    var valStr = rest.Substring(valStart).Trim().Trim('"');
+
+                    switch (type)
+                    {
+                        case "string":
+                            UnityEngine.PlayerPrefs.SetString(key, valStr);
+                            imported++;
+                            break;
+                        case "int":
+                            if (int.TryParse(valStr, out var iv)) { UnityEngine.PlayerPrefs.SetInt(key, iv); imported++; }
+                            break;
+                        case "float":
+                            if (float.TryParse(valStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var fv)) { UnityEngine.PlayerPrefs.SetFloat(key, fv); imported++; }
+                            break;
+                    }
+                }
+
+                UnityEngine.PlayerPrefs.Save();
+                return $"{{\"ok\":true,\"imported\":{imported}}}";
+            }
+            catch (Exception ex)
+            {
+                return Error(ex.Message);
+            }
+        }
+
+        // ------------------------------------------------------------------
         // Security
         // ------------------------------------------------------------------
 
