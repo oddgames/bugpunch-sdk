@@ -19,7 +19,8 @@
     "com.unity.ext.nunit": "2.0.5",
     "com.unity.recorder": "5.0.0",
     "com.unity.nuget.newtonsoft-json": "3.2.1",
-    "com.unity.webrtc": "3.0.0-pre.7"
+    "com.unity.webrtc": "3.0.0-pre.7",
+    "au.com.oddgames.paxscript": "https://github.com/oddgames/paxscript.git?path=Package"
   },
   "keywords": [
     "ui",

@@ -1,4 +1,3 @@
-#if BUGPUNCH_HAS_PAXSCRIPT
 using System;
 using System.Text;
 using UnityEngine;
@@ -94,4 +93,3 @@ namespace ODDGames.Bugpunch.DeviceConnect
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
     }
 }
-#endif

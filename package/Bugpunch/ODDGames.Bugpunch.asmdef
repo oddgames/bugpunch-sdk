@@ -22,11 +22,6 @@
             "name": "com.unity.webrtc",
             "expression": "",
             "define": "BUGPUNCH_WEBRTC"
-        },
-        {
-            "name": "au.com.oddgames.paxscript",
-            "expression": "",
-            "define": "BUGPUNCH_HAS_PAXSCRIPT"
         }
     ],
     "noEngineReferences": false

@@ -66,10 +66,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var files = new FileService();
             var deviceInfo = new DeviceInfoService();
             IScriptRunner scriptRunner = null;
-#if BUGPUNCH_HAS_PAXSCRIPT
             if (Config.enableScriptRunner)
                 scriptRunner = new PaxScriptRunner();
-#endif
 
             // Create scene camera service
             SceneCamera = gameObject.AddComponent<SceneCameraService>();
