@@ -63,6 +63,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var screenCapture = Config.enableScreenCapture ? gameObject.AddComponent<ScreenCaptureService>() : null;
             var inspector = Config.enableInspector ? new InspectorService() : null;
             var perf = new PerformanceService();
+            var files = new FileService();
+            var deviceInfo = new DeviceInfoService();
             IScriptRunner scriptRunner = null;
 #if BUGPUNCH_HAS_PAXSCRIPT
             if (Config.enableScriptRunner)
@@ -82,6 +84,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Performance = perf,
                 ScriptRunner = scriptRunner,
                 SceneCamera = SceneCamera,
+                Files = files,
+                DeviceInfo = deviceInfo,
                 Streamer = null // set after streamer created
             };
 

@@ -17,6 +17,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public IScriptRunner ScriptRunner;
         public WebRTCStreamer Streamer;
         public SceneCameraService SceneCamera;
+        public FileService Files;
+        public DeviceInfoService DeviceInfo;
 
         public struct Response
         {
@@ -278,6 +280,51 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (ScriptRunner == null || !ScriptRunner.IsAvailable)
                         return Response.Error("Script execution not available", 501);
                     return Response.Json(ScriptRunner.Execute(body));
+                }
+
+                // Device info
+                if (path == "/device-info" || path.StartsWith("/device-info?"))
+                    return Response.Json(DeviceInfo?.GetDeviceInfo() ?? "{}");
+
+                // File browser
+                if (path.StartsWith("/files"))
+                {
+                    if (Files == null)
+                        return Response.Error("File service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/files/paths")
+                        return Response.Json(Files.GetPaths());
+
+                    if (subPath == "/files/list")
+                        return Response.Json(Files.ListDirectory(Q(path, "path")));
+
+                    if (subPath == "/files/read")
+                    {
+                        var maxBytes = int.TryParse(Q(path, "maxBytes"), out var mb) ? mb : 1048576;
+                        return Response.Json(Files.ReadFile(Q(path, "path"), maxBytes));
+                    }
+
+                    if (subPath == "/files/write" && method == "POST")
+                    {
+                        var isBase64 = Q(path, "base64") == "true";
+                        return Response.Json(Files.WriteFile(Q(path, "path"), body, isBase64));
+                    }
+
+                    if (subPath == "/files/delete" && method == "POST")
+                    {
+                        var recursive = Q(path, "recursive") == "true";
+                        return Response.Json(Files.DeletePath(Q(path, "path"), recursive));
+                    }
+
+                    if (subPath == "/files/mkdir" && method == "POST")
+                        return Response.Json(Files.CreateDirectory(Q(path, "path")));
+
+                    if (subPath == "/files/info")
+                        return Response.Json(Files.GetFileInfo(Q(path, "path")));
+
+                    return Response.NotFound(path);
                 }
 
                 return Response.NotFound(path);
