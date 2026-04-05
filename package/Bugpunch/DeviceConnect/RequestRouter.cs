@@ -242,6 +242,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(SceneCamera.GetState());
                     }
 
+                    if (subPath == "/scene-camera/projection" && method == "POST")
+                    {
+                        return Response.Json(SceneCamera.ToggleProjection());
+                    }
+
+                    if (subPath == "/scene-camera/snap" && method == "POST")
+                    {
+                        var axis = JsonVal(body, "axis") ?? "front";
+                        return Response.Json(SceneCamera.SnapToAxis(axis));
+                    }
+
+                    if (subPath == "/scene-camera/grid" && method == "POST")
+                    {
+                        var enabled = JsonVal(body, "enabled")?.ToLower() != "false";
+                        return Response.Json(SceneCamera.SetGrid(enabled));
+                    }
+
+                    if (subPath == "/scene-camera/zoom-drag" && method == "POST")
+                    {
+                        var d = float.TryParse(JsonVal(body, "delta"), out var zdd) ? zdd : 0f;
+                        return Response.Json(SceneCamera.ZoomDrag(d));
+                    }
+
                     return Response.NotFound(path);
                 }
 

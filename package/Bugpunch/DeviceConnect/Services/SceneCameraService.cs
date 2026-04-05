@@ -20,6 +20,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         Vector3 _focusPoint;
         float _orbitDistance = 10f;
+        bool _gridEnabled = true;
 
         // Sensitivity multipliers
         const float OrbitSensitivity = 0.3f;
@@ -263,6 +264,59 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Toggle between perspective and orthographic projection.
+        /// </summary>
+        public string ToggleProjection()
+        {
+            if (_sceneCamera == null) return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
+            _sceneCamera.orthographic = !_sceneCamera.orthographic;
+            if (_sceneCamera.orthographic)
+                _sceneCamera.orthographicSize = _orbitDistance * 0.5f;
+            return $"{{\"ok\":true,\"orthographic\":{(_sceneCamera.orthographic ? "true" : "false")}}}";
+        }
+
+        /// <summary>
+        /// Snap camera to a specific axis view.
+        /// axis: "front", "back", "right", "left", "top", "bottom"
+        /// </summary>
+        public string SnapToAxis(string axis)
+        {
+            if (_sceneCamera == null) return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
+            var t = _sceneCameraGo.transform;
+            Vector3 dir;
+            switch (axis?.ToLower())
+            {
+                case "front": dir = Vector3.forward; break;
+                case "back": dir = -Vector3.forward; break;
+                case "right": dir = -Vector3.right; break;
+                case "left": dir = Vector3.right; break;
+                case "top": dir = -Vector3.up; break;
+                case "bottom": dir = Vector3.up; break;
+                default: return "{\"ok\":false,\"error\":\"Unknown axis\"}";
+            }
+            t.position = _focusPoint + dir * _orbitDistance;
+            t.LookAt(_focusPoint);
+            return "{\"ok\":true}";
+        }
+
+        /// <summary>
+        /// Enable or disable grid rendering.
+        /// </summary>
+        public string SetGrid(bool enabled)
+        {
+            _gridEnabled = enabled;
+            return "{\"ok\":true}";
+        }
+
+        /// <summary>
+        /// Zoom via mouse drag delta (Alt + Right-click drag). Same effect as Zoom but from drag input.
+        /// </summary>
+        public string ZoomDrag(float delta)
+        {
+            return Zoom(delta);
+        }
+
+        /// <summary>
         /// Get current camera state as JSON.
         /// </summary>
         public string GetState()
@@ -284,7 +338,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append($"\"rotation\":{{\"x\":{F(rot.x)},\"y\":{F(rot.y)},\"z\":{F(rot.z)}}},");
             sb.Append($"\"focusPoint\":{{\"x\":{F(_focusPoint.x)},\"y\":{F(_focusPoint.y)},\"z\":{F(_focusPoint.z)}}},");
             sb.Append($"\"orbitDistance\":{F(_orbitDistance)},");
-            sb.Append($"\"fov\":{_sceneCamera.fieldOfView.ToString("F1", CultureInfo.InvariantCulture)}");
+            sb.Append($"\"fov\":{_sceneCamera.fieldOfView.ToString("F1", CultureInfo.InvariantCulture)},");
+            sb.Append($"\"orthographic\":{(_sceneCamera.orthographic ? "true" : "false")},");
+            sb.Append($"\"gridEnabled\":{(_gridEnabled ? "true" : "false")}");
             sb.Append("}");
             return sb.ToString();
         }
