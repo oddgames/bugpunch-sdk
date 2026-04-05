@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -154,11 +155,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             else
             {
                 // Positive IDs = GameObject instance IDs
-                GameObject go = null;
-                foreach (var g in Resources.FindObjectsOfTypeAll<GameObject>())
-                {
-                    if (g.GetInstanceID() == id) { go = g; break; }
-                }
+                var go = FastFindGameObject(id);
                 if (go == null) return "[]";
 
                 var t = go.transform;
@@ -183,17 +180,37 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!int.TryParse(instanceIdStr, out var id))
                 return "{\"ok\":false,\"error\":\"Invalid instance ID\"}";
 
-            GameObject go = null;
-            foreach (var g in Resources.FindObjectsOfTypeAll<GameObject>())
-            {
-                if (g.GetInstanceID() == id) { go = g; break; }
-            }
+            var go = FastFindGameObject(id);
 
             if (go == null)
                 return "{\"ok\":false,\"error\":\"GameObject not found\"}";
 
             Object.Destroy(go);
             return "{\"ok\":true}";
+        }
+
+        static MethodInfo _findMethod;
+        static GameObject FastFindGameObject(int id)
+        {
+            // Use Unity's internal fast lookup (no allocation)
+            if (_findMethod == null)
+                _findMethod = typeof(Object).GetMethod("FindObjectFromInstanceID", BindingFlags.NonPublic | BindingFlags.Static);
+            if (_findMethod != null)
+            {
+                try
+                {
+                    var obj = _findMethod.Invoke(null, new object[] { id }) as Object;
+                    if (obj is GameObject go) return go;
+                    if (obj is Component c) return c.gameObject;
+                }
+                catch { }
+            }
+            // Fallback
+            foreach (var g in Resources.FindObjectsOfTypeAll<GameObject>())
+            {
+                if (g.GetInstanceID() == id) return g;
+            }
+            return null;
         }
 
         static string EscapeJson(string s) =>

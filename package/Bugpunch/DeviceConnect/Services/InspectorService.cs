@@ -368,16 +368,41 @@ namespace ODDGames.Bugpunch.DeviceConnect
         static GameObject FindByInstanceId(string idStr)
         {
             if (!int.TryParse(idStr, out var id)) return null;
+
+            // Fast path: Unity's internal instance ID lookup (no allocation)
+            var obj = FindObjectFromInstanceID(id);
+            if (obj is GameObject go) return go;
+            if (obj is Component comp) return comp.gameObject;
+
 #if UNITY_EDITOR
-            var obj = UnityEditor.EditorUtility.EntityIdToObject(id) as GameObject;
-            if (obj != null) return obj;
+            var edObj = UnityEditor.EditorUtility.InstanceIDToObject(id) as GameObject;
+            if (edObj != null) return edObj;
 #endif
-            foreach (var go in Resources.FindObjectsOfTypeAll<GameObject>())
+            // Last resort fallback (expensive — iterates all objects)
+            foreach (var g in Resources.FindObjectsOfTypeAll<GameObject>())
             {
-                if (go.GetInstanceID() == id) return go;
+                if (g.GetInstanceID() == id) return g;
             }
             return null;
         }
+
+        static UnityEngine.Object FindObjectFromInstanceID(int id)
+        {
+            // Use reflection to access Unity's internal fast lookup
+            if (_findObjectMethod == null)
+            {
+                _findObjectMethod = typeof(UnityEngine.Object).GetMethod(
+                    "FindObjectFromInstanceID",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+            }
+            if (_findObjectMethod != null)
+            {
+                try { return _findObjectMethod.Invoke(null, new object[] { id }) as UnityEngine.Object; }
+                catch { }
+            }
+            return null;
+        }
+        static MethodInfo _findObjectMethod;
 
         static Component FindComponentById(string goIdStr, string compIdStr)
         {
