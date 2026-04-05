@@ -2,6 +2,9 @@ using System;
 using System.Globalization;
 using System.Text;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace ODDGames.Bugpunch.DeviceConnect
 {
@@ -21,6 +24,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         Vector3 _focusPoint;
         float _orbitDistance = 10f;
         bool _gridEnabled = true;
+        string _currentRenderMode = "default";
 
         // Sensitivity multipliers
         const float OrbitSensitivity = 0.3f;
@@ -84,6 +88,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             if (_sceneCameraGo == null)
                 return "{\"ok\":true,\"message\":\"Scene camera not active\"}";
+
+            // Clean up render mode state
+            CleanupRenderMode();
 
             Destroy(_sceneCameraGo);
             _sceneCameraGo = null;
@@ -316,6 +323,337 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return Zoom(delta);
         }
 
+        // -----------------------------------------------------------------
+        // Render modes
+        // -----------------------------------------------------------------
+
+        /// <summary>
+        /// Set the scene camera's render mode.
+        /// Modes: "default", "wireframe", "normals", "uv", "overdraw", "depth"
+        /// </summary>
+        public string SetRenderMode(string mode)
+        {
+            if (_sceneCamera == null)
+                return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
+
+            // Clean up previous mode
+            CleanupRenderMode();
+
+            switch (mode?.ToLower())
+            {
+                case "default":
+                case "shaded":
+                    mode = "default";
+                    break;
+
+                case "wireframe":
+                    // GL.wireframe is global — managed via camera callbacks
+                    Camera.onPreRender += OnWireframePreRender;
+                    Camera.onPostRender += OnWireframePostRender;
+                    break;
+
+                case "normals":
+                {
+                    var shader = FindOrCreateShader("Hidden/Bugpunch/Normals", NormalsShaderSource);
+                    if (shader != null) _sceneCamera.SetReplacementShader(shader, "");
+                    else return "{\"ok\":false,\"error\":\"Failed to create normals shader\"}";
+                    break;
+                }
+
+                case "uv":
+                {
+                    var shader = FindOrCreateShader("Hidden/Bugpunch/UV", UVShaderSource);
+                    if (shader != null) _sceneCamera.SetReplacementShader(shader, "");
+                    else return "{\"ok\":false,\"error\":\"Failed to create UV shader\"}";
+                    break;
+                }
+
+                case "depth":
+                {
+                    var shader = FindOrCreateShader("Hidden/Bugpunch/Depth", DepthShaderSource);
+                    if (shader != null) _sceneCamera.SetReplacementShader(shader, "");
+                    else return "{\"ok\":false,\"error\":\"Failed to create depth shader\"}";
+                    break;
+                }
+
+                case "overdraw":
+                {
+                    var shader = FindOrCreateShader("Hidden/Bugpunch/Overdraw", OverdrawShaderSource);
+                    if (shader != null) _sceneCamera.SetReplacementShader(shader, "");
+                    else return "{\"ok\":false,\"error\":\"Failed to create overdraw shader\"}";
+                    break;
+                }
+
+                default:
+                    return $"{{\"ok\":false,\"error\":\"Unknown mode: {mode}\"}}";
+            }
+
+            _currentRenderMode = mode.ToLower();
+            Debug.Log($"[Bugpunch] Scene camera render mode: {_currentRenderMode}");
+            return $"{{\"ok\":true,\"mode\":\"{_currentRenderMode}\"}}";
+        }
+
+        void CleanupRenderMode()
+        {
+            // Reset replacement shader
+            if (_sceneCamera != null)
+                _sceneCamera.ResetReplacementShader();
+
+            // Remove wireframe callbacks
+            Camera.onPreRender -= OnWireframePreRender;
+            Camera.onPostRender -= OnWireframePostRender;
+            GL.wireframe = false;
+
+            _currentRenderMode = "default";
+        }
+
+        void OnWireframePreRender(Camera cam)
+        {
+            if (cam == _sceneCamera)
+                GL.wireframe = true;
+        }
+
+        void OnWireframePostRender(Camera cam)
+        {
+            if (cam == _sceneCamera)
+                GL.wireframe = false;
+        }
+
+        /// <summary>
+        /// Try Shader.Find first, then fall back to creating from source in the Editor.
+        /// </summary>
+        static Shader FindOrCreateShader(string name, string source)
+        {
+            var shader = Shader.Find(name);
+            if (shader != null) return shader;
+
+#if UNITY_EDITOR
+            try
+            {
+                shader = ShaderUtil.CreateShaderAsset(source, false);
+                if (shader != null) return shader;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Bugpunch] Failed to create shader {name}: {ex.Message}");
+            }
+#endif
+            return null;
+        }
+
+        // -----------------------------------------------------------------
+        // Shader sources
+        // -----------------------------------------------------------------
+
+        const string NormalsShaderSource = @"
+Shader ""Hidden/Bugpunch/Normals"" {
+    SubShader {
+        Tags { ""RenderType""=""Opaque"" }
+        Pass {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct v2f {
+                float4 pos : SV_POSITION;
+                float3 worldNormal : TEXCOORD0;
+            };
+            v2f vert(appdata_base v) {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.worldNormal = UnityObjectToWorldNormal(v.normal);
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target {
+                return fixed4(i.worldNormal * 0.5 + 0.5, 1);
+            }
+            ENDCG
+        }
+    }
+    SubShader {
+        Tags { ""RenderType""=""Transparent"" }
+        Pass {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct v2f {
+                float4 pos : SV_POSITION;
+                float3 worldNormal : TEXCOORD0;
+            };
+            v2f vert(appdata_base v) {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.worldNormal = UnityObjectToWorldNormal(v.normal);
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target {
+                return fixed4(i.worldNormal * 0.5 + 0.5, 0.5);
+            }
+            ENDCG
+        }
+    }
+}";
+
+        const string UVShaderSource = @"
+Shader ""Hidden/Bugpunch/UV"" {
+    SubShader {
+        Tags { ""RenderType""=""Opaque"" }
+        Pass {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct v2f {
+                float4 pos : SV_POSITION;
+                float2 uv : TEXCOORD0;
+            };
+            v2f vert(appdata_base v) {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.uv = v.texcoord.xy;
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target {
+                return fixed4(i.uv.x, i.uv.y, 0, 1);
+            }
+            ENDCG
+        }
+    }
+    SubShader {
+        Tags { ""RenderType""=""Transparent"" }
+        Pass {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct v2f {
+                float4 pos : SV_POSITION;
+                float2 uv : TEXCOORD0;
+            };
+            v2f vert(appdata_base v) {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.uv = v.texcoord.xy;
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target {
+                return fixed4(i.uv.x, i.uv.y, 0, 0.5);
+            }
+            ENDCG
+        }
+    }
+}";
+
+        const string DepthShaderSource = @"
+Shader ""Hidden/Bugpunch/Depth"" {
+    SubShader {
+        Tags { ""RenderType""=""Opaque"" }
+        Pass {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct v2f {
+                float4 pos : SV_POSITION;
+                float depth : TEXCOORD0;
+            };
+            v2f vert(appdata_base v) {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.depth = -(UnityObjectToViewPos(v.vertex).z * _ProjectionParams.w);
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target {
+                float d = saturate(1.0 - i.depth);
+                return fixed4(d, d, d, 1);
+            }
+            ENDCG
+        }
+    }
+    SubShader {
+        Tags { ""RenderType""=""Transparent"" }
+        Pass {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct v2f {
+                float4 pos : SV_POSITION;
+                float depth : TEXCOORD0;
+            };
+            v2f vert(appdata_base v) {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.depth = -(UnityObjectToViewPos(v.vertex).z * _ProjectionParams.w);
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target {
+                float d = saturate(1.0 - i.depth);
+                return fixed4(d, d, d, 0.5);
+            }
+            ENDCG
+        }
+    }
+}";
+
+        const string OverdrawShaderSource = @"
+Shader ""Hidden/Bugpunch/Overdraw"" {
+    SubShader {
+        Tags { ""RenderType""=""Opaque"" }
+        ZTest Always
+        ZWrite Off
+        Blend One One
+        Pass {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct v2f {
+                float4 pos : SV_POSITION;
+            };
+            v2f vert(appdata_base v) {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target {
+                return fixed4(0.1, 0.04, 0.02, 0);
+            }
+            ENDCG
+        }
+    }
+    SubShader {
+        Tags { ""RenderType""=""Transparent"" }
+        ZTest Always
+        ZWrite Off
+        Blend One One
+        Pass {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct v2f {
+                float4 pos : SV_POSITION;
+            };
+            v2f vert(appdata_base v) {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target {
+                return fixed4(0.1, 0.04, 0.02, 0);
+            }
+            ENDCG
+        }
+    }
+}";
+
+        void OnDestroy()
+        {
+            CleanupRenderMode();
+        }
+
         /// <summary>
         /// Get current camera state as JSON.
         /// </summary>
@@ -340,7 +678,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append($"\"orbitDistance\":{F(_orbitDistance)},");
             sb.Append($"\"fov\":{_sceneCamera.fieldOfView.ToString("F1", CultureInfo.InvariantCulture)},");
             sb.Append($"\"orthographic\":{(_sceneCamera.orthographic ? "true" : "false")},");
-            sb.Append($"\"gridEnabled\":{(_gridEnabled ? "true" : "false")}");
+            sb.Append($"\"gridEnabled\":{(_gridEnabled ? "true" : "false")},");
+            sb.Append($"\"renderMode\":\"{_currentRenderMode}\"");
             sb.Append("}");
             return sb.ToString();
         }

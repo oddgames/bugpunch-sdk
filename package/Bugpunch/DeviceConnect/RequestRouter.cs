@@ -267,6 +267,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(SceneCamera.ZoomDrag(d));
                     }
 
+                    if (subPath == "/scene-camera/render-mode" && method == "POST")
+                    {
+                        var mode = JsonVal(body, "mode") ?? "default";
+                        return Response.Json(SceneCamera.SetRenderMode(mode));
+                    }
+
                     return Response.NotFound(path);
                 }
 
@@ -323,6 +329,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                     if (subPath == "/files/info")
                         return Response.Json(Files.GetFileInfo(Q(path, "path")));
+
+                    if (subPath == "/files/zip" && method == "POST")
+                        return Response.Json(Files.ZipDirectory(Q(path, "path")));
+
+                    if (subPath == "/files/unzip" && method == "POST")
+                    {
+                        var clearFirst = Q(path, "clear") != "false";
+                        return Response.Json(Files.UnzipToDirectory(Q(path, "path"), body, clearFirst));
+                    }
 
                     return Response.NotFound(path);
                 }

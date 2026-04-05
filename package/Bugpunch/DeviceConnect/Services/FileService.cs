@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Text;
 using UnityEngine;
 
@@ -369,6 +370,80 @@ namespace ODDGames.Bugpunch.DeviceConnect
             catch (UnauthorizedAccessException)
             {
                 return Error("Access denied");
+            }
+            catch (Exception ex)
+            {
+                return Error(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Create a zip of a directory and return it as base64.
+        /// </summary>
+        public string ZipDirectory(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return Error("Path is required");
+
+            path = NormalizePath(path);
+            if (!IsAllowed(path))
+                return Error("Access denied: path is outside allowed roots");
+
+            if (!Directory.Exists(path))
+                return Error("Directory not found: " + path);
+
+            try
+            {
+                var tempZip = Path.Combine(Application.temporaryCachePath, $"snapshot_{DateTime.UtcNow:yyyyMMddHHmmss}.zip");
+                if (File.Exists(tempZip)) File.Delete(tempZip);
+                ZipFile.CreateFromDirectory(path, tempZip);
+                var bytes = File.ReadAllBytes(tempZip);
+                File.Delete(tempZip);
+                var base64 = Convert.ToBase64String(bytes);
+
+                var sb = new StringBuilder();
+                sb.Append("{\"ok\":true,");
+                sb.Append(string.Format(CultureInfo.InvariantCulture, "\"size\":{0},", bytes.Length));
+                sb.Append($"\"base64\":\"{base64}\"");
+                sb.Append("}");
+                return sb.ToString();
+            }
+            catch (Exception ex)
+            {
+                return Error(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Extract a base64-encoded zip to a directory (replaces contents).
+        /// </summary>
+        public string UnzipToDirectory(string path, string base64Zip, bool clearFirst = true)
+        {
+            if (string.IsNullOrEmpty(path))
+                return Error("Path is required");
+
+            path = NormalizePath(path);
+            if (!IsAllowed(path))
+                return Error("Access denied: path is outside allowed roots");
+
+            try
+            {
+                var bytes = Convert.FromBase64String(base64Zip);
+                var tempZip = Path.Combine(Application.temporaryCachePath, $"restore_{DateTime.UtcNow:yyyyMMddHHmmss}.zip");
+                File.WriteAllBytes(tempZip, bytes);
+
+                if (clearFirst && Directory.Exists(path))
+                {
+                    // Delete contents but not the directory itself
+                    foreach (var f in Directory.GetFiles(path)) File.Delete(f);
+                    foreach (var d in Directory.GetDirectories(path)) Directory.Delete(d, true);
+                }
+
+                if (!Directory.Exists(path)) Directory.CreateDirectory(path);
+                ZipFile.ExtractToDirectory(tempZip, path);
+                File.Delete(tempZip);
+
+                return "{\"ok\":true}";
             }
             catch (Exception ex)
             {
