@@ -153,6 +153,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (path == "/cameras" || path.StartsWith("/cameras?"))
                     return Response.Json(ScreenCapture?.GetCameras() ?? "[]");
 
+                // WebRTC device ICE candidates (browser polls this)
+                if (path == "/webrtc-ice-candidates" || path.StartsWith("/webrtc-ice-candidates?"))
+                    return Response.Json(Streamer?.DrainIceCandidates() ?? "[]");
+
                 // Capture — returns null, caller must handle with WaitForEndOfFrame
                 if (path.StartsWith("/capture"))
                     return null;

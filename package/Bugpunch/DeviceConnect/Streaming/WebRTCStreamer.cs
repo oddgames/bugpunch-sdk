@@ -26,6 +26,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         TunnelClient _tunnel;
         readonly Queue<Action> _mainThreadQueue = new();
         RTCIceServer[] _iceServers;
+        readonly List<IceMessage> _pendingIceCandidates = new();
 
         /// <summary>
         /// Set custom ICE servers (STUN + TURN) fetched from the server.
@@ -84,6 +85,28 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Get queued device-side ICE candidates as JSON array, then clear the queue.
+        /// Called by the browser via GET /webrtc-ice-candidates.
+        /// </summary>
+        public string DrainIceCandidates()
+        {
+            lock (_pendingIceCandidates)
+            {
+                if (_pendingIceCandidates.Count == 0) return "[]";
+                var sb = new System.Text.StringBuilder();
+                sb.Append("[");
+                for (int i = 0; i < _pendingIceCandidates.Count; i++)
+                {
+                    if (i > 0) sb.Append(",");
+                    sb.Append(JsonUtility.ToJson(_pendingIceCandidates[i]));
+                }
+                sb.Append("]");
+                _pendingIceCandidates.Clear();
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>
         /// Handle an offer asynchronously. Calls onAnswer with the SDP answer JSON,
         /// or onError if something fails. Used by BugpunchClient to return the answer
         /// in the same HTTP response as the offer request.
@@ -133,13 +156,19 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _pc = new RTCPeerConnection(ref config);
             var thisPC = _pc;
 
-            // ICE candidate handler — queue for later retrieval
+            // ICE candidate handler — queue candidates for browser to poll
             _pc.OnIceCandidate = candidate =>
             {
                 if (candidate == null) return;
-                // ICE candidates are sent via separate requests from the browser
-                // Device-side candidates are currently not forwarded back
-                // TODO: implement device→browser ICE via tunnel push
+                lock (_pendingIceCandidates)
+                {
+                    _pendingIceCandidates.Add(new IceMessage
+                    {
+                        candidate = candidate.Candidate,
+                        sdpMid = candidate.SdpMid,
+                        sdpMLineIndex = candidate.SdpMLineIndex ?? 0
+                    });
+                }
             };
 
             _pc.OnConnectionStateChange = state =>
@@ -275,6 +304,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _streaming = false;
             CleanupPeerConnection();
             CleanupRenderTexture();
+            lock (_pendingIceCandidates) { _pendingIceCandidates.Clear(); }
             Debug.Log("[Bugpunch] WebRTC: streaming stopped");
         }
 
