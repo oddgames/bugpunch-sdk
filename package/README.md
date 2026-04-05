@@ -9,7 +9,7 @@ Add to your `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.uiautomation": "https://github.com/oddgames/ui-automation.git?path=package#v1.1.1"
+    "au.com.oddgames.bugpunch": "https://github.com/oddgames/ui-automation.git?path=package#v1.1.1"
   }
 }
 ```
@@ -19,7 +19,7 @@ Add to your `Packages/manifest.json`:
 ```csharp
 using System.Threading.Tasks;
 using NUnit.Framework;
-using static ODDGames.UIAutomation.ActionExecutor;
+using static ODDGames.Bugpunch.ActionExecutor;
 
 [TestFixture]
 public class LoginTests
@@ -42,7 +42,7 @@ public class LoginTests
 
 ## Understanding `using static`
 
-The `using static ODDGames.UIAutomation.ActionExecutor;` directive imports all helpers directly:
+The `using static ODDGames.Bugpunch.ActionExecutor;` directive imports all helpers directly:
 
 ```csharp
 // With 'using static' - clean and readable

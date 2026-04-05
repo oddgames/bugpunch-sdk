@@ -1,8 +1,8 @@
 {
-    "name": "ODDGames.UIAutomation.AI.Editor",
-    "rootNamespace": "ODDGames.UIAutomation.AI.Editor",
+    "name": "ODDGames.OddDev.AI.Editor",
+    "rootNamespace": "ODDGames.OddDev.AI.Editor",
     "references": [
-        "ODDGames.UIAutomation",
+        "ODDGames.OddDev",
         "UnityEngine.TestRunner"
     ],
     "includePlatforms": [

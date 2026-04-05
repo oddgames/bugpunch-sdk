@@ -1,8 +1,8 @@
 {
-    "name": "ODDGames.UIAutomation.Recording",
-    "rootNamespace": "ODDGames.UIAutomation",
+    "name": "ODDGames.OddDev.Recording",
+    "rootNamespace": "ODDGames.OddDev",
     "references": [
-        "ODDGames.UIAutomation",
+        "ODDGames.OddDev",
         "Unity.TextMeshPro",
         "Unity.InputSystem"
     ],

@@ -1,0 +1,19 @@
+{
+    "name": "ODDGames.Bugpunch.Bridge",
+    "rootNamespace": "ODDGames.Bugpunch.Bridge",
+    "references": [
+        "ODDGames.Bugpunch",
+        "clibridge4unity.Core"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

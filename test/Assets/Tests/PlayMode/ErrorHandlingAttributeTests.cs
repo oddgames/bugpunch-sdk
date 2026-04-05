@@ -4,9 +4,9 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 
-using static ODDGames.UIAutomation.ActionExecutor;
+using static ODDGames.Bugpunch.ActionExecutor;
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// Tests for CaptureUnobservedExceptions.

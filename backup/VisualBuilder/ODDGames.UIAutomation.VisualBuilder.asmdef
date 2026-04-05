@@ -1,8 +1,8 @@
 {
-    "name": "ODDGames.UIAutomation.VisualBuilder",
-    "rootNamespace": "ODDGames.UIAutomation.VisualBuilder",
+    "name": "ODDGames.OddDev.VisualBuilder",
+    "rootNamespace": "ODDGames.OddDev.VisualBuilder",
     "references": [
-        "ODDGames.UIAutomation",
+        "ODDGames.OddDev",
         "Unity.TextMeshPro",
         "Unity.InputSystem"
     ],

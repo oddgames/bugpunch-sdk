@@ -14,10 +14,10 @@ using UnityEngine.TestTools;
 using UnityEngine.UI;
 
 using TMPro;
-using ODDGames.UIAutomation;
+using ODDGames.Bugpunch;
 
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// PlayMode tests for ActionExecutor - the unified action execution layer.

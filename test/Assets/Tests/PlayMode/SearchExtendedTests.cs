@@ -7,9 +7,9 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 using TMPro;
-using ODDGames.UIAutomation;
+using ODDGames.Bugpunch;
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// Extended PlayMode tests for Search class - covers uncovered methods from coverage report.

@@ -6,11 +6,11 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 
-using ODDGames.UIAutomation;
+using ODDGames.Bugpunch;
 
-using static ODDGames.UIAutomation.ActionExecutor;
+using static ODDGames.Bugpunch.ActionExecutor;
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// PlayMode tests for camera control via swiping gestures.

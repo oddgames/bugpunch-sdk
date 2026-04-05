@@ -9,9 +9,9 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using TMPro;
-using static ODDGames.UIAutomation.ActionExecutor;
+using static ODDGames.Bugpunch.ActionExecutor;
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// Tests for the static UIAutomation class.
@@ -790,7 +790,7 @@ namespace ODDGames.UIAutomation.Tests
         public void Invoke_StaticMethod_CallsSuccessfully()
         {
             ReflectTestHelper.ResetState();
-            Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke("StaticVoidMethod");
+            Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper").Invoke("StaticVoidMethod");
             Assert.IsTrue(ReflectTestHelper.WasCalled, "Static method should have been called");
         }
 
@@ -798,7 +798,7 @@ namespace ODDGames.UIAutomation.Tests
         public void Invoke_StaticMethodWithArgs_PassesArguments()
         {
             ReflectTestHelper.ResetState();
-            Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke("StaticMethodWithArgs", "hello", 42);
+            Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper").Invoke("StaticMethodWithArgs", "hello", 42);
             Assert.AreEqual("hello", ReflectTestHelper.LastString);
             Assert.AreEqual(42, ReflectTestHelper.LastInt);
         }
@@ -806,7 +806,7 @@ namespace ODDGames.UIAutomation.Tests
         [Test]
         public void Invoke_StaticMethodWithReturn_ReturnsValue()
         {
-            var result = Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke<int>("StaticAdd", 3, 7);
+            var result = Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper").Invoke<int>("StaticAdd", 3, 7);
             Assert.AreEqual(10, result);
         }
 
@@ -814,7 +814,7 @@ namespace ODDGames.UIAutomation.Tests
         public void Invoke_InstanceMethod_CallsSuccessfully()
         {
             var instance = ReflectTestHelper.Instance;
-            Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper.Instance").Invoke("InstanceMethod");
+            Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper.Instance").Invoke("InstanceMethod");
             Assert.IsTrue(instance.InstanceWasCalled, "Instance method should have been called");
         }
 
@@ -822,14 +822,14 @@ namespace ODDGames.UIAutomation.Tests
         public async Task InvokeAsync_StaticAsyncMethod_AwaitsCompletion()
         {
             ReflectTestHelper.ResetState();
-            await Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").InvokeAsync("StaticAsyncMethod");
+            await Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper").InvokeAsync("StaticAsyncMethod");
             Assert.IsTrue(ReflectTestHelper.WasCalled, "Async method should have completed");
         }
 
         [Test]
         public async Task InvokeAsync_WithReturn_ReturnsValue()
         {
-            var result = await Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").InvokeAsync<int>("StaticAsyncAdd", 5, 3);
+            var result = await Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper").InvokeAsync<int>("StaticAsyncAdd", 5, 3);
             Assert.AreEqual(8, result);
         }
 
@@ -837,7 +837,7 @@ namespace ODDGames.UIAutomation.Tests
         public void Invoke_DefaultParams_FillsDefaults()
         {
             // Call with only required arg, optional params should use defaults
-            var result = Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke<string>("MethodWithDefaults", "hello");
+            var result = Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper").Invoke<string>("MethodWithDefaults", "hello");
             Assert.AreEqual("hello|42|true", result);
         }
 
@@ -845,7 +845,7 @@ namespace ODDGames.UIAutomation.Tests
         public void Invoke_DefaultParams_PartialOverride()
         {
             // Call with required + first optional
-            var result = Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke<string>("MethodWithDefaults", "hello", 99);
+            var result = Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper").Invoke<string>("MethodWithDefaults", "hello", 99);
             Assert.AreEqual("hello|99|true", result);
         }
 
@@ -853,7 +853,7 @@ namespace ODDGames.UIAutomation.Tests
         public void Invoke_NoMatchingSignature_ListsAvailable()
         {
             var ex = Assert.Throws<InvalidOperationException>(() =>
-                Reflect("ODDGames.UIAutomation.Tests.ReflectTestHelper").Invoke("StaticAdd", "wrong", "types"));
+                Reflect("ODDGames.Bugpunch.Tests.ReflectTestHelper").Invoke("StaticAdd", "wrong", "types"));
             Assert.That(ex.Message, Does.Contain("Available signatures"));
             Assert.That(ex.Message, Does.Contain("StaticAdd"));
         }

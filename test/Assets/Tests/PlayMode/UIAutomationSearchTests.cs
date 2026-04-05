@@ -8,11 +8,11 @@ using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 using TMPro;
-using ODDGames.UIAutomation;
+using ODDGames.Bugpunch;
 
-using static ODDGames.UIAutomation.ActionExecutor;
+using static ODDGames.Bugpunch.ActionExecutor;
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// PlayMode tests for UIAutomation search helper methods.

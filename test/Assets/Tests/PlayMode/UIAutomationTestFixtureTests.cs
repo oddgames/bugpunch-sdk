@@ -11,7 +11,7 @@ using UnityEngine.TestTools;
 using UnityEngine.UI;
 using TMPro;
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// Tests for UIAutomationTestFixture - the base class for UI automation tests.

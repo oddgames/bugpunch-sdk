@@ -1,0 +1,33 @@
+{
+    "name": "ODDGames.Bugpunch",
+    "rootNamespace": "ODDGames.Bugpunch",
+    "references": [
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "Unity.WebRTC",
+        "PaxScript"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.webrtc",
+            "expression": "",
+            "define": "BUGPUNCH_WEBRTC"
+        },
+        {
+            "name": "au.com.oddgames.paxscript",
+            "expression": "",
+            "define": "BUGPUNCH_HAS_PAXSCRIPT"
+        }
+    ],
+    "noEngineReferences": false
+}

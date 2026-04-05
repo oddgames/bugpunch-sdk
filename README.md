@@ -18,7 +18,7 @@ Add to your `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.uiautomation": "https://github.com/oddgames/ui-automation.git?path=package"
+    "au.com.oddgames.bugpunch": "https://github.com/oddgames/ui-automation.git?path=package"
   }
 }
 ```
@@ -47,7 +47,7 @@ Or in manifest.json:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.uiautomation": "https://<YOUR_TOKEN>@github.com/oddgames/ui-automation.git?path=package"
+    "au.com.oddgames.bugpunch": "https://<YOUR_TOKEN>@github.com/oddgames/ui-automation.git?path=package"
   }
 }
 ```

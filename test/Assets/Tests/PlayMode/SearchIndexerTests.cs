@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
-using ODDGames.UIAutomation;
+using ODDGames.Bugpunch;
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// Tests for Search indexer support - Index() method and inline [index] syntax.

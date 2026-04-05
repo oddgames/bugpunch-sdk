@@ -2,10 +2,10 @@ using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 
-using ODDGames.UIAutomation;
+using ODDGames.Bugpunch;
 
 
-namespace ODDGames.UIAutomation.Tests
+namespace ODDGames.Bugpunch.Tests
 {
     /// <summary>
     /// Tests for GameObject manipulation methods: Disable, Enable, Freeze, Teleport, NoClip, Clip.

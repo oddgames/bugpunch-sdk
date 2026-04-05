@@ -1,10 +1,10 @@
 {
-    "name": "ODDGames.UIAutomation.VisualBuilder.Editor",
-    "rootNamespace": "ODDGames.UIAutomation.VisualBuilder.Editor",
+    "name": "ODDGames.OddDev.VisualBuilder.Editor",
+    "rootNamespace": "ODDGames.OddDev.VisualBuilder.Editor",
     "references": [
-        "ODDGames.UIAutomation",
-        "ODDGames.UIAutomation.AI.Editor",
-        "ODDGames.UIAutomation.VisualBuilder",
+        "ODDGames.OddDev",
+        "ODDGames.OddDev.AI.Editor",
+        "ODDGames.OddDev.VisualBuilder",
         "Unity.TextMeshPro",
         "Unity.InputSystem"
     ],

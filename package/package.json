@@ -1,8 +1,8 @@
 {
-  "name": "au.com.oddgames.uiautomation",
+  "name": "au.com.oddgames.bugpunch",
   "version": "1.3.2",
-  "displayName": "ODD Games UI Automation",
-  "description": "Automated UI testing for Unity games. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events. Find elements by name, text content, type, or spatial relationship.",
+  "displayName": "Bugpunch",
+  "description": "Debugging, remote code execution, and automated UI testing for Unity games. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events. Find elements by name, text content, type, or spatial relationship.",
   "unity": "2022.3",
   "repository": {
     "type": "git",

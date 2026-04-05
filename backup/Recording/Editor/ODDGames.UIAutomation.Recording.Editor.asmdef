@@ -1,10 +1,10 @@
 {
-    "name": "ODDGames.UIAutomation.Recording.Editor",
-    "rootNamespace": "ODDGames.UIAutomation.Editor",
+    "name": "ODDGames.OddDev.Recording.Editor",
+    "rootNamespace": "ODDGames.OddDev.Editor",
     "references": [
-        "ODDGames.UIAutomation",
-        "ODDGames.UIAutomation.Recording",
-        "ODDGames.UIAutomation.Editor",
+        "ODDGames.OddDev",
+        "ODDGames.OddDev.Recording",
+        "ODDGames.OddDev.Editor",
         "Unity.TextMeshPro",
         "ToolbarExtender.Editor"
     ],
