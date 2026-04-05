@@ -141,9 +141,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 if (size > maxBytes)
                 {
-                    // Read truncated
+                    // Read truncated (FileShare.ReadWrite to handle locked files)
                     var bytes = new byte[maxBytes];
-                    using (var fs = File.OpenRead(path))
+                    using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                         fs.Read(bytes, 0, maxBytes);
 
                     if (IsBinary(bytes, Math.Min(maxBytes, 8192)))
@@ -171,8 +171,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     }
                 }
 
-                // Read full file
-                var allBytes = File.ReadAllBytes(path);
+                // Read full file (use FileShare.ReadWrite to handle locked files like Editor.log)
+                byte[] allBytes;
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    allBytes = new byte[fs.Length];
+                    fs.Read(allBytes, 0, allBytes.Length);
+                }
                 if (IsBinary(allBytes, Math.Min(allBytes.Length, 8192)))
                 {
                     var sb = new StringBuilder();
