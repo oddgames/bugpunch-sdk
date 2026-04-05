@@ -61,7 +61,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _height = Mathf.Clamp(height, 120, 2160);
             _fps = Mathf.Clamp(fps, 1, 60);
             Debug.Log($"[Bugpunch] WebRTC: quality set to {_width}x{_height}@{_fps}fps");
-            return $"{{\"ok\":true,\"width\":{_width},\"height\":{_height},\"fps\":{_fps}}}";
+
+            // Stop current stream so browser reconnects at new resolution
+            if (_streaming)
+            {
+                StopStreaming();
+                Debug.Log("[Bugpunch] WebRTC: stream stopped for quality change — waiting for new offer");
+            }
+
+            return $"{{\"ok\":true,\"width\":{_width},\"height\":{_height},\"fps\":{_fps},\"reconnectRequired\":true}}";
         }
 
         /// <summary>
