@@ -44,12 +44,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 ? BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static
                 : BindingFlags.Public | BindingFlags.Instance;
 
-            var fields = type.GetFields(flags);
             var sb = new StringBuilder();
             sb.Append("[");
             bool first = true;
 
-            foreach (var f in fields)
+            // Properties first (position, rotation, scale, enabled, etc.)
+            foreach (var p in type.GetProperties(flags))
+            {
+                if (!p.CanRead) continue;
+                if (p.GetIndexParameters().Length > 0) continue; // skip indexers
+                // Skip noisy base class properties
+                if (p.DeclaringType == typeof(UnityEngine.Object) && p.Name == "hideFlags") continue;
+
+                object value = null;
+                try { value = p.GetValue(component); } catch { continue; }
+
+                if (!first) sb.Append(",");
+                first = false;
+
+                sb.Append($"{{\"name\":\"{EscapeJson(p.Name)}\",\"type\":\"{EscapeJson(p.PropertyType.Name)}\",\"value\":{SerializeValue(value)},\"isPublic\":true,\"isStatic\":false,\"isProperty\":true,\"canWrite\":{(p.CanWrite ? "true" : "false")}}}");
+            }
+
+            // Fields
+            foreach (var f in type.GetFields(flags))
             {
                 if (!debug && !f.IsPublic && f.GetCustomAttribute<SerializeField>() == null) continue;
                 if (!first) sb.Append(",");
