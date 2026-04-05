@@ -17,6 +17,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         public string Execute(string code)
         {
+            if (string.IsNullOrWhiteSpace(code))
+                return "{\"ok\":true,\"output\":\"\"}";
+
             try
             {
                 var scripter = new PaxScripter();
@@ -28,15 +31,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     catch { /* skip problematic assemblies */ }
                 }
 
-                bool hasError = false;
                 var errors = new StringBuilder();
-                var output = new StringBuilder();
 
                 scripter.OnChangeState += (sender, e) =>
                 {
                     if (sender.HasErrors)
                     {
-                        hasError = true;
                         foreach (ScriptError err in sender.Error_List)
                             errors.AppendLine($"({err.LineNumber}) {err.Message}");
                     }
@@ -44,23 +44,40 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 scripter.OnPaxException += (sender, ex) =>
                 {
-                    hasError = true;
                     errors.AppendLine(ex.Message);
                 };
 
-                // PaxScript v1.5.0+ supports top-level scripts — no Main needed
+                // Phase 1: Compile
                 scripter.AddModule("1");
                 scripter.AddCode("1", code);
 
-                if (hasError)
+                // Check compile errors (both from event AND direct property)
+                if (scripter.HasErrors || errors.Length > 0)
+                {
+                    // Collect any errors we missed from the event
+                    if (errors.Length == 0 && scripter.Error_List != null)
+                    {
+                        foreach (ScriptError err in scripter.Error_List)
+                            errors.AppendLine($"({err.LineNumber}) {err.Message}");
+                    }
                     return $"{{\"ok\":false,\"errors\":[{{\"message\":\"{Esc(errors.ToString())}\"}}]}}";
+                }
 
+                // Phase 2: Execute
                 scripter.Run(RunMode.Run);
 
-                if (hasError)
+                // Check runtime errors
+                if (scripter.HasErrors || errors.Length > 0)
+                {
+                    if (errors.Length == 0 && scripter.Error_List != null)
+                    {
+                        foreach (ScriptError err in scripter.Error_List)
+                            errors.AppendLine($"({err.LineNumber}) {err.Message}");
+                    }
                     return $"{{\"ok\":false,\"errors\":[{{\"message\":\"{Esc(errors.ToString())}\"}}]}}";
+                }
 
-                return $"{{\"ok\":true,\"output\":\"{Esc(output.ToString())}\"}}";
+                return "{\"ok\":true,\"output\":\"\"}";
             }
             catch (Exception ex)
             {

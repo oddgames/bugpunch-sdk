@@ -40,7 +40,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 _logs.Add(new LogEntry
                 {
                     id = _nextId++,
-                    time = Time.realtimeSinceStartup,
+                    time = (float)(System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0),
                     type = type.ToString(),
                     message = message,
                     stackTrace = stackTrace
