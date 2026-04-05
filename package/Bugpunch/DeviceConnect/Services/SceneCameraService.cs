@@ -683,5 +683,42 @@ Shader ""Hidden/Bugpunch/Overdraw"" {
             sb.Append("}");
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Cast a ray from the scene camera at normalized screen coordinates (0-1).
+        /// Returns a JSON array of hit GameObjects sorted by distance.
+        /// </summary>
+        public string Raycast(float nx, float ny, int maxHits = 10)
+        {
+            var cam = _sceneCamera ?? Camera.main;
+            if (cam == null)
+                return "[]";
+
+            nx = Mathf.Clamp01(nx);
+            ny = Mathf.Clamp01(ny);
+            var screenPos = new Vector3(nx * Screen.width, (1f - ny) * Screen.height, 0);
+            var ray = cam.ScreenPointToRay(screenPos);
+
+            var hits = Physics.RaycastAll(ray, cam.farClipPlane);
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+            var sb = new StringBuilder();
+            sb.Append("[");
+            int count = 0;
+            foreach (var hit in hits)
+            {
+                if (count >= maxHits) break;
+                if (count > 0) sb.Append(",");
+                var go = hit.collider.gameObject;
+                string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
+                sb.Append($"{{\"instanceId\":{go.GetInstanceID()},\"name\":\"{EscapeJson(go.name)}\",\"distance\":{F(hit.distance)},\"point\":{{\"x\":{F(hit.point.x)},\"y\":{F(hit.point.y)},\"z\":{F(hit.point.z)}}}}}");
+                count++;
+            }
+            sb.Append("]");
+            return sb.ToString();
+        }
+
+        static string EscapeJson(string s) =>
+            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

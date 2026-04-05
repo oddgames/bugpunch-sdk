@@ -273,6 +273,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(SceneCamera.SetRenderMode(mode));
                     }
 
+                    if (subPath == "/scene-camera/raycast" && method == "POST")
+                    {
+                        var nx = float.TryParse(JsonVal(body, "x") ?? Q(path, "x"), out var rx) ? rx : 0.5f;
+                        var ny = float.TryParse(JsonVal(body, "y") ?? Q(path, "y"), out var ry) ? ry : 0.5f;
+                        return Response.Json(SceneCamera.Raycast(nx, ny));
+                    }
+
                     return Response.NotFound(path);
                 }
 
