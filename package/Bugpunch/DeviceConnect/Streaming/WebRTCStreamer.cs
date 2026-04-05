@@ -95,6 +95,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         IEnumerator HandleOffer(string sdpJson, Action<string> onAnswer, Action<string> onError)
         {
+            if (_streaming)
+                StopStreaming();
+
             Debug.Log("[Bugpunch] WebRTC: received offer, creating answer...");
 
             SdpMessage offerData;
@@ -128,6 +131,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             };
 
             _pc = new RTCPeerConnection(ref config);
+            var thisPC = _pc;
 
             // ICE candidate handler — queue for later retrieval
             _pc.OnIceCandidate = candidate =>
@@ -170,6 +174,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 onError?.Invoke(setRemoteOp.Error.message);
                 yield break;
             }
+            if (_pc != thisPC) { onError?.Invoke("Replaced by new offer"); yield break; }
             Debug.Log("[Bugpunch] WebRTC: remote description set, creating answer...");
 
             // Create answer
@@ -182,6 +187,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 onError?.Invoke(answerOp.Error.message);
                 yield break;
             }
+            if (_pc != thisPC) { onError?.Invoke("Replaced by new offer"); yield break; }
             Debug.Log("[Bugpunch] WebRTC: answer created, setting local description...");
 
             var answer = answerOp.Desc;
@@ -194,6 +200,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 onError?.Invoke(setLocalOp.Error.message);
                 yield break;
             }
+            if (_pc != thisPC) { onError?.Invoke("Replaced by new offer"); yield break; }
 
             // Return answer to caller
             Debug.Log("[Bugpunch] WebRTC: sending answer back...");
