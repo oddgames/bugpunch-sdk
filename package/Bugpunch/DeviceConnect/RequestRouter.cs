@@ -364,6 +364,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     }
                 }
 
+                // Input injection — tap/swipe from browser coordinates (normalized 0-1)
+                if (path.StartsWith("/input/") && method == "POST")
+                    return null; // Handled async by BugpunchClient (needs main thread)
+
                 return Response.NotFound(path);
             }
             catch (Exception ex)
@@ -432,7 +436,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return Response.Error("Capture failed", 500);
         }
 
-        static string Q(string path, string key)
+        public static string Q(string path, string key)
         {
             var qi = path.IndexOf('?');
             if (qi < 0) return null;
@@ -457,7 +461,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// Minimal JSON value extractor for flat objects. Returns the raw string value for a key.
         /// Handles strings, numbers, booleans. Not a full parser — good enough for simple request bodies.
         /// </summary>
-        static string JsonVal(string json, string key)
+        public static string JsonVal(string json, string key)
         {
             if (string.IsNullOrEmpty(json)) return null;
             var needle = $"\"{key}\"";

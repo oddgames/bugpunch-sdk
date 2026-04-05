@@ -221,6 +221,48 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
 #endif
 
+            // Input injection — needs main thread for Input System
+            if (response == null && path.StartsWith("/input/"))
+            {
+                var subPath = path.Split('?')[0];
+                System.Threading.Tasks.Task inputTask = null;
+                string inputResponse = null;
+
+                if (subPath == "/input/tap")
+                {
+                    var nx = float.TryParse(RequestRouter.Q(path, "x") ?? RequestRouter.JsonVal(body, "x"), out var px) ? px : 0.5f;
+                    var ny = float.TryParse(RequestRouter.Q(path, "y") ?? RequestRouter.JsonVal(body, "y"), out var py) ? py : 0.5f;
+                    var screenPos = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
+                    inputTask = InputInjector.InjectPointerTap(screenPos);
+                    inputResponse = $"{{\"ok\":true,\"screen\":[{screenPos.x:F0},{screenPos.y:F0}]}}";
+                }
+                else if (subPath == "/input/swipe")
+                {
+                    var x1 = float.TryParse(RequestRouter.JsonVal(body, "x1"), out var sx1) ? sx1 : 0.5f;
+                    var y1 = float.TryParse(RequestRouter.JsonVal(body, "y1"), out var sy1) ? sy1 : 0.5f;
+                    var x2 = float.TryParse(RequestRouter.JsonVal(body, "x2"), out var sx2) ? sx2 : 0.5f;
+                    var y2 = float.TryParse(RequestRouter.JsonVal(body, "y2"), out var sy2) ? sy2 : 0.5f;
+                    var from = new Vector2(x1 * Screen.width, (1f - y1) * Screen.height);
+                    var to = new Vector2(x2 * Screen.width, (1f - y2) * Screen.height);
+                    inputTask = InputInjector.InjectPointerDrag(from, to, 0.3f);
+                    inputResponse = "{\"ok\":true}";
+                }
+
+                if (inputTask != null)
+                {
+                    while (!inputTask.IsCompleted) yield return null;
+                    if (inputTask.IsFaulted)
+                        Tunnel.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(inputTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
+                    else
+                        Tunnel.SendResponse(requestId, 200, inputResponse, "application/json");
+                }
+                else
+                {
+                    Tunnel.SendResponse(requestId, 404, $"{{\"error\":\"Unknown input: {subPath}\"}}", "application/json");
+                }
+                yield break;
+            }
+
             if (response == null)
             {
                 Tunnel.SendResponse(requestId, 404, "{\"error\":\"Not found\"}", "application/json");
