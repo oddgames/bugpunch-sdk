@@ -225,6 +225,44 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Rotate camera in-place (flythrough look-around). Does NOT orbit around focus.
+        /// </summary>
+        public string Look(float deltaX, float deltaY)
+        {
+            if (_sceneCamera == null)
+                return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
+
+            var t = _sceneCameraGo.transform;
+            // Horizontal rotation around world Y axis
+            t.Rotate(Vector3.up, deltaX * OrbitSensitivity, Space.World);
+            // Vertical rotation around local X axis
+            t.Rotate(Vector3.right, -deltaY * OrbitSensitivity, Space.Self);
+
+            return "{\"ok\":true}";
+        }
+
+        /// <summary>
+        /// Move camera in its local space (WASD fly mode).
+        /// Each call moves a fixed step since Time.deltaTime is not meaningful for HTTP calls.
+        /// </summary>
+        public string Fly(float forward, float right, float up, float speedMultiplier = 1f)
+        {
+            if (_sceneCamera == null)
+                return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
+
+            var t = _sceneCameraGo.transform;
+            float step = 0.5f * speedMultiplier;
+            t.position += t.forward * forward * step
+                        + t.right * right * step
+                        + Vector3.up * up * step;
+
+            // Update focus point to be in front of camera
+            _focusPoint = t.position + t.forward * _orbitDistance;
+
+            return "{\"ok\":true}";
+        }
+
+        /// <summary>
         /// Get current camera state as JSON.
         /// </summary>
         public string GetState()

@@ -221,6 +221,22 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(SceneCamera.FocusOn(id));
                     }
 
+                    if (subPath == "/scene-camera/look" && method == "POST")
+                    {
+                        var dx = float.TryParse(JsonVal(body, "deltaX"), out var ldx) ? ldx : 0f;
+                        var dy = float.TryParse(JsonVal(body, "deltaY"), out var ldy) ? ldy : 0f;
+                        return Response.Json(SceneCamera.Look(dx, dy));
+                    }
+
+                    if (subPath == "/scene-camera/fly" && method == "POST")
+                    {
+                        var fwd = float.TryParse(JsonVal(body, "forward"), out var ff) ? ff : 0f;
+                        var rt = float.TryParse(JsonVal(body, "right"), out var fr) ? fr : 0f;
+                        var up = float.TryParse(JsonVal(body, "up"), out var fu) ? fu : 0f;
+                        var spd = float.TryParse(JsonVal(body, "speed"), out var fs) ? fs : 1f;
+                        return Response.Json(SceneCamera.Fly(fwd, rt, up, spd));
+                    }
+
                     if (subPath == "/scene-camera/state")
                     {
                         return Response.Json(SceneCamera.GetState());
