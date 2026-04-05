@@ -162,6 +162,36 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield break;
             }
 
+#if UNITY_INCLUDE_TESTS
+            if (response == null && path == "/action" && method == "POST")
+            {
+                // Execute JSON action via ActionExecutor (async) — run on main thread
+                var actionTask = ODDGames.Bugpunch.ActionExecutor.Execute(body);
+                while (!actionTask.IsCompleted)
+                    yield return null;
+
+                if (actionTask.IsFaulted)
+                {
+                    var err = actionTask.Exception?.InnerException?.Message ?? "Unknown error";
+                    Tunnel.SendResponse(requestId, 500,
+                        $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(err)}\",\"elapsedMs\":0}}",
+                        "application/json");
+                }
+                else
+                {
+                    var result = actionTask.Result;
+                    var okStr = result.Success ? "true" : "false";
+                    var errStr = result.Error != null
+                        ? $",\"error\":\"{RequestRouter.EscapeJson(result.Error)}\""
+                        : "";
+                    Tunnel.SendResponse(requestId, result.Success ? 200 : 422,
+                        $"{{\"ok\":{okStr}{errStr},\"elapsedMs\":{result.ElapsedMs:F0}}}",
+                        "application/json");
+                }
+                yield break;
+            }
+#endif
+
 #if BUGPUNCH_WEBRTC
             if (response == null && path.StartsWith("/webrtc-"))
             {

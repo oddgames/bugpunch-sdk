@@ -225,6 +225,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     return Response.NotFound(path);
                 }
 
+                // JSON action execution via ActionExecutor
+                if (path == "/action" && method == "POST")
+                    return null; // handled async — needs coroutine context
+
                 // Script execution
                 if (path == "/run" && method == "POST")
                 {
@@ -276,7 +280,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return null;
         }
 
-        static string Esc(string s) =>
+        static string Esc(string s) => EscapeJson(s);
+
+        /// <summary>
+        /// Escape a string for safe inclusion in a JSON string value.
+        /// </summary>
+        public static string EscapeJson(string s) =>
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
 
         /// <summary>
