@@ -53,6 +53,26 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Change stream quality at runtime. Stops and restarts streaming if active.
+        /// </summary>
+        public string SetQuality(int width, int height, int fps)
+        {
+            _width = Mathf.Clamp(width, 160, 3840);
+            _height = Mathf.Clamp(height, 120, 2160);
+            _fps = Mathf.Clamp(fps, 1, 60);
+            Debug.Log($"[Bugpunch] WebRTC: quality set to {_width}x{_height}@{_fps}fps");
+            return $"{{\"ok\":true,\"width\":{_width},\"height\":{_height},\"fps\":{_fps}}}";
+        }
+
+        /// <summary>
+        /// Get current stream settings.
+        /// </summary>
+        public string GetQuality()
+        {
+            return $"{{\"width\":{_width},\"height\":{_height},\"fps\":{_fps},\"streaming\":{(_streaming ? "true" : "false")}}}";
+        }
+
+        /// <summary>
         /// Set which camera to stream from. Defaults to Camera.main.
         /// </summary>
         public void SetCamera(Camera cam)

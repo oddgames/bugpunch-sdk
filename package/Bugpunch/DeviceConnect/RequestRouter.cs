@@ -159,6 +159,19 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (path == "/webrtc-ice-candidates" || path.StartsWith("/webrtc-ice-candidates?"))
                     return Response.Json(Streamer?.DrainIceCandidates() ?? "[]");
 
+                // WebRTC quality control
+                if (path == "/webrtc-quality" && method == "POST")
+                {
+                    if (Streamer == null) return Response.Error("WebRTC not available", 501);
+                    var w = int.TryParse(JsonVal(body, "width"), out var qw) ? qw : 960;
+                    var h = int.TryParse(JsonVal(body, "height"), out var qh) ? qh : 540;
+                    var f = int.TryParse(JsonVal(body, "fps"), out var qf) ? qf : 30;
+                    return Response.Json(Streamer.SetQuality(w, h, f));
+                }
+
+                if (path == "/webrtc-quality" || path.StartsWith("/webrtc-quality?"))
+                    return Response.Json(Streamer?.GetQuality() ?? "{\"error\":\"WebRTC not available\"}");
+
                 // Capture — returns null, caller must handle with WaitForEndOfFrame
                 if (path.StartsWith("/capture"))
                     return null;
