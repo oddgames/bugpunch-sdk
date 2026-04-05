@@ -107,7 +107,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         IEnumerator CaptureLoop()
         {
-            var interval = 1f / videoFps;
+            var interval = videoFps > 0 ? 1f / videoFps : 0.1f;
 
             while (_isCapturing)
             {
@@ -256,7 +256,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             report.Append($"\"bundleId\":\"{Esc(Application.identifier)}\",");
             report.Append($"\"unityVersion\":\"{Esc(Application.unityVersion)}\",");
             report.Append($"\"scene\":\"{Esc(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name)}\",");
-            report.Append($"\"fps\":{Mathf.RoundToInt(1f / Time.deltaTime)},");
+            report.Append($"\"fps\":{(Time.deltaTime > 0f ? Mathf.RoundToInt(1f / Time.deltaTime) : 0)},");
             report.Append($"\"uptime\":{Time.realtimeSinceStartup:F1}");
             report.Append("},");
 
