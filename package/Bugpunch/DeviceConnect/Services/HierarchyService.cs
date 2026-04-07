@@ -101,7 +101,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Trick: create a temp object, move to DDOL, get its scene, then destroy it
             try
             {
-                var temp = new GameObject("__odddev_temp__");
+                var temp = new GameObject("__bugpunch_temp__");
                 Object.DontDestroyOnLoad(temp);
                 var ddolScene = temp.scene;
                 Object.DestroyImmediate(temp);
