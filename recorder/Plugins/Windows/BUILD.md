@@ -90,7 +90,7 @@ recorder\Plugins\Windows\x86_64\ODDRecorder.dll
 Open a **x64 Native Tools Command Prompt for VS 2022** (or 2019) and run:
 
 ```bat
-cd c:\Workspaces\tool_ui_automation\recorder\Plugins\Windows
+cd c:\Workspaces\odddev\sdk\recorder\Plugins\Windows
 
 cl /LD /EHsc /std:c++17 /O2 /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DNDEBUG ^
    ODDRecorder.cpp ^

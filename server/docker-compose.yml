@@ -1,8 +1,0 @@
-services:
-  uiat-server:
-    build: .
-    ports:
-      - "80:5000"
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped

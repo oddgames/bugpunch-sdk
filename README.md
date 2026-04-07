@@ -1,6 +1,6 @@
-# ODD Games UI Automation
+# Bugpunch SDK for Unity
 
-Automated UI testing for Unity games. Record user interactions and replay them as tests. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events.
+Debugging, remote code execution, and automated UI testing for Unity games. Record user interactions and replay them as tests. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Automated UI testing for Unity games. Record user interactions and replay them a
 
 1. Open **Window > Package Manager**
 2. Click **+** dropdown → **Add package from git URL...**
-3. Enter: `https://github.com/oddgames/ui-automation.git?path=package`
+3. Enter: `https://github.com/oddgames/bugpunch-sdk-unity.git?path=package`
 4. Click **Add**
 
 ### Option 2: Edit manifest.json
@@ -18,7 +18,7 @@ Add to your `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.bugpunch": "https://github.com/oddgames/ui-automation.git?path=package"
+    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk-unity.git?path=package"
   }
 }
 ```
@@ -28,7 +28,7 @@ Add to your `Packages/manifest.json`:
 To lock to a specific version, append `#v1.1.6` (or any tag):
 
 ```
-https://github.com/oddgames/ui-automation.git?path=package#v1.1.6
+https://github.com/oddgames/bugpunch-sdk-unity.git?path=package#v1.1.6
 ```
 
 ### Private Repository Access
@@ -40,14 +40,14 @@ This is a private repository. To install, use a GitHub Personal Access Token:
 3. Use this URL format:
 
 ```
-https://<YOUR_TOKEN>@github.com/oddgames/ui-automation.git?path=package
+https://<YOUR_TOKEN>@github.com/oddgames/bugpunch-sdk-unity.git?path=package
 ```
 
 Or in manifest.json:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.bugpunch": "https://<YOUR_TOKEN>@github.com/oddgames/ui-automation.git?path=package"
+    "au.com.oddgames.bugpunch": "https://<YOUR_TOKEN>@github.com/oddgames/bugpunch-sdk-unity.git?path=package"
   }
 }
 ```
@@ -56,7 +56,7 @@ Or in manifest.json:
 
 ## Documentation
 
-**[Full Documentation (Wiki)](https://github.com/oddgames/ui-automation/wiki)** - Complete API reference and guides
+**[Full Documentation (Wiki)](https://github.com/oddgames/bugpunch-sdk-unity/wiki)** - Complete API reference and guides
 
 **[Package README](package/README.md)** - Quick start and API overview
 
@@ -66,7 +66,7 @@ Or in manifest.json:
 
 ```
 ├── package/          # UPM package - import this into your Unity project
-│   ├── UIAutomation/ # Framework source code
+│   ├── Bugpunch/     # Framework source code
 │   ├── Samples/      # Example tests and demos
 │   ├── README.md     # Package documentation
 │   └── CHANGELOG.md  # Version history

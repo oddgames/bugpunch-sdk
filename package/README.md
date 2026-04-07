@@ -1,4 +1,4 @@
-# ODD Games UI Automation
+# Bugpunch SDK for Unity
 
 A UI automation testing framework for Unity. Write tests using Unity's standard NUnit framework with async/await.
 
@@ -9,7 +9,7 @@ Add to your `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.bugpunch": "https://github.com/oddgames/ui-automation.git?path=package#v1.1.1"
+    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk-unity.git?path=package#v1.1.1"
   }
 }
 ```
@@ -253,7 +253,7 @@ Sessions generate a live HTML report with screenshots, action timeline, and pass
 
 ## Documentation
 
-Full documentation: https://github.com/oddgames/ui-automation/wiki
+Full documentation: https://github.com/oddgames/bugpunch-sdk-unity/wiki
 
 ## Version History
 

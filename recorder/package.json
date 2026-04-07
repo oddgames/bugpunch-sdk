@@ -10,7 +10,7 @@
   "author": { "name": "ODD Games" },
   "repository": {
     "type": "git",
-    "url": "https://github.com/oddgames/ui-automation.git",
+    "url": "https://github.com/oddgames/bugpunch-sdk-unity.git",
     "directory": "recorder"
   }
 }

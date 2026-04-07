@@ -1,4 +1,4 @@
-# UITest Framework
+# Bugpunch SDK
 
 A UI automation testing framework for Unity projects.
 
@@ -6,7 +6,7 @@ A UI automation testing framework for Unity projects.
 
 1. **Install** via Unity Package Manager:
    ```json
-   "com.oddgames.uitest": "https://github.com/oddgames/ui-automation.git?path=package#v1.0.25"
+   "com.oddgames.uitest": "https://github.com/oddgames/bugpunch-sdk-unity.git?path=package#v1.0.25"
    ```
 
 2. **Create a test** by extending `UITestBehaviour`:
@@ -69,5 +69,5 @@ A UI automation testing framework for Unity projects.
 
 ## Links
 
-- [GitHub Repository](https://github.com/oddgames/ui-automation)
-- [Changelog](https://github.com/oddgames/ui-automation/blob/main/package/CHANGELOG.md)
+- [GitHub Repository](https://github.com/oddgames/bugpunch-sdk-unity)
+- [Changelog](https://github.com/oddgames/bugpunch-sdk-unity/blob/main/package/CHANGELOG.md)
