@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.3] - 2026-04-11
+
+### Added
+- **WebRTC camera metadata data channel** — `WebRTCStreamer` now creates an `RTCDataChannel` ("camera-metadata") alongside the video track and sends scene camera pose (`px/py/pz/rx/ry/rz`) every other frame. Lets the web dashboard overlay world-space gizmos that stay aligned with the streamed view.
+- **`/resolve-element-type` route** — `RequestRouter` exposes `InspectorService.ResolveElementType` for the Remote IDE to resolve the element type of a collection/array chain (e.g. `transform.GetComponentsInChildren<Renderer>()` → `Renderer`).
+- **Generic type args in member chain resolution** — `InspectorService.ResolveChain` now parses `Foo.FindFirstObjectByType<Renderer>` and resolves to `Renderer`, so IntelliSense works on generic method calls.
+
+### Changed
+- **Inspector member enumeration includes inherited members** — properties, fields, and methods now use `BindingFlags.FlattenHierarchy`, deduped by name so overrides don't appear twice. Methods are grouped by name with an overload count (`(+N overloads)`) instead of listing every signature.
+- **PaxScript errors carry line numbers** — `PaxScriptRunner` returns structured `{line, message}` entries from `PaxScripter.Error_List` instead of a single blob string, so the script panel can underline the offending line.
+
+### Fixed
+- **Missing Android Plugins .meta files** — v1.4.0 shipped `BugpunchProjectionRequest.java`, `BugpunchProjectionService.java`, `BugpunchRecorder.java`, and `AndroidManifest.xml` without their folder `.meta` companions, so Unity dropped the entire `Plugins/Android` tree on package import in consumer projects.
+
 ## [1.4.2] - 2026-04-11
 
 ### Fixed
