@@ -1,14 +1,11 @@
 using UnityEditor;
-using UnityEditor.Toolbars;
 using UnityEngine;
 
 namespace ODDGames.Bugpunch.Editor
 {
     /// <summary>
-    /// Bugpunch connection toggle on the main toolbar.
+    /// Bugpunch connection toggle via the Bugpunch menu.
     /// Default OFF — prevents remote connections while working.
-    /// Chain icon: linked = on, click to toggle.
-    /// Toggle appears highlighted/pressed when enabled.
     /// </summary>
     static class BugpunchEditorToggle
     {
@@ -26,6 +23,21 @@ namespace ODDGames.Bugpunch.Editor
         {
             IsEnabled = !IsEnabled;
             Debug.Log($"[Bugpunch] Connection {(IsEnabled ? "ENABLED" : "DISABLED")}");
+
+            // Actively connect or disconnect if in Play mode
+            if (Application.isPlaying)
+            {
+                if (IsEnabled)
+                {
+                    var config = DeviceConnect.BugpunchConfig.Load();
+                    if (config != null && DeviceConnect.BugpunchClient.Instance == null)
+                        DeviceConnect.BugpunchClient.Initialize(config);
+                }
+                else if (DeviceConnect.BugpunchClient.Instance != null)
+                {
+                    DeviceConnect.BugpunchClient.Instance.Disconnect();
+                }
+            }
         }
 
         [MenuItem(MenuPath, true)]
@@ -33,44 +45,6 @@ namespace ODDGames.Bugpunch.Editor
         {
             Menu.SetChecked(MenuPath, IsEnabled);
             return true;
-        }
-
-        [MainToolbarElement("Bugpunch/Connection",
-            defaultDockPosition = MainToolbarDockPosition.Right)]
-        static MainToolbarElement CreateToggle()
-        {
-            // Circle with tick when on, empty circle when off
-            // MainToolbarToggle shows highlighted/pressed state when active
-            var icon = EditorGUIUtility.IconContent("d_Valid").image as Texture2D;
-            var content = new MainToolbarContent("Bugpunch", icon,
-                "Toggle Bugpunch remote connection (chain = connected)");
-
-            var toggle = new MainToolbarToggle(content, IsEnabled, OnToggled)
-            {
-                displayed = true
-            };
-            return toggle;
-        }
-
-        static void OnToggled(bool value)
-        {
-            IsEnabled = value;
-            Debug.Log($"[Bugpunch] Connection {(value ? "ENABLED" : "DISABLED")}");
-
-            // Actively connect or disconnect if in Play mode
-            if (Application.isPlaying)
-            {
-                if (value)
-                {
-                    var config = DeviceConnect.BugpunchConfig.Load();
-                    if (config != null && DeviceConnect.BugpunchClient.Instance == null)
-                        DeviceConnect.BugpunchClient.Initialize(config);
-                }
-                else
-                {
-                    DeviceConnect.BugpunchClient.Instance?.Disconnect();
-                }
-            }
         }
     }
 }
