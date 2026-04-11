@@ -53,21 +53,21 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (scripter.HasErrors || errors.Length > 0)
                 {
                     CollectErrors(scripter, errors);
-                    return Error(errors);
+                    return BuildErrorResponse(scripter, errors);
                 }
 
                 scripter.Link();
                 if (scripter.HasErrors || errors.Length > 0)
                 {
                     CollectErrors(scripter, errors);
-                    return Error(errors);
+                    return BuildErrorResponse(scripter, errors);
                 }
 
                 scripter.Run(RunMode.Run);
                 if (scripter.HasErrors || errors.Length > 0)
                 {
                     CollectErrors(scripter, errors);
-                    return Error(errors);
+                    return BuildErrorResponse(scripter, errors);
                 }
 
                 return "{\"ok\":true,\"output\":\"\"}";
@@ -84,6 +84,33 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (scripter.Error_List == null) return;
             foreach (ScriptError err in scripter.Error_List)
                 errors.AppendLine($"({err.LineNumber}) {err.Message}");
+        }
+
+        static string BuildErrorResponse(PaxScripter scripter, StringBuilder errorText)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"ok\":false,\"errors\":[");
+            bool first = true;
+
+            // Structured errors with line numbers
+            if (scripter.Error_List != null)
+            {
+                foreach (ScriptError err in scripter.Error_List)
+                {
+                    if (!first) sb.Append(",");
+                    first = false;
+                    sb.Append($"{{\"line\":{err.LineNumber},\"message\":\"{Esc(err.Message)}\"}}");
+                }
+            }
+
+            // Fallback: parse (N) prefix from collected error text
+            if (first && errorText.Length > 0)
+            {
+                sb.Append($"{{\"message\":\"{Esc(errorText.ToString())}\"}}");
+            }
+
+            sb.Append("]}");
+            return sb.ToString();
         }
 
         static string Error(StringBuilder errors) =>

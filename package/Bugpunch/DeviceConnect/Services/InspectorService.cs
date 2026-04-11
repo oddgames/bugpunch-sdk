@@ -230,30 +230,41 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var sb = new StringBuilder();
             sb.Append("[");
             bool first = true;
+            var seen = new HashSet<string>();
+
+            const BindingFlags allPublic = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy;
 
             // Properties
-            foreach (var p in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
+            foreach (var p in type.GetProperties(allPublic))
             {
+                if (!seen.Add($"P:{p.Name}")) continue;
                 if (!first) sb.Append(",");
                 first = false;
                 sb.Append($"{{\"name\":\"{EscapeJson(p.Name)}\",\"kind\":\"property\",\"type\":\"{EscapeJson(p.PropertyType.Name)}\",\"returnType\":\"{EscapeJson(p.PropertyType.Name)}\"}}");
             }
 
             // Fields
-            foreach (var f in type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
+            foreach (var f in type.GetFields(allPublic))
             {
+                if (!seen.Add($"F:{f.Name}")) continue;
                 if (!first) sb.Append(",");
                 first = false;
                 sb.Append($"{{\"name\":\"{EscapeJson(f.Name)}\",\"kind\":\"field\",\"type\":\"{EscapeJson(f.FieldType.Name)}\",\"returnType\":\"{EscapeJson(f.FieldType.Name)}\"}}");
             }
 
-            // Methods
-            foreach (var m in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static).Where(m => !m.IsSpecialName))
+            // Methods — deduplicate by name, show overload count
+            var methodGroups = type.GetMethods(allPublic)
+                .Where(m => !m.IsSpecialName)
+                .GroupBy(m => m.Name);
+            foreach (var group in methodGroups)
             {
                 if (!first) sb.Append(",");
                 first = false;
-                var paramStr = string.Join(", ", m.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
-                sb.Append($"{{\"name\":\"{EscapeJson(m.Name)}\",\"kind\":\"method\",\"type\":\"{EscapeJson(m.ReturnType.Name)}\",\"returnType\":\"{EscapeJson(m.ReturnType.Name)}\",\"parameters\":\"{EscapeJson(paramStr)}\"}}");
+                var representative = group.First();
+                var paramStr = string.Join(", ", representative.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
+                var overloads = group.Count();
+                var detail = overloads > 1 ? $"(+{overloads - 1} overloads)" : "";
+                sb.Append($"{{\"name\":\"{EscapeJson(group.Key)}\",\"kind\":\"method\",\"type\":\"{EscapeJson(representative.ReturnType.Name)}\",\"returnType\":\"{EscapeJson(representative.ReturnType.Name)}\",\"parameters\":\"{EscapeJson(paramStr)}\",\"detail\":\"{EscapeJson(detail)}\"}}");
             }
 
             sb.Append("]");
@@ -268,7 +279,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var type = FindType(typeName);
             if (type == null) return "[]";
 
-            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy)
                 .Where(m => m.Name == methodName)
                 .ToArray();
 
@@ -316,6 +327,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         /// <summary>
         /// Resolve a member chain like "GameObject.transform.position" and return the final type.
+        /// Supports generic type args: "GameObject.FindFirstObjectByType&lt;Renderer&gt;" resolves to Renderer.
         /// If info=true, return members of the resolved type as well.
         /// </summary>
         public string ResolveChain(string chain, bool info)
@@ -323,14 +335,51 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (string.IsNullOrEmpty(chain))
                 return "\"\"";
 
-            var parts = chain.Split('.');
+            var current = ResolveChainToType(chain);
+            if (current == null)
+                return "\"\"";
+
+            if (info)
+            {
+                return "{\"type\":\"" + EscapeJson(current.Name) + "\",\"fullName\":\"" + EscapeJson(current.FullName ?? current.Name) +
+                       "\",\"isEnum\":" + (current.IsEnum ? "true" : "false") +
+                       ",\"isValueType\":" + (current.IsValueType ? "true" : "false") + "}";
+            }
+
+            return "\"" + EscapeJson(current.Name) + "\"";
+        }
+
+        /// <summary>
+        /// Resolve a chain and return the element type if the result is enumerable.
+        /// Used for foreach(var x in expr) — returns the type of x.
+        /// </summary>
+        public string ResolveElementType(string chain)
+        {
+            if (string.IsNullOrEmpty(chain))
+                return "\"\"";
+
+            var collectionType = ResolveChainToType(chain);
+            if (collectionType == null)
+                return "\"\"";
+
+            var elementType = GetElementType(collectionType);
+            if (elementType == null)
+                return "\"\"";
+
+            return "\"" + EscapeJson(elementType.FullName ?? elementType.Name) + "\"";
+        }
+
+        Type ResolveChainToType(string chain)
+        {
+            // Split on '.' but preserve generic args: "Type.Method<Arg>.Prop"
+            var parts = SplitChain(chain);
             Type current = null;
             int start = 0;
 
             // Find the starting type from the chain
-            for (int i = 0; i < parts.Length; i++)
+            for (int i = 0; i < parts.Count; i++)
             {
-                current = FindType(parts[i]);
+                current = FindType(parts[i].name);
                 if (current != null)
                 {
                     start = i + 1;
@@ -339,28 +388,108 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
 
             if (current == null)
-                return "\"\"";
+                return null;
 
-            var flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.IgnoreCase;
-            for (int i = start; i < parts.Length; i++)
+            var flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.FlattenHierarchy | BindingFlags.IgnoreCase;
+            for (int i = start; i < parts.Count; i++)
             {
-                var prop = current.GetProperty(parts[i], flags);
-                if (prop != null) { current = prop.PropertyType; continue; }
-                var fld = current.GetField(parts[i], flags);
-                if (fld != null) { current = fld.FieldType; continue; }
-                var mtd = current.GetMethods(flags)
-                    .FirstOrDefault(m => string.Equals(m.Name, parts[i], StringComparison.OrdinalIgnoreCase) && !m.IsSpecialName);
-                if (mtd != null) { current = mtd.ReturnType; continue; }
-                return "\"\"";
+                var (memberName, genericArg) = parts[i];
+
+                var property = current.GetProperty(memberName, flags);
+                if (property != null) { current = property.PropertyType; continue; }
+                var field = current.GetField(memberName, flags);
+                if (field != null) { current = field.FieldType; continue; }
+                var candidates = current.GetMethods(flags)
+                    .Where(m => string.Equals(m.Name, memberName, StringComparison.OrdinalIgnoreCase) && !m.IsSpecialName)
+                    .ToArray();
+                // Prefer generic overload when a generic arg is provided
+                var method = genericArg != null
+                    ? candidates.FirstOrDefault(m => m.IsGenericMethod) ?? candidates.FirstOrDefault()
+                    : candidates.FirstOrDefault(m => !m.IsGenericMethod) ?? candidates.FirstOrDefault();
+                if (method != null)
+                {
+                    if (method.IsGenericMethod && genericArg != null)
+                    {
+                        var argType = FindType(genericArg);
+                        if (argType != null)
+                        {
+                            try
+                            {
+                                var concrete = method.MakeGenericMethod(argType);
+                                current = concrete.ReturnType;
+                                continue;
+                            }
+                            catch { }
+                        }
+                    }
+                    current = method.ReturnType;
+                    continue;
+                }
+                return null;
             }
 
-            if (info)
+            return current;
+        }
+
+        /// <summary>
+        /// Split a chain like "GameObject.FindObjectsByType&lt;Renderer&gt;.Length" into
+        /// [(GameObject, null), (FindObjectsByType, Renderer), (Length, null)]
+        /// </summary>
+        static List<(string name, string genericArg)> SplitChain(string chain)
+        {
+            var result = new List<(string, string)>();
+            int i = 0;
+            while (i < chain.Length)
             {
-                return "{\"type\":\"" + EscapeJson(current.Name) + "\",\"isEnum\":" + (current.IsEnum ? "true" : "false") +
-                       ",\"isValueType\":" + (current.IsValueType ? "true" : "false") + "}";
+                // Read member name up to '.', '<', or end
+                int nameStart = i;
+                while (i < chain.Length && chain[i] != '.' && chain[i] != '<')
+                    i++;
+                var name = chain.Substring(nameStart, i - nameStart);
+                string genericArg = null;
+
+                // Check for generic arg <Type>
+                if (i < chain.Length && chain[i] == '<')
+                {
+                    i++; // skip '<'
+                    int argStart = i;
+                    while (i < chain.Length && chain[i] != '>')
+                        i++;
+                    genericArg = chain.Substring(argStart, i - argStart);
+                    if (i < chain.Length) i++; // skip '>'
+                }
+
+                if (name.Length > 0)
+                    result.Add((name, genericArg));
+
+                // Skip '.'
+                if (i < chain.Length && chain[i] == '.')
+                    i++;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Get the element type of a collection/array type.
+        /// T[] → T, List&lt;T&gt; → T, IEnumerable&lt;T&gt; → T
+        /// </summary>
+        static Type GetElementType(Type type)
+        {
+            if (type.IsArray)
+                return type.GetElementType();
+
+            // Check IEnumerable<T> interfaces
+            foreach (var iface in type.GetInterfaces())
+            {
+                if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                    return iface.GetGenericArguments()[0];
             }
 
-            return "\"" + EscapeJson(current.Name) + "\"";
+            // Check if the type itself is IEnumerable<T>
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return type.GetGenericArguments()[0];
+
+            return null;
         }
 
         // ── Helpers ──

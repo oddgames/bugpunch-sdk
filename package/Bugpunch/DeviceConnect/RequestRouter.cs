@@ -133,6 +133,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     return Response.Json(Inspector?.GetSignatures(type, m) ?? "[]");
                 }
 
+                if (path.StartsWith("/resolve-element-type"))
+                {
+                    var chain = Q(path, "chain");
+                    return Response.Json(Inspector?.ResolveElementType(chain) ?? "\"\"");
+                }
+
                 if (path.StartsWith("/resolve"))
                 {
                     var chain = Q(path, "chain");

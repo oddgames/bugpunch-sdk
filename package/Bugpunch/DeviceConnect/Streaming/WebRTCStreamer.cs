@@ -28,6 +28,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
         RTCIceServer[] _iceServers;
         readonly List<IceMessage> _pendingIceCandidates = new();
 
+        // Data channel for sending camera metadata per frame
+        RTCDataChannel _metadataChannel;
+        int _metadataFrameSkip;
+
+        /// <summary>
+        /// Reference to the scene camera service for sending metadata via data channel.
+        /// </summary>
+        public SceneCameraService SceneCameraRef { get; set; }
+
         /// <summary>
         /// Set custom ICE servers (STUN + TURN) fetched from the server.
         /// If not set, falls back to default STUN server.
@@ -184,6 +193,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _pc = new RTCPeerConnection(ref config);
             var thisPC = _pc;
 
+            // Create data channel for per-frame camera metadata
+            _metadataChannel = _pc.CreateDataChannel("camera-metadata", new RTCDataChannelInit());
+            _metadataFrameSkip = 0;
+
             // ICE candidate handler — queue candidates for browser to poll
             _pc.OnIceCandidate = candidate =>
             {
@@ -310,6 +323,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         /// <summary>
         /// Render loop — captures camera to render texture each frame while streaming.
+        /// Also sends camera metadata via data channel every other frame.
         /// </summary>
         IEnumerator RenderLoop()
         {
@@ -324,6 +338,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 cam.targetTexture = _rt;
                 cam.Render();
                 cam.targetTexture = prevTarget;
+
+                // Send camera metadata via data channel (every other frame to reduce overhead)
+                _metadataFrameSkip++;
+                if (_metadataFrameSkip >= 2 && _metadataChannel != null && _metadataChannel.ReadyState == RTCDataChannelState.Open)
+                {
+                    _metadataFrameSkip = 0;
+                    var t = cam.transform;
+                    var p = t.position;
+                    var r = t.eulerAngles;
+                    string F(float v) => v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                    _metadataChannel.Send($"{{\"px\":{F(p.x)},\"py\":{F(p.y)},\"pz\":{F(p.z)},\"rx\":{F(r.x)},\"ry\":{F(r.y)},\"rz\":{F(r.z)}}}");
+                }
             }
         }
 
@@ -338,6 +364,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void CleanupPeerConnection()
         {
+            if (_metadataChannel != null)
+            {
+                _metadataChannel.Close();
+                _metadataChannel = null;
+            }
             if (_videoTrack != null)
             {
                 _videoTrack.Dispose();

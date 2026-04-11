@@ -1,5 +1,6 @@
 ﻿<Solution>
   <Project Path="ODDGames.Bugpunch.csproj" />
+  <Project Path="PaxScript.csproj" />
   <Project Path="ODDGames.Bugpunch.Editor.csproj" />
   <Project Path="ODDGames.Bugpunch.Samples.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />

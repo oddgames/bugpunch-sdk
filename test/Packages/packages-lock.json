@@ -24,11 +24,11 @@
       "hash": "beee29ab0be10796e40e3b67a950fcabc3b8849b"
     },
     "au.com.oddgames.paxscript": {
-      "version": "https://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@github.com/oddgames/paxscript.git?path=Package#v1.6.0",
+      "version": "https://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@github.com/oddgames/paxscript.git?path=Package",
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "32dddc6e4d92b9b3df2cce278730237d556128dc"
+      "hash": "5616e175d6c3fb7044ce8e40a4d892faf5522912"
     },
     "com.unity.ai.navigation": {
       "version": "2.0.10",
