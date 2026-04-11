@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.4] - 2026-04-11
+
+### Changed
+- **TypeDB upload is gzipped** — `TypeDatabaseExporter` now gzips the JSON before upload (~10× smaller on the wire) and sends metadata (`X-Unity-Version`, `X-App-Version`, `X-Type-Count`, `X-Namespace-Count`) via headers. Storage format on the server is now `typedb.json.gz`.
+- **TypeDB auto-uploads on compile and connect** — `BuildHooks` now uploads the TypeDB after every script compilation (debounced by SHA1 content hash stored in `EditorPrefs` — unchanged content skips the upload) and also whenever `BugpunchClient` connects via the new `OnAnyConnected` static event. Remote IDE IntelliSense stays fresh without manual exports or builds.
+- **New `ExportAndUploadIfChanged()` API** — cheap to call from hot paths; the menu item `ODD Games → Export Type Database` still forces a full upload.
+
 ## [1.4.3] - 2026-04-11
 
 ### Added

@@ -17,26 +17,42 @@ namespace ODDGames.Bugpunch.Editor
     [InitializeOnLoad]
     public static class BuildHooks
     {
-        static bool _typeDbUploaded;
-
         static BuildHooks()
         {
             CompilationPipeline.compilationFinished += OnCompilationFinished;
+            // Subscribe to runtime client connection events so the TypeDB refreshes
+            // automatically when the editor connects (play mode).
+            ODDGames.Bugpunch.DeviceConnect.BugpunchClient.OnAnyConnected += OnClientConnected;
         }
 
         /// <summary>
         /// Called after every script compilation in the editor.
-        /// Exports and uploads the type database automatically.
+        /// Uploads the TypeDB if the content has changed since the last upload.
+        /// Deferred via delayCall so it doesn't block the compilation pipeline.
         /// </summary>
         static void OnCompilationFinished(object context)
         {
             var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
             if (config == null || string.IsNullOrEmpty(config.apiKey)) return;
+            EditorApplication.delayCall += TryUploadTypeDatabaseQuiet;
+        }
 
-            // Don't upload on every recompile — only when explicitly building
-            // or when the user has opted in via config
-            // For now, just mark that types are stale
-            _typeDbUploaded = false;
+        static void OnClientConnected()
+        {
+            // The event may fire on a background thread — hop to the main thread.
+            EditorApplication.delayCall += TryUploadTypeDatabaseQuiet;
+        }
+
+        static void TryUploadTypeDatabaseQuiet()
+        {
+            try
+            {
+                TypeDatabaseExporter.ExportAndUploadIfChanged();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Bugpunch] TypeDB auto-upload failed: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -44,12 +60,9 @@ namespace ODDGames.Bugpunch.Editor
         /// </summary>
         public static void UploadTypeDatabase()
         {
-            if (_typeDbUploaded) return;
-
             try
             {
-                TypeDatabaseExporter.ExportAndUpload();
-                _typeDbUploaded = true;
+                TypeDatabaseExporter.ExportAndUploadIfChanged();
             }
             catch (Exception ex)
             {

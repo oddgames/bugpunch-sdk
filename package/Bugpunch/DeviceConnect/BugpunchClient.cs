@@ -25,6 +25,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public event Action OnDisconnected;
         public event Action<string> OnError;
 
+        /// <summary>
+        /// Fires whenever any BugpunchClient instance successfully connects.
+        /// Used by editor hooks (e.g. TypeDB auto-upload) that need to react without
+        /// holding a reference to the instance.
+        /// </summary>
+        public static event Action OnAnyConnected;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoInitialize()
         {
@@ -158,6 +165,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     Debug.Log("[Bugpunch] Connected");
                     StartCoroutine(FetchIceServers());
                     OnConnected?.Invoke();
+                    OnAnyConnected?.Invoke();
                 };
                 Tunnel.OnDisconnected += () => { Debug.Log("[Bugpunch] Disconnected"); OnDisconnected?.Invoke(); };
                 Tunnel.OnError += e => { Debug.LogError($"[Bugpunch] {e}"); OnError?.Invoke(e); };
@@ -271,6 +279,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
 #endif
 
+#if UNITY_INCLUDE_TESTS
             // Input injection — needs main thread for Input System
             if (response == null && path.StartsWith("/input/"))
             {
@@ -312,6 +321,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 yield break;
             }
+#endif
 
             if (response == null)
             {
@@ -333,7 +343,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Registration = null;
 
             Tunnel = new TunnelClient(Config);
-            Tunnel.OnConnected += () => { Debug.Log("[Bugpunch] Connected"); OnConnected?.Invoke(); };
+            Tunnel.OnConnected += () => { Debug.Log("[Bugpunch] Connected"); OnConnected?.Invoke(); OnAnyConnected?.Invoke(); };
             Tunnel.OnDisconnected += () => { Debug.Log("[Bugpunch] Disconnected"); OnDisconnected?.Invoke(); };
             Tunnel.OnError += e => { Debug.LogError($"[Bugpunch] {e}"); OnError?.Invoke(e); };
             Tunnel.OnRequest += HandleRequest;

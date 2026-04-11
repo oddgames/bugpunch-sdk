@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
@@ -12,36 +14,78 @@ namespace ODDGames.Bugpunch.Editor
 {
     public static class TypeDatabaseExporter
     {
+        const string HashPrefKey = "Bugpunch.TypeDbHash";
+
         [MenuItem("ODD Games/Export Type Database")]
-        public static void ExportAndUpload()
+        public static void ExportAndUpload() => ExportAndUpload(force: true, showProgress: true);
+
+        /// <summary>
+        /// Export and upload only if the TypeDB content has changed since last upload.
+        /// Cheap to call from compilation-finished and connect hooks.
+        /// </summary>
+        public static bool ExportAndUploadIfChanged() => ExportAndUpload(force: false, showProgress: false);
+
+        static bool ExportAndUpload(bool force, bool showProgress)
         {
             var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
-            if (config == null)
+            if (config == null || string.IsNullOrEmpty(config.apiKey))
             {
-                EditorUtility.DisplayDialog("Bugpunch", "No BugpunchConfig found in Resources/", "OK");
-                return;
+                if (force)
+                    EditorUtility.DisplayDialog("Bugpunch", "No BugpunchConfig (or missing apiKey) found in Resources/", "OK");
+                return false;
             }
 
-            EditorUtility.DisplayProgressBar("Bugpunch", "Scanning assemblies...", 0f);
+            if (showProgress) EditorUtility.DisplayProgressBar("Bugpunch", "Scanning assemblies...", 0f);
 
             try
             {
-                var db = BuildDatabase();
+                var db = BuildDatabase(showProgress);
                 var json = SerializeDatabase(db);
 
-                // Save locally
+                // Save locally for debugging
                 var path = Path.Combine(Application.dataPath, "..", "Library", "BugpunchTypeDb.json");
                 File.WriteAllText(path, json);
-                Debug.Log($"[Bugpunch] Type database exported: {json.Length / 1024}KB, {db.types.Count} types, {db.namespaces.Count} namespaces");
 
-                // Upload to server
-                EditorUtility.DisplayProgressBar("Bugpunch", "Uploading to server...", 0.8f);
-                UploadToServer(config, json);
+                var hash = Sha1(json);
+                var prevHash = EditorPrefs.GetString(HashPrefKey, "");
+                if (!force && hash == prevHash)
+                {
+                    return false; // unchanged — skip upload
+                }
+
+                var jsonBytes = Encoding.UTF8.GetBytes(json);
+                var gzBytes = Gzip(jsonBytes);
+                Debug.Log($"[Bugpunch] Type database: {jsonBytes.Length / 1024}KB → {gzBytes.Length / 1024}KB gzipped ({db.types.Count} types)");
+
+                if (showProgress) EditorUtility.DisplayProgressBar("Bugpunch", "Uploading to server...", 0.8f);
+                if (UploadToServer(config, gzBytes, db))
+                {
+                    EditorPrefs.SetString(HashPrefKey, hash);
+                    return true;
+                }
+                return false;
             }
             finally
             {
-                EditorUtility.ClearProgressBar();
+                if (showProgress) EditorUtility.ClearProgressBar();
             }
+        }
+
+        static byte[] Gzip(byte[] bytes)
+        {
+            using var ms = new MemoryStream();
+            using (var gz = new GZipStream(ms, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+            {
+                gz.Write(bytes, 0, bytes.Length);
+            }
+            return ms.ToArray();
+        }
+
+        static string Sha1(string s)
+        {
+            using var sha = SHA1.Create();
+            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(s));
+            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
         }
 
         // Auto-export on build
@@ -88,7 +132,7 @@ namespace ODDGames.Bugpunch.Editor
             public string defaultValue;
         }
 
-        static TypeDatabase BuildDatabase()
+        static TypeDatabase BuildDatabase(bool showProgress = true)
         {
             var db = new TypeDatabase
             {
@@ -123,7 +167,8 @@ namespace ODDGames.Bugpunch.Editor
             foreach (var assembly in targetAssemblies)
             {
                 current++;
-                EditorUtility.DisplayProgressBar("Bugpunch", $"Scanning {assembly.GetName().Name}...", current / total * 0.8f);
+                if (showProgress)
+                    EditorUtility.DisplayProgressBar("Bugpunch", $"Scanning {assembly.GetName().Name}...", current / total * 0.8f);
 
                 try
                 {
@@ -300,7 +345,7 @@ namespace ODDGames.Bugpunch.Editor
             sb.Append("}");
         }
 
-        static void UploadToServer(ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config, string json)
+        static bool UploadToServer(ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config, byte[] gzBytes, TypeDatabase db)
         {
             var url = config.serverUrl.TrimEnd('/');
             if (url.StartsWith("ws://")) url = "http://" + url.Substring(5);
@@ -308,25 +353,29 @@ namespace ODDGames.Bugpunch.Editor
 
             var uploadUrl = $"{url}/api/typedb/upload";
 
-            var bytes = System.Text.Encoding.UTF8.GetBytes(json);
             var request = new UnityWebRequest(uploadUrl, "POST");
-            request.uploadHandler = new UploadHandlerRaw(bytes);
+            request.uploadHandler = new UploadHandlerRaw(gzBytes);
             request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Content-Type", "application/gzip");
             request.SetRequestHeader("X-Api-Key", config.apiKey);
             if (!string.IsNullOrEmpty(config.projectId))
                 request.SetRequestHeader("X-Project-Id", config.projectId);
+            request.SetRequestHeader("X-Unity-Version", db.unityVersion ?? "");
+            request.SetRequestHeader("X-App-Version", db.appVersion ?? "");
+            request.SetRequestHeader("X-Type-Count", db.types.Count.ToString());
+            request.SetRequestHeader("X-Namespace-Count", db.namespaces.Count.ToString());
 
             var op = request.SendWebRequest();
-            // Block in editor context
             while (!op.isDone) { }
 
-            if (request.result == UnityWebRequest.Result.Success)
-                Debug.Log($"[Bugpunch] Type database uploaded to server ({bytes.Length / 1024}KB)");
+            bool ok = request.result == UnityWebRequest.Result.Success;
+            if (ok)
+                Debug.Log($"[Bugpunch] Type database uploaded to server ({gzBytes.Length / 1024}KB gzipped)");
             else
                 Debug.LogError($"[Bugpunch] Type database upload failed: {request.error} — {request.downloadHandler.text}");
 
             request.Dispose();
+            return ok;
         }
 
         static string Esc(string s) =>
