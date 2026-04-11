@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 namespace ODDGames.Bugpunch.DeviceConnect
 {
@@ -149,6 +151,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
+        // Thread-safe clock for OnLog — Unity's Time.realtimeSinceStartup is
+        // main-thread only, but log callbacks can fire on worker threads.
+        static readonly Stopwatch _logClock = Stopwatch.StartNew();
+
         void OnLog(string message, string stackTrace, LogType type)
         {
             lock (_logBuffer)
@@ -157,7 +163,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     _logBuffer.RemoveAt(0);
                 _logBuffer.Add(new LogEntry
                 {
-                    time = Time.realtimeSinceStartup,
+                    time = (float)_logClock.Elapsed.TotalSeconds,
                     message = message,
                     stackTrace = stackTrace,
                     type = type
