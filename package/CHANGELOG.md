@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.2] - 2026-04-11
+
+### Fixed
+- **`GeminiTestRunner` preprocessor errors in projects without test framework** — the file is wrapped in `#if UNITY_INCLUDE_TESTS`, and the C# preprocessor scans skipped regions for `#` directives without parsing string literals. The `SystemPrompt` verbatim string contained markdown headings (`##`, `###`) at line start, which Roslyn treated as invalid preprocessor directives and failed with CS1024 in consumer projects that don't define `UNITY_INCLUDE_TESTS`. Replaced the `##`/`###` line prefixes with `==`/`--` so they no longer look like directives.
+
 ## [1.4.1] - 2026-04-11
 
 ### Fixed

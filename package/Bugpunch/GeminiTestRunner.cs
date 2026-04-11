@@ -468,55 +468,55 @@ namespace ODDGames.Bugpunch
 
 RESPOND WITH ONLY A JSON OBJECT. No explanation, no markdown, no extra text.
 
-## Available Actions
+== Available Actions ==
 
-### Click / Tap
+-- Click / Tap --
 {""action"":""click"", ""text"":""Button Label""}
 {""action"":""click"", ""name"":""GameObjectName""}
 {""action"":""click"", ""at"":[0.5, 0.5]}  // normalized screen coordinates
 {""action"":""doubleclick"", ""text"":""Item""}
 
-### Type Text
+-- Type Text --
 {""action"":""type"", ""name"":""InputField"", ""value"":""hello""}
 {""action"":""type"", ""adjacent"":""Username:"", ""value"":""admin"", ""clear"":true, ""enter"":true}
 
-### Swipe / Scroll
+-- Swipe / Scroll --
 {""action"":""swipe"", ""direction"":""left""}  // left, right, up, down
 {""action"":""swipe"", ""direction"":""up"", ""name"":""Panel"", ""distance"":0.3}
 {""action"":""scroll"", ""name"":""ListView"", ""direction"":""down"", ""amount"":0.3}
 {""action"":""scrollto"", ""name"":""ScrollView"", ""target"":{""text"":""TargetItem""}}
 
-### Drag
+-- Drag --
 {""action"":""drag"", ""from"":{""name"":""Source""}, ""to"":{""name"":""Target""}}
 {""action"":""drag"", ""direction"":[0.2, 0.0], ""name"":""Slider""}
 
-### Dropdown
+-- Dropdown --
 {""action"":""dropdown"", ""name"":""Dropdown"", ""option"":""Option Label""}
 {""action"":""dropdown"", ""name"":""Dropdown"", ""option"":2}
 
-### Slider
+-- Slider --
 {""action"":""slider"", ""name"":""VolumeSlider"", ""value"":0.5}
 
-### Wait
+-- Wait --
 {""action"":""wait"", ""seconds"":1.5}
 {""action"":""waitfor"", ""text"":""Loading Complete"", ""seconds"":10}
 {""action"":""waitfornot"", ""text"":""Loading..."", ""seconds"":10}
 
-### Keys
+-- Keys --
 {""action"":""key"", ""key"":""enter""}
 {""action"":""key"", ""key"":""escape""}
 
-### Gestures
+-- Gestures --
 {""action"":""pinch"", ""scale"":2.0}
 {""action"":""rotate"", ""degrees"":45}
 {""action"":""hold"", ""text"":""Button"", ""seconds"":2}
 
-### Done - call this when the task is complete
+-- Done (call this when the task is complete) --
 {""action"":""done""}
 {""action"":""done"", ""result"":""pass""}
 {""action"":""done"", ""result"":""fail"", ""reason"":""Could not find the Settings button""}
 
-## Search Targets
+== Search Targets ==
 Actions that target UI elements accept these fields (can combine multiple):
 - ""text"": match by visible text content
 - ""name"": match by GameObject name
@@ -527,7 +527,7 @@ Actions that target UI elements accept these fields (can combine multiple):
 - ""path"": match by hierarchy path
 - ""any"": match by any of the above
 
-## Rules
+== Rules ==
 1. Issue EXACTLY ONE action per response
 2. Respond with ONLY the JSON object - no explanation text
 3. Use {""action"":""done""} when the task is complete (or impossible)
