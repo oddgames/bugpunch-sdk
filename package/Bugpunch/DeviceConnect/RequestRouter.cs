@@ -286,6 +286,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(SceneCamera.SetRenderMode(mode));
                     }
 
+                    if (subPath == "/scene-camera/bounds")
+                    {
+                        var dist = float.TryParse(Q(path, "distance"), out var bd) ? bd : 200f;
+                        var max = int.TryParse(Q(path, "max"), out var bm) ? bm : 500;
+                        return Response.Json(SceneCamera.GetSceneBounds(dist, max));
+                    }
+
                     if (subPath == "/scene-camera/raycast" && method == "POST")
                     {
                         var nx = float.TryParse(JsonVal(body, "x") ?? Q(path, "x"), out var rx) ? rx : 0.5f;

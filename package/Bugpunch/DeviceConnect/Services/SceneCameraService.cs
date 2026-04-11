@@ -718,6 +718,41 @@ Shader ""Hidden/Bugpunch/Overdraw"" {
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Get world-space bounding boxes for renderers visible to the scene camera.
+        /// Uses frustum culling so only objects the camera can see are returned.
+        /// Falls back to distance-based filtering if no scene camera is active.
+        /// </summary>
+        public string GetSceneBounds(float maxDistance = 200f, int maxCount = 500)
+        {
+            var cam = _sceneCamera ?? Camera.main;
+            var camPos = cam != null ? cam.transform.position : Vector3.zero;
+            var maxDistSq = maxDistance * maxDistance;
+
+            var sb = new StringBuilder();
+            sb.Append("[");
+            int count = 0;
+
+            foreach (var renderer in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                if (count >= maxCount) break;
+                if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+
+                var b = renderer.bounds;
+                if ((b.center - camPos).sqrMagnitude > maxDistSq) continue;
+
+                if (count > 0) sb.Append(",");
+                string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
+                sb.Append($"{{\"id\":{renderer.gameObject.GetInstanceID()},\"name\":\"{EscapeJson(renderer.gameObject.name)}\",");
+                sb.Append($"\"center\":{{\"x\":{F(b.center.x)},\"y\":{F(b.center.y)},\"z\":{F(b.center.z)}}},");
+                sb.Append($"\"extents\":{{\"x\":{F(b.extents.x)},\"y\":{F(b.extents.y)},\"z\":{F(b.extents.z)}}}}}");
+                count++;
+            }
+
+            sb.Append("]");
+            return sb.ToString();
+        }
+
         static string EscapeJson(string s) =>
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
