@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifest additions for the Bugpunch native recorder. Unity merges this
+  into the final app manifest at build time.
+
+  Required for MediaProjection screen capture on Android 10+.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="au.com.oddgames.bugpunch">
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- Android 13+ requires runtime permission for notifications; the
+         MediaProjection foreground service posts one. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <activity
+            android:name="au.com.oddgames.bugpunch.BugpunchProjectionRequest"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
+        <service
+            android:name="au.com.oddgames.bugpunch.BugpunchProjectionService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+    </application>
+</manifest>

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-04-11
+
+### Added
+- **Native Android screen recorder** — `BugpunchRecorder.java` (MediaCodec + MediaProjection + MediaMuxer) maintains a rolling 30-second ring buffer of encoded H.264 samples on the native side. On uncaught exception, `BugReporter` dumps a trimmed MP4 (starting at the oldest keyframe within the window) and POSTs it with the crash report. Replaces the old Unity-side JPEG frame capture.
+- **Auto bug reports on exceptions** — `BugReporter.autoReportExceptions` (default on). When a `LogType.Exception` is logged, a report is filed automatically with a configurable cooldown (`autoReportCooldownSeconds`, default 30s) to prevent flooding on tight exception loops.
+- **`BugpunchProjectionService`** — foreground service of type `mediaProjection`, required by Android 10+ to hold the MediaProjection token.
+- **`BugpunchClient.StartConnection()`** — static opt-in entry point for release builds. Auto-init is now gated on `Debug.isDebugBuild || Application.isEditor`; release builds must call this explicitly.
+- **HTTP POST bug report path** — `BugReporter` now POSTs to `/api/reports/bug` via `UnityWebRequest` with `X-Api-Key` auth. Works even when the live tunnel isn't connected, so crash reports ship from production players with no debug session open.
+
+### Changed
+- **`BugReporter` video config** — old `videoScale` + `videoQuality` replaced with `videoBitrate` (H.264 bps) and `videoMaxDimension` (cap on the shorter screen axis). Default video FPS raised from 10 → 30 now that encoding is hardware-accelerated.
+- **`BugReporter.OnLog` is thread-safe** — `Application.logMessageReceivedThreaded` can fire on worker threads, so the log timestamp now uses `Stopwatch` instead of `Time.realtimeSinceStartup` (which is main-thread only).
+- **Bug reports are deduped server-side** — the server collapses identical stacks (hashed on title + first stack frame) within a 1-hour window, so a buggy release doesn't flood Parse with thousands of duplicate rows.
+
 ## [1.3.2] - 2026-02-15
 
 ### Fixed

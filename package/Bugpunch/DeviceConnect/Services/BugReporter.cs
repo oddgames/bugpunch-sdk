@@ -24,27 +24,32 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Keyboard shortcut to open report (editor/desktop)")]
         public KeyCode reportKey = KeyCode.F12;
 
-        [Header("Video Buffer")]
-        [Tooltip("Seconds of video to keep in circular buffer")]
+        [Header("Auto-capture on exception")]
+        [Tooltip("Automatically file a bug report when an uncaught exception is logged")]
+        public bool autoReportExceptions = true;
+
+        [Tooltip("Minimum seconds between auto-reports so a tight exception loop doesn't flood the server")]
+        public float autoReportCooldownSeconds = 30f;
+
+        [Header("Video Buffer (native Android recorder)")]
+        [Tooltip("Seconds of video to keep in the rolling window before an exception")]
         public int videoBufferSeconds = 30;
 
-        [Tooltip("Video capture FPS")]
-        public int videoFps = 10;
+        [Tooltip("Recording frame rate")]
+        public int videoFps = 30;
 
-        [Tooltip("Video capture scale (0.25 = quarter resolution)")]
-        public float videoScale = 0.25f;
+        [Tooltip("H.264 bitrate (bits per second) — 2 Mbps is a good default for 720p")]
+        public int videoBitrate = 2_000_000;
 
-        [Tooltip("JPEG quality for video frames")]
-        public int videoQuality = 50;
+        [Tooltip("Record at this max dimension (the smaller screen axis). Lowering saves memory in the ring buffer.")]
+        public int videoMaxDimension = 720;
+
+        // Native recorder — only used on Android
+        AndroidScreenRecorder _nativeRecorder;
+        float _lastAutoReportTime = float.NegativeInfinity;
 
         // State
-        bool _isCapturing;
         bool _reportDialogOpen;
-
-        // Circular video buffer (last N seconds of JPEG frames)
-        readonly List<FrameData> _frameBuffer = new();
-        int _maxFrames;
-        float _lastCaptureTime;
 
         // Log buffer (last 500 entries)
         readonly List<LogEntry> _logBuffer = new();
@@ -57,12 +62,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public event Action OnReportStarted;
         public event Action<bool> OnReportSent; // true = success
 
-        struct FrameData
-        {
-            public float time;
-            public byte[] jpeg;
-        }
-
         struct LogEntry
         {
             public float time;
@@ -73,23 +72,45 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void Awake()
         {
-            _maxFrames = videoBufferSeconds * videoFps;
             Application.logMessageReceivedThreaded += OnLog;
         }
 
         void OnDestroy()
         {
             Application.logMessageReceivedThreaded -= OnLog;
+            if (_nativeRecorder != null) _nativeRecorder.StopRecording();
         }
 
         void Start()
         {
-            _isCapturing = true;
-            StartCoroutine(CaptureLoop());
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Attach native recorder and kick off the MediaProjection consent dialog.
+            // The rolling window of video is maintained entirely by the native plugin;
+            // Unity just asks for an MP4 dump on demand.
+            _nativeRecorder = gameObject.AddComponent<AndroidScreenRecorder>();
+
+            int sw = Screen.width, sh = Screen.height;
+            float scale = videoMaxDimension > 0
+                ? Mathf.Min(1f, (float)videoMaxDimension / Mathf.Min(sw, sh))
+                : 1f;
+            int rw = Mathf.Max(16, Mathf.RoundToInt(sw * scale) & ~1); // even numbers required by the encoder
+            int rh = Mathf.Max(16, Mathf.RoundToInt(sh * scale) & ~1);
+
+            _nativeRecorder.StartRecording(rw, rh, videoBitrate, videoFps, videoBufferSeconds);
+#endif
         }
 
         void Update()
         {
+            // Drain pending auto-report from the log callback (which may fire on a worker thread).
+            var pending = _pendingAutoReport;
+            if (pending != null)
+            {
+                _pendingAutoReport = null;
+                StartReport(pending.title, pending.description, BugReportType.Crash);
+                return;
+            }
+
             // Desktop: F12 to report
             if (Input.GetKeyDown(reportKey))
             {
@@ -101,53 +122,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (shakeToReport && Input.acceleration.sqrMagnitude > shakeThreshold * shakeThreshold)
             {
                 StartReport();
-            }
-        }
-
-        /// <summary>
-        /// Circular buffer capture loop — captures screen at configured FPS.
-        /// </summary>
-        IEnumerator CaptureLoop()
-        {
-            var interval = videoFps > 0 ? 1f / videoFps : 0.1f;
-
-            while (_isCapturing)
-            {
-                yield return new WaitForEndOfFrame();
-
-                if (Time.realtimeSinceStartup - _lastCaptureTime < interval) continue;
-                _lastCaptureTime = Time.realtimeSinceStartup;
-
-                // Capture screen
-                var w = Mathf.Max(1, Mathf.RoundToInt(Screen.width * videoScale));
-                var h = Mathf.Max(1, Mathf.RoundToInt(Screen.height * videoScale));
-
-                var tex = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
-                tex.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
-                tex.Apply();
-
-                // Scale down
-                var rt = RenderTexture.GetTemporary(w, h);
-                var prev = RenderTexture.active;
-                RenderTexture.active = rt;
-                Graphics.Blit(tex, rt);
-                var scaled = new Texture2D(w, h, TextureFormat.RGB24, false);
-                scaled.ReadPixels(new Rect(0, 0, w, h), 0, 0);
-                scaled.Apply();
-                RenderTexture.active = prev;
-                RenderTexture.ReleaseTemporary(rt);
-                Destroy(tex);
-
-                var jpeg = scaled.EncodeToJPG(videoQuality);
-                Destroy(scaled);
-
-                // Add to circular buffer
-                lock (_frameBuffer)
-                {
-                    _frameBuffer.Add(new FrameData { time = Time.realtimeSinceStartup, jpeg = jpeg });
-                    while (_frameBuffer.Count > _maxFrames)
-                        _frameBuffer.RemoveAt(0);
-                }
             }
         }
 
@@ -169,7 +143,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     type = type
                 });
             }
+
+            // Auto-trigger a bug report on uncaught exceptions. We run the actual
+            // send on the main thread because this callback can fire on a worker
+            // thread (logMessageReceivedThreaded).
+            if (autoReportExceptions && type == LogType.Exception && !_reportDialogOpen)
+            {
+                var now = (float)_logClock.Elapsed.TotalSeconds;
+                if (now - _lastAutoReportTime < autoReportCooldownSeconds) return;
+                _lastAutoReportTime = now;
+
+                // Marshal to the main thread via a pending flag — StartReport calls
+                // StartCoroutine which is main-thread only.
+                _pendingAutoReport = new PendingReport
+                {
+                    title = "Exception: " + (message ?? "").Substring(0, Mathf.Min(120, (message ?? "").Length)),
+                    description = stackTrace ?? ""
+                };
+            }
         }
+
+        // Set from the (possibly-background) log callback; consumed on the main thread in Update.
+        volatile PendingReport _pendingAutoReport;
+        class PendingReport { public string title; public string description; }
 
         // ── Public API ──
 
@@ -220,11 +216,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var screenshot = screenshotTex.EncodeToJPG(85);
             Destroy(screenshotTex);
 
-            // Snapshot video buffer
-            List<FrameData> videoFrames;
-            lock (_frameBuffer)
+            // Dump the native rolling-window video to an MP4 file.
+            // On non-Android platforms or if the native recorder isn't running,
+            // videoBytes will be null and the report just won't have video.
+            byte[] videoBytes = null;
+            if (_nativeRecorder != null && _nativeRecorder.IsRecording)
             {
-                videoFrames = new List<FrameData>(_frameBuffer);
+                videoBytes = _nativeRecorder.DumpToBytes();
             }
 
             // Snapshot logs
@@ -291,33 +289,59 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Screenshot (base64)
             report.Append($"\"screenshot\":\"{Convert.ToBase64String(screenshot)}\",");
 
-            // Video frames (base64 array)
+            // Native MP4 video (base64). Single blob instead of a frame array —
+            // the server gets an actual H.264 MP4 it can store/play directly.
+            report.Append($"\"videoFormat\":\"mp4\",");
             report.Append($"\"videoFps\":{videoFps},");
-            report.Append("\"videoFrames\":[");
-            for (int i = 0; i < videoFrames.Count; i++)
+            if (videoBytes != null && videoBytes.Length > 0)
             {
-                if (i > 0) report.Append(",");
-                report.Append($"\"{Convert.ToBase64String(videoFrames[i].jpeg)}\"");
-            }
-            report.Append("]");
-
-            report.Append("}");
-
-            // Send to server via tunnel
-            var client = BugpunchClient.Instance;
-            if (client != null && client.IsConnected)
-            {
-                // Send as a special tunnel message
-                client.Tunnel.SendResponse("bugreport", 200, report.ToString(), "application/json");
-                Debug.Log($"[Bugpunch] Bug report sent ({videoFrames.Count} video frames, {screenshot.Length / 1024}KB screenshot)");
-                OnReportSent?.Invoke(true);
+                report.Append($"\"video\":\"{Convert.ToBase64String(videoBytes)}\"");
             }
             else
             {
-                // Queue for later or send via HTTP
-                Debug.LogWarning("[Bugpunch] Not connected — bug report queued");
-                // TODO: queue to disk and send when reconnected
+                report.Append("\"video\":null");
+            }
+
+            report.Append("}");
+
+            // POST to /api/reports/bug — works even when the device isn't on the
+            // live tunnel (crash reports need to ship from prod players who have
+            // no debug session open).
+            var client = BugpunchClient.Instance;
+            var serverUrl = client?.Config?.serverUrl;
+            var apiKey = client?.Config?.apiKey;
+            if (string.IsNullOrEmpty(serverUrl) || string.IsNullOrEmpty(apiKey))
+            {
+                Debug.LogWarning("[Bugpunch] Can't send bug report — serverUrl/apiKey not configured");
                 OnReportSent?.Invoke(false);
+                _reportDialogOpen = false;
+                yield break;
+            }
+
+            var url = HttpBase(serverUrl) + "/api/reports/bug";
+            var body = System.Text.Encoding.UTF8.GetBytes(report.ToString());
+            using (var req = new UnityEngine.Networking.UnityWebRequest(url, "POST"))
+            {
+                req.uploadHandler = new UnityEngine.Networking.UploadHandlerRaw(body);
+                req.downloadHandler = new UnityEngine.Networking.DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.SetRequestHeader("X-Api-Key", apiKey);
+                req.timeout = 60; // large video upload
+
+                yield return req.SendWebRequest();
+
+                var videoKb = videoBytes != null ? videoBytes.Length / 1024 : 0;
+                if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+                {
+                    Debug.Log($"[Bugpunch] Bug report sent ({videoKb}KB MP4, {screenshot.Length / 1024}KB screenshot, HTTP {req.responseCode})");
+                    OnReportSent?.Invoke(true);
+                }
+                else
+                {
+                    Debug.LogWarning($"[Bugpunch] Bug report POST failed: {req.error} (HTTP {req.responseCode})");
+                    // TODO: queue to disk and retry when back online
+                    OnReportSent?.Invoke(false);
+                }
             }
 
             _reportDialogOpen = false;
@@ -348,19 +372,48 @@ namespace ODDGames.Bugpunch.DeviceConnect
             feedback.Append("}");
 
             var client = BugpunchClient.Instance;
-            if (client != null && client.IsConnected)
+            var serverUrl = client?.Config?.serverUrl;
+            var apiKey = client?.Config?.apiKey;
+            if (string.IsNullOrEmpty(serverUrl) || string.IsNullOrEmpty(apiKey))
             {
-                client.Tunnel.SendResponse("feedback", 200, feedback.ToString(), "application/json");
-                Debug.Log("[Bugpunch] Feedback sent");
+                Debug.LogWarning("[Bugpunch] Can't send feedback — serverUrl/apiKey not configured");
+                yield break;
             }
-            else
+
+            var url = HttpBase(serverUrl) + "/api/reports/feedback";
+            var body = System.Text.Encoding.UTF8.GetBytes(feedback.ToString());
+            using (var req = new UnityEngine.Networking.UnityWebRequest(url, "POST"))
             {
-                Debug.LogWarning("[Bugpunch] Not connected — feedback not sent");
+                req.uploadHandler = new UnityEngine.Networking.UploadHandlerRaw(body);
+                req.downloadHandler = new UnityEngine.Networking.DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.SetRequestHeader("X-Api-Key", apiKey);
+                req.timeout = 20;
+                yield return req.SendWebRequest();
+                if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+                    Debug.Log("[Bugpunch] Feedback sent");
+                else
+                    Debug.LogWarning($"[Bugpunch] Feedback POST failed: {req.error}");
             }
         }
 
         static string Esc(string s) =>
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
+
+        /// <summary>
+        /// Normalize a configured serverUrl to an HTTP base URL.
+        /// Config is typically a WebSocket URL (ws://… or wss://…) for the tunnel,
+        /// but the bug report endpoint is plain HTTP.
+        /// </summary>
+        static string HttpBase(string serverUrl)
+        {
+            var trimmed = serverUrl.TrimEnd('/');
+            if (trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+                return "https://" + trimmed.Substring("wss://".Length);
+            if (trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase))
+                return "http://" + trimmed.Substring("ws://".Length);
+            return trimmed;
+        }
     }
 
     public enum BugReportType

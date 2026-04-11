@@ -28,11 +28,62 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoInitialize()
         {
+            // Release builds are opt-in: the game must explicitly call
+            // BugpunchClient.StartConnection() to enable remote debugging.
+            // This prevents shipping a live debug channel to end users.
+            if (!Debug.isDebugBuild && !Application.isEditor) return;
+
             var config = BugpunchConfig.Load();
             if (config == null || !config.autoConnect) return;
             if (string.IsNullOrEmpty(config.serverUrl) || string.IsNullOrEmpty(config.apiKey)) return;
 
+#if UNITY_EDITOR
+            // In Editor: respect the "Enable Bugpunch" toggle (default OFF).
+            // Prevents remote connections to developers while they're working.
+            if (!UnityEditor.EditorPrefs.GetBool("Bugpunch_Enabled", false))
+            {
+                Debug.Log("[Bugpunch] Disabled in Editor (enable via Bugpunch > Enable Connection in toolbar)");
+                return;
+            }
+#endif
+
             Initialize(config);
+        }
+
+        /// <summary>
+        /// Manually start the Bugpunch connection. Use this on release builds
+        /// where auto-connect is disabled. Loads config from Resources and
+        /// connects to the configured server. Safe to call multiple times —
+        /// will no-op if already initialized.
+        /// </summary>
+        /// <returns>The client instance, or null if config is missing/invalid.</returns>
+        public static BugpunchClient StartConnection()
+        {
+            if (Instance != null) return Instance;
+
+            var config = BugpunchConfig.Load();
+            if (config == null)
+            {
+                Debug.LogWarning("[Bugpunch] StartConnection: no BugpunchConfig found in Resources");
+                return null;
+            }
+            if (string.IsNullOrEmpty(config.serverUrl) || string.IsNullOrEmpty(config.apiKey))
+            {
+                Debug.LogWarning("[Bugpunch] StartConnection: config is missing serverUrl or apiKey");
+                return null;
+            }
+            return Initialize(config);
+        }
+
+        /// <summary>
+        /// Manually start the Bugpunch connection with a specific config.
+        /// Use this to override the config in Resources at runtime.
+        /// </summary>
+        public static BugpunchClient StartConnection(BugpunchConfig config)
+        {
+            if (Instance != null) return Instance;
+            if (config == null) { Debug.LogWarning("[Bugpunch] StartConnection: config is null"); return null; }
+            return Initialize(config);
         }
 
         public static BugpunchClient Initialize(BugpunchConfig config)
@@ -96,6 +147,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Create WebRTC streamer
             Streamer = gameObject.AddComponent<WebRTCStreamer>();
             SceneCamera.SetStreamer(Streamer);
+            Streamer.SceneCameraRef = SceneCamera;
 
             if (Config.ShouldUseWebSocket)
             {
@@ -361,6 +413,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
             public string urls;
             public string username;
             public string credential;
+        }
+
+        /// <summary>Disconnect and destroy the Bugpunch client.</summary>
+        public void Disconnect()
+        {
+            Debug.Log("[Bugpunch] Disconnecting...");
+            Destroy(gameObject);
         }
 
         void OnDestroy()
