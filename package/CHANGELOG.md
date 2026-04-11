@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-04-11
+
+### Fixed
+- **Missing `AndroidScreenRecorder.cs.meta`** — v1.4.0 shipped the new `AndroidScreenRecorder.cs` without its Unity meta file, so consuming projects hit `CS0246: AndroidScreenRecorder not found` in `BugReporter.cs` when importing the git package. Unity skips .cs files without a .meta companion during package import.
+
 ## [1.4.0] - 2026-04-11
 
 ### Added
