@@ -35,7 +35,7 @@ namespace ODDGames.Bugpunch.Editor
                 }
                 else if (DeviceConnect.BugpunchClient.Instance != null)
                 {
-                    DeviceConnect.BugpunchClient.Instance.Disconnect();
+                    Object.Destroy(DeviceConnect.BugpunchClient.Instance.gameObject);
                 }
             }
         }
