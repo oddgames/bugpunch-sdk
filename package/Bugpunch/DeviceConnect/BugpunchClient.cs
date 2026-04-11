@@ -279,7 +279,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
 #endif
 
-#if UNITY_INCLUDE_TESTS
             // Input injection — needs main thread for Input System
             if (response == null && path.StartsWith("/input/"))
             {
@@ -321,7 +320,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 yield break;
             }
-#endif
 
             if (response == null)
             {

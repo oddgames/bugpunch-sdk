@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.5] - 2026-04-11
+
+### Fixed
+- **`/input/` endpoint available in player builds** — `InputInjector` and the `BugpunchClient` `/input/` handler were gated behind `#if UNITY_INCLUDE_TESTS`, which stripped them from player builds. Removed the gates so runtime tunnel input injection works on devices.
+
 ## [1.4.4] - 2026-04-11
 
 ### Changed
