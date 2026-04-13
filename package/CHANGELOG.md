@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.7] - 2026-04-13
+
+### Fixed
+- **Android build plugin conflict** — `ODDRecorder.h` existed in both `Plugins/iOS/` and `Plugins/Windows/` with `DefaultImporter` (no platform restriction), causing a name collision on Android builds. Converted both `.h.meta` files to `PluginImporter` with correct platform targets (Win64 and iOS respectively).
+
 ## [1.4.6] - 2026-04-13
 
 ### Changed
