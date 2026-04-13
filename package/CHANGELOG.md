@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.9] - 2026-04-13
+
+### Fixed
+- **Android 15 crash on startup** — Updated `com.unity.webrtc` from `3.0.0-pre.7` to `3.0.0` (stable). The pre.7 native library (`libwebrtc.so`) called `abort()` during `JNI_OnLoad` on Android 15 (API 35) devices due to missing 16KB page size support. Fixes SIGABRT crash that prevented apps from launching on Honor and other Android 15 devices.
+
+### Changed
+- **Minimum Unity version raised to 6000.0** — Required by `com.unity.webrtc` 3.0.0.
+
 ## [1.4.8] - 2026-04-13
 
 ### Fixed

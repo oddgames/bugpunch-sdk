@@ -1,9 +1,9 @@
 {
   "name": "au.com.oddgames.bugpunch",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "displayName": "Bugpunch",
   "description": "Debugging, remote code execution, and automated UI testing for Unity games. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events. Find elements by name, text content, type, or spatial relationship.",
-  "unity": "2022.3",
+  "unity": "6000.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/oddgames/bugpunch-sdk-unity.git",
@@ -19,7 +19,7 @@
     "com.unity.ext.nunit": "2.0.5",
     "com.unity.recorder": "5.0.0",
     "com.unity.nuget.newtonsoft-json": "3.2.1",
-    "com.unity.webrtc": "3.0.0-pre.7"
+    "com.unity.webrtc": "3.0.0"
   },
   "keywords": [
     "ui",
