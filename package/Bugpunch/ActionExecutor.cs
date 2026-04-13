@@ -1,4 +1,3 @@
-#if UNITY_INCLUDE_TESTS
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using System;
@@ -8,7 +7,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 
-using NUnit.Framework;
 using TMPro;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -254,7 +252,12 @@ namespace ODDGames.Bugpunch
         /// <summary>
         /// When true, increases all intervals and enables verbose logging for debugging tests.
         /// </summary>
-        public static bool DebugMode { get; set; } = false;
+        private static bool _debugMode;
+        public static bool DebugMode
+        {
+            get => _debugMode;
+            set { _debugMode = value; InputInjector.DebugMode = value; }
+        }
 
         /// <summary>Resolves -1 sentinel to DefaultSearchTime.</summary>
         static float ResolveSearchTime(float searchTime) => searchTime < 0 ? DefaultSearchTime : searchTime;
@@ -585,7 +588,12 @@ namespace ODDGames.Bugpunch
         /// </summary>
         static void ThrowTestFailure(string message)
         {
-            throw new AssertionException(message);
+            throw new BugpunchTestFailureException(message);
+        }
+
+        public class BugpunchTestFailureException : Exception
+        {
+            public BugpunchTestFailureException(string message) : base(message) { }
         }
 
         /// <summary>
@@ -3977,4 +3985,3 @@ namespace ODDGames.Bugpunch
         #endregion
     }
 }
-#endif

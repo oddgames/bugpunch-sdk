@@ -224,7 +224,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield break;
             }
 
-#if UNITY_INCLUDE_TESTS
             if (response == null && path == "/action" && method == "POST")
             {
                 // Execute JSON action via ActionExecutor (async) — run on main thread
@@ -252,7 +251,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 yield break;
             }
-#endif
 
 #if BUGPUNCH_WEBRTC
             if (response == null && path.StartsWith("/webrtc-"))

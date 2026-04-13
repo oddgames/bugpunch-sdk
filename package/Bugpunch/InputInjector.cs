@@ -528,9 +528,11 @@ namespace ODDGames.Bugpunch
         /// <summary>
         /// Logs a debug message only when ActionExecutor.DebugMode is enabled.
         /// </summary>
+        public static bool DebugMode { get; set; }
+
         static void LogDebug(string message)
         {
-            if (ActionExecutor.DebugMode)
+            if (DebugMode)
                 Debug.Log($"[InputInjector] {message}");
         }
         /// <summary>

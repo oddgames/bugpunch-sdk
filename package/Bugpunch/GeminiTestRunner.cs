@@ -1,4 +1,3 @@
-#if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -647,4 +646,3 @@ Actions that target UI elements accept these fields (can combine multiple):
         }
     }
 }
-#endif

@@ -1,4 +1,3 @@
-#if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -313,18 +312,20 @@ namespace ODDGames.Bugpunch
                 // have _failureRecorded=true but NUnit reports them as Passed.
                 if (_session != null)
                 {
+#if UNITY_INCLUDE_TESTS
                     try
                     {
                         var status = NUnit.Framework.TestContext.CurrentContext.Result.Outcome.Status;
                         _session.result = status == NUnit.Framework.Interfaces.TestStatus.Passed ? "pass" : "fail";
-                        // Override internal tracking with NUnit's actual result
                         _failureRecorded = _session.result == "fail";
                     }
                     catch
                     {
-                        // Fallback to internal tracking if TestContext unavailable
                         _session.result = _failureRecorded ? "fail" : "pass";
                     }
+#else
+                    _session.result = _failureRecorded ? "fail" : "pass";
+#endif
                 }
 
                 // Serialize data on main thread (JsonUtility requires it)
@@ -1885,4 +1886,3 @@ namespace ODDGames.Bugpunch
         #endregion
     }
 }
-#endif

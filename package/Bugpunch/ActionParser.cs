@@ -1,4 +1,3 @@
-#if UNITY_INCLUDE_TESTS
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -772,4 +771,3 @@ namespace ODDGames.Bugpunch
         }
     }
 }
-#endif

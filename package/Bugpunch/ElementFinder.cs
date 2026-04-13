@@ -1,4 +1,3 @@
-#if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -443,4 +442,3 @@ namespace ODDGames.Bugpunch
         }
     }
 }
-#endif

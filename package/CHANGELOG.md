@@ -2,10 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.4.5] - 2026-04-11
+## [1.4.6] - 2026-04-13
 
-### Fixed
-- **`/input/` endpoint available in player builds** — `InputInjector` and the `BugpunchClient` `/input/` handler were gated behind `#if UNITY_INCLUDE_TESTS`, which stripped them from player builds. Removed the gates so runtime tunnel input injection works on devices.
+### Changed
+- **Removed `UNITY_INCLUDE_TESTS` file-level gates** — All SDK classes (InputInjector, ActionExecutor, Search, ElementFinder, ActionParser, UIUtility, InputVisualizer, GeminiTestClient, GeminiTestRunner, TestReport) are now compiled unconditionally. Only `UIAutomationTestFixture` (genuine NUnit base class) retains the gate. Replaced NUnit `AssertionException` with `BugpunchTestFailureException` and gated TestReport's NUnit `TestContext` usage inline.
 
 ## [1.4.4] - 2026-04-11
 
