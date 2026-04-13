@@ -1,6 +1,6 @@
 {
   "name": "au.com.oddgames.recorder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "ODD Games Recorder",
   "description": "Cross-platform video recording for Unity. Hardware-accelerated encoding on Editor, Windows, Android, and iOS.",
   "unity": "2022.3",
