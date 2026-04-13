@@ -9,6 +9,11 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
     {
         public bool IsSupported => Application.platform == RuntimePlatform.Android;
 
+        // Static callback holders for the native crash overlay (BugpunchCrashActivity
+        // calls back via UnitySendMessage).
+        internal static Action<CrashReportResult> _crashSubmitCallback;
+        internal static Action _crashDismissCallback;
+
         public void ShowPermission(string scriptName, string scriptDescription, Action<PermissionResult> callback)
         {
             using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
@@ -81,11 +86,108 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }));
         }
 
+        public void ShowCrashReport(CrashReportContext context, Action<CrashReportResult> onSubmit, Action onDismiss)
+        {
+            _crashSubmitCallback = onSubmit;
+            _crashDismissCallback = onDismiss;
+
+            // Launch the native BugpunchCrashActivity which provides a full-screen
+            // overlay with video playback, exception details, and input fields.
+            using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+            using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+            using var crashClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchCrashActivity");
+
+            crashClass.CallStatic("launch",
+                activity,
+                context.exceptionMessage ?? "",
+                context.stackTrace ?? "",
+                context.videoPath ?? "");
+        }
+
+        /// <summary>
+        /// Called from BugpunchCrashActivity via UnitySendMessage when the user submits.
+        /// The message is a pipe-delimited string: title|description|severity|includeVideo|includeLogs
+        /// </summary>
+        static void OnCrashReportSubmit(string message)
+        {
+            var cb = _crashSubmitCallback;
+            _crashSubmitCallback = null;
+            _crashDismissCallback = null;
+            if (cb == null) return;
+
+            var parts = message.Split('|');
+            cb.Invoke(new CrashReportResult
+            {
+                title = parts.Length > 0 ? parts[0] : "",
+                description = parts.Length > 1 ? parts[1] : "",
+                severity = parts.Length > 2 ? parts[2] : "high",
+                includeVideo = parts.Length > 3 && parts[3] == "1",
+                includeLogs = parts.Length > 4 && parts[4] == "1"
+            });
+        }
+
+        /// <summary>
+        /// Called from BugpunchCrashActivity via UnitySendMessage when the user dismisses.
+        /// </summary>
+        static void OnCrashReportDismiss(string message)
+        {
+            var cb = _crashDismissCallback;
+            _crashSubmitCallback = null;
+            _crashDismissCallback = null;
+            cb?.Invoke();
+        }
+
         static int DpToPx(AndroidJavaObject context, int dp)
         {
             using var res = context.Call<AndroidJavaObject>("getResources");
             using var metrics = res.Call<AndroidJavaObject>("getDisplayMetrics");
             return (int)(dp * metrics.Get<float>("density") + 0.5f);
+        }
+    }
+
+    /// <summary>
+    /// Hidden GameObject that receives UnitySendMessage callbacks from BugpunchCrashActivity.
+    /// Must exist in the scene before the native activity sends messages.
+    /// </summary>
+    class CrashOverlayCallback : MonoBehaviour
+    {
+        static CrashOverlayCallback _instance;
+
+        public static void EnsureExists()
+        {
+            if (_instance != null) return;
+            var go = new GameObject("BugpunchCrashCallback");
+            go.hideFlags = HideFlags.HideAndDontSave;
+            DontDestroyOnLoad(go);
+            _instance = go.AddComponent<CrashOverlayCallback>();
+        }
+
+        // Called by BugpunchCrashActivity via UnitySendMessage("BugpunchCrashCallback", "OnSubmit", data)
+        void OnSubmit(string message)
+        {
+            var cb = AndroidDialog._crashSubmitCallback;
+            AndroidDialog._crashSubmitCallback = null;
+            AndroidDialog._crashDismissCallback = null;
+            if (cb == null) return;
+
+            var parts = message.Split('|');
+            MainThread.Enqueue(() => cb.Invoke(new CrashReportResult
+            {
+                title = parts.Length > 0 ? parts[0] : "",
+                description = parts.Length > 1 ? parts[1] : "",
+                severity = parts.Length > 2 ? parts[2] : "high",
+                includeVideo = parts.Length > 3 && parts[3] == "1",
+                includeLogs = parts.Length > 4 && parts[4] == "1"
+            }));
+        }
+
+        // Called by BugpunchCrashActivity via UnitySendMessage("BugpunchCrashCallback", "OnDismiss", "")
+        void OnDismiss(string message)
+        {
+            var cb = AndroidDialog._crashDismissCallback;
+            AndroidDialog._crashSubmitCallback = null;
+            AndroidDialog._crashDismissCallback = null;
+            if (cb != null) MainThread.Enqueue(() => cb.Invoke());
         }
     }
 

@@ -31,7 +31,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Minimum seconds between auto-reports so a tight exception loop doesn't flood the server")]
         public float autoReportCooldownSeconds = 30f;
 
-        [Header("Video Buffer (native Android recorder)")]
+        [Header("Video Buffer (ring buffer recorder — Android + iOS)")]
         [Tooltip("Seconds of video to keep in the rolling window before an exception")]
         public int videoBufferSeconds = 30;
 
@@ -44,8 +44,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Record at this max dimension (the smaller screen axis). Lowering saves memory in the ring buffer.")]
         public int videoMaxDimension = 720;
 
-        // Native recorder — only used on Android
-        AndroidScreenRecorder _nativeRecorder;
+        // Native ring buffer recorder — Android + iOS
+        RingBufferRecorder _nativeRecorder;
         float _lastAutoReportTime = float.NegativeInfinity;
 
         // State
@@ -83,11 +83,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void Start()
         {
-#if UNITY_ANDROID && !UNITY_EDITOR
-            // Attach native recorder and kick off the MediaProjection consent dialog.
-            // The rolling window of video is maintained entirely by the native plugin;
-            // Unity just asks for an MP4 dump on demand.
-            _nativeRecorder = gameObject.AddComponent<AndroidScreenRecorder>();
+            if (!RingBufferRecorder.IsSupported) return;
+
+            // Attach native ring buffer recorder. The rolling window of video is
+            // maintained entirely by the native plugin (Android: MediaCodec +
+            // VirtualDisplay, iOS: ReplayKit + VideoToolbox). Unity just asks
+            // for an MP4 dump on demand.
+            _nativeRecorder = gameObject.AddComponent<RingBufferRecorder>();
 
             int sw = Screen.width, sh = Screen.height;
             float scale = videoMaxDimension > 0
@@ -97,7 +99,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             int rh = Mathf.Max(16, Mathf.RoundToInt(sh * scale) & ~1);
 
             _nativeRecorder.StartRecording(rw, rh, videoBitrate, videoFps, videoBufferSeconds);
-#endif
         }
 
         void Update()
@@ -217,7 +218,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Destroy(screenshotTex);
 
             // Dump the native rolling-window video to an MP4 file.
-            // On non-Android platforms or if the native recorder isn't running,
+            // On unsupported platforms or if the native recorder isn't running,
             // videoBytes will be null and the report just won't have video.
             byte[] videoBytes = null;
             if (_nativeRecorder != null && _nativeRecorder.IsRecording)

@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-04-13
+
+### Added
+- **Production crash reporting** — all-user crash reporting comparable to Instabug/Bugsee/Sentry
+- **Native crash handlers** — POSIX signal handlers (SIGABRT, SIGSEGV, SIGBUS, SIGFPE, SIGILL) on Android (NDK) and iOS (Mach exceptions). Async-signal-safe, writes crash file to disk, uploads on next launch.
+- **ANR detection** — watchdog timer on Android detects main thread hangs, captures all thread stacks
+- **C# exception handlers** — `AppDomain.CurrentDomain.UnhandledException` and `TaskScheduler.UnobservedTaskException` for exceptions that bypass Unity's log system
+- **Native crash overlay** — full-screen Activity (Android) / ViewController (iOS) / IMGUI (desktop) with video playback, stack trace display, user input fields for title/description/severity
+- **iOS ring buffer recorder** — always-on H.264 circular buffer using ReplayKit + VideoToolbox, matching the existing Android implementation. 30s window, hardware-accelerated, minimal CPU impact.
+- **Unified RingBufferRecorder** — cross-platform C# bridge replacing Android-only `AndroidScreenRecorder`
+- **NativeCrashHandler** — C# bridge integrating all native handlers, crash file format (`BUGPUNCH_CRASH_V1`), next-launch detection and upload
+
+### Fixed
+- **WebRTC track disposal ordering** — video track now removed from peer connection before disposal, preventing native crashes
+- **WebRTC RenderTexture lifecycle** — changing camera mid-stream now safely stops streaming instead of replacing RT while track references it
+- **WebRTC.Update() coroutine lifecycle** — guard against multiple coroutine instances, proper cleanup on destroy
+- **WebRTC connection state cleanup** — disconnected/failed connections now clean up resources on main thread
+- **WebRTC Camera.main caching** — render loop no longer calls Camera.main every frame
+- **WebRTC data channel disposal** — explicit Dispose() after Close()
+- **WebRTC offer timeout** — 30s deadline prevents hanging on malformed SDP
+- **WebRTC dead code** — removed unused HandleAnswer method
+
+### Changed
+- **Crash overlay wired to BugReporter** — `INativeDialog.ShowCrashReport()` now callable with exception context + video path
+- **`_streaming` flag is volatile** — thread-safe for WebRTC connection state callbacks
+
+### Removed
+- **Standalone recorder package** — `au.com.oddgames.recorder` removed, all code already merged into Bugpunch SDK. Eliminates duplicate `ODDRecorderImpl` symbols on iOS builds.
+
 ## [1.4.9] - 2026-04-13
 
 ### Fixed

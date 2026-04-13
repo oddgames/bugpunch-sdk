@@ -18,6 +18,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public WebRTCStreamer Streamer { get; private set; }
         public SceneCameraService SceneCamera { get; private set; }
         public BugReporter Reporter { get; private set; }
+        public NativeCrashHandler CrashHandler { get; private set; }
         public DeviceRegistration Registration { get; private set; }
         public bool IsConnected => (Tunnel != null && Tunnel.IsConnected) || (Registration != null && Registration.IsRegistered);
 
@@ -150,6 +151,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Reporter.shakeToReport = Config.enableShakeToReport;
             Reporter.videoBufferSeconds = Config.videoBufferSeconds;
             Reporter.videoFps = Config.bugReportVideoFps;
+
+            // Create native crash handler — catches SIGSEGV/SIGABRT/ANR/etc.
+            // that Unity's logMessageReceived doesn't see
+            if (Config.enableNativeCrashHandler)
+            {
+                CrashHandler = gameObject.AddComponent<NativeCrashHandler>();
+                CrashHandler.anrTimeoutMs = Config.anrTimeoutMs;
+                CrashHandler.Initialize(Config);
+            }
 
             // Create WebRTC streamer
             Streamer = gameObject.AddComponent<WebRTCStreamer>();

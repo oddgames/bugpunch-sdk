@@ -58,6 +58,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Bug report video capture FPS")]
         public int bugReportVideoFps = 10;
 
+        [Header("Native Crash Handling")]
+        [Tooltip("Enable native crash signal handlers (SIGSEGV, SIGABRT, etc.)")]
+        public bool enableNativeCrashHandler = true;
+
+        [Tooltip("ANR detection timeout in milliseconds. 0 = disabled. Android only.")]
+        public int anrTimeoutMs = 5000;
+
         [Header("Connection")]
         [Tooltip("Auto-connect on play mode")]
         public bool autoConnect = true;

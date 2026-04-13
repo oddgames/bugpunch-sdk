@@ -11,6 +11,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 #if UNITY_EDITOR
             _instance = new EditorDialogWrapper();
 #elif UNITY_ANDROID
+            CrashOverlayCallback.EnsureExists();
             _instance = new AndroidDialog();
 #elif UNITY_IOS
             _instance = new IOSDialog();
@@ -58,6 +59,28 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 onSubmit?.Invoke(new BugReportData { title = "Editor Bug Report", severity = "medium", includeScreenshot = true, includeLogs = true });
             else
                 onCancel?.Invoke();
+        }
+
+        public void ShowCrashReport(CrashReportContext context, System.Action<CrashReportResult> onSubmit, System.Action onDismiss)
+        {
+            // In the Editor, use a simple dialog. For a richer experience, the
+            // EditorBugReportWindow in the Editor assembly could be extended.
+            bool submit = UnityEditor.EditorUtility.DisplayDialog(
+                "Crash Report",
+                $"Exception:\n{context.exceptionMessage}\n\nStack trace:\n{(context.stackTrace?.Length > 400 ? context.stackTrace.Substring(0, 400) + "..." : context.stackTrace)}\n\nSubmit crash report?",
+                "Submit", "Dismiss"
+            );
+            if (submit)
+                onSubmit?.Invoke(new CrashReportResult
+                {
+                    title = context.exceptionMessage ?? "Crash Report",
+                    description = context.stackTrace ?? "",
+                    severity = "critical",
+                    includeVideo = !string.IsNullOrEmpty(context.videoPath),
+                    includeLogs = true
+                });
+            else
+                onDismiss?.Invoke();
         }
     }
 #endif

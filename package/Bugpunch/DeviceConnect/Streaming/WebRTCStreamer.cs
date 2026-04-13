@@ -17,16 +17,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
         VideoStreamTrack _videoTrack;
         RenderTexture _rt;
         Camera _targetCamera;
+        Camera _cachedCamera;
 
         int _width = 1280;
         int _height = 720;
         int _fps = 30;
-        bool _streaming;
+        volatile bool _streaming;
 
         TunnelClient _tunnel;
         readonly Queue<Action> _mainThreadQueue = new();
         RTCIceServer[] _iceServers;
         readonly List<IceMessage> _pendingIceCandidates = new();
+        Coroutine _webrtcUpdateCoroutine;
 
         // Data channel for sending camera metadata per frame
         RTCDataChannel _metadataChannel;
@@ -57,8 +59,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _height = height;
             _fps = fps;
 
-            // Initialize WebRTC
-            StartCoroutine(WebRTC.Update());
+            if (_webrtcUpdateCoroutine == null)
+                _webrtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
         }
 
         /// <summary>
@@ -95,12 +97,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public void SetCamera(Camera cam)
         {
             _targetCamera = cam;
+            _cachedCamera = cam;
 
-            // Recreate render texture if streaming
             if (_streaming)
             {
-                CleanupRenderTexture();
-                CreateRenderTexture();
+                StopStreaming();
+                Debug.Log("[Bugpunch] WebRTC: camera changed mid-stream — stopped, waiting for new offer to reconnect");
             }
         }
 
@@ -159,6 +161,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 StopStreaming();
 
             Debug.Log("[Bugpunch] WebRTC: received offer, creating answer...");
+            float deadline = Time.realtimeSinceStartup + 30f;
 
             SdpMessage offerData;
             try
@@ -178,7 +181,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield break;
             }
 
-            // Cleanup previous connection
             CleanupPeerConnection();
 
             // Create peer connection — use custom ICE servers if set, otherwise fallback to STUN
@@ -220,6 +222,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     state == RTCPeerConnectionState.Closed)
                 {
                     _streaming = false;
+                    lock (_mainThreadQueue)
+                    {
+                        _mainThreadQueue.Enqueue(() =>
+                        {
+                            CleanupPeerConnection();
+                            CleanupRenderTexture();
+                            lock (_pendingIceCandidates) { _pendingIceCandidates.Clear(); }
+                        });
+                    }
                 }
             };
 
@@ -238,6 +249,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var setRemoteOp = _pc.SetRemoteDescription(ref offerDesc);
             yield return setRemoteOp;
 
+            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); yield break; }
             if (setRemoteOp.IsError)
             {
                 Debug.LogError($"[Bugpunch] WebRTC: SetRemoteDescription failed: {setRemoteOp.Error.message}");
@@ -251,6 +263,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var answerOp = _pc.CreateAnswer();
             yield return answerOp;
 
+            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); yield break; }
             if (answerOp.IsError)
             {
                 Debug.LogError($"[Bugpunch] WebRTC: CreateAnswer failed: {answerOp.Error.message}");
@@ -264,6 +277,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var setLocalOp = _pc.SetLocalDescription(ref answer);
             yield return setLocalOp;
 
+            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); yield break; }
             if (setLocalOp.IsError)
             {
                 Debug.LogError($"[Bugpunch] WebRTC: SetLocalDescription failed: {setLocalOp.Error.message}");
@@ -281,23 +295,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             StartCoroutine(RenderLoop());
 
             Debug.Log("[Bugpunch] WebRTC: streaming started");
-        }
-
-        IEnumerator HandleAnswer(string sdpJson)
-        {
-            if (_pc == null) yield break;
-
-            var answerData = JsonUtility.FromJson<SdpMessage>(sdpJson);
-            var desc = new RTCSessionDescription
-            {
-                type = RTCSdpType.Answer,
-                sdp = answerData.sdp
-            };
-            var op = _pc.SetRemoteDescription(ref desc);
-            yield return op;
-
-            if (op.IsError)
-                Debug.LogError($"[Bugpunch] WebRTC: SetRemoteDescription (answer) failed: {op.Error.message}");
         }
 
         void HandleIceCandidate(string iceJson)
@@ -331,7 +328,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 yield return new WaitForEndOfFrame();
 
-                var cam = _targetCamera ? _targetCamera : Camera.main;
+                if (_cachedCamera == null || !_cachedCamera.isActiveAndEnabled)
+                    _cachedCamera = _targetCamera ? _targetCamera : Camera.main;
+                var cam = _cachedCamera;
                 if (cam == null || _rt == null) continue;
 
                 var prevTarget = cam.targetTexture;
@@ -367,18 +366,30 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_metadataChannel != null)
             {
                 _metadataChannel.Close();
+                _metadataChannel.Dispose();
                 _metadataChannel = null;
+            }
+            if (_pc != null)
+            {
+                if (_videoTrack != null)
+                {
+                    foreach (var sender in _pc.GetSenders())
+                    {
+                        if (sender.Track == _videoTrack)
+                        {
+                            _pc.RemoveTrack(sender);
+                            break;
+                        }
+                    }
+                }
+                _pc.Close();
+                _pc.Dispose();
+                _pc = null;
             }
             if (_videoTrack != null)
             {
                 _videoTrack.Dispose();
                 _videoTrack = null;
-            }
-            if (_pc != null)
-            {
-                _pc.Close();
-                _pc.Dispose();
-                _pc = null;
             }
         }
 
@@ -392,8 +403,22 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
+        void Update()
+        {
+            lock (_mainThreadQueue)
+            {
+                while (_mainThreadQueue.Count > 0)
+                    _mainThreadQueue.Dequeue()?.Invoke();
+            }
+        }
+
         void OnDestroy()
         {
+            if (_webrtcUpdateCoroutine != null)
+            {
+                StopCoroutine(_webrtcUpdateCoroutine);
+                _webrtcUpdateCoroutine = null;
+            }
             StopStreaming();
         }
 
