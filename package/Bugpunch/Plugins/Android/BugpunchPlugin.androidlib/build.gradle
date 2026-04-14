@@ -3,8 +3,11 @@ apply plugin: 'com.android.library'
 android {
     namespace 'au.com.oddgames.bugpunch'
 
+    // Match the project's compileSdk — use buildToolsVersion to avoid Gradle
+    // trying to download missing build-tools from a read-only SDK location
     def unityLib = project(':unityLibrary').extensions.getByName('android')
     compileSdkVersion unityLib.compileSdkVersion
+    buildToolsVersion unityLib.buildToolsVersion
 
     sourceSets {
         main {
