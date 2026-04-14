@@ -204,7 +204,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                     if (subPath == "/scene-camera/start" && method == "POST")
                     {
-                        return Response.Json(SceneCamera.StartSceneCamera());
+                        int w = 0, h = 0;
+                        if (!string.IsNullOrEmpty(body))
+                        {
+                            var wStr = JsonVal(body, "width");
+                            var hStr = JsonVal(body, "height");
+                            if (wStr != null) int.TryParse(wStr, out w);
+                            if (hStr != null) int.TryParse(hStr, out h);
+                        }
+                        return Response.Json(SceneCamera.StartSceneCamera(w, h));
                     }
 
                     if (subPath == "/scene-camera/stop" && method == "POST")

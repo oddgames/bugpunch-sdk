@@ -41,7 +41,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// <summary>
         /// Create a scene camera at the current main camera's position.
         /// </summary>
-        public string StartSceneCamera()
+        RenderTexture _sceneRT;
+
+        public string StartSceneCamera(int viewportWidth = 0, int viewportHeight = 0)
         {
             if (_sceneCameraGo != null)
                 return "{\"ok\":true,\"message\":\"Scene camera already active\"}";
@@ -50,7 +52,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
             DontDestroyOnLoad(_sceneCameraGo);
 
             _sceneCamera = _sceneCameraGo.AddComponent<Camera>();
-            _sceneCamera.depth = 100; // render on top
+            _sceneCamera.depth = 100;
+
+            // Use dashboard viewport dimensions if provided, otherwise device screen
+            int w = viewportWidth > 0 ? viewportWidth : Screen.width;
+            int h = viewportHeight > 0 ? viewportHeight : Screen.height;
+            // Cap to reasonable max
+            w = Mathf.Clamp(w, 64, 3840);
+            h = Mathf.Clamp(h, 64, 2160);
+
+            _sceneRT = new RenderTexture(w, h, 24);
+            _sceneCamera.targetTexture = _sceneRT;
+            _sceneCamera.aspect = (float)w / h;
 
             // Position at main camera location or default
             var mainCam = Camera.main;
@@ -69,16 +82,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 _sceneCamera.fieldOfView = 60f;
             }
 
-            // Set focus point in front of the camera
             _focusPoint = _sceneCameraGo.transform.position + _sceneCameraGo.transform.forward * FocusDistance;
             _orbitDistance = FocusDistance;
 
-            // Switch WebRTC stream to scene camera
             if (_streamer != null)
                 _streamer.SetCamera(_sceneCamera);
 
-            Debug.Log("[Bugpunch] Scene camera started");
-            return "{\"ok\":true}";
+            Debug.Log($"[Bugpunch] Scene camera started ({w}x{h})");
+            return $"{{\"ok\":true,\"width\":{w},\"height\":{h}}}";
         }
 
         /// <summary>
@@ -95,6 +106,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Destroy(_sceneCameraGo);
             _sceneCameraGo = null;
             _sceneCamera = null;
+
+            if (_sceneRT != null)
+            {
+                _sceneRT.Release();
+                Destroy(_sceneRT);
+                _sceneRT = null;
+            }
 
             // Switch WebRTC back to main camera
             if (_streamer != null)
