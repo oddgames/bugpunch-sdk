@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.3] - 2026-04-14
+
+### Fixed
+- **Android build failure** — `.androidlib/build.gradle` now inherits `compileSdkVersion`, `minSdkVersion`, and `targetSdkVersion` from Unity's `unityLibrary` project (same pattern as OneSignal). Fixes `compileSdkVersion is not specified` Gradle error.
+
 ## [1.5.2] - 2026-04-14
 
 ### Fixed
