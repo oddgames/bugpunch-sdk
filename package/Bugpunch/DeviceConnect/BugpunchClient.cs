@@ -406,30 +406,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         void InitializeStreamerLazy()
         {
-            if (Streamer != null) return; // already initialized
+            if (Streamer != null) return;
 
             try
             {
-                // Find WebRTCStreamer type via reflection — this triggers loading the
-                // ODDGames.Bugpunch.WebRTC assembly (and Unity.WebRTC + native lib).
-                var streamerType = System.Type.GetType(
-                    "ODDGames.Bugpunch.DeviceConnect.WebRTCStreamer, ODDGames.Bugpunch.WebRTC");
-
-                if (streamerType == null)
-                {
-                    Debug.LogWarning("[Bugpunch] WebRTCStreamer type not found — WebRTC package may not be installed");
-                    return;
-                }
-
-                var component = gameObject.AddComponent(streamerType);
-                Streamer = component as IStreamer;
-
-                if (Streamer == null)
-                {
-                    Debug.LogWarning("[Bugpunch] WebRTCStreamer does not implement IStreamer — streaming unavailable");
-                    if (component != null) Destroy(component);
-                    return;
-                }
+                var streamer = gameObject.AddComponent<WebRTCStreamer>();
+                Streamer = streamer;
 
                 SceneCamera.SetStreamer(Streamer);
                 Streamer.SceneCameraRef = SceneCamera;
