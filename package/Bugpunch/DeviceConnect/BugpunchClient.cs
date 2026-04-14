@@ -177,17 +177,36 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
 
             // NOTE: WebRTCStreamer is NOT created here. It is initialized lazily
-            // when a debug session starts. This avoids loading the Unity.WebRTC
-            // assembly (and the native libwebrtc.so) at app startup, which crashes
-            // on some Android 15 devices.
+            // when a debug session starts (or WebSocket connects). This avoids
+            // loading the Unity.WebRTC assembly (and native libwebrtc.so) at startup.
 
-            // Always start in poll mode — lightweight HTTP registration + polling.
-            // WebSocket + WebRTC are only activated when a debug session is requested.
-            Registration = new DeviceRegistration(Config);
-            Registration.OnUpgradeRequested += HandleUpgradeToWebSocket;
-            Registration.OnScriptsReceived += HandlePollScripts;
-            StartCoroutine(Registration.RegisterAndPoll());
-            Debug.Log("[Bugpunch] Starting in poll mode");
+            // Debug builds (editor + development builds): connect via WebSocket directly
+            // for immediate Remote IDE access. WebRTC still lazy-loaded.
+            // Release builds: lightweight HTTP poll, upgrade to WebSocket on demand.
+            if (Debug.isDebugBuild || Application.isEditor)
+            {
+                Debug.Log("[Bugpunch] Debug build — connecting via WebSocket");
+                Tunnel = new TunnelClient(Config);
+                Tunnel.OnConnected += () =>
+                {
+                    Debug.Log("[Bugpunch] Connected");
+                    _debugSessionActive = true;
+                    InitializeStreamerLazy();
+                    OnConnected?.Invoke();
+                    OnAnyConnected?.Invoke();
+                };
+                Tunnel.OnDisconnected += () => { OnDisconnected?.Invoke(); };
+                Tunnel.OnRequest += HandleRequest;
+                StartCoroutine(ConnectLoop());
+            }
+            else
+            {
+                Debug.Log("[Bugpunch] Release build — starting in poll mode");
+                Registration = new DeviceRegistration(Config);
+                Registration.OnUpgradeRequested += HandleUpgradeToWebSocket;
+                Registration.OnScriptsReceived += HandlePollScripts;
+                StartCoroutine(Registration.RegisterAndPoll());
+            }
         }
 
         IEnumerator ConnectLoop()
