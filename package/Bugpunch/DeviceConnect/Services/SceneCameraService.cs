@@ -54,16 +54,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _sceneCamera = _sceneCameraGo.AddComponent<Camera>();
             _sceneCamera.depth = 100;
 
-            // Use dashboard viewport dimensions if provided, otherwise device screen
-            int w = viewportWidth > 0 ? viewportWidth : Screen.width;
-            int h = viewportHeight > 0 ? viewportHeight : Screen.height;
-            // Cap to reasonable max
-            w = Mathf.Clamp(w, 64, 3840);
-            h = Mathf.Clamp(h, 64, 2160);
-
-            _sceneRT = new RenderTexture(w, h, 24);
-            _sceneCamera.targetTexture = _sceneRT;
-            _sceneCamera.aspect = (float)w / h;
+            // Don't set targetTexture here — the WebRTC streamer manages the RT.
+            // Just set the aspect ratio if dashboard sent viewport dimensions.
+            if (viewportWidth > 0 && viewportHeight > 0)
+                _sceneCamera.aspect = (float)viewportWidth / viewportHeight;
 
             // Position at main camera location or default
             var mainCam = Camera.main;
@@ -88,8 +82,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_streamer != null)
                 _streamer.SetCamera(_sceneCamera);
 
-            Debug.Log($"[Bugpunch] Scene camera started ({w}x{h})");
-            return $"{{\"ok\":true,\"width\":{w},\"height\":{h}}}";
+            Debug.Log($"[Bugpunch] Scene camera started ({viewportWidth}x{viewportHeight})");
+            return $"{{\"ok\":true,\"width\":{viewportWidth},\"height\":{viewportHeight}}}";
         }
 
         /// <summary>
@@ -107,12 +101,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _sceneCameraGo = null;
             _sceneCamera = null;
 
-            if (_sceneRT != null)
-            {
-                _sceneRT.Release();
-                Destroy(_sceneRT);
-                _sceneRT = null;
-            }
 
             // Switch WebRTC back to main camera
             if (_streamer != null)

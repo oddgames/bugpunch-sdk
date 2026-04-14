@@ -351,7 +351,7 @@ static void VTCompressionOutputCallback(void *outputCallbackRefCon,
 
     // Tear down encoder
     if (_compressionSession) {
-        VTCompressionSessionCompleteEncoding(_compressionSession);
+        VTCompressionSessionCompleteFrames(_compressionSession, kCMTimeInvalid);
         VTCompressionSessionInvalidate(_compressionSession);
         CFRelease(_compressionSession);
         _compressionSession = NULL;

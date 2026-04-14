@@ -20,6 +20,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         RTCPeerConnection _pc;
         VideoStreamTrack _videoTrack;
         RenderTexture _rt;
+        RenderTexture _screenCapRT;
         Camera _targetCamera;
         Camera _cachedCamera;
 
@@ -133,13 +134,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public void SetCamera(Camera cam)
         {
             _targetCamera = cam;
-            _cachedCamera = cam;
-
-            if (_streaming)
-            {
-                StopStreaming();
-                Debug.Log("[Bugpunch] WebRTC: camera changed mid-stream — stopped, waiting for new offer to reconnect");
-            }
+            Debug.Log($"[Bugpunch] WebRTC: SetCamera → {(cam != null ? cam.name : "null (game view)")} streaming={_streaming}");
         }
 
         /// <summary>
@@ -154,7 +149,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     HandleIceCandidate(payload);
                     break;
                 case "webrtc-stop":
-                    StopStreaming();
+                    // Ignore — stream lifecycle is managed by new offers (which
+                    // clean up the old connection) and component destruction.
+                    // The dashboard sends webrtc-stop on mode switch but we want
+                    // the stream to survive camera changes.
                     break;
             }
         }
@@ -364,37 +362,41 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         IEnumerator RenderLoop()
         {
-            int _renderFrameCount = 0;
             while (_streaming && _pc != null)
             {
                 yield return new WaitForEndOfFrame();
+                if (_rt == null) continue;
 
-                if (_cachedCamera == null || !_cachedCamera.isActiveAndEnabled)
-                    _cachedCamera = _targetCamera ? _targetCamera : Camera.main;
-                var cam = _cachedCamera;
-                if (cam == null || _rt == null)
+                // Check which camera is being used — log once on switch
+                if (_targetCamera != null)
                 {
-                    if (_renderFrameCount++ < 3)
-                        Debug.LogWarning($"[Bugpunch] RenderLoop: cam={cam != null} rt={_rt != null} targetCam={_targetCamera != null} mainCam={Camera.main != null}");
-                    continue;
+                    // Scene camera mode — render specific camera to RT
+                    _targetCamera.targetTexture = _rt;
+                    _targetCamera.Render();
+                    _targetCamera.targetTexture = null;
                 }
-                if (_renderFrameCount < 3)
+                else
                 {
-                    Debug.Log($"[Bugpunch] RenderLoop: rendering cam={cam.name} rt={_rt.width}x{_rt.height} format={_rt.format}");
-                    _renderFrameCount++;
+                    // Game view mode — capture the full screen (all cameras, UI, post-fx)
+                    // CaptureScreenshotIntoRenderTexture captures at screen res, may be flipped
+                    if (_screenCapRT == null || _screenCapRT.width != Screen.width || _screenCapRT.height != Screen.height)
+                    {
+                        if (_screenCapRT != null) { _screenCapRT.Release(); Destroy(_screenCapRT); }
+                        _screenCapRT = new RenderTexture(Screen.width, Screen.height, 0);
+                        _screenCapRT.Create();
+                    }
+                    ScreenCapture.CaptureScreenshotIntoRenderTexture(_screenCapRT);
+                    // Blit with vertical flip and scale to streaming resolution
+                    Graphics.Blit(_screenCapRT, _rt, new Vector2(1, -1), new Vector2(0, 1));
                 }
-
-                var prevTarget = cam.targetTexture;
-                cam.targetTexture = _rt;
-                cam.Render();
-                cam.targetTexture = prevTarget;
 
                 // Send camera metadata via data channel (every other frame to reduce overhead)
                 _metadataFrameSkip++;
-                if (_metadataFrameSkip >= 2 && _metadataChannel != null && _metadataChannel.ReadyState == RTCDataChannelState.Open)
+                var metaCam = _targetCamera ? _targetCamera : Camera.main;
+                if (_metadataFrameSkip >= 2 && metaCam != null && _metadataChannel != null && _metadataChannel.ReadyState == RTCDataChannelState.Open)
                 {
                     _metadataFrameSkip = 0;
-                    var t = cam.transform;
+                    var t = metaCam.transform;
                     var p = t.position;
                     var r = t.eulerAngles;
                     string F(float v) => v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
