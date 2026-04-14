@@ -11,7 +11,15 @@
 //
 // Copyright (c) ODDGames. All rights reserved.
 
+// Only compile on macOS — on iOS, ODDRecorder.mm is compiled directly.
+// Guard needed because Unity may incorrectly include this file in iOS Xcode exports
+// despite the .meta restricting it to Standalone.
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+
 // Include the shared implementation
 // Both platforms share the same AVAssetWriter encoding code;
 // the iOS source uses TARGET_OS_IOS to conditionally enable ReplayKit.
 #include "../iOS/ODDRecorder.mm"
+
+#endif // TARGET_OS_OSX

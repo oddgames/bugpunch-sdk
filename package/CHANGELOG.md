@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.6] - 2026-04-14
+
+### Fixed
+- **iOS linker error — 25 duplicate symbols** — `ODDRecorderMac.mm` was being included in iOS Xcode exports despite `.meta` restricting it to Standalone. Added `#if TARGET_OS_OSX` guard so it compiles to nothing on iOS. The `ODDRecorderImpl` class is already provided by `ODDRecorder.mm` on iOS.
+
 ## [1.5.5] - 2026-04-14
 
 ### Fixed
