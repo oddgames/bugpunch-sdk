@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **iOS build error** — added forward declaration of `handleEncodedSampleBuffer:` in BugpunchRingRecorder.mm to fix compile error in Objective-C++ mode (Xcode 16.2)
+- **WebRTC black screen** — game view now uses `ScreenCapture.CaptureScreenshotIntoRenderTexture` to capture exactly what's on screen (all cameras, UI, post-fx). Fixes multi-camera setups where Camera.main was a UI overlay.
+- **WebRTC stream killed on scene switch** — `SetCamera` no longer calls `StopStreaming()`. One persistent stream, camera just swaps.
+- **Scene camera stop returns to game view** — `SetCamera(null)` instead of `SetCamera(Camera.main)` which was incorrectly selecting the UICamera.
+- **ProGuard consumer rules** — added `build.gradle` + `consumer-proguard.pro` to `.androidlib` so R8 keeps `org.webrtc.**` classes automatically in consumer projects (fixes `ClassNotFoundException` in release builds).
+- **WebRTC `webrtc-stop` handling** — ignored during streaming to prevent dashboard mode switches from killing the connection.
+- **Scene camera orientation** — all 6 snap directions corrected.
 
 ## [1.5.1] - 2026-04-14
 
