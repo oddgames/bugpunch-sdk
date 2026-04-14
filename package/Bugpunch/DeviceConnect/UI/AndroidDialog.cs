@@ -86,6 +86,40 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }));
         }
 
+        // ── Report flow overlay callbacks ──
+        internal static Action _welcomeConfirmCallback;
+        internal static Action _welcomeCancelCallback;
+        internal static Action _reportTappedCallback;
+
+        public void ShowReportWelcome(Action onConfirm, Action onCancel)
+        {
+            _welcomeConfirmCallback = onConfirm;
+            _welcomeCancelCallback = onCancel;
+
+            using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
+                .GetStatic<AndroidJavaObject>("currentActivity");
+            using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
+            overlayClass.CallStatic("showWelcome", activity);
+        }
+
+        public void ShowRecordingOverlay(Action onStopRecording)
+        {
+            _reportTappedCallback = onStopRecording;
+
+            using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
+                .GetStatic<AndroidJavaObject>("currentActivity");
+            using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
+            overlayClass.CallStatic("showRecordingOverlay", activity);
+        }
+
+        public void HideRecordingOverlay()
+        {
+            using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
+                .GetStatic<AndroidJavaObject>("currentActivity");
+            using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
+            overlayClass.CallStatic("hideRecordingOverlay", activity);
+        }
+
         public void ShowCrashReport(CrashReportContext context, Action<CrashReportResult> onSubmit, Action onDismiss)
         {
             _crashSubmitCallback = onSubmit;
@@ -187,6 +221,45 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             var cb = AndroidDialog._crashDismissCallback;
             AndroidDialog._crashSubmitCallback = null;
             AndroidDialog._crashDismissCallback = null;
+            if (cb != null) MainThread.Enqueue(() => cb.Invoke());
+        }
+    }
+
+    /// <summary>
+    /// Hidden GameObject that receives UnitySendMessage callbacks from BugpunchReportOverlay.
+    /// </summary>
+    class ReportOverlayCallback : MonoBehaviour
+    {
+        static ReportOverlayCallback _instance;
+
+        public static void EnsureExists()
+        {
+            if (_instance != null) return;
+            var go = new GameObject("BugpunchReportCallback");
+            go.hideFlags = HideFlags.HideAndDontSave;
+            DontDestroyOnLoad(go);
+            _instance = go.AddComponent<ReportOverlayCallback>();
+        }
+
+        void OnWelcomeConfirm(string message)
+        {
+            var cb = AndroidDialog._welcomeConfirmCallback;
+            AndroidDialog._welcomeConfirmCallback = null;
+            AndroidDialog._welcomeCancelCallback = null;
+            if (cb != null) MainThread.Enqueue(() => cb.Invoke());
+        }
+
+        void OnWelcomeCancel(string message)
+        {
+            var cb = AndroidDialog._welcomeCancelCallback;
+            AndroidDialog._welcomeConfirmCallback = null;
+            AndroidDialog._welcomeCancelCallback = null;
+            if (cb != null) MainThread.Enqueue(() => cb.Invoke());
+        }
+
+        void OnReportTapped(string message)
+        {
+            var cb = AndroidDialog._reportTappedCallback;
             if (cb != null) MainThread.Enqueue(() => cb.Invoke());
         }
     }

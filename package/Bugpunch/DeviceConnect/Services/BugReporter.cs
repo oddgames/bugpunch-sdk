@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using ODDGames.Bugpunch.DeviceConnect.UI;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -50,6 +51,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         // State
         bool _reportDialogOpen;
+        bool _recordingModeActive;
 
         // Log buffer (last 500 entries)
         readonly List<LogEntry> _logBuffer = new();
@@ -118,14 +120,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Desktop: F12 to report
             if (Input.GetKeyDown(reportKey))
             {
-                StartReport();
+                if (_recordingModeActive)
+                    OnRecordingReportTapped();
+                else
+                    StartReportFlow();
                 return;
             }
 
             // Mobile: shake to report
             if (shakeToReport && Input.acceleration.sqrMagnitude > shakeThreshold * shakeThreshold)
             {
-                StartReport();
+                if (!_recordingModeActive)
+                    StartReportFlow();
             }
         }
 
@@ -170,6 +176,48 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // Set from the (possibly-background) log callback; consumed on the main thread in Update.
         volatile PendingReport _pendingAutoReport;
         class PendingReport { public string title; public string description; }
+
+        // ── Report Flow (welcome → record → report) ──
+
+        /// <summary>
+        /// Start the full report flow: show the native welcome overlay, then enter
+        /// recording mode with a floating report button. Stays active until app restart.
+        /// </summary>
+        public void StartReportFlow()
+        {
+            if (_reportDialogOpen || _recordingModeActive) return;
+
+            var dialog = NativeDialogFactory.Create();
+            dialog.ShowReportWelcome(
+                onConfirm: () => StartRecordingReport(),
+                onCancel: () => { }
+            );
+        }
+
+        /// <summary>
+        /// Enter recording mode directly (skip welcome). Starts the ring buffer and
+        /// shows the floating report button. Stays active until app restart.
+        /// </summary>
+        public void StartRecordingReport()
+        {
+            if (_recordingModeActive) return;
+            _recordingModeActive = true;
+
+            // Start the ring buffer recorder
+            EnableVideoCapture();
+
+            // Show the native floating button
+            var dialog = NativeDialogFactory.Create();
+            dialog.ShowRecordingOverlay(onStopRecording: OnRecordingReportTapped);
+        }
+
+        void OnRecordingReportTapped()
+        {
+            // User tapped the floating report button — capture and send.
+            // The overlay stays (recording mode persists), but we file the report.
+            // After report completes, the button is still there for next time.
+            StartReport();
+        }
 
         // ── Public API ──
 

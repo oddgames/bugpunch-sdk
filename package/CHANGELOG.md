@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.7] - 2026-04-15
+
+### Added
+- **Simplified static API** — `ODDGames.Bugpunch.Bugpunch` facade: `Bugpunch.RecordBug()`, `Bugpunch.QuickReport()`, `Bugpunch.Feedback()`, etc. Replaces deep `BugpunchClient.Instance.Reporter.StartReport()` calls.
+- **Record-and-report flow** — friendly native welcome card ("We'll record your screen...") followed by a floating draggable red report button. Button stays for the whole session; shake/F12/`Bugpunch.RecordBug()` all trigger the flow.
+- **Native overlay UIs** — new `BugpunchReportOverlay.java` (Android `WindowManager` views) and `BugpunchReportOverlay.mm` (iOS `UIView` on root window) with vector-drawn camera + video icons.
+
+### Fixed
+- **Android build failure** — `BugpunchReportOverlay.java` was importing `com.unity3d.player.UnityPlayer` directly. The `.androidlib` doesn't have Unity on the classpath, so this broke Gradle compile. Replaced with reflection-based `UnitySendMessage` call (same pattern as `BugpunchCrashActivity` and `BugpunchProjectionRequest`).
+
 ## [1.5.6] - 2026-04-14
 
 ### Fixed

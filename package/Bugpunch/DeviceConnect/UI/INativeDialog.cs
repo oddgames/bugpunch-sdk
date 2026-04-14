@@ -53,10 +53,24 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         /// Show a full-screen crash report overlay with video playback, exception details,
         /// and input fields for the user to describe the issue before submitting.
         /// </summary>
-        /// <param name="context">Exception info and video path.</param>
-        /// <param name="onSubmit">Called with user input when they hit Submit.</param>
-        /// <param name="onDismiss">Called when the user dismisses without submitting.</param>
         void ShowCrashReport(CrashReportContext context, Action<CrashReportResult> onSubmit, Action onDismiss);
+
+        /// <summary>
+        /// Show a friendly welcome card explaining that we're entering debug/recording mode.
+        /// User taps "Got it" to proceed or "Cancel" to dismiss.
+        /// </summary>
+        void ShowReportWelcome(Action onConfirm, Action onCancel);
+
+        /// <summary>
+        /// Show a native floating overlay button for the recording-in-progress state.
+        /// Draggable, shows elapsed timer. Tap fires onStopRecording and removes itself.
+        /// </summary>
+        void ShowRecordingOverlay(Action onStopRecording);
+
+        /// <summary>
+        /// Remove the recording overlay if it's currently visible.
+        /// </summary>
+        void HideRecordingOverlay();
 
         bool IsSupported { get; }
     }

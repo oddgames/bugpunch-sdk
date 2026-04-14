@@ -14,18 +14,27 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         static Action _cancelCallback;
         static Action<CrashReportResult> _crashSubmitCallback;
         static Action _crashDismissCallback;
+        static Action _welcomeConfirmCallback;
+        static Action _welcomeCancelCallback;
+        static Action _reportTappedCallback;
 
         delegate void PermissionCallbackDelegate(int result);
         delegate void BugSubmitDelegate(string title, string description, string severity);
         delegate void BugCancelDelegate();
         delegate void CrashSubmitDelegate(string title, string description, string severity, int includeVideo, int includeLogs);
         delegate void CrashDismissDelegate();
+        delegate void VoidCallbackDelegate();
 
         [DllImport("__Internal")] static extern void Bugpunch_ShowPermissionDialog(string title, string message, PermissionCallbackDelegate cb);
         [DllImport("__Internal")] static extern void Bugpunch_ShowBugReportDialog(BugSubmitDelegate onSubmit, BugCancelDelegate onCancel);
         [DllImport("__Internal")] static extern void Bugpunch_ShowCrashReportOverlay(
             string exceptionMessage, string stackTrace, string videoPath,
             CrashSubmitDelegate onSubmit, CrashDismissDelegate onDismiss);
+        [DllImport("__Internal")] static extern void Bugpunch_ShowReportWelcome(VoidCallbackDelegate onConfirm, VoidCallbackDelegate onCancel);
+        [DllImport("__Internal")] static extern void Bugpunch_HideReportWelcome();
+        [DllImport("__Internal")] static extern void Bugpunch_ShowRecordingOverlay(VoidCallbackDelegate onReportTapped);
+        [DllImport("__Internal")] static extern void Bugpunch_HideRecordingOverlay();
+        [DllImport("__Internal")] static extern void Bugpunch_ResetRecordingTimer();
 
         public void ShowPermission(string scriptName, string scriptDescription, Action<PermissionResult> callback)
         {
@@ -108,6 +117,50 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             _crashSubmitCallback = null;
             _crashDismissCallback = null;
             cb?.Invoke();
+        }
+
+        // ── Report flow ──
+
+        public void ShowReportWelcome(Action onConfirm, Action onCancel)
+        {
+            _welcomeConfirmCallback = onConfirm;
+            _welcomeCancelCallback = onCancel;
+            Bugpunch_ShowReportWelcome(OnWelcomeConfirm, OnWelcomeCancel);
+        }
+
+        [MonoPInvokeCallback(typeof(VoidCallbackDelegate))]
+        static void OnWelcomeConfirm()
+        {
+            var cb = _welcomeConfirmCallback;
+            _welcomeConfirmCallback = null;
+            _welcomeCancelCallback = null;
+            cb?.Invoke();
+        }
+
+        [MonoPInvokeCallback(typeof(VoidCallbackDelegate))]
+        static void OnWelcomeCancel()
+        {
+            var cb = _welcomeCancelCallback;
+            _welcomeConfirmCallback = null;
+            _welcomeCancelCallback = null;
+            cb?.Invoke();
+        }
+
+        public void ShowRecordingOverlay(Action onStopRecording)
+        {
+            _reportTappedCallback = onStopRecording;
+            Bugpunch_ShowRecordingOverlay(OnReportTapped);
+        }
+
+        [MonoPInvokeCallback(typeof(VoidCallbackDelegate))]
+        static void OnReportTapped()
+        {
+            _reportTappedCallback?.Invoke();
+        }
+
+        public void HideRecordingOverlay()
+        {
+            Bugpunch_HideRecordingOverlay();
         }
     }
 }

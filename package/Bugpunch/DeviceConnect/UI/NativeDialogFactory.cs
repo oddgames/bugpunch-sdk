@@ -12,6 +12,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             _instance = new EditorDialogWrapper();
 #elif UNITY_ANDROID
             CrashOverlayCallback.EnsureExists();
+            ReportOverlayCallback.EnsureExists();
             _instance = new AndroidDialog();
 #elif UNITY_IOS
             _instance = new IOSDialog();
@@ -63,8 +64,6 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         public void ShowCrashReport(CrashReportContext context, System.Action<CrashReportResult> onSubmit, System.Action onDismiss)
         {
-            // In the Editor, use a simple dialog. For a richer experience, the
-            // EditorBugReportWindow in the Editor assembly could be extended.
             bool submit = UnityEditor.EditorUtility.DisplayDialog(
                 "Crash Report",
                 $"Exception:\n{context.exceptionMessage}\n\nStack trace:\n{(context.stackTrace?.Length > 400 ? context.stackTrace.Substring(0, 400) + "..." : context.stackTrace)}\n\nSubmit crash report?",
@@ -81,6 +80,28 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 });
             else
                 onDismiss?.Invoke();
+        }
+
+        public void ShowReportWelcome(System.Action onConfirm, System.Action onCancel)
+        {
+            bool proceed = UnityEditor.EditorUtility.DisplayDialog(
+                "Report a Bug",
+                "Entering debug recording mode.\n\nWe'll record your screen while you reproduce the issue. When you're ready, tap the report button.",
+                "Got it", "Cancel"
+            );
+            if (proceed) onConfirm?.Invoke();
+            else onCancel?.Invoke();
+        }
+
+        public void ShowRecordingOverlay(System.Action onStopRecording)
+        {
+            // In Editor, no floating overlay — just log
+            UnityEngine.Debug.Log("[Bugpunch] Recording mode active in Editor. Press F12 to submit report.");
+        }
+
+        public void HideRecordingOverlay()
+        {
+            // No-op in Editor
         }
     }
 #endif

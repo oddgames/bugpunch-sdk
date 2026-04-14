@@ -42,6 +42,24 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 () => { onDismiss?.Invoke(); UnityEngine.Object.Destroy(go); }
             );
         }
+
+        public void ShowReportWelcome(Action onConfirm, Action onCancel)
+        {
+            // Desktop fallback: skip welcome, go straight to recording
+            Debug.Log("[Bugpunch] Report welcome not available on desktop, proceeding directly");
+            onConfirm?.Invoke();
+        }
+
+        public void ShowRecordingOverlay(Action onStopRecording)
+        {
+            // Desktop fallback: no native overlay, log instruction
+            Debug.Log("[Bugpunch] Recording overlay not available on desktop. Press F12 again to submit report.");
+        }
+
+        public void HideRecordingOverlay()
+        {
+            // No-op on desktop
+        }
     }
 
     class PermissionUI : MonoBehaviour
