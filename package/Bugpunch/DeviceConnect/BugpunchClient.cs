@@ -191,7 +191,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 {
                     Debug.Log("[Bugpunch] Connected");
                     _debugSessionActive = true;
-                    InitializeStreamerLazy();
+                    // WebRTC is NOT initialized here — only when the dashboard
+                    // requests streaming (first webrtc-offer triggers lazy init)
                     OnConnected?.Invoke();
                     OnAnyConnected?.Invoke();
                 };
@@ -275,6 +276,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (response == null && path.StartsWith("/webrtc-"))
             {
                 var type = path.Split('?')[0].TrimStart('/');
+                // Lazy-init WebRTC on first offer from the dashboard
+                if (type == "webrtc-offer" && Streamer == null)
+                    InitializeStreamerLazy();
                 if (type == "webrtc-offer" && Streamer != null)
                 {
                     // Handle offer — response sent asynchronously via tunnel when answer is ready

@@ -81,24 +81,27 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_nativeRecorder != null) _nativeRecorder.StopRecording();
         }
 
-        void Start()
+        /// <summary>
+        /// Enable video ring buffer recording. Call this explicitly for alpha builds
+        /// or feedback mode. Not enabled by default — video capture requires user consent
+        /// (MediaProjection on Android, ReplayKit on iOS).
+        /// </summary>
+        public void EnableVideoCapture()
         {
+            if (_nativeRecorder != null) return; // already running
             if (!RingBufferRecorder.IsSupported) return;
 
-            // Attach native ring buffer recorder. The rolling window of video is
-            // maintained entirely by the native plugin (Android: MediaCodec +
-            // VirtualDisplay, iOS: ReplayKit + VideoToolbox). Unity just asks
-            // for an MP4 dump on demand.
             _nativeRecorder = gameObject.AddComponent<RingBufferRecorder>();
 
             int sw = Screen.width, sh = Screen.height;
             float scale = videoMaxDimension > 0
                 ? Mathf.Min(1f, (float)videoMaxDimension / Mathf.Min(sw, sh))
                 : 1f;
-            int rw = Mathf.Max(16, Mathf.RoundToInt(sw * scale) & ~1); // even numbers required by the encoder
+            int rw = Mathf.Max(16, Mathf.RoundToInt(sw * scale) & ~1);
             int rh = Mathf.Max(16, Mathf.RoundToInt(sh * scale) & ~1);
 
             _nativeRecorder.StartRecording(rw, rh, videoBitrate, videoFps, videoBufferSeconds);
+            Debug.Log("[Bugpunch] Video ring buffer enabled");
         }
 
         void Update()
