@@ -19,6 +19,7 @@
 #import <VideoToolbox/VideoToolbox.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
+#include <unistd.h>
 
 #if TARGET_OS_IOS
 #import <ReplayKit/ReplayKit.h>
@@ -93,7 +94,7 @@ struct EncodedSample {
 #pragma mark - VideoToolbox Compression Callback (C function)
 // ---------------------------------------------------------------------------
 
-static void VTCompressionOutputCallback(void *outputCallbackRefCon,
+static void BugpunchVTCompressionOutputCallback(void *outputCallbackRefCon,
                                          void *sourceFrameRefCon,
                                          OSStatus status,
                                          VTEncodeInfoFlags infoFlags,
@@ -180,7 +181,7 @@ static void VTCompressionOutputCallback(void *outputCallbackRefCon,
         NULL,  // encoderSpecification — let the system pick hardware encoder
         NULL,  // sourceImageBufferAttributes
         NULL,  // compressedDataAllocator
-        VTCompressionOutputCallback,
+        BugpunchVTCompressionOutputCallback,
         (__bridge void *)self,
         &_compressionSession
     );
@@ -749,18 +750,11 @@ static void VTCompressionOutputCallback(void *outputCallbackRefCon,
         }
 
         // Set sync sample attachment for keyframes
-        if (s->isKeyframe) {
-            CFMutableDictionaryRef attachments = (CFMutableDictionaryRef)CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, true);
-            if (attachments && CFArrayGetCount(attachments) > 0) {
-                CFMutableDictionaryRef dict = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments, 0);
-                CFDictionarySetValue(dict, kCMSampleAttachmentKey_NotSync, kCFBooleanFalse);
-            }
-        } else {
-            CFMutableDictionaryRef attachments = (CFMutableDictionaryRef)CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, true);
-            if (attachments && CFArrayGetCount(attachments) > 0) {
-                CFMutableDictionaryRef dict = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments, 0);
-                CFDictionarySetValue(dict, kCMSampleAttachmentKey_NotSync, kCFBooleanTrue);
-            }
+        CFArrayRef attachArr = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, true);
+        if (attachArr && CFArrayGetCount(attachArr) > 0) {
+            CFMutableDictionaryRef dict = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachArr, 0);
+            CFDictionarySetValue(dict, kCMSampleAttachmentKey_NotSync,
+                                s->isKeyframe ? kCFBooleanFalse : kCFBooleanTrue);
         }
 
         // Wait for the input to be ready (brief spin)

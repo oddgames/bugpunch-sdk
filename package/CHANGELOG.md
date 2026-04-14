@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.5] - 2026-04-14
+
+### Fixed
+- **iOS build error (Xcode 16.2 / iOS 18.2 SDK)** — renamed `VTCompressionOutputCallback` to avoid name collision with VideoToolbox SDK typedef. Fixed incorrect `CFMutableDictionaryRef` cast of `CMSampleBufferGetSampleAttachmentsArray` return (should be `CFArrayRef`). Added missing `#include <unistd.h>` for `usleep()`.
+
 ## [1.5.4] - 2026-04-14
 
 ### Fixed
