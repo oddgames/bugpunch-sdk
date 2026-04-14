@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using ODDGames.Bugpunch.DeviceConnect.Database;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -141,6 +142,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var perf = new PerformanceService();
             var files = new FileService();
             var deviceInfo = new DeviceInfoService();
+            var dbPlugins = new DatabasePluginRegistry();
+            dbPlugins.ScanIfNeeded();
             IScriptRunner scriptRunner = new PaxScriptRunner();
 
             // Create scene camera service
@@ -158,6 +161,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 SceneCamera = SceneCamera,
                 Files = files,
                 DeviceInfo = deviceInfo,
+                DatabasePlugins = dbPlugins,
                 Streamer = null
             };
 
@@ -294,7 +298,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 else
                 {
-                    // Streamer not initialized — WebRTC native lib may not be loaded yet or failed to load
                     Tunnel.SendResponse(requestId, 501, "{\"error\":\"Streaming unavailable — WebRTC not initialized\"}", "application/json");
                 }
                 yield break;

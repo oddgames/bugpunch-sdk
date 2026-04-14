@@ -193,6 +193,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         IEnumerator HandleOffer(string sdpJson, Action<string> onAnswer, Action<string> onError)
         {
+            // Wait one frame to let WebRTC.Update() coroutine initialize
+            // (critical when Initialize() and HandleOffer run in the same frame)
+            yield return null;
+
             if (_streaming)
                 StopStreaming();
 

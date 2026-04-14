@@ -1,4 +1,5 @@
 using System;
+using ODDGames.Bugpunch.DeviceConnect.Database;
 using UnityEngine;
 
 namespace ODDGames.Bugpunch.DeviceConnect
@@ -19,6 +20,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public SceneCameraService SceneCamera;
         public FileService Files;
         public DeviceInfoService DeviceInfo;
+        public DatabasePluginRegistry DatabasePlugins;
 
         public struct Response
         {
@@ -339,6 +341,19 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 // Device info
                 if (path == "/device-info" || path.StartsWith("/device-info?"))
                     return Response.Json(DeviceInfo?.GetDeviceInfo() ?? "{}");
+
+                // Database plugins (device-side parsing for Siaqodb, Odin, etc.)
+                if (path.StartsWith("/databases/"))
+                {
+                    if (DatabasePlugins == null)
+                        return Response.Error("Database plugin registry not available", 501);
+                    var subPath = path.Split('?')[0];
+                    if (subPath == "/databases/providers")
+                        return Response.Json(DatabasePlugins.ListProviders());
+                    if (subPath == "/databases/parse")
+                        return Response.Json(DatabasePlugins.Parse(Q(path, "path"), Q(path, "provider")));
+                    return Response.NotFound(path);
+                }
 
                 // File browser
                 if (path.StartsWith("/files"))
