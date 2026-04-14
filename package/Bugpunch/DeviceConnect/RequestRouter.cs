@@ -19,6 +19,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public SceneCameraService SceneCamera;
         public FileService Files;
         public DeviceInfoService DeviceInfo;
+        public DatabaseService Database;
 
         public struct Response
         {
@@ -331,6 +332,16 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 // Device info
                 if (path == "/device-info" || path.StartsWith("/device-info?"))
                     return Response.Json(DeviceInfo?.GetDeviceInfo() ?? "{}");
+
+                // Database parsing (device-side proxy for Siaqodb, Odin)
+                if (path.StartsWith("/databases/parse"))
+                {
+                    if (Database == null)
+                        return Response.Error("Database service not available", 501);
+                    var dbPath = Q(path, "path");
+                    var provider = Q(path, "provider");
+                    return Response.Json(Database.Parse(dbPath, provider));
+                }
 
                 // File browser
                 if (path.StartsWith("/files"))
