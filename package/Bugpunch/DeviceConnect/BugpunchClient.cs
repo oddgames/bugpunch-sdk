@@ -141,7 +141,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var perf = new PerformanceService();
             var files = new FileService();
             var deviceInfo = new DeviceInfoService();
-            var database = new DatabaseService();
             IScriptRunner scriptRunner = new PaxScriptRunner();
 
             // Create scene camera service
@@ -159,7 +158,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 SceneCamera = SceneCamera,
                 Files = files,
                 DeviceInfo = deviceInfo,
-                Database = database,
                 Streamer = null
             };
 

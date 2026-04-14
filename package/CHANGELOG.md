@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.1] - 2026-04-14
+
+### Fixed
+- **Android manifest merging** — moved Java plugins + manifest into `BugpunchPlugin.androidlib/` structure (same pattern as Google Ads, Firebase). Fixes `ActivityNotFoundException` for `BugpunchProjectionRequest` and `BugpunchCrashActivity`.
+- **WebRTC on Android IL2CPP** — removed separate asmdef approach (stripped by IL2CPP). WebRTCStreamer now in main assembly with direct `AddComponent<WebRTCStreamer>()` in try/catch. Added `link.xml` preserve rules.
+- **Scene camera orientation** — all 6 snap directions were inverted, now correct.
+- **WebRTC shutdown crash** — skip cleanup during `OnApplicationQuit`.
+- **ProGuard stripping** — added `proguard-bugpunch.txt` keeping `org.webrtc.**` Java classes.
+- **Plugin .meta files** — 12 files fixed with correct `PluginImporter` platform restrictions.
+
+### Added
+- **`SuppressDebugRequests`** — games can block debug session prompts during gameplay.
+- **`EnableVideoCapture()`** — video ring buffer is now opt-in, not auto-starting.
+- **Scene camera viewport sizing** — renders at dashboard panel dimensions, not device screen.
+- **`IStreamer` interface** — decouples BugpunchClient from WebRTCStreamer concrete type.
+
+### Changed
+- **Lazy WebRTC loading** — WebRTC only initializes on first `webrtc-offer` from dashboard, not at startup or WebSocket connect.
+- **Debug builds use WebSocket directly** — release builds poll, debug builds connect immediately.
+- **Simplified BugpunchConfig** — just `serverUrl` + `apiKey`, removed `projectId` and feature toggles.
+
 ## [1.5.0] - 2026-04-13
 
 ### Added
