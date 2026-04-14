@@ -3,6 +3,9 @@ apply plugin: 'com.android.library'
 android {
     namespace 'au.com.oddgames.bugpunch'
 
+    def unityLib = project(':unityLibrary').extensions.getByName('android')
+    compileSdkVersion unityLib.compileSdkVersion
+
     sourceSets {
         main {
             manifest.srcFile 'AndroidManifest.xml'
@@ -12,6 +15,8 @@ android {
 
     defaultConfig {
         consumerProguardFiles "consumer-proguard.pro"
+        minSdkVersion unityLib.defaultConfig.minSdkVersion.mApiLevel
+        targetSdkVersion unityLib.defaultConfig.targetSdkVersion.mApiLevel
     }
 
     compileOptions {
