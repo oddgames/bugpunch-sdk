@@ -364,6 +364,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         IEnumerator RenderLoop()
         {
+            int _renderFrameCount = 0;
             while (_streaming && _pc != null)
             {
                 yield return new WaitForEndOfFrame();
@@ -371,7 +372,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (_cachedCamera == null || !_cachedCamera.isActiveAndEnabled)
                     _cachedCamera = _targetCamera ? _targetCamera : Camera.main;
                 var cam = _cachedCamera;
-                if (cam == null || _rt == null) continue;
+                if (cam == null || _rt == null)
+                {
+                    if (_renderFrameCount++ < 3)
+                        Debug.LogWarning($"[Bugpunch] RenderLoop: cam={cam != null} rt={_rt != null} targetCam={_targetCamera != null} mainCam={Camera.main != null}");
+                    continue;
+                }
+                if (_renderFrameCount < 3)
+                {
+                    Debug.Log($"[Bugpunch] RenderLoop: rendering cam={cam.name} rt={_rt.width}x{_rt.height} format={_rt.format}");
+                    _renderFrameCount++;
+                }
 
                 var prevTarget = cam.targetTexture;
                 cam.targetTexture = _rt;
