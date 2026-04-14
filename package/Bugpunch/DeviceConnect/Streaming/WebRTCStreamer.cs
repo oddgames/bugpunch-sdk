@@ -1,4 +1,3 @@
-#if BUGPUNCH_WEBRTC
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -10,8 +9,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// <summary>
     /// Manages WebRTC video streaming from Unity cameras to the dashboard.
     /// Signaling flows through the existing WebSocket tunnel — no extra server needed.
+    ///
+    /// IMPORTANT: This component is created lazily — only when a debug session starts.
+    /// Do NOT add this component at startup. The act of loading this class triggers
+    /// the Unity.WebRTC assembly load which loads the native libwebrtc.so. On some
+    /// Android 15 devices that native load crashes if done too early.
     /// </summary>
-    public class WebRTCStreamer : MonoBehaviour
+    public class WebRTCStreamer : MonoBehaviour, IStreamer
     {
         RTCPeerConnection _pc;
         VideoStreamTrack _videoTrack;
@@ -51,7 +55,38 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Parse ICE servers from raw JSON and configure them. This is called by
+        /// BugpunchClient so it doesn't need to reference Unity.WebRTC types.
+        /// Expected format: { "iceServers": [{ "urls": "...", "username": "...", "credential": "..." }] }
+        /// </summary>
+        public void SetIceServersFromJson(string json)
+        {
+            var response = JsonUtility.FromJson<IceServersResponse>(json);
+            if (response.iceServers == null || response.iceServers.Length == 0)
+            {
+                Debug.Log("[Bugpunch] No ICE servers returned, using default STUN");
+                return;
+            }
+
+            var servers = new RTCIceServer[response.iceServers.Length];
+            for (int i = 0; i < response.iceServers.Length; i++)
+            {
+                var s = response.iceServers[i];
+                servers[i] = new RTCIceServer
+                {
+                    urls = new[] { s.urls },
+                    username = s.username ?? "",
+                    credential = s.credential ?? ""
+                };
+            }
+
+            SetIceServers(servers);
+        }
+
+        /// <summary>
         /// Initialize the streamer with a tunnel client for signaling.
+        /// This is the point where WebRTC.Update() coroutine starts — the native
+        /// lib is fully active after this call.
         /// </summary>
         public void Initialize(TunnelClient tunnel, int width = 1280, int height = 720, int fps = 30)
         {
@@ -441,6 +476,19 @@ namespace ODDGames.Bugpunch.DeviceConnect
             public string sdpMid;
             public int sdpMLineIndex;
         }
+
+        [Serializable]
+        struct IceServersResponse
+        {
+            public IceServerEntry[] iceServers;
+        }
+
+        [Serializable]
+        struct IceServerEntry
+        {
+            public string urls;
+            public string username;
+            public string credential;
+        }
     }
 }
-#endif

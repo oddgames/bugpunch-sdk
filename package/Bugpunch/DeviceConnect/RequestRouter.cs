@@ -15,7 +15,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public InspectorService Inspector;
         public PerformanceService Performance;
         public IScriptRunner ScriptRunner;
-        public WebRTCStreamer Streamer;
+        public IStreamer Streamer;
         public SceneCameraService SceneCamera;
         public FileService Files;
         public DeviceInfoService DeviceInfo;
@@ -163,12 +163,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 // WebRTC device ICE candidates (browser polls this)
                 if (path == "/webrtc-ice-candidates" || path.StartsWith("/webrtc-ice-candidates?"))
-                    return Response.Json(Streamer?.DrainIceCandidates() ?? "[]");
+                {
+                    if (Streamer == null) return Response.Json("{\"error\":\"Streaming unavailable — WebRTC not initialized\"}", 501);
+                    return Response.Json(Streamer.DrainIceCandidates());
+                }
 
                 // WebRTC quality control
                 if (path == "/webrtc-quality" && method == "POST")
                 {
-                    if (Streamer == null) return Response.Error("WebRTC not available", 501);
+                    if (Streamer == null) return Response.Json("{\"error\":\"Streaming unavailable — WebRTC not initialized\"}", 501);
                     var w = int.TryParse(JsonVal(body, "width"), out var qw) ? qw : 960;
                     var h = int.TryParse(JsonVal(body, "height"), out var qh) ? qh : 540;
                     var f = int.TryParse(JsonVal(body, "fps"), out var qf) ? qf : 30;
@@ -176,13 +179,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
 
                 if (path == "/webrtc-quality" || path.StartsWith("/webrtc-quality?"))
-                    return Response.Json(Streamer?.GetQuality() ?? "{\"error\":\"WebRTC not available\"}");
+                {
+                    if (Streamer == null) return Response.Json("{\"error\":\"Streaming unavailable — WebRTC not initialized\"}", 501);
+                    return Response.Json(Streamer.GetQuality());
+                }
 
                 // Capture — returns null, caller must handle with WaitForEndOfFrame
                 if (path.StartsWith("/capture"))
                     return null;
 
-                // WebRTC signaling — returns null, handled async by BugpunchClient
+                // WebRTC signaling — returns null, handled async by BugpunchClient.
+                // If Streamer is null, BugpunchClient returns 501 gracefully.
                 if (path.StartsWith("/webrtc-"))
                     return null;
 

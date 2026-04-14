@@ -4,7 +4,6 @@
     "references": [
         "Unity.TextMeshPro",
         "Unity.InputSystem",
-        "Unity.WebRTC",
         "PaxScript"
     ],
     "includePlatforms": [],
@@ -17,12 +16,6 @@
     ],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [
-        {
-            "name": "com.unity.webrtc",
-            "expression": "",
-            "define": "BUGPUNCH_WEBRTC"
-        }
-    ],
+    "versionDefines": [],
     "noEngineReferences": false
 }

@@ -19,7 +19,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         GameObject _sceneCameraGo;
         Camera _sceneCamera;
-        WebRTCStreamer _streamer;
+        IStreamer _streamer;
 
         Vector3 _focusPoint;
         float _orbitDistance = 10f;
@@ -33,7 +33,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         const float MinOrbitDistance = 0.1f;
         const float FocusDistance = 5f;
 
-        public void SetStreamer(WebRTCStreamer streamer)
+        public void SetStreamer(IStreamer streamer)
         {
             _streamer = streamer;
         }

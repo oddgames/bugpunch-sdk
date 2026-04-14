@@ -16,10 +16,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Script permission policy for remote execution")]
         public ScriptPermission scriptPermission = ScriptPermission.Ask;
 
-        [Tooltip("Connection mode — Auto uses WebSocket in debug, HTTP poll in release")]
-        public ConnectionMode connectionMode = ConnectionMode.Auto;
-
-        public enum ConnectionMode { Auto, Poll, Debug }
         public enum ScriptPermission { Ask, Always, Never }
 
         // -- Defaults (not exposed in inspector) --
@@ -43,17 +39,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
         internal float pollInterval = 30f;
 
         // -- Derived properties --
-
-        public bool ShouldUseWebSocket
-        {
-            get
-            {
-                if (Application.isEditor) return true;
-                if (connectionMode == ConnectionMode.Debug) return true;
-                if (connectionMode == ConnectionMode.Poll) return false;
-                return UnityEngine.Debug.isDebugBuild;
-            }
-        }
 
         public string HttpBaseUrl
         {

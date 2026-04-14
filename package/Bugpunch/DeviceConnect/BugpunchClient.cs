@@ -7,6 +7,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 {
     /// <summary>
     /// Main Bugpunch client. Auto-connects to the server, routes requests to services.
+    /// Starts in lightweight poll mode; upgrades to WebSocket + WebRTC on demand.
     /// </summary>
     public class BugpunchClient : MonoBehaviour
     {
@@ -15,12 +16,26 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public BugpunchConfig Config { get; private set; }
         public TunnelClient Tunnel { get; private set; }
         public RequestRouter Router { get; private set; }
-        public WebRTCStreamer Streamer { get; private set; }
+
+        /// <summary>
+        /// WebRTC streamer — null until a debug session is started and WebRTC
+        /// initializes successfully. The concrete type (WebRTCStreamer) lives in
+        /// a separate assembly to avoid loading the native WebRTC lib at startup.
+        /// </summary>
+        public IStreamer Streamer { get; private set; }
+
         public SceneCameraService SceneCamera { get; private set; }
         public BugReporter Reporter { get; private set; }
         public NativeCrashHandler CrashHandler { get; private set; }
         public DeviceRegistration Registration { get; private set; }
         public bool IsConnected => (Tunnel != null && Tunnel.IsConnected) || (Registration != null && Registration.IsRegistered);
+
+        /// <summary>
+        /// When true, incoming debug session requests from the server are
+        /// automatically declined with "busy". Games can set this during
+        /// gameplay sequences that should not be interrupted.
+        /// </summary>
+        public bool SuppressDebugRequests { get; set; }
 
         public event Action OnConnected;
         public event Action OnDisconnected;
@@ -32,6 +47,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// holding a reference to the instance.
         /// </summary>
         public static event Action OnAnyConnected;
+
+        bool _debugSessionActive;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoInitialize()
@@ -129,7 +146,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Create scene camera service
             SceneCamera = gameObject.AddComponent<SceneCameraService>();
 
-            // Create router
+            // Create router — Streamer starts null, set when debug session starts
             Router = new RequestRouter
             {
                 Hierarchy = hierarchy,
@@ -141,7 +158,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 SceneCamera = SceneCamera,
                 Files = files,
                 DeviceInfo = deviceInfo,
-                Streamer = null // set after streamer created
+                Streamer = null
             };
 
             // Create bug reporter
@@ -159,42 +176,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 CrashHandler.Initialize(Config);
             }
 
-            // Create WebRTC streamer
-            Streamer = gameObject.AddComponent<WebRTCStreamer>();
-            SceneCamera.SetStreamer(Streamer);
-            Streamer.SceneCameraRef = SceneCamera;
+            // NOTE: WebRTCStreamer is NOT created here. It is initialized lazily
+            // when a debug session starts. This avoids loading the Unity.WebRTC
+            // assembly (and the native libwebrtc.so) at app startup, which crashes
+            // on some Android 15 devices.
 
-            if (Config.ShouldUseWebSocket)
-            {
-                // WebSocket debug mode — full tunnel for live features
-                Tunnel = new TunnelClient(Config);
-                Tunnel.OnConnected += () =>
-                {
-                    Debug.Log("[Bugpunch] Connected");
-                    StartCoroutine(FetchIceServers());
-                    OnConnected?.Invoke();
-                    OnAnyConnected?.Invoke();
-                };
-                Tunnel.OnDisconnected += () => { Debug.Log("[Bugpunch] Disconnected"); OnDisconnected?.Invoke(); };
-                Tunnel.OnError += e => { Debug.LogError($"[Bugpunch] {e}"); OnError?.Invoke(e); };
-                Tunnel.OnRequest += HandleRequest;
-
-                Router.Streamer = Streamer;
-                Streamer.Initialize(Tunnel, Config.captureScale > 0 ? (int)(1920 * Config.captureScale) : 1280,
-                    Config.captureScale > 0 ? (int)(1080 * Config.captureScale) : 720, Config.streamFps);
-
-                StartCoroutine(ConnectLoop());
-                Debug.Log("[Bugpunch] Starting in WebSocket debug mode");
-            }
-            else
-            {
-                // Poll mode — lightweight HTTP registration + polling
-                Registration = new DeviceRegistration(Config);
-                Registration.OnUpgradeRequested += HandleUpgradeToWebSocket;
-                Registration.OnScriptsReceived += HandlePollScripts;
-                StartCoroutine(Registration.RegisterAndPoll());
-                Debug.Log("[Bugpunch] Starting in poll mode");
-            }
+            // Always start in poll mode — lightweight HTTP registration + polling.
+            // WebSocket + WebRTC are only activated when a debug session is requested.
+            Registration = new DeviceRegistration(Config);
+            Registration.OnUpgradeRequested += HandleUpgradeToWebSocket;
+            Registration.OnScriptsReceived += HandlePollScripts;
+            StartCoroutine(Registration.RegisterAndPoll());
+            Debug.Log("[Bugpunch] Starting in poll mode");
         }
 
         IEnumerator ConnectLoop()
@@ -260,7 +253,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield break;
             }
 
-#if BUGPUNCH_WEBRTC
             if (response == null && path.StartsWith("/webrtc-"))
             {
                 var type = path.Split('?')[0].TrimStart('/');
@@ -279,11 +271,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 else
                 {
-                    Tunnel.SendResponse(requestId, 501, "{\"error\":\"WebRTC not available\"}", "application/json");
+                    // Streamer not initialized — WebRTC native lib may not be loaded yet or failed to load
+                    Tunnel.SendResponse(requestId, 501, "{\"error\":\"Streaming unavailable — WebRTC not initialized\"}", "application/json");
                 }
                 yield break;
             }
-#endif
 
             // Input injection — needs main thread for Input System
             if (response == null && path.StartsWith("/input/"))
@@ -342,16 +334,130 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void HandleUpgradeToWebSocket()
         {
+            if (SuppressDebugRequests)
+            {
+                Debug.Log("[Bugpunch] Debug session requested but SuppressDebugRequests is true — declining");
+                // TODO: respond "busy" to server via poll endpoint
+                return;
+            }
+
             Debug.Log("[Bugpunch] Upgrading from poll to WebSocket debug mode");
+            _debugSessionActive = true;
             Registration?.Stop();
             Registration = null;
 
+            // Create WebSocket tunnel
             Tunnel = new TunnelClient(Config);
-            Tunnel.OnConnected += () => { Debug.Log("[Bugpunch] Connected"); OnConnected?.Invoke(); OnAnyConnected?.Invoke(); };
-            Tunnel.OnDisconnected += () => { Debug.Log("[Bugpunch] Disconnected"); OnDisconnected?.Invoke(); };
+            Tunnel.OnConnected += () =>
+            {
+                Debug.Log("[Bugpunch] Connected (debug session)");
+
+                // Lazily initialize WebRTC now that the tunnel is up.
+                // This is the first time Unity.WebRTC types are touched —
+                // the native lib loads here, not at app startup.
+                InitializeStreamerLazy();
+
+                OnConnected?.Invoke();
+                OnAnyConnected?.Invoke();
+            };
+            Tunnel.OnDisconnected += () =>
+            {
+                Debug.Log("[Bugpunch] Disconnected");
+                OnDisconnected?.Invoke();
+            };
             Tunnel.OnError += e => { Debug.LogError($"[Bugpunch] {e}"); OnError?.Invoke(e); };
             Tunnel.OnRequest += HandleRequest;
             StartCoroutine(ConnectLoop());
+        }
+
+        /// <summary>
+        /// Lazily create and initialize the WebRTC streamer. Called only when
+        /// a debug session starts. Uses reflection to add the WebRTCStreamer
+        /// component (which lives in ODDGames.Bugpunch.WebRTC assembly) so the
+        /// main assembly never directly references Unity.WebRTC types.
+        ///
+        /// If WebRTC fails to load (e.g. native lib crash on certain Android
+        /// devices), the tunnel still works — streaming is just unavailable.
+        /// </summary>
+        void InitializeStreamerLazy()
+        {
+            if (Streamer != null) return; // already initialized
+
+            try
+            {
+                // Find WebRTCStreamer type via reflection — this triggers loading the
+                // ODDGames.Bugpunch.WebRTC assembly (and Unity.WebRTC + native lib).
+                var streamerType = System.Type.GetType(
+                    "ODDGames.Bugpunch.DeviceConnect.WebRTCStreamer, ODDGames.Bugpunch.WebRTC");
+
+                if (streamerType == null)
+                {
+                    Debug.LogWarning("[Bugpunch] WebRTCStreamer type not found — WebRTC package may not be installed");
+                    return;
+                }
+
+                var component = gameObject.AddComponent(streamerType);
+                Streamer = component as IStreamer;
+
+                if (Streamer == null)
+                {
+                    Debug.LogWarning("[Bugpunch] WebRTCStreamer does not implement IStreamer — streaming unavailable");
+                    if (component != null) Destroy(component);
+                    return;
+                }
+
+                SceneCamera.SetStreamer(Streamer);
+                Streamer.SceneCameraRef = SceneCamera;
+
+                Router.Streamer = Streamer;
+                Streamer.Initialize(Tunnel,
+                    Config.captureScale > 0 ? (int)(1920 * Config.captureScale) : 1280,
+                    Config.captureScale > 0 ? (int)(1080 * Config.captureScale) : 720,
+                    Config.streamFps);
+
+                StartCoroutine(FetchIceServers());
+                Debug.Log("[Bugpunch] WebRTC streamer initialized (lazy)");
+            }
+            catch (Exception ex)
+            {
+                // WebRTC native lib failed to load — streaming unavailable but tunnel works
+                Debug.LogWarning($"[Bugpunch] WebRTC initialization failed — streaming unavailable: {ex.Message}");
+                Streamer = null;
+                Router.Streamer = null;
+            }
+        }
+
+        /// <summary>
+        /// End the debug session and return to poll mode.
+        /// </summary>
+        public void EndDebugSession()
+        {
+            if (!_debugSessionActive) return;
+            _debugSessionActive = false;
+
+            Debug.Log("[Bugpunch] Ending debug session, returning to poll mode");
+
+            // Tear down WebRTC
+            if (Streamer != null)
+            {
+                Streamer.StopStreaming();
+                // Streamer is a MonoBehaviour added via reflection — destroy the component
+                var streamerComponent = Streamer as Component;
+                if (streamerComponent != null) Destroy(streamerComponent);
+                Streamer = null;
+                Router.Streamer = null;
+                SceneCamera.SetStreamer(null);
+            }
+
+            // Tear down WebSocket
+            Tunnel?.Disconnect();
+            Tunnel = null;
+
+            // Resume polling
+            Registration = new DeviceRegistration(Config);
+            Registration.OnUpgradeRequested += HandleUpgradeToWebSocket;
+            Registration.OnScriptsReceived += HandlePollScripts;
+            StartCoroutine(Registration.RegisterAndPoll());
         }
 
         void HandlePollScripts(DeviceRegistration.PendingScript[] scripts)
@@ -365,11 +471,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         /// <summary>
         /// Fetch ICE server config from the server and pass to WebRTC streamer.
-        /// Called once after tunnel connects.
+        /// Called once after streamer is initialized. Does NOT reference Unity.WebRTC
+        /// types — the streamer handles conversion internally.
         /// </summary>
         IEnumerator FetchIceServers()
         {
-#if BUGPUNCH_WEBRTC
+            if (Streamer == null) yield break;
+
             var url = Config.HttpBaseUrl + "/api/devices/ice-servers";
             using var req = UnityWebRequest.Get(url);
             req.SetRequestHeader("X-API-Key", Config.apiKey);
@@ -383,50 +491,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             try
             {
-                var json = req.downloadHandler.text;
-                var response = JsonUtility.FromJson<IceServersResponse>(json);
-                if (response.iceServers == null || response.iceServers.Length == 0)
-                {
-                    Debug.Log("[Bugpunch] No ICE servers returned, using default STUN");
-                    yield break;
-                }
-
-                var servers = new Unity.WebRTC.RTCIceServer[response.iceServers.Length];
-                for (int i = 0; i < response.iceServers.Length; i++)
-                {
-                    var s = response.iceServers[i];
-                    servers[i] = new Unity.WebRTC.RTCIceServer
-                    {
-                        urls = new[] { s.urls },
-                        username = s.username ?? "",
-                        credential = s.credential ?? ""
-                    };
-                }
-
-                if (Streamer != null)
-                    Streamer.SetIceServers(servers);
+                // Pass the raw JSON to the streamer — it handles parsing and
+                // creating RTCIceServer instances so we don't reference Unity.WebRTC here.
+                Streamer.SetIceServersFromJson(req.downloadHandler.text);
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"[Bugpunch] Failed to parse ICE servers: {ex.Message}");
             }
-#else
-            yield break;
-#endif
-        }
-
-        [Serializable]
-        struct IceServersResponse
-        {
-            public IceServerEntry[] iceServers;
-        }
-
-        [Serializable]
-        struct IceServerEntry
-        {
-            public string urls;
-            public string username;
-            public string credential;
         }
 
         /// <summary>Disconnect and destroy the Bugpunch client.</summary>
@@ -438,6 +510,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void OnDestroy()
         {
+            Streamer?.StopStreaming();
             Tunnel?.Disconnect();
             Registration?.Stop();
             Instance = null;
