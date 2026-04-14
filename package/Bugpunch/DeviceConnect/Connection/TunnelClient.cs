@@ -62,7 +62,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     appVersion = Application.version,
                     remoteIdePort = 0, // not using local port, everything through tunnel
                     token = _config.apiKey,
-                    projectId = _config.projectId,
+                    projectId = "", // derived from API key server-side
                     deviceId = DeviceId
                 });
                 await SendAsync(registerMsg);

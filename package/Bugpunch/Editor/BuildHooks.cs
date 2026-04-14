@@ -151,8 +151,6 @@ namespace ODDGames.Bugpunch.Editor
 
             var request = UnityWebRequest.Post(uploadUrl, form);
             request.SetRequestHeader("X-Api-Key", config.apiKey);
-            if (!string.IsNullOrEmpty(config.projectId))
-                request.SetRequestHeader("X-Project-Id", config.projectId);
 
             var op = request.SendWebRequest();
             while (!op.isDone) { }

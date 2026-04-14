@@ -358,8 +358,6 @@ namespace ODDGames.Bugpunch.Editor
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/gzip");
             request.SetRequestHeader("X-Api-Key", config.apiKey);
-            if (!string.IsNullOrEmpty(config.projectId))
-                request.SetRequestHeader("X-Project-Id", config.projectId);
             request.SetRequestHeader("X-Unity-Version", db.unityVersion ?? "");
             request.SetRequestHeader("X-App-Version", db.appVersion ?? "");
             request.SetRequestHeader("X-Type-Count", db.types.Count.ToString());

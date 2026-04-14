@@ -42,7 +42,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!Debug.isDebugBuild && !Application.isEditor) return;
 
             var config = BugpunchConfig.Load();
-            if (config == null || !config.autoConnect) return;
+            if (config == null) return;
             if (string.IsNullOrEmpty(config.serverUrl) || string.IsNullOrEmpty(config.apiKey)) return;
 
 #if UNITY_EDITOR
@@ -117,16 +117,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Debug.Log($"[Bugpunch] Initializing — server: {Config.serverUrl}");
 
             // Create services
-            var hierarchy = Config.enableHierarchy ? new HierarchyService() : null;
-            var console = Config.enableConsole ? new ConsoleService() : null;
-            var screenCapture = Config.enableScreenCapture ? gameObject.AddComponent<ScreenCaptureService>() : null;
-            var inspector = Config.enableInspector ? new InspectorService() : null;
+            var hierarchy = new HierarchyService();
+            var console = new ConsoleService();
+            var screenCapture = gameObject.AddComponent<ScreenCaptureService>();
+            var inspector = new InspectorService();
             var perf = new PerformanceService();
             var files = new FileService();
             var deviceInfo = new DeviceInfoService();
-            IScriptRunner scriptRunner = null;
-            if (Config.enableScriptRunner)
-                scriptRunner = new PaxScriptRunner();
+            IScriptRunner scriptRunner = new PaxScriptRunner();
 
             // Create scene camera service
             SceneCamera = gameObject.AddComponent<SceneCameraService>();
@@ -148,7 +146,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             // Create bug reporter
             Reporter = gameObject.AddComponent<BugReporter>();
-            Reporter.shakeToReport = Config.enableShakeToReport;
+            Reporter.shakeToReport = true;
             Reporter.videoBufferSeconds = Config.videoBufferSeconds;
             Reporter.videoFps = Config.bugReportVideoFps;
 

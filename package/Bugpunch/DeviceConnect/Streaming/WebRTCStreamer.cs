@@ -28,6 +28,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         readonly Queue<Action> _mainThreadQueue = new();
         RTCIceServer[] _iceServers;
         readonly List<IceMessage> _pendingIceCandidates = new();
+        bool _applicationQuitting;
         Coroutine _webrtcUpdateCoroutine;
 
         // Data channel for sending camera metadata per frame
@@ -412,8 +413,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
+        void OnApplicationQuit() => _applicationQuitting = true;
+
         void OnDestroy()
         {
+            if (_applicationQuitting) return; // skip cleanup during app quit — mono is shutting down
             if (_webrtcUpdateCoroutine != null)
             {
                 StopCoroutine(_webrtcUpdateCoroutine);

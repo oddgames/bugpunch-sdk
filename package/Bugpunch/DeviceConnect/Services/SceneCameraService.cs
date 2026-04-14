@@ -293,12 +293,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Vector3 dir;
             switch (axis?.ToLower())
             {
-                case "front": dir = Vector3.forward; break;
-                case "back": dir = -Vector3.forward; break;
-                case "right": dir = -Vector3.right; break;
-                case "left": dir = Vector3.right; break;
-                case "top": dir = -Vector3.up; break;
-                case "bottom": dir = Vector3.up; break;
+                case "front": dir = -Vector3.forward; break;
+                case "back": dir = Vector3.forward; break;
+                case "right": dir = Vector3.right; break;
+                case "left": dir = -Vector3.right; break;
+                case "top": dir = Vector3.up; break;
+                case "bottom": dir = -Vector3.up; break;
                 default: return "{\"ok\":false,\"error\":\"Unknown axis\"}";
             }
             t.position = _focusPoint + dir * _orbitDistance;

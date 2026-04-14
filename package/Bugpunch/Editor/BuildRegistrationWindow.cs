@@ -329,8 +329,6 @@ namespace ODDGames.Bugpunch.Editor
                 request.downloadHandler = new DownloadHandlerBuffer();
                 request.SetRequestHeader("Content-Type", "application/json");
                 request.SetRequestHeader("X-Api-Key", config.apiKey);
-                if (!string.IsNullOrEmpty(config.projectId))
-                    request.SetRequestHeader("X-Project-Id", config.projectId);
 
                 var op = request.SendWebRequest();
                 while (!op.isDone) { }
