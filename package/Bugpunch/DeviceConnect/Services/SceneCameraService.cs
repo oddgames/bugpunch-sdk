@@ -102,9 +102,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _sceneCamera = null;
 
 
-            // Switch WebRTC back to main camera
+            // Switch WebRTC back to game view (ScreenCapture mode)
             if (_streamer != null)
-                _streamer.SetCamera(Camera.main);
+                _streamer.SetCamera(null);
 
             Debug.Log("[Bugpunch] Scene camera stopped");
             return "{\"ok\":true}";
