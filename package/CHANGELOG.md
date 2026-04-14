@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.4] - 2026-04-14
+
+### Fixed
+- **Android build failure** — `.androidlib/build.gradle` now inherits `buildToolsVersion` from `unityLibrary` in addition to `compileSdkVersion`. Prevents Gradle from trying to download missing build-tools from a read-only SDK location.
+
 ## [1.5.3] - 2026-04-14
 
 ### Fixed
