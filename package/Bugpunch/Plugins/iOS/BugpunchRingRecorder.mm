@@ -85,6 +85,7 @@ struct EncodedSample {
 - (BOOL)hasFootage;
 - (BOOL)dumpToPath:(NSString *)outputPath;
 - (int64_t)bufferSizeBytes;
+- (void)handleEncodedSampleBuffer:(CMSampleBufferRef)sampleBuffer;
 
 @end
 

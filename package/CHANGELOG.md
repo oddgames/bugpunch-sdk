@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.2] - 2026-04-14
+
+### Fixed
+- **iOS build error** — added forward declaration of `handleEncodedSampleBuffer:` in BugpunchRingRecorder.mm to fix compile error in Objective-C++ mode (Xcode 16.2)
+
 ## [1.5.1] - 2026-04-14
 
 ### Fixed
