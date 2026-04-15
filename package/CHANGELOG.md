@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.17] - 2026-04-15
+
+### Fixed
+- **False ANR detections every 5s after the native-first C# refactor** — the Android ANR watchdog relied on `BugpunchCrashHandler.tickWatchdog()` being called from the C# `Update()` loop. The refactor to `UnityExceptionForwarder` (static, no MonoBehaviour) removed that tick, so the watchdog thought the main thread was permanently stuck and wrote a new ANR crash file every 5s. Replaced with a self-tick `Runnable` posted to Android's main `Handler` every 1s — if the main thread is healthy it runs and updates the timestamp; if it's genuinely stuck the ticks stop and the watchdog fires a real ANR. No C# coordination required.
+
 ## [1.5.16] - 2026-04-15
 
 ### Fixed

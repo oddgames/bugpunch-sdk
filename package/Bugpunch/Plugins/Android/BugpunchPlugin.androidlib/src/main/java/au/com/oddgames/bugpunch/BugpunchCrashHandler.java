@@ -211,6 +211,18 @@ public class BugpunchCrashHandler {
         private final String mCrashDir;
         private volatile long mLastTickMs;
         private volatile boolean mRunning = true;
+        private final android.os.Handler mMainHandler =
+            new android.os.Handler(Looper.getMainLooper());
+        // Self-ticking Runnable. Posts to main Handler every 1s; when the main
+        // thread is healthy, it runs and updates `mLastTickMs`. When the main
+        // thread is stuck, this runnable stops running and the watchdog
+        // thread sees the stale timestamp — that's a real ANR.
+        private final Runnable mTickRunnable = new Runnable() {
+            @Override public void run() {
+                mLastTickMs = System.currentTimeMillis();
+                if (mRunning) mMainHandler.postDelayed(this, 1000);
+            }
+        };
 
         AnrWatchdog(int timeoutMs, String crashDir) {
             super("BugpunchANR");
@@ -218,15 +230,18 @@ public class BugpunchCrashHandler {
             mTimeoutMs = timeoutMs;
             mCrashDir = crashDir;
             mLastTickMs = System.currentTimeMillis();
+            // Kick off the self-tick loop.
+            mMainHandler.post(mTickRunnable);
         }
 
-        /** Called from the main thread to signal liveness. */
+        /** Kept for backwards compat — the self-tick Runnable makes this unnecessary. */
         void tick() {
             mLastTickMs = System.currentTimeMillis();
         }
 
         void shutdown() {
             mRunning = false;
+            mMainHandler.removeCallbacks(mTickRunnable);
             interrupt();
         }
 
