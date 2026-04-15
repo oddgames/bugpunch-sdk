@@ -7,7 +7,7 @@ name: Build Android AAR
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - 'android-src/**'
       - '.github/workflows/android-aar.yml'
