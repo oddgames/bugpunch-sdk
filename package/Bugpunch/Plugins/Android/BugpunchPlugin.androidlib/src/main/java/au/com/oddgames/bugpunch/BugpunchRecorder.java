@@ -227,6 +227,19 @@ public class BugpunchRecorder {
             return false;
         }
 
+        // Pre-count real (non-codec-config) samples. If zero, don't even open
+        // the muxer — otherwise Android's MPEG4Writer logs "Stop() called but
+        // track is not started" and produces a 0-byte file.
+        int realSamples = 0;
+        for (int i = firstKeyframeIdx; i < snapshot.length; i++) {
+            if ((snapshot[i].flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) realSamples++;
+        }
+        if (realSamples == 0) {
+            Log.w(TAG, "dump: no media samples yet (only codec-config). "
+                + "Wait ~2s after recording starts before dumping.");
+            return false;
+        }
+
         // Write trimmed samples to MP4 via MediaMuxer
         MediaMuxer muxer = null;
         try {

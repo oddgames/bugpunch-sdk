@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.10] - 2026-04-15
+
+### Fixed
+- **`MPEG4Writer Stop() called but track is not started`** still fired in v1.5.9 because `muxer.release()` internally stops the muxer when it was started without samples. `BugpunchRecorder.dump` now pre-counts real (non-codec-config) samples BEFORE opening the `MediaMuxer`. If zero, it logs the reason and returns false — no muxer instantiation, no framework warning, no 0-byte MP4.
+
 ## [1.5.9] - 2026-04-15
 
 ### Fixed
