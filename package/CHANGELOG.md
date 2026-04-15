@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.19] - 2026-04-15
+
+### Added
+- **"Request More Info" crash directives** — QA can queue per-fingerprint data-gathering from the dashboard. Three action types: `attach_files` (native glob within a game-declared allow-list), `run_paxscript` (runtime diagnostics via the Mono/IL2CPP PaxScript runner), and `ask_user_for_help` (friendly post-upload consent dialog that auto-enables debug mode on accept and persists "never ask again" per fingerprint on decline). Directive output is POSTed to `/api/crashes/events/:id/enrich` via the existing retry/app-kill-resistant upload queue. Paxscript failures file a companion `DirectiveError:PaxScript` event under the same crash group so they surface in the issue detail.
+- **`BugpunchConfig.attachmentRules[]`** — Inspector-editable allow-list of files Bugpunch is permitted to read. Server directives can only reference paths that match a rule here, so games stay in control of what leaves the device. Supports Unity path tokens `[PersistentDataPath]`, `[TemporaryCachePath]`, `[DataPath]`.
+- **`Bugpunch.AddAttachmentRule(name, path, pattern, maxBytes)`** — runtime escape hatch for dynamic attachment paths; merged with config rules at startup.
+- **Per-(fingerprint, appVersion) sample budget** — crash group `SampleCountByVersion` tracks collection quota per app version so a v2.0 regression can't be masked by v1.x having already exhausted the global counter.
+
+### Changed
+- **Android plugin now ships as a pre-built AAR.** Source moved from `package/Bugpunch/Plugins/Android/BugpunchPlugin.androidlib/` (which forced end-game builds to run Gradle + NDK) to `android-src/bugpunch/` (outside the UPM package). CI rebuilds `BugpunchPlugin.aar` on every push to `main` touching `android-src/**` and commits it back. Downstream games consume only the AAR — no JDK / Android SDK / NDK required during their player build. Local rebuild via `sdk/build-android.ps1` for devs with the toolchain; iOS stays as source (Xcode compiles per player build).
+- **Directive dispatch is native-heavy.** C# shrunk to one managed-only concern (PaxScript execution, which requires the Mono runtime). Native owns upload-response parsing, fingerprint matching, file globs, consent dialogs, and per-fingerprint denial prefs on both Android (`BugpunchDirectives.java` + `SharedPreferences`) and iOS (`BugpunchDirectives.mm` + `NSUserDefaults`).
+
 ## [1.5.18] - 2026-04-15
 
 ### Fixed
