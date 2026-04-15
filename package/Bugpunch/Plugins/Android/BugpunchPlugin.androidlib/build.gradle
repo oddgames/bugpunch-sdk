@@ -8,9 +8,11 @@ android {
     def unityLib = project(':unityLibrary').extensions.getByName('android')
     compileSdkVersion unityLib.compileSdkVersion
     buildToolsVersion unityLib.buildToolsVersion
-    // Use Unity's bundled NDK rather than AGP's default (which would need a
-    // separate SDK Manager install + license acceptance).
-    if (unityLib.ndkVersion) ndkVersion unityLib.ndkVersion
+    // Point at Unity's bundled NDK by path — `ndkVersion` alone triggers an
+    // SDK Manager license check for that specific version, which fails in
+    // the read-only Unity Hub SDK tree. `ndkPath` bypasses the check.
+    def unityNdkPath = unityLib.ndkPath ?: System.getenv('ANDROID_NDK_ROOT')
+    if (unityNdkPath) ndkPath unityNdkPath
 
     sourceSets {
         main {

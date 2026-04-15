@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.13] - 2026-04-15
+
+### Fixed
+- **AGP still checked NDK license by version** even when matching `unityLibrary.ndkVersion` — Unity's bundled NDK isn't registered as a managed SDK package, so AGP thinks it needs to install it. Switched to `ndkPath` (from `unityLibrary.ndkPath` or `ANDROID_NDK_ROOT`) which points Gradle straight at Unity's bundled NDK and bypasses the license check entirely.
+
 ## [1.5.12] - 2026-04-15
 
 ### Fixed
