@@ -6,8 +6,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
-import com.unity3d.player.UnityPlayer;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -235,12 +233,7 @@ public class BugpunchDirectives {
             payload.put("code", code);
             payload.put("timeoutMs", timeoutMs);
         } catch (JSONException e) { return; }
-        try {
-            UnityPlayer.UnitySendMessage("BugpunchClient", "DirectiveRunPaxScript", payload.toString());
-        } catch (Throwable t) {
-            Log.w(TAG, "UnitySendMessage failed", t);
-            sPendingPaxScript.remove(directiveId);
-        }
+        BugpunchUnity.sendMessage("BugpunchClient", "DirectiveRunPaxScript", payload.toString());
     }
 
     /**
