@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.15] - 2026-04-15
+
+### Added
+- **`Bugpunch.Trace(label)` / `Bugpunch.Trace(label, tags)`** — mark a moment in the session with a label + optional string tags dict. Queued in a bounded ring buffer (max 50); all accumulated events ship with the next bug report as a `traces` multipart field.
+- **`Bugpunch.TraceScreenshot(label)` / `TraceScreenshot(label, tags)`** — same as Trace but also captures a screenshot at call time (native `PixelCopy` on Android, `drawViewHierarchyInRect` on iOS) and attaches it as a separate `trace_N.jpg` multipart part. Server exposes these as `TraceMarker` Parse rows linked to the bug report; dashboard renders them in a timeline with thumbnails.
+- **`autoStart` flag on `BugpunchConfig`** — when false, the client won't auto-connect and the game must call `BugpunchClient.StartConnection()` manually (e.g. behind a debug-build feature toggle).
+
+### Changed
+- **Bug report uploader signature grew optional trace params** — existing `BugpunchUploader.enqueue(...)` 7-arg overload kept for backwards compat. New 9-arg overload (Java) / `Bugpunch_EnqueueReportWithTraces` (iOS) carry the traces JSON path + per-trace screenshot paths.
+
 ## [1.5.14] - 2026-04-15
 
 ### Fixed

@@ -59,6 +59,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             var config = BugpunchConfig.Load();
             if (config == null) return;
+            if (!config.autoStart)
+            {
+                Debug.Log("[Bugpunch] Auto-start disabled in config; call BugpunchClient.StartConnection() manually.");
+                return;
+            }
             if (string.IsNullOrEmpty(config.serverUrl) || string.IsNullOrEmpty(config.apiKey)) return;
 
 #if UNITY_EDITOR

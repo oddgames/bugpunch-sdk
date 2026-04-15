@@ -21,6 +21,10 @@ extern "C" {
     void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
         const char* metadataJson, const char* screenshotPath, const char* videoPath,
         const char* annotationsPath);
+    void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
+        const char* metadataJson, const char* screenshotPath, const char* videoPath,
+        const char* annotationsPath, const char* tracesJsonPath,
+        const char* traceScreenshotPathsCsv);
     void Bugpunch_DrainUploadQueue(void);
     void Bugpunch_PresentReportForm(const char* screenshotPath,
         const char* title, const char* description);
@@ -80,6 +84,91 @@ extern "C" {
     }
 }
 @end
+
+// ── Trace ring buffer ──
+//
+// Bounded list (max 50). Events carry timestamp, label, optional tags JSON
+// string, optional screenshot path. TraceScreenshot captures async; the event
+// lands in the buffer immediately and the screenshot path is filled in on
+// completion.
+
+@interface BPTraceEvent : NSObject
+@property (nonatomic, assign) uint64_t timestampMs;
+@property (nonatomic, copy) NSString* label;
+@property (nonatomic, copy) NSString* tagsJson;         // nullable
+@property (nonatomic, copy) NSString* screenshotPath;   // nullable
+@end
+@implementation BPTraceEvent
+@end
+
+static const NSInteger kBPTraceMax = 50;
+static NSMutableArray<BPTraceEvent*>* gTraces;
+static NSObject* gTraceLock;
+
+static void BPEnsureTraceInit(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gTraces = [NSMutableArray array];
+        gTraceLock = [NSObject new];
+    });
+}
+
+static void BPAddTrace(NSString* label, NSString* tagsJson, NSString* shotPath) {
+    if (label.length == 0) return;
+    BPEnsureTraceInit();
+    BPTraceEvent* ev = [BPTraceEvent new];
+    ev.timestampMs = (uint64_t)([[NSDate date] timeIntervalSince1970] * 1000.0);
+    ev.label = label;
+    ev.tagsJson = tagsJson;
+    ev.screenshotPath = shotPath;
+    @synchronized (gTraceLock) {
+        [gTraces addObject:ev];
+        while (gTraces.count > kBPTraceMax) [gTraces removeObjectAtIndex:0];
+    }
+}
+
+/**
+ * Drain the trace buffer to disk. Returns @[jsonPath, @[shotPaths]] or nil.
+ */
+static NSArray* BPPrepareTraceAttachments(void) {
+    BPEnsureTraceInit();
+    NSArray<BPTraceEvent*>* evs;
+    @synchronized (gTraceLock) {
+        if (gTraces.count == 0) return nil;
+        evs = [gTraces copy];
+        [gTraces removeAllObjects];
+    }
+    NSMutableArray* arr = [NSMutableArray array];
+    NSMutableArray<NSString*>* shots = [NSMutableArray array];
+    NSFileManager* fm = [NSFileManager defaultManager];
+    for (BPTraceEvent* ev in evs) {
+        NSMutableDictionary* o = [NSMutableDictionary dictionary];
+        o[@"ts"] = @(ev.timestampMs);
+        o[@"label"] = ev.label ?: @"";
+        if (ev.tagsJson.length > 0) {
+            NSData* d = [ev.tagsJson dataUsingEncoding:NSUTF8StringEncoding];
+            id parsed = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+            if ([parsed isKindOfClass:[NSDictionary class]]) o[@"tags"] = parsed;
+        }
+        if (ev.screenshotPath.length > 0 && [fm fileExistsAtPath:ev.screenshotPath]) {
+            NSDictionary* attrs = [fm attributesOfItemAtPath:ev.screenshotPath error:nil];
+            if ([attrs[NSFileSize] unsignedLongLongValue] > 0) {
+                o[@"screenshotIndex"] = @(shots.count);
+                [shots addObject:ev.screenshotPath];
+            }
+        }
+        [arr addObject:o];
+    }
+    NSData* data = [NSJSONSerialization dataWithJSONObject:arr options:0 error:nil];
+    if (!data) return nil;
+    NSString* caches = NSSearchPathForDirectoriesInDomains(
+        NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    NSString* path = [caches stringByAppendingPathComponent:
+        [NSString stringWithFormat:@"bp_traces_%f.json",
+            [NSDate timeIntervalSinceReferenceDate]]];
+    if (![data writeToFile:path atomically:YES]) return nil;
+    return @[ path, shots ];
+}
 
 static NSString* BPEndpointFor(NSString* type) {
     if ([type isEqualToString:@"feedback"]) return @"/api/reports/feedback";
@@ -193,9 +282,16 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
     NSString* metadataJson = BPBuildMetadataJson(type, title, description, extra, nil, nil);
     NSString* videoPath = BPDumpRingIfRunning();
 
-    Bugpunch_EnqueueReport([url UTF8String], [apiKey UTF8String],
+    NSArray* traceAttach = BPPrepareTraceAttachments();
+    NSString* tracesPath = traceAttach ? (NSString*)traceAttach[0] : nil;
+    NSArray<NSString*>* traceShots = traceAttach ? (NSArray*)traceAttach[1] : nil;
+    NSString* traceShotsCsv = traceShots.count ? [traceShots componentsJoinedByString:@","] : nil;
+
+    Bugpunch_EnqueueReportWithTraces([url UTF8String], [apiKey UTF8String],
         [metadataJson UTF8String], [shotPath UTF8String],
-        videoPath ? [videoPath UTF8String] : "", "");
+        videoPath ? [videoPath UTF8String] : "", "",
+        tracesPath ? [tracesPath UTF8String] : NULL,
+        traceShotsCsv ? [traceShotsCsv UTF8String] : NULL);
 }
 
 // ── C API exposed to Unity / native callers ──
@@ -334,11 +430,18 @@ void Bugpunch_SubmitReport(const char* title, const char* description,
     NSString* metadataJson = BPBuildMetadataJson(@"bug", nsTitle, nsDesc, nil, nsEmail, nsSev);
     NSString* videoPath = BPDumpRingIfRunning();
 
-    Bugpunch_EnqueueReport([url UTF8String], [apiKey UTF8String],
+    NSArray* traceAttach = BPPrepareTraceAttachments();
+    NSString* tracesPath = traceAttach ? (NSString*)traceAttach[0] : nil;
+    NSArray<NSString*>* traceShots = traceAttach ? (NSArray*)traceAttach[1] : nil;
+    NSString* traceShotsCsv = traceShots.count ? [traceShots componentsJoinedByString:@","] : nil;
+
+    Bugpunch_EnqueueReportWithTraces([url UTF8String], [apiKey UTF8String],
         [metadataJson UTF8String],
         screenshotPath ? screenshotPath : "",
         videoPath ? [videoPath UTF8String] : "",
-        annotationsPath ? annotationsPath : "");
+        annotationsPath ? annotationsPath : "",
+        tracesPath ? [tracesPath UTF8String] : NULL,
+        traceShotsCsv ? [traceShotsCsv UTF8String] : NULL);
 }
 
 void Bugpunch_ClearReportInProgress(void) {
@@ -358,6 +461,46 @@ void Bugpunch_ReportBug(const char* type, const char* title, const char* descrip
         if ([parsed isKindOfClass:[NSDictionary class]]) ex = parsed;
     }
     BPFireReport(t, ti, de, ex);
+}
+
+void Bugpunch_Trace(const char* label, const char* tagsJson) {
+    if (!label || !*label) return;
+    NSString* l = [NSString stringWithUTF8String:label];
+    NSString* tj = (tagsJson && *tagsJson) ? [NSString stringWithUTF8String:tagsJson] : nil;
+    BPAddTrace(l, tj, nil);
+}
+
+void Bugpunch_TraceScreenshot(const char* label, const char* tagsJson) {
+    if (!label || !*label) return;
+    NSString* l = [NSString stringWithUTF8String:label];
+    NSString* tj = (tagsJson && *tagsJson) ? [NSString stringWithUTF8String:tagsJson] : nil;
+
+    NSString* caches = NSSearchPathForDirectoriesInDomains(
+        NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    NSString* shotPath = [caches stringByAppendingPathComponent:
+        [NSString stringWithFormat:@"bp_trace_%f.jpg",
+            [NSDate timeIntervalSinceReferenceDate]]];
+
+    // Reserve the slot immediately for ordering; fill path on success.
+    BPEnsureTraceInit();
+    BPTraceEvent* ev = [BPTraceEvent new];
+    ev.timestampMs = (uint64_t)([[NSDate date] timeIntervalSince1970] * 1000.0);
+    ev.label = l;
+    ev.tagsJson = tj;
+    @synchronized (gTraceLock) {
+        [gTraces addObject:ev];
+        while (gTraces.count > kBPTraceMax) [gTraces removeObjectAtIndex:0];
+    }
+
+    Bugpunch_CaptureScreenshot(
+        [[NSString stringWithFormat:@"tr_%f", [NSDate timeIntervalSinceReferenceDate]] UTF8String],
+        [shotPath UTF8String], 80,
+        NULL);
+    // The screenshot writes synchronously-or-async depending on the native
+    // impl; if it lands by the time a report fires, the file check in
+    // BPPrepareTraceAttachments will include it. Tag the event with the
+    // expected path so we can check on drain.
+    ev.screenshotPath = shotPath;
 }
 
 }

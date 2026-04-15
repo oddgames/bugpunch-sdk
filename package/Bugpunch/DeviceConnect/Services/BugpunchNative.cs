@@ -116,6 +116,40 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
+        public static void Trace(string label, string tagsJson)
+        {
+            if (!s_started || string.IsNullOrEmpty(label)) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchDebugMode");
+                cls.CallStatic("addTrace", label, tagsJson);
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] Trace failed: {e.Message}"); }
+#elif UNITY_IOS
+            try { Bugpunch_Trace(label, tagsJson); }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] Trace failed: {e.Message}"); }
+#endif
+        }
+
+        public static void TraceScreenshot(string label, string tagsJson)
+        {
+            if (!s_started || string.IsNullOrEmpty(label)) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchDebugMode");
+                cls.CallStatic("addTraceScreenshot", label, tagsJson);
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] TraceScreenshot failed: {e.Message}"); }
+#elif UNITY_IOS
+            try { Bugpunch_TraceScreenshot(label, tagsJson); }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] TraceScreenshot failed: {e.Message}"); }
+#endif
+        }
+
         public static void UpdateScene(string scene)
         {
             if (!s_started) return;
@@ -140,6 +174,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_SetCustomData(string key, string value);
         [DllImport("__Internal")] static extern void Bugpunch_UpdateScene(string scene);
         [DllImport("__Internal")] static extern void Bugpunch_EnterDebugMode(int skipConsent);
+        [DllImport("__Internal")] static extern void Bugpunch_Trace(string label, string tagsJson);
+        [DllImport("__Internal")] static extern void Bugpunch_TraceScreenshot(string label, string tagsJson);
 #endif
 
         // ── Build config JSON from BugpunchConfig ScriptableObject ──

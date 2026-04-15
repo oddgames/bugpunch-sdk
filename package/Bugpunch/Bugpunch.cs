@@ -64,6 +64,85 @@ namespace ODDGames.Bugpunch
             BugpunchNative.SetCustomData(key, null);
         }
 
+        /// <summary>
+        /// Mark a moment in the session with a label. Included in any
+        /// subsequent bug report as a trace event (ring buffer, max 50).
+        /// No-op if BugpunchClient isn't initialized.
+        /// </summary>
+        public static void Trace(string label)
+        {
+            if (BugpunchClient.Instance == null) return;
+            BugpunchNative.Trace(label, null);
+        }
+
+        /// <summary>
+        /// Mark a moment with a label and extra tags.
+        /// </summary>
+        public static void Trace(string label, System.Collections.Generic.Dictionary<string, string> tags)
+        {
+            if (BugpunchClient.Instance == null) return;
+            BugpunchNative.Trace(label, SerializeTags(tags));
+        }
+
+        /// <summary>
+        /// Same as <see cref="Trace(string)"/>, but also captures a screenshot
+        /// at call time and attaches it to the next bug report.
+        /// </summary>
+        public static void TraceScreenshot(string label)
+        {
+            if (BugpunchClient.Instance == null) return;
+            BugpunchNative.TraceScreenshot(label, null);
+        }
+
+        /// <summary>
+        /// Same as Trace with tags, but also captures a screenshot.
+        /// </summary>
+        public static void TraceScreenshot(string label, System.Collections.Generic.Dictionary<string, string> tags)
+        {
+            if (BugpunchClient.Instance == null) return;
+            BugpunchNative.TraceScreenshot(label, SerializeTags(tags));
+        }
+
+        static string SerializeTags(System.Collections.Generic.Dictionary<string, string> tags)
+        {
+            if (tags == null || tags.Count == 0) return null;
+            var sb = new System.Text.StringBuilder(64);
+            sb.Append('{');
+            bool first = true;
+            foreach (var kv in tags)
+            {
+                if (kv.Key == null) continue;
+                if (!first) sb.Append(',');
+                first = false;
+                sb.Append('"').Append(EscJson(kv.Key)).Append("\":\"")
+                    .Append(EscJson(kv.Value ?? "")).Append('"');
+            }
+            sb.Append('}');
+            return sb.ToString();
+        }
+
+        static string EscJson(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var sb = new System.Text.StringBuilder(s.Length + 8);
+            foreach (var c in s)
+            {
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"':  sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.AppendFormat("\\u{0:X4}", (int)c);
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
         static bool EnsureStarted()
         {
             if (BugpunchClient.Instance != null) return true;

@@ -70,6 +70,20 @@ public class BugpunchUploader {
     public static void enqueue(Context ctx, final String url, final String apiKey,
                                final String metadataJson, final String screenshotPath,
                                final String videoPath, final String annotationsPath) {
+        enqueue(ctx, url, apiKey, metadataJson, screenshotPath, videoPath,
+            annotationsPath, null, null);
+    }
+
+    /**
+     * Full overload that accepts trace attachments. {@code tracesJsonPath} is
+     * a multipart field {@code traces} (application/json). {@code traceScreenshotPaths}
+     * each become multipart fields {@code trace_0}, {@code trace_1}, ...
+     */
+    public static void enqueue(Context ctx, final String url, final String apiKey,
+                               final String metadataJson, final String screenshotPath,
+                               final String videoPath, final String annotationsPath,
+                               final String tracesJsonPath,
+                               final String[] traceScreenshotPaths) {
         ensureStarted(ctx);
         sHandler.post(new Runnable() {
             @Override public void run() {
@@ -110,6 +124,28 @@ public class BugpunchUploader {
                         f.put("path", annotationsPath);
                         files.put(f);
                         cleanup.put(annotationsPath);
+                    }
+                    if (tracesJsonPath != null && !tracesJsonPath.isEmpty()) {
+                        JSONObject f = new JSONObject();
+                        f.put("field", "traces");
+                        f.put("filename", "traces.json");
+                        f.put("contentType", "application/json");
+                        f.put("path", tracesJsonPath);
+                        files.put(f);
+                        cleanup.put(tracesJsonPath);
+                    }
+                    if (traceScreenshotPaths != null) {
+                        for (int i = 0; i < traceScreenshotPaths.length; i++) {
+                            String p = traceScreenshotPaths[i];
+                            if (p == null || p.isEmpty()) continue;
+                            JSONObject f = new JSONObject();
+                            f.put("field", "trace_" + i);
+                            f.put("filename", "trace_" + i + ".jpg");
+                            f.put("contentType", "image/jpeg");
+                            f.put("path", p);
+                            files.put(f);
+                            cleanup.put(p);
+                        }
                     }
                     m.put("files", files);
                     m.put("cleanupPaths", cleanup);

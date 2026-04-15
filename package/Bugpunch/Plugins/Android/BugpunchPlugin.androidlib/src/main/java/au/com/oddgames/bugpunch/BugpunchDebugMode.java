@@ -23,6 +23,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -287,6 +289,106 @@ public class BugpunchDebugMode {
         sStarted = false;
     }
 
+    // ── Trace events (ring buffer, bundled into next report) ──
+
+    /** A single trace event. */
+    private static final class TraceEvent {
+        final long timestampMs;
+        final String label;
+        final String tagsJson;    // nullable, raw JSON object string
+        volatile String screenshotPath; // nullable, set async after capture
+        TraceEvent(long ts, String label, String tagsJson, String shot) {
+            this.timestampMs = ts;
+            this.label = label;
+            this.tagsJson = tagsJson;
+            this.screenshotPath = shot;
+        }
+    }
+
+    private static final int TRACE_MAX = 50;
+    private static final Object sTraceLock = new Object();
+    private static final ArrayList<TraceEvent> sTraces = new ArrayList<>();
+
+    public static void addTrace(String label, String tagsJson) {
+        if (label == null) return;
+        TraceEvent ev = new TraceEvent(System.currentTimeMillis(), label, tagsJson, null);
+        synchronized (sTraceLock) {
+            sTraces.add(ev);
+            while (sTraces.size() > TRACE_MAX) sTraces.remove(0);
+        }
+    }
+
+    public static void addTraceScreenshot(final String label, final String tagsJson) {
+        if (label == null) return;
+        Activity activity = BugpunchUnity.currentActivity();
+        if (activity == null) { addTrace(label, tagsJson); return; }
+        final String shotPath = activity.getCacheDir().getAbsolutePath()
+            + "/bp_trace_" + System.nanoTime() + ".jpg";
+        // Reserve the slot immediately so ordering is deterministic; fill in
+        // the path once capture succeeds.
+        final TraceEvent ev = new TraceEvent(System.currentTimeMillis(), label, tagsJson, null);
+        synchronized (sTraceLock) {
+            sTraces.add(ev);
+            while (sTraces.size() > TRACE_MAX) sTraces.remove(0);
+        }
+        BugpunchScreenshot.captureThen(shotPath, 80, new Runnable() {
+            @Override public void run() { ev.screenshotPath = shotPath; }
+        });
+    }
+
+    /**
+     * Drain the trace buffer. Returns the drained events (oldest first) and
+     * clears the buffer. Called from submitReport paths so the next report
+     * starts fresh.
+     */
+    private static List<TraceEvent> drainTraces() {
+        synchronized (sTraceLock) {
+            if (sTraces.isEmpty()) return null;
+            ArrayList<TraceEvent> copy = new ArrayList<>(sTraces);
+            sTraces.clear();
+            return copy;
+        }
+    }
+
+    /**
+     * Serialize traces to a temp JSON file and collect screenshot paths.
+     * Returns {tracesJsonPath, screenshotPaths[]} or null if no traces.
+     */
+    private static Object[] prepareTraceAttachments(Activity activity) {
+        List<TraceEvent> evs = drainTraces();
+        if (evs == null || evs.isEmpty()) return null;
+        try {
+            JSONArray arr = new JSONArray();
+            ArrayList<String> shots = new ArrayList<>();
+            for (TraceEvent ev : evs) {
+                JSONObject o = new JSONObject();
+                o.put("ts", ev.timestampMs);
+                o.put("label", ev.label);
+                if (ev.tagsJson != null && !ev.tagsJson.isEmpty()) {
+                    try { o.put("tags", new JSONObject(ev.tagsJson)); }
+                    catch (JSONException ignore) {}
+                }
+                if (ev.screenshotPath != null) {
+                    java.io.File f = new java.io.File(ev.screenshotPath);
+                    if (f.exists() && f.length() > 0) {
+                        o.put("screenshotIndex", shots.size());
+                        shots.add(ev.screenshotPath);
+                    }
+                }
+                arr.put(o);
+            }
+            String path = activity.getCacheDir().getAbsolutePath()
+                + "/bp_traces_" + System.nanoTime() + ".json";
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(path);
+            try { fos.write(arr.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            finally { fos.close(); }
+            return new Object[] { path, shots.toArray(new String[0]) };
+        } catch (Throwable t) {
+            Log.w(TAG, "prepareTraceAttachments failed", t);
+            return null;
+        }
+    }
+
     // ── Metadata + custom data (called from C# as game state changes) ──
 
     public static void setCustomData(String key, String value) {
@@ -355,7 +457,11 @@ public class BugpunchDebugMode {
         String logsJson = BugpunchLogReader.snapshotJson();
         String metadataJson = buildMetadataJson(type, title, description,
             extra, logsJson, /* reporterEmail */ null, /* severity */ null);
-        enqueueManifest(activity, endpointFor(type), metadataJson, shotPath, videoPath, null);
+        Object[] traceAttach = prepareTraceAttachments(activity);
+        String tracesJsonPath = traceAttach != null ? (String) traceAttach[0] : null;
+        String[] traceShots = traceAttach != null ? (String[]) traceAttach[1] : null;
+        enqueueManifest(activity, endpointFor(type), metadataJson, shotPath, videoPath, null,
+            tracesJsonPath, traceShots);
     }
 
     /**
@@ -374,8 +480,11 @@ public class BugpunchDebugMode {
         String logsJson = BugpunchLogReader.snapshotJson();
         String metadataJson = buildMetadataJson("bug", title, description,
             null, logsJson, email, severity);
+        Object[] traceAttach = prepareTraceAttachments(activity);
+        String tracesJsonPath = traceAttach != null ? (String) traceAttach[0] : null;
+        String[] traceShots = traceAttach != null ? (String[]) traceAttach[1] : null;
         enqueueManifest(activity, "/api/reports/bug", metadataJson,
-            screenshotPath, videoPath, annotationsPath);
+            screenshotPath, videoPath, annotationsPath, tracesJsonPath, traceShots);
     }
 
     private static String dumpRingIfRunning(Activity activity) {
@@ -404,7 +513,8 @@ public class BugpunchDebugMode {
 
     private static void enqueueManifest(Activity activity, String endpointPath,
                                         String metadataJson, String shotPath,
-                                        String videoPath, String annotationsPath) {
+                                        String videoPath, String annotationsPath,
+                                        String tracesJsonPath, String[] traceScreenshotPaths) {
         String serverUrl = sConfig.optString("serverUrl", "");
         String apiKey = sConfig.optString("apiKey", "");
         if (serverUrl.isEmpty() || apiKey.isEmpty()) {
@@ -413,7 +523,7 @@ public class BugpunchDebugMode {
         }
         String url = serverUrl.replaceAll("/+$", "") + endpointPath;
         BugpunchUploader.enqueue(activity, url, apiKey, metadataJson,
-            shotPath, videoPath, annotationsPath);
+            shotPath, videoPath, annotationsPath, tracesJsonPath, traceScreenshotPaths);
     }
 
     private static String endpointFor(String type) {

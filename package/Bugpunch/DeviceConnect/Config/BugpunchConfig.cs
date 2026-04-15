@@ -16,6 +16,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Script permission policy for remote execution")]
         public ScriptPermission scriptPermission = ScriptPermission.Ask;
 
+        [Tooltip("Auto-connect on app start (debug builds / editor). When off, the game must call BugpunchClient.StartConnection() explicitly.")]
+        public bool autoStart = false;
+
         public enum ScriptPermission { Ask, Always, Never }
 
         // -- Defaults (not exposed in inspector) --

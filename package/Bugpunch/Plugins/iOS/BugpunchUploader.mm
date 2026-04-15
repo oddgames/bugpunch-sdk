@@ -197,6 +197,18 @@ void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
                             const char* metadataJson,
                             const char* screenshotPath, const char* videoPath,
                             const char* annotationsPath) {
+    Bugpunch_EnqueueReportWithTraces(url, apiKey, metadataJson,
+        screenshotPath, videoPath, annotationsPath, NULL, NULL);
+}
+
+/// Extended variant — additionally accepts a traces JSON file path and a
+/// CSV string of per-trace screenshot paths. Either may be NULL.
+void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
+                                      const char* metadataJson,
+                                      const char* screenshotPath, const char* videoPath,
+                                      const char* annotationsPath,
+                                      const char* tracesJsonPath,
+                                      const char* traceScreenshotPathsCsv) {
     if (!url || !*url) return;
     NSString* nsUrl = [NSString stringWithUTF8String:url];
     NSString* nsKey = apiKey ? [NSString stringWithUTF8String:apiKey] : @"";
@@ -207,6 +219,13 @@ void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
         ? [NSString stringWithUTF8String:videoPath] : nil;
     NSString* nsAnno = (annotationsPath && *annotationsPath)
         ? [NSString stringWithUTF8String:annotationsPath] : nil;
+    NSString* nsTraces = (tracesJsonPath && *tracesJsonPath)
+        ? [NSString stringWithUTF8String:tracesJsonPath] : nil;
+    NSArray<NSString*>* nsTraceShots = nil;
+    if (traceScreenshotPathsCsv && *traceScreenshotPathsCsv) {
+        NSString* csv = [NSString stringWithUTF8String:traceScreenshotPathsCsv];
+        nsTraceShots = [csv componentsSeparatedByString:@","];
+    }
 
     dispatch_async(BPUploaderQueue(), ^{
         NSMutableDictionary* m = [NSMutableDictionary dictionary];
@@ -229,6 +248,23 @@ void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
             [files addObject:@{ @"field": @"annotations", @"filename": @"annotations.png",
                                 @"contentType": @"image/png", @"path": nsAnno }];
             [cleanup addObject:nsAnno];
+        }
+        if (nsTraces) {
+            [files addObject:@{ @"field": @"traces", @"filename": @"traces.json",
+                                @"contentType": @"application/json", @"path": nsTraces }];
+            [cleanup addObject:nsTraces];
+        }
+        if (nsTraceShots) {
+            for (NSUInteger i = 0; i < nsTraceShots.count; i++) {
+                NSString* p = nsTraceShots[i];
+                if (p.length == 0) continue;
+                [files addObject:@{
+                    @"field": [NSString stringWithFormat:@"trace_%lu", (unsigned long)i],
+                    @"filename": [NSString stringWithFormat:@"trace_%lu.jpg", (unsigned long)i],
+                    @"contentType": @"image/jpeg",
+                    @"path": p }];
+                [cleanup addObject:p];
+            }
         }
         m[@"files"] = files;
         m[@"cleanupPaths"] = cleanup;
