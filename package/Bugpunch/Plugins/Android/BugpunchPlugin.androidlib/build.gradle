@@ -8,6 +8,9 @@ android {
     def unityLib = project(':unityLibrary').extensions.getByName('android')
     compileSdkVersion unityLib.compileSdkVersion
     buildToolsVersion unityLib.buildToolsVersion
+    // Use Unity's bundled NDK rather than AGP's default (which would need a
+    // separate SDK Manager install + license acceptance).
+    if (unityLib.ndkVersion) ndkVersion unityLib.ndkVersion
 
     sourceSets {
         main {

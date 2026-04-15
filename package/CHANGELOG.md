@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.12] - 2026-04-15
+
+### Fixed
+- **AGP demanded NDK 27.0.12077973 license not accepted** when building the native `.so`. The androidlib Gradle config now inherits `ndkVersion` from Unity's `:unityLibrary` (already installed + licensed in the Unity Hub SDK tree).
+
 ## [1.5.11] - 2026-04-15
 
 ### Fixed
