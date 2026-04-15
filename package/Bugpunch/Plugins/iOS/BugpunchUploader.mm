@@ -169,7 +169,7 @@ static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
                 [[NSFileManager defaultManager] removeItemAtPath:manifestPath error:nil];
                 // /api/crashes responses carry matchedDirectives[] \u2014 apply them.
                 if ([urlStr hasSuffix:@"/api/crashes"] && d.length > 0) {
-                    extern void BPDirectives_OnUploadResponse(const char*, const char*);
+                    extern "C" void BPDirectives_OnUploadResponse(const char*, const char*);
                     NSString* respBody = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
                     if (respBody) BPDirectives_OnUploadResponse([urlStr UTF8String], [respBody UTF8String]);
                 }

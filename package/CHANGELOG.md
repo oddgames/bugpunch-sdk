@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.20] - 2026-04-16
+
+### Fixed
+- **iOS link error** — `BPDirectives_OnUploadResponse` forward declaration in `BugpunchUploader.mm` now uses `extern "C"` so Obj-C++ matches the C symbol defined in `BugpunchDirectives.mm`. Without this, crash upload responses fail to dispatch directives on iOS builds.
+
 ## [1.5.19] - 2026-04-15
 
 ### Added
