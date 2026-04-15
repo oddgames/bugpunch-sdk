@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
-project(bugpunch_crash C)
+project(bp C)
 
-add_library(bugpunch_crash SHARED bugpunch_crash.c)
-target_link_libraries(bugpunch_crash log)
+# Short target name keeps CMake's .cxx/.../CMakeFiles/<tgt>.dir/ path under
+# CMAKE_OBJECT_PATH_MAX (250 chars) on deeply-nested Jenkins workspaces.
+# OUTPUT_NAME preserves the on-disk libbugpunch_crash.so that Java expects
+# via System.loadLibrary("bugpunch_crash").
+add_library(bp SHARED bp.c)
+set_target_properties(bp PROPERTIES OUTPUT_NAME bugpunch_crash)
+target_link_libraries(bp log)
 
-# Strip in release for smaller .so
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Os -DNDEBUG")

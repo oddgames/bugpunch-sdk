@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.18] - 2026-04-15
+
+### Fixed
+- **iOS build error — `use of undeclared identifier 'BPOverlayActions'`** — `BugpunchReportOverlay.mm` referenced the class via `[BPOverlayActions class]` inside the C-linkage setup functions, but its `@interface` sat at the bottom of the file. Moved the interface to the top (implementation stays near its helpers) so clang sees the declaration before the usages.
+- **Android CMake path-length warning on deep Jenkins workspaces** — `CMakeFiles/bugpunch_crash.dir/bugpunch_crash.c.o` pushed the object path to 243/250 chars on `C:/jenkinsagents/.../MTD/...`, risking a silent build failure. Renamed the native source to `bp.c` and the CMake target to `bp`; `OUTPUT_NAME bugpunch_crash` preserves `libbugpunch_crash.so` so `System.loadLibrary("bugpunch_crash")` still works unchanged.
+
 ## [1.5.17] - 2026-04-15
 
 ### Fixed

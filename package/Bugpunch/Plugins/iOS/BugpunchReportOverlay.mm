@@ -10,6 +10,16 @@
 
 #import <UIKit/UIKit.h>
 
+// Interface must precede the C-linkage setup code below that addresses the
+// class via [BPOverlayActions class]. Implementation stays near the bottom
+// next to the helpers it uses.
+@interface BPOverlayActions : NSObject
++ (void)onWelcomeConfirm;
++ (void)onWelcomeCancel;
++ (void)onRecordingTapped;
++ (void)onRecordingDragged:(UIPanGestureRecognizer *)pan;
+@end
+
 typedef void (*ReportOverlayCallback)(void);
 
 // ─── Icon Drawing Helpers ───────────────────────────────────────
@@ -378,9 +388,6 @@ void Bugpunch_ResetRecordingTimer(void) {
 } // extern "C"
 
 // ─── Action Target ──────────────────────────────────────────────
-
-@interface BPOverlayActions : NSObject
-@end
 
 @implementation BPOverlayActions
 

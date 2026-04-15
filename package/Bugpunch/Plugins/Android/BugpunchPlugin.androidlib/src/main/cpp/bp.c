@@ -1,15 +1,13 @@
 /*
- * bugpunch_crash.c — Native signal handler for Android (NDK)
+ * bp.c — Native signal handler for Android (NDK)
  *
  * Catches SIGABRT, SIGSEGV, SIGBUS, SIGFPE, SIGILL and writes a crash report
  * to disk. All operations inside the signal handler are async-signal-safe:
  * only write(), open(), close(), _exit() — no malloc, no printf, no JNI.
  *
- * Build with NDK as part of a shared library: libugpunch_crash.so
- *
- * CMakeLists.txt:
- *   add_library(bugpunch_crash SHARED bugpunch_crash.c)
- *   target_link_libraries(bugpunch_crash log)
+ * Built as libbugpunch_crash.so (OUTPUT_NAME override in CMakeLists.txt —
+ * the short target/source names keep the CMake object-path under the 250-char
+ * limit on deep Jenkins workspaces).
  */
 
 #include <jni.h>
