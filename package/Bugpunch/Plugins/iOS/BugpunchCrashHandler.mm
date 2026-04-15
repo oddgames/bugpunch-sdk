@@ -362,6 +362,11 @@ bool Bugpunch_InstallCrashHandlers(const char* crashDir) {
     }
 
     NSLog(@"[BugpunchCrash] Signal handlers installed (dir=%s)", s_crash_dir);
+
+    // Drain anything left in the upload queue from previous launches.
+    extern void Bugpunch_DrainUploadQueue(void);
+    Bugpunch_DrainUploadQueue();
+
     return ok;
 }
 

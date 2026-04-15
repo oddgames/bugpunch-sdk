@@ -1,83 +1,74 @@
-using System;
 using ODDGames.Bugpunch.DeviceConnect;
 using UnityEngine;
 
 namespace ODDGames.Bugpunch
 {
     /// <summary>
-    /// Static entry point for Bugpunch bug reporting.
-    /// All methods are safe to call even if BugpunchClient hasn't initialized yet.
+    /// Static entry point for Bugpunch bug reporting. Thin facade over the
+    /// native coordinator — see <see cref="BugpunchNative"/>. All methods are
+    /// safe to call before <c>BugpunchClient</c> has initialized (they'll
+    /// no-op and log a warning).
     /// </summary>
     public static class Bugpunch
     {
-        static BugReporter Reporter => BugpunchClient.Instance?.Reporter;
-
         /// <summary>
-        /// Start the bug recording flow: show a friendly welcome screen, start screen
-        /// recording, show a floating report button. When the user taps it, capture
-        /// everything and show the bug report form.
+        /// Enable debug recording (starts the native screen ring buffer).
+        /// By default shows a consent sheet with Start / Cancel; pass
+        /// <paramref name="skipConsent"/> = true for debug/alpha builds where
+        /// the tester has already opted in. Android's OS-level MediaProjection
+        /// consent dialog still appears regardless — that can't be bypassed.
+        /// No-op if already recording.
         /// </summary>
-        public static void RecordBug()
+        public static void EnterDebugMode(bool skipConsent = false)
         {
-            var r = Reporter;
-            if (r == null) { Warn(); return; }
-            r.StartReportFlow();
+            if (!EnsureStarted()) return;
+            BugpunchNative.EnterDebugMode(skipConsent);
         }
 
         /// <summary>
-        /// Immediately capture screenshot, dump video buffer, and send a bug report.
-        /// No welcome screen or recording overlay — just capture and send.
+        /// File a bug report. Native captures screenshot + dumps video (if
+        /// recording) + assembles metadata + enqueues upload. Fire-and-forget.
         /// </summary>
-        public static void QuickReport(string title = null, string description = null,
-            BugReportType type = BugReportType.Bug)
+        public static void Report(string title = null, string description = null,
+            string type = "bug")
         {
-            var r = Reporter;
-            if (r == null) { Warn(); return; }
-            r.StartReport(title, description, type);
+            if (!EnsureStarted()) return;
+            BugpunchNative.ReportBug(type, title, description, null);
         }
 
         /// <summary>
-        /// Send simple feedback (screenshot + text, no video).
+        /// Send a feedback message (native will attach a screenshot).
         /// </summary>
-        public static void Feedback(string message, FeedbackRating rating = FeedbackRating.Neutral)
+        public static void Feedback(string message)
         {
-            var r = Reporter;
-            if (r == null) { Warn(); return; }
-            r.SendFeedback(message, rating);
+            if (!EnsureStarted()) return;
+            BugpunchNative.ReportBug("feedback", null, message, null);
         }
 
         /// <summary>
-        /// Attach custom key-value data to subsequent bug reports.
+        /// Attach a custom key/value to subsequent reports. Lives in the native
+        /// side's custom-data map; persists for the session.
         /// </summary>
         public static void SetCustomData(string key, string value)
         {
-            var r = Reporter;
-            if (r == null) { Warn(); return; }
-            r.SetCustomData(key, value);
+            if (!EnsureStarted()) return;
+            BugpunchNative.SetCustomData(key, value);
         }
 
         /// <summary>
-        /// Remove a custom data entry.
+        /// Clear a custom data entry.
         /// </summary>
         public static void ClearCustomData(string key)
         {
-            var r = Reporter;
-            if (r == null) { Warn(); return; }
-            r.ClearCustomData(key);
+            if (!EnsureStarted()) return;
+            BugpunchNative.SetCustomData(key, null);
         }
 
-        /// <summary>
-        /// Start the native video ring buffer recorder. Call once on startup
-        /// for alpha/feedback builds. Requires user consent on Android (MediaProjection).
-        /// </summary>
-        public static void EnableVideoCapture()
+        static bool EnsureStarted()
         {
-            var r = Reporter;
-            if (r == null) { Warn(); return; }
-            r.EnableVideoCapture();
-        }
-
-        static void Warn() =>
+            if (BugpunchClient.Instance != null) return true;
             Debug.LogWarning("[Bugpunch] BugpunchClient not initialized. Call BugpunchClient.StartConnection() first.");
+            return false;
+        }
     }
 }

@@ -222,7 +222,8 @@ public class BugpunchReportOverlay {
             container.setGravity(Gravity.CENTER_HORIZONTAL);
 
             // Red circle button with white square stop icon
-            View button = new RecordButton(ctx, btnSize);
+            RecordButton button = new RecordButton(ctx, btnSize);
+            button.setClickable(true);
             container.addView(button, new LinearLayout.LayoutParams(btnSize, btnSize));
 
             // Timer label
@@ -251,8 +252,10 @@ public class BugpunchReportOverlay {
             wlp.x = margin;
             wlp.y = margin + dp(ctx, 40); // above nav bar
 
-            // Drag + tap handling
-            container.setOnTouchListener(new DragTouchListener(wm, wlp, () -> {
+            // Drag + tap handling — attach to the button itself so taps on
+            // the red circle are captured reliably. Pass the container as the
+            // view to reposition (the window manages the whole container).
+            button.setOnTouchListener(new DragTouchListener(wm, wlp, container, () -> {
                 sendToUnity("OnReportTapped", "");
             }));
 
@@ -426,14 +429,16 @@ public class BugpunchReportOverlay {
     static class DragTouchListener implements View.OnTouchListener {
         private final WindowManager wm;
         private final WindowManager.LayoutParams lp;
+        private final View windowView;
         private final Runnable onTap;
         private int startX, startY;
         private float touchStartX, touchStartY;
         private boolean isDragging;
 
-        DragTouchListener(WindowManager wm, WindowManager.LayoutParams lp, Runnable onTap) {
+        DragTouchListener(WindowManager wm, WindowManager.LayoutParams lp, View windowView, Runnable onTap) {
             this.wm = wm;
             this.lp = lp;
+            this.windowView = windowView;
             this.onTap = onTap;
         }
 
@@ -456,7 +461,7 @@ public class BugpunchReportOverlay {
                         // Gravity is BOTTOM|END so x/y are inverted
                         lp.x = startX - (int) dx;
                         lp.y = startY - (int) dy;
-                        try { wm.updateViewLayout(v, lp); } catch (Exception ignored) {}
+                        try { wm.updateViewLayout(windowView, lp); } catch (Exception ignored) {}
                     }
                     return true;
 

@@ -26,8 +26,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public IStreamer Streamer { get; private set; }
 
         public SceneCameraService SceneCamera { get; private set; }
-        public BugReporter Reporter { get; private set; }
-        public NativeCrashHandler CrashHandler { get; private set; }
         public DeviceRegistration Registration { get; private set; }
         public bool IsConnected => (Tunnel != null && Tunnel.IsConnected) || (Registration != null && Registration.IsRegistered);
 
@@ -165,20 +163,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Streamer = null
             };
 
-            // Create bug reporter
-            Reporter = gameObject.AddComponent<BugReporter>();
-            Reporter.shakeToReport = true;
-            Reporter.videoBufferSeconds = Config.videoBufferSeconds;
-            Reporter.videoFps = Config.bugReportVideoFps;
+            // Start native debug mode — owns crash handlers, log capture,
+            // shake detection, screenshot, video ring buffer, upload queue.
+            // C# just pushes scene/fps and forwards managed exceptions.
+            BugpunchNative.Start(Config);
+            gameObject.AddComponent<BugpunchSceneTick>();
 
-            // Create native crash handler — catches SIGSEGV/SIGABRT/ANR/etc.
-            // that Unity's logMessageReceived doesn't see
+            // C# managed exception catcher — forwards to native ReportBug.
             if (Config.enableNativeCrashHandler)
-            {
-                CrashHandler = gameObject.AddComponent<NativeCrashHandler>();
-                CrashHandler.anrTimeoutMs = Config.anrTimeoutMs;
-                CrashHandler.Initialize(Config);
-            }
+                UnityExceptionForwarder.Install();
 
             // NOTE: WebRTCStreamer is NOT created here. It is initialized lazily
             // when a debug session starts (or WebSocket connects). This avoids

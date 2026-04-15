@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.8] - 2026-04-15
+
+Major refactor: **native-first architecture**. Everything that doesn't strictly need Unity now lives in Java/Obj-C++; C# is a thin adapter (4 files: facade, JNI/P-Invoke bridge, scene tick, managed-exception forwarder). Survives a dying Mono runtime, owns a persistent retry queue across launches, no Unity dep on the crash path.
+
+### Added
+- **`Bugpunch.EnterDebugMode(bool skipConsent = false)`** — opt-in screen recording. Default shows a custom native consent sheet (Start Recording / Cancel) over a blurred backdrop. `skipConsent: true` for debug/alpha builds. Android still shows OS-level MediaProjection consent; that's mandatory.
+- **`Bugpunch.Report(title, description, type)`** — opens a native bug-report form (screenshot preview, email, description, severity dropdown, Send/Cancel). Tap the screenshot to open a fullscreen annotation canvas (pen, undo, clear) — annotations submit as a transparent PNG layer the dashboard can toggle.
+- **`Bugpunch.Feedback(message)`**, **`Bugpunch.SetCustomData(k, v)`**, **`Bugpunch.ClearCustomData(k)`** — facade methods.
+- **Native log capture** — Android tails its own logcat (own-app filter automatic on API 25+), iOS reads `OSLogStore` (iOS 15+). Bounded ring buffer, snapshotted into report metadata at send time.
+- **Native shake detection** — `SensorManager` (Android) / `CoreMotion` (iOS). Disabled by default; flip `shake.enabled` in config to opt in.
+- **Native screenshot** — Android `PixelCopy` on Unity's `SurfaceView`, iOS `drawViewHierarchyInRect` on key `UIWindow`. No permissions, no user prompt.
+- **Native upload queue** — disk-backed manifest queue at `{cacheDir}/bugpunch_uploads/`. Multipart POST via `HttpURLConnection` (Android) / `NSURLSession` (iOS). Retry up to 10 attempts across app launches; terminal HTTP statuses (400/401/403) drop immediately.
+- **Native FPS** — `Choreographer` (Android) / `CADisplayLink` (iOS). C# no longer pushes fps.
+- **Bugpunch logo PNG assets** — bundled at multiple densities for Android (`drawable/`) and iOS (`@1x`/`@2x`/`@3x`). Currently unused in dialogs but ready for future UI.
+- **Concurrent-report guard** — second `Bugpunch.Report()` while the form is open is ignored (logged, returns silently).
+
+### Changed
+- **C# surface shrunk to 4 files**: `Bugpunch.cs`, `BugpunchNative.cs` (+ `BugpunchSceneTick`), `UnityExceptionForwarder.cs`, plus the `BugpunchClient.Setup()` startup hook.
+- **`UnityExceptionForwarder`** (was `NativeCrashHandler`) is no longer a `MonoBehaviour` — static, hooks `AppDomain.UnhandledException` + `TaskScheduler.UnobservedTaskException` and forwards directly to `BugpunchNative.ReportBug("exception", …)`.
+- **Crash endpoint** corrected from `/api/reports/crash` (didn't exist server-side) to `/api/crashes`. Crash JSON now matches `crashService.ingestCrash` shape.
+- **Wire format** is now `multipart/form-data` for all reports: `metadata` text field + `screenshot.jpg` / `video.mp4` / `annotations.png` file parts. Server middleware accepts both new multipart and legacy JSON.
+- **Editor is now a no-op** — no in-editor send path; device-only.
+
+### Fixed
+- **Android 14+ MediaProjection crash** — `MediaProjection.Callback` is now registered via `registerCallback()` before `createVirtualDisplay`. Required by API 34; previously threw `IllegalStateException`.
+- **Activity not declared** — `BugpunchReportActivity` and `BugpunchAnnotateActivity` added to `AndroidManifest.xml`.
+- **Android Java compile** — three new files (`BugpunchDebugMode`, `BugpunchReportActivity`, `BugpunchScreenshot`) were importing `com.unity3d.player.UnityPlayer` directly. Replaced with the existing reflection helper pattern (`BugpunchUnity.currentActivity()` + `BugpunchUnity.sendMessage()`).
+- **Test scene buttons unresponsive** — `DebugModeButton.cs` now spawns an `EventSystem` + `InputSystemUIInputModule` if the scene doesn't already have one.
+
+### Removed
+- `BugReporter.cs`, `NativeScreenshot.cs`, `BugpunchUpload.cs`, `NativeCrashHandler.cs` — all replaced by the native coordinator + thin C# adapter.
+- `Bugpunch.RecordBug()` / `Bugpunch.QuickReport()` — replaced by `Bugpunch.Report()`.
+
 ## [1.5.7] - 2026-04-15
 
 ### Added

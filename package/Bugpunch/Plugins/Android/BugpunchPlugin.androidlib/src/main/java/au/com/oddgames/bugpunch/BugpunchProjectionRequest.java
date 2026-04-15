@@ -3,6 +3,7 @@ package au.com.oddgames.bugpunch;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.media.projection.MediaProjectionConfig;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -50,7 +51,20 @@ public class BugpunchProjectionRequest extends Activity {
         try {
             MediaProjectionManager mgr = (MediaProjectionManager)
                 getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-            startActivityForResult(mgr.createScreenCaptureIntent(), REQ_CODE);
+
+            // Android 14+ (API 34): createScreenCaptureIntent() defaults to the
+            // "Entire screen / Single app" picker. We capture the default display
+            // directly to skip the picker — Android offers no API to force
+            // "this single app only", so the cleanest UX is to grab the whole
+            // display (bug video is cropped to the app on screen anyway).
+            Intent consentIntent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                consentIntent = mgr.createScreenCaptureIntent(
+                    MediaProjectionConfig.createConfigForDefaultDisplay());
+            } else {
+                consentIntent = mgr.createScreenCaptureIntent();
+            }
+            startActivityForResult(consentIntent, REQ_CODE);
         } catch (Exception e) {
             Log.e(TAG, "failed to launch consent", e);
             sendResultToUnity(false);

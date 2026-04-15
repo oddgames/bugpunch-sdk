@@ -28,6 +28,21 @@
             android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
+        <activity
+            android:name="au.com.oddgames.bugpunch.BugpunchReportActivity"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name="au.com.oddgames.bugpunch.BugpunchAnnotateActivity"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
         <service
             android:name="au.com.oddgames.bugpunch.BugpunchProjectionService"
             android:foregroundServiceType="mediaProjection"

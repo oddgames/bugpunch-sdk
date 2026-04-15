@@ -124,6 +124,16 @@ public class BugpunchRecorder {
             mEncoderThread.start();
             mEncoderHandler = new Handler(mEncoderThread.getLooper());
 
+            // Android 14+ requires a callback registered BEFORE createVirtualDisplay
+            // or the call throws IllegalStateException. The callback also lets us
+            // clean up if the user revokes projection via the system shade.
+            mProjection.registerCallback(new android.media.projection.MediaProjection.Callback() {
+                @Override public void onStop() {
+                    Log.i(TAG, "MediaProjection.onStop — tearing down");
+                    stop();
+                }
+            }, mEncoderHandler);
+
             // Configure MediaCodec for H.264 encoding from a Surface
             MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
             format.setInteger(MediaFormat.KEY_COLOR_FORMAT,

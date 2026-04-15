@@ -102,6 +102,11 @@ public class BugpunchCrashHandler {
 
         sInitialized = true;
         Log.i(TAG, "Crash handler initialized. Crash dir: " + crashDir.getAbsolutePath());
+
+        // Drain anything left in the upload queue from previous launches.
+        try { BugpunchUploader.drain(context); } catch (Throwable t) {
+            Log.w(TAG, "uploader drain failed", t);
+        }
         return true;
     }
 
