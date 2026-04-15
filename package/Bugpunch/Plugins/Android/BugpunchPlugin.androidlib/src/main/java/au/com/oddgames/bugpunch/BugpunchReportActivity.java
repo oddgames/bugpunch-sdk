@@ -13,6 +13,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup.LayoutParams;
+import android.view.WindowInsets;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -89,12 +90,30 @@ public class BugpunchReportActivity extends Activity {
     }
 
     private void buildUi() {
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout root = new LinearLayout(this);
+        final ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(0xFF101418);
+        final LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(20);
+        final int pad = dp(20);
         root.setPadding(pad, pad, pad, pad);
         root.setBackgroundColor(0xFF101418);
+
+        // Pad above the system status + nav bars so header / Send button are reachable.
+        scroll.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override public WindowInsets onApplyWindowInsets(View v, WindowInsets ins) {
+                int top = 0, bottom = 0;
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    android.graphics.Insets sb = ins.getInsets(WindowInsets.Type.systemBars());
+                    top = sb.top; bottom = sb.bottom;
+                } else {
+                    top = ins.getSystemWindowInsetTop();
+                    bottom = ins.getSystemWindowInsetBottom();
+                }
+                root.setPadding(pad, pad + top, pad, pad + bottom);
+                return ins;
+            }
+        });
+        scroll.requestApplyInsets();
 
         TextView header = new TextView(this);
         header.setText("Report a bug");

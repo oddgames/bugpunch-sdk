@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.9] - 2026-04-15
+
+### Fixed
+- **Screenshot captured the report form instead of the game** — `BugpunchScreenshot.capture` was async (PixelCopy fires on a HandlerThread); `BugpunchReportActivity.launch` fired in the same instant, covering Unity before the copy ran. New `captureThen(path, quality, Runnable)` chains the form launch into the PixelCopy completion callback so the screenshot is of the actual game state.
+- **Empty/0-byte video MP4** — `BugpunchRecorder.dump` now counts media samples written and returns false when only codec-config samples were in the buffer (recorder hadn't captured a real frame yet). Eliminates `MPEG4Writer Stop() called but track is not started` warnings and prevents uploading invalid MP4s.
+- **`dumpRingIfRunning` verifies file size** after dump — logs clearly whether the video was attached (`video dump ok: … (N bytes)`) or skipped (`no video dump — recorder not running`), deletes zero-byte files.
+- **Nav bar covering annotate + report form buttons** — bottom toolbar (Annotate) and form Send/Cancel (Report) applied `setOnApplyWindowInsetsListener` to pad above system bars. Required on Android 15+ which is edge-to-edge regardless of theme. Activities switched from `Theme.NoTitleBar.Fullscreen` to `Theme.NoTitleBar`.
+
+### Changed
+- **Dashboard media layout** — screenshot constrained to `max-w-md` (no longer stretches full panel width); 2-column layout on `md+`; placeholder card when no video is attached explaining *why* ("Tester didn't tap Enter Debug before reporting, or recorder hadn't captured a keyframe yet").
+
 ## [1.5.8] - 2026-04-15
 
 Major refactor: **native-first architecture**. Everything that doesn't strictly need Unity now lives in Java/Obj-C++; C# is a thin adapter (4 files: facade, JNI/P-Invoke bridge, scene tick, managed-exception forwarder). Survives a dying Mono runtime, owns a persistent retry queue across launches, no Unity dep on the crash path.

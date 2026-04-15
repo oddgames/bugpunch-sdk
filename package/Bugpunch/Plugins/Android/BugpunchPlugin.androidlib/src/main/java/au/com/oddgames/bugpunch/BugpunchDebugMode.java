@@ -335,8 +335,15 @@ public class BugpunchDebugMode {
             // Guard: if a report form is already open, ignore the second trigger.
             if (sReportInProgress) { Log.i(TAG, "report already in progress, ignoring"); return; }
             sReportInProgress = true;
-            BugpunchScreenshot.capture("rb_" + System.nanoTime(), shotPath, 85, "", "");
-            BugpunchReportActivity.launch(shotPath, title, description);
+            // Capture the GAME state first, THEN launch the form. If we fired
+            // capture and launch in the same instant the form would already be
+            // covering Unity by the time PixelCopy ran, and the screenshot
+            // would show the form (or a transitional black frame).
+            BugpunchScreenshot.captureThen(shotPath, 85, new Runnable() {
+                @Override public void run() {
+                    BugpunchReportActivity.launch(shotPath, title, description);
+                }
+            });
             return;
         }
 
@@ -372,11 +379,27 @@ public class BugpunchDebugMode {
     }
 
     private static String dumpRingIfRunning(Activity activity) {
-        if (!BugpunchRecorder.getInstance().hasFootage()) return null;
+        if (!BugpunchRecorder.getInstance().hasFootage()) {
+            Log.i(TAG, "no video dump — recorder not running or no footage yet");
+            return null;
+        }
         String path = activity.getCacheDir().getAbsolutePath()
             + "/bp_vid_" + System.nanoTime() + ".mp4";
-        try { BugpunchRecorder.getInstance().dump(path); return path; }
-        catch (Throwable t) { Log.w(TAG, "video dump failed", t); return null; }
+        try {
+            boolean ok = BugpunchRecorder.getInstance().dump(path);
+            java.io.File f = new java.io.File(path);
+            long size = f.length();
+            if (!ok || size <= 0) {
+                Log.w(TAG, "video dump returned " + ok + " size=" + size + " — skipping");
+                if (f.exists()) f.delete();
+                return null;
+            }
+            Log.i(TAG, "video dump ok: " + path + " (" + size + " bytes)");
+            return path;
+        } catch (Throwable t) {
+            Log.w(TAG, "video dump failed", t);
+            return null;
+        }
     }
 
     private static void enqueueManifest(Activity activity, String endpointPath,

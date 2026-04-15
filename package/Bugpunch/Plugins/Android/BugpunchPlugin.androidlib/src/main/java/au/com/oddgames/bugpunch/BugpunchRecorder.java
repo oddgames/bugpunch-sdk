@@ -236,6 +236,7 @@ public class BugpunchRecorder {
 
             long baseUs = snapshot[firstKeyframeIdx].ptsUs;
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+            int written = 0;
             for (int i = firstKeyframeIdx; i < snapshot.length; i++) {
                 Sample s = snapshot[i];
                 // Skip codec-config samples (already embedded in mOutputFormat's csd-0/csd-1)
@@ -247,9 +248,19 @@ public class BugpunchRecorder {
                 info.presentationTimeUs = s.ptsUs - baseUs;
                 info.flags = s.flags;
                 muxer.writeSampleData(trackIdx, bb, info);
+                written++;
+            }
+            if (written == 0) {
+                // No real frames to write — calling muxer.stop() now would log
+                // "Stop() called but track is not started" and produce a 0-byte MP4.
+                Log.w(TAG, "dump: no media samples (only codec-config) — recorder hasn't run long enough");
+                muxer.release();
+                muxer = null;
+                new java.io.File(outputPath).delete();
+                return false;
             }
             muxer.stop();
-            Log.i(TAG, "dump: wrote " + (snapshot.length - firstKeyframeIdx) + " samples to " + outputPath);
+            Log.i(TAG, "dump: wrote " + written + " samples to " + outputPath);
             return true;
         } catch (Exception e) {
             Log.e(TAG, "dump failed", e);

@@ -30,7 +30,7 @@
 
         <activity
             android:name="au.com.oddgames.bugpunch.BugpunchReportActivity"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:theme="@android:style/Theme.NoTitleBar"
             android:exported="false"
             android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
@@ -38,7 +38,7 @@
 
         <activity
             android:name="au.com.oddgames.bugpunch.BugpunchAnnotateActivity"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:theme="@android:style/Theme.NoTitleBar"
             android:exported="false"
             android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|keyboardHidden" />

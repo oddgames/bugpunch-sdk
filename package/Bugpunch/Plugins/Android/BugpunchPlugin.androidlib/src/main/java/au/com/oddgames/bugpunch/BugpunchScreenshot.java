@@ -49,9 +49,24 @@ public class BugpunchScreenshot {
      * @param unityGameObject name of the GameObject to receive the result
      * @param unityMethod    method on that GameObject — called with "requestId|1|outputPath" or "requestId|0|error"
      */
+    /**
+     * Variant that fires a Java {@link Runnable} when the JPEG is on disk
+     * (success only — failures log and skip). For the in-process report-form
+     * launch path, where we can't wait for UnitySendMessage to round-trip.
+     */
+    public static void captureThen(String outputPath, int quality, final Runnable onWritten) {
+        capture("th_" + System.nanoTime(), outputPath, quality, null, null, onWritten);
+    }
+
     public static void capture(final String requestId, final String outputPath,
                                final int quality, final String unityGameObject,
                                final String unityMethod) {
+        capture(requestId, outputPath, quality, unityGameObject, unityMethod, null);
+    }
+
+    private static void capture(final String requestId, final String outputPath,
+                                final int quality, final String unityGameObject,
+                                final String unityMethod, final Runnable onWritten) {
         final Activity activity = BugpunchUnity.currentActivity();
         if (activity == null) {
             deliver(unityGameObject, unityMethod, requestId, false, "no activity");
@@ -80,6 +95,8 @@ public class BugpunchScreenshot {
                                     bitmap.recycle();
                                     if (err == null) {
                                         deliver(unityGameObject, unityMethod, requestId, true, outputPath);
+                                        if (onWritten != null) try { onWritten.run(); }
+                                            catch (Throwable t) { Log.w(TAG, "onWritten failed", t); }
                                     } else {
                                         deliver(unityGameObject, unityMethod, requestId, false, err);
                                     }
@@ -107,6 +124,8 @@ public class BugpunchScreenshot {
                         sInFlight.remove(requestId);
                         if (err == null) {
                             deliver(unityGameObject, unityMethod, requestId, true, outputPath);
+                            if (onWritten != null) try { onWritten.run(); }
+                                catch (Throwable t) { Log.w(TAG, "onWritten failed", t); }
                         } else {
                             deliver(unityGameObject, unityMethod, requestId, false, err);
                         }

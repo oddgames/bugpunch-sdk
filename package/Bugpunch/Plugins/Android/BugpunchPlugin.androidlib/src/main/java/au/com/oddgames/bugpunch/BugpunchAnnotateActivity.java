@@ -16,7 +16,9 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewGroup.LayoutParams;
+import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -89,6 +91,25 @@ public class BugpunchAnnotateActivity extends Activity {
             LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         barLp.gravity = Gravity.BOTTOM;
         root.addView(bar, barLp);
+
+        // Pad the bottom bar above the system nav bar (Android 15+ edge-to-edge
+        // ignores the .NoTitleBar theme; fitsSystemWindows alone won't help on a
+        // FrameLayout). Apply system-bars insets as bottom padding once.
+        final int basePadding = bar.getPaddingBottom();
+        bar.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override public WindowInsets onApplyWindowInsets(View v, WindowInsets ins) {
+                int navInset = 0;
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    navInset = ins.getInsets(WindowInsets.Type.systemBars()).bottom;
+                } else {
+                    navInset = ins.getSystemWindowInsetBottom();
+                }
+                v.setPadding(v.getPaddingLeft(), v.getPaddingTop(),
+                    v.getPaddingRight(), basePadding + navInset);
+                return ins;
+            }
+        });
+        bar.requestApplyInsets();
 
         setContentView(root);
     }
