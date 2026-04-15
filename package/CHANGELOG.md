@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.16] - 2026-04-15
+
+### Fixed
+- **iOS build failure** — `Bugpunch_EnqueueReport` called `Bugpunch_EnqueueReportWithTraces` before its definition appeared in the translation unit. Added a forward declaration inside the `extern "C"` block so clang sees both symbols. No functional change.
+
 ## [1.5.15] - 2026-04-15
 
 ### Added

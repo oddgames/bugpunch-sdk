@@ -191,6 +191,15 @@ static void BPDrainQueueSync(void) {
 
 extern "C" {
 
+// Forward declaration so the thin `Bugpunch_EnqueueReport` trampoline can
+// call the extended variant defined below.
+void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
+                                      const char* metadataJson,
+                                      const char* screenshotPath, const char* videoPath,
+                                      const char* annotationsPath,
+                                      const char* tracesJsonPath,
+                                      const char* traceScreenshotPathsCsv);
+
 /// Enqueue a report. All args passed as primitive C strings — no JSON glue
 /// in C#. Empty-string paths are treated as absent.
 void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
