@@ -96,8 +96,6 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'ci: rebuild Android AAR'
-          file_pattern: |
-            package/Bugpunch/Plugins/Android/BugpunchPlugin.aar
-            package/Bugpunch/Plugins/Android/BugpunchPlugin.aar.meta
+          file_pattern: 'package/Bugpunch/Plugins/Android/BugpunchPlugin.aar package/Bugpunch/Plugins/Android/BugpunchPlugin.aar.meta'
           commit_user_name: 'bugpunch-ci'
           commit_user_email: 'ci@oddgames.com.au'
