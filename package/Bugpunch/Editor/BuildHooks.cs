@@ -3,7 +3,6 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
-using UnityEditor.Compilation;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -19,22 +18,14 @@ namespace ODDGames.Bugpunch.Editor
     {
         static BuildHooks()
         {
-            CompilationPipeline.compilationFinished += OnCompilationFinished;
-            // Subscribe to runtime client connection events so the TypeDB refreshes
-            // automatically when the editor connects (play mode).
+            // TypeDB upload triggers:
+            //   1. On client connect during play mode (OnAnyConnected below) — ensures the
+            //      server has fresh types as soon as the editor connects.
+            //   2. After a successful Player build (BugpunchPostBuildHook).
+            // We intentionally do NOT hook compilationFinished: it fires on every
+            // editor recompile including ones cascading from a failed Player build,
+            // which would waste bandwidth on a DB the user can't use.
             ODDGames.Bugpunch.DeviceConnect.BugpunchClient.OnAnyConnected += OnClientConnected;
-        }
-
-        /// <summary>
-        /// Called after every script compilation in the editor.
-        /// Uploads the TypeDB if the content has changed since the last upload.
-        /// Deferred via delayCall so it doesn't block the compilation pipeline.
-        /// </summary>
-        static void OnCompilationFinished(object context)
-        {
-            var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
-            if (config == null || string.IsNullOrEmpty(config.apiKey)) return;
-            EditorApplication.delayCall += TryUploadTypeDatabaseQuiet;
         }
 
         static void OnClientConnected()
@@ -71,23 +62,8 @@ namespace ODDGames.Bugpunch.Editor
         }
     }
 
-    /// <summary>
-    /// Pre-build hook: uploads TypeDB before the build starts.
-    /// This ensures the type database matches the code being built.
-    /// </summary>
-    public class BugpunchPreBuildHook : IPreprocessBuildWithReport
-    {
-        public int callbackOrder => 0;
-
-        public void OnPreprocessBuild(BuildReport report)
-        {
-            var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
-            if (config == null || string.IsNullOrEmpty(config.apiKey)) return;
-
-            Debug.Log("[Bugpunch] Pre-build: uploading type database...");
-            BuildHooks.UploadTypeDatabase();
-        }
-    }
+    // No pre-build hook needed. TypeDB upload happens only after a successful
+    // build (see BugpunchPostBuildHook).
 
     /// <summary>
     /// Post-build hook: uploads the build artifact to the server.
@@ -104,9 +80,14 @@ namespace ODDGames.Bugpunch.Editor
 
             if (report.summary.result != BuildResult.Succeeded)
             {
-                Debug.Log("[Bugpunch] Build failed — skipping artifact upload");
+                Debug.Log("[Bugpunch] Build failed — skipping artifact + type DB upload");
                 return;
             }
+
+            // Upload type DB only on build success — saves bandwidth on iterative
+            // failed Gradle builds.
+            Debug.Log("[Bugpunch] Post-build: uploading type database...");
+            BuildHooks.UploadTypeDatabase();
 
             var outputPath = report.summary.outputPath;
             if (!File.Exists(outputPath))

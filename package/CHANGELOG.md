@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.14] - 2026-04-15
+
+### Fixed
+- **CMake path not found** — `externalNativeBuild { cmake.path '../jni/CMakeLists.txt' }` resolved to `unityLibrary/jni/` in Unity's generated Gradle project, which doesn't exist (the `jni/` sibling folder wasn't copied). Moved the NDK source into the androidlib at `src/main/cpp/` so Unity copies it alongside the Java sources; updated `cmake.path` to `src/main/cpp/CMakeLists.txt`.
+- **AGP `ndkVersion` / `ndkPath` mismatch** — read the actual version from Unity's bundled NDK `source.properties` and set `ndkVersion` to match `ndkPath`, avoiding [CXX1100].
+- **Type database uploaded on failed Player builds** — dropped the `compilationFinished` trigger which fired on every Editor recompile (including the cascade after a failed build). TypeDB now only uploads on successful post-build and on client-connect during play mode.
+
 ## [1.5.13] - 2026-04-15
 
 ### Fixed

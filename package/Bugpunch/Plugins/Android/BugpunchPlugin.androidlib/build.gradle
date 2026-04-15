@@ -10,9 +10,21 @@ android {
     buildToolsVersion unityLib.buildToolsVersion
     // Point at Unity's bundled NDK by path — `ndkVersion` alone triggers an
     // SDK Manager license check for that specific version, which fails in
-    // the read-only Unity Hub SDK tree. `ndkPath` bypasses the check.
+    // the read-only Unity Hub SDK tree. `ndkPath` bypasses the check. Also
+    // read the NDK's real version from source.properties and set `ndkVersion`
+    // to match, otherwise AGP's default (27.0.x) clashes with Unity's bundled
+    // 27.2.x and errors [CXX1100].
     def unityNdkPath = unityLib.ndkPath ?: System.getenv('ANDROID_NDK_ROOT')
-    if (unityNdkPath) ndkPath unityNdkPath
+    if (unityNdkPath) {
+        ndkPath unityNdkPath
+        def srcProps = new File(unityNdkPath, 'source.properties')
+        if (srcProps.exists()) {
+            def props = new Properties()
+            srcProps.withReader { props.load(it) }
+            def actualVersion = props.getProperty('Pkg.Revision')
+            if (actualVersion) ndkVersion actualVersion
+        }
+    }
 
     sourceSets {
         main {
@@ -35,9 +47,11 @@ android {
     }
 
     // Build libbugpunch_crash.so (POSIX signal handlers for native crashes).
+    // Source lives under src/main/cpp so Unity copies it into the generated
+    // Gradle project alongside the Java sources.
     externalNativeBuild {
         cmake {
-            path '../jni/CMakeLists.txt'
+            path 'src/main/cpp/CMakeLists.txt'
         }
     }
 
