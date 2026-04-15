@@ -20,6 +20,20 @@ android {
         consumerProguardFiles "consumer-proguard.pro"
         minSdkVersion unityLib.defaultConfig.minSdkVersion.mApiLevel
         targetSdkVersion unityLib.defaultConfig.targetSdkVersion.mApiLevel
+
+        // Match Unity's ABIs so the .so gets packaged alongside libunity.so.
+        // Unity 6 ships arm64-v8a only by default; armeabi-v7a kept for safety
+        // but Unity will strip it if the Player isn't targeting 32-bit.
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+
+    // Build libbugpunch_crash.so (POSIX signal handlers for native crashes).
+    externalNativeBuild {
+        cmake {
+            path '../jni/CMakeLists.txt'
+        }
     }
 
     compileOptions {

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.11] - 2026-04-15
+
+### Fixed
+- **`libbugpunch_crash.so` not found at runtime** — the androidlib Gradle config never included `externalNativeBuild`, so the NDK `.c` file in `Plugins/Android/jni/` was never compiled into a `.so`. Added `externalNativeBuild { cmake { path '../jni/CMakeLists.txt' } }` to `BugpunchPlugin.androidlib/build.gradle` plus `ndk.abiFilters` for `arm64-v8a` + `armeabi-v7a`. Native POSIX signal handlers (SIGABRT / SIGSEGV / SIGBUS / SIGFPE / SIGILL) now actually install at startup instead of failing silently with `dlopen failed`.
+
 ## [1.5.10] - 2026-04-15
 
 ### Fixed
