@@ -8,6 +8,17 @@
 
 #import <Foundation/Foundation.h>
 
+// Defined in BugpunchDirectives.mm. Forward-declared at file scope because
+// `extern "C"` is only valid at namespace/file scope in Obj-C++ — putting
+// it inside a method body fails to compile (clang: "expected unqualified-id").
+#ifdef __cplusplus
+extern "C" {
+#endif
+void BPDirectives_OnUploadResponse(const char* url, const char* responseBody);
+#ifdef __cplusplus
+}
+#endif
+
 static NSString* const kQueueDir = @"bugpunch_uploads";
 static const NSInteger kMaxAttempts = 10;
 static const NSTimeInterval kConnectTimeout = 15.0;
@@ -169,7 +180,6 @@ static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
                 [[NSFileManager defaultManager] removeItemAtPath:manifestPath error:nil];
                 // /api/crashes responses carry matchedDirectives[] \u2014 apply them.
                 if ([urlStr hasSuffix:@"/api/crashes"] && d.length > 0) {
-                    extern "C" void BPDirectives_OnUploadResponse(const char*, const char*);
                     NSString* respBody = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
                     if (respBody) BPDirectives_OnUploadResponse([urlStr UTF8String], [respBody UTF8String]);
                 }

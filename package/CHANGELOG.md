@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.21] - 2026-04-16
+
+### Fixed
+- **iOS Xcode build break in v1.5.20** — `extern "C"` declarations are only valid at file scope in Objective-C++; the v1.5.20 fix put one inside a method body, which clang rejects with `expected unqualified-id`. Hoisted the forward declaration of `BPDirectives_OnUploadResponse` to the top of `BugpunchUploader.mm`. Downstream games on v1.5.20 will fail to archive — upgrade to v1.5.21.
+
 ## [1.5.20] - 2026-04-16
 
 ### Fixed
