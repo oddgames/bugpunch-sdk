@@ -402,6 +402,31 @@ public class BugpunchDebugMode {
         if (scene != null) sMetadata.put("scene", scene);
     }
 
+    // ── Accessors for BugpunchDirectives ─────────────────────────────────
+
+    /** Game-declared attachment allow-list, straight from the startup config. */
+    public static JSONArray getAttachmentRules() {
+        return sConfig != null ? sConfig.optJSONArray("attachmentRules") : null;
+    }
+
+    public static String getServerUrl() {
+        return sConfig != null ? sConfig.optString("serverUrl", "") : "";
+    }
+
+    public static String getApiKey() {
+        return sConfig != null ? sConfig.optString("apiKey", "") : "";
+    }
+
+    /**
+     * Called from C# via <c>BugpunchNative.PostPaxScriptResult</c> when a
+     * directive-triggered PaxScript run finishes. Hands off to
+     * {@link BugpunchDirectives} which POSTs to the /enrich endpoint.
+     */
+    public static void postPaxScriptResult(String directiveId, String resultJson) {
+        if (!sStarted) return;
+        BugpunchDirectives.onPaxScriptResult(directiveId, resultJson);
+    }
+
     // ── Trigger (from shake, from C# exception handler, from game code) ──
 
     /**

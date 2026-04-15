@@ -193,12 +193,16 @@ public class BugpunchUploader {
         String body = readText(manifestFile);
         JSONObject manifest = new JSONObject(body);
         int attempts = manifest.optInt("attempts", 0);
+        boolean isJson = manifest.has("rawJsonBody");
 
         boolean ok;
         int status = 0;
         String err = null;
+        String responseBody = null;
         try {
-            status = sendMultipart(manifest);
+            Result r = isJson ? sendJson(manifest) : sendMultipart(manifest);
+            status = r.status;
+            responseBody = r.body;
             ok = status >= 200 && status < 300;
             if (!ok) err = "HTTP " + status;
         } catch (Throwable t) {
@@ -211,6 +215,15 @@ public class BugpunchUploader {
             cleanup(manifest);
             if (!manifestFile.delete()) {
                 Log.w(TAG, "could not delete manifest " + manifestFile.getName());
+            }
+            // Crash ingest responses carry matchedDirectives[] \u2014 apply them.
+            if (responseBody != null
+                && manifest.optString("url").endsWith("/api/crashes")) {
+                try {
+                    BugpunchDirectives.onUploadResponse(manifest, responseBody);
+                } catch (Throwable t) {
+                    Log.w(TAG, "directive dispatch failed", t);
+                }
             }
             return;
         }
@@ -232,7 +245,83 @@ public class BugpunchUploader {
         // No in-process backoff timer — next drain() (app launch / enqueue) retries.
     }
 
-    private static int sendMultipart(JSONObject manifest) throws IOException, JSONException {
+    /**
+     * Enqueue a JSON POST. Used by directive enrichment \u2014 same retry +
+     * app-kill survival as crash/bug multipart uploads.
+     */
+    public static void enqueueJson(final Context ctx, final String url,
+                                   final String apiKey, final String jsonBody) {
+        ensureStarted(ctx);
+        sHandler.post(new Runnable() {
+            @Override public void run() {
+                try {
+                    JSONObject m = new JSONObject();
+                    m.put("url", url);
+                    JSONObject headers = new JSONObject();
+                    headers.put("X-Api-Key", apiKey);
+                    headers.put("Content-Type", "application/json");
+                    m.put("headers", headers);
+                    m.put("rawJsonBody", jsonBody != null ? jsonBody : "{}");
+                    m.put("attempts", 0);
+                    File out = new File(sQueueDir, UUID.randomUUID().toString() + ".upload.json");
+                    FileOutputStream fos = new FileOutputStream(out);
+                    fos.write(m.toString().getBytes(StandardCharsets.UTF_8));
+                    fos.close();
+                    drainInternal();
+                } catch (Throwable t) {
+                    Log.w(TAG, "enqueueJson failed", t);
+                }
+            }
+        });
+    }
+
+    private static Result sendJson(JSONObject manifest) throws IOException, JSONException {
+        String urlStr = manifest.getString("url");
+        JSONObject headers = manifest.optJSONObject("headers");
+        String rawBody = manifest.getString("rawJsonBody");
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        try {
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
+            if (headers != null) {
+                Iterator<String> keys = headers.keys();
+                while (keys.hasNext()) {
+                    String k = keys.next();
+                    conn.setRequestProperty(k, headers.optString(k));
+                }
+            }
+            byte[] bytes = rawBody.getBytes(StandardCharsets.UTF_8);
+            conn.setFixedLengthStreamingMode(bytes.length);
+            java.io.OutputStream os = conn.getOutputStream();
+            try { os.write(bytes); os.flush(); } finally { os.close(); }
+
+            int code = conn.getResponseCode();
+            InputStream is = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            if (is != null) {
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = is.read(buf)) > 0) {
+                    if (bos.size() < 64 * 1024) bos.write(buf, 0, n);
+                }
+                is.close();
+            }
+            return new Result(code, bos.toString("UTF-8"));
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    static class Result {
+        int status;
+        String body;
+        Result(int s, String b) { status = s; body = b; }
+    }
+
+    private static Result sendMultipart(JSONObject manifest) throws IOException, JSONException {
         String urlStr = manifest.getString("url");
         JSONObject fields = manifest.optJSONObject("fields");
         JSONArray filesArr = manifest.optJSONArray("files");
@@ -283,14 +372,18 @@ public class BugpunchUploader {
             }
 
             int code = conn.getResponseCode();
-            // Drain response so connection can be reused.
+            // Read response so the caller can inspect matchedDirectives, etc.
             InputStream is = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
             if (is != null) {
                 byte[] buf = new byte[4096];
-                while (is.read(buf) > 0) { /* discard */ }
+                int n;
+                while ((n = is.read(buf)) > 0) {
+                    if (bos.size() < 128 * 1024) bos.write(buf, 0, n);
+                }
                 is.close();
             }
-            return code;
+            return new Result(code, bos.toString("UTF-8"));
         } finally {
             conn.disconnect();
         }

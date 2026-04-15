@@ -166,6 +166,30 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
+        /// <summary>
+        /// Callback from <see cref="CrashDirectiveHandler"/> back into native
+        /// after PaxScript finishes. Native posts the result to the server's
+        /// <c>POST /api/crashes/events/:id/enrich</c> endpoint via its upload
+        /// queue, keyed by the pending directive + event ids stored when the
+        /// directive match was received.
+        /// </summary>
+        public static void PostPaxScriptResult(string directiveId, string resultJson)
+        {
+            if (!s_started || string.IsNullOrEmpty(directiveId)) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchDebugMode");
+                cls.CallStatic("postPaxScriptResult", directiveId, resultJson ?? "");
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] PostPaxScriptResult failed: {e.Message}"); }
+#elif UNITY_IOS
+            try { Bugpunch_PostPaxScriptResult(directiveId, resultJson ?? ""); }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] PostPaxScriptResult failed: {e.Message}"); }
+#endif
+        }
+
 #if !UNITY_EDITOR && UNITY_IOS
         [DllImport("__Internal")] static extern bool Bugpunch_StartDebugMode(string configJson);
         [DllImport("__Internal")] static extern void Bugpunch_StopDebugMode();
@@ -176,6 +200,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_EnterDebugMode(int skipConsent);
         [DllImport("__Internal")] static extern void Bugpunch_Trace(string label, string tagsJson);
         [DllImport("__Internal")] static extern void Bugpunch_TraceScreenshot(string label, string tagsJson);
+        [DllImport("__Internal")] static extern void Bugpunch_PostPaxScriptResult(string directiveId, string resultJson);
 #endif
 
         // ── Build config JSON from BugpunchConfig ScriptableObject ──
@@ -200,7 +225,32 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Field(sb, "deviceModel",  SystemInfo.deviceModel);        sb.Append(',');
             Field(sb, "osVersion",    SystemInfo.operatingSystem);    sb.Append(',');
             Field(sb, "gpu",          SystemInfo.graphicsDeviceName);
-            sb.Append('}');
+            sb.Append("},");
+
+            // Attachment rules: game-declared allow-list of files Bugpunch may
+            // upload alongside a crash report. Native resolves the glob at
+            // upload time (not signal-handler time). Tokens are pre-resolved
+            // here so native never has to know about Unity paths.
+            sb.Append("\"attachmentRules\":[");
+            var rules = BugpunchClient.GetEffectiveAttachmentRules(c);
+            bool firstRule = true;
+            foreach (var r in rules)
+            {
+                if (r == null || string.IsNullOrEmpty(r.path)) continue;
+                var resolved = BugpunchConfig.ResolvePathToken(r.path);
+                if (resolved == null || r.path.Contains("..")) continue;
+                if (!firstRule) sb.Append(',');
+                firstRule = false;
+                sb.Append('{');
+                Field(sb, "name", r.name ?? "rule"); sb.Append(',');
+                Field(sb, "rawPath", r.path);        sb.Append(',');
+                Field(sb, "path", resolved);         sb.Append(',');
+                Field(sb, "pattern", string.IsNullOrEmpty(r.pattern) ? "*" : r.pattern);
+                sb.Append(",\"maxBytes\":").Append(r.maxBytes);
+                sb.Append('}');
+            }
+            sb.Append(']');
+
             sb.Append('}');
             return sb.ToString();
         }

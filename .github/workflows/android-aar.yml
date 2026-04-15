@@ -1,0 +1,103 @@
+name: Build Android AAR
+
+# Rebuilds sdk/package/Bugpunch/Plugins/Android/BugpunchPlugin.aar whenever
+# native Android source changes and pushes the updated AAR back to the branch.
+# Game developers consuming the UPM package never need a JDK / Android SDK /
+# NDK locally; CI keeps the committed AAR in sync with android-src/.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'android-src/**'
+      - '.github/workflows/android-aar.yml'
+  pull_request:
+    paths:
+      - 'android-src/**'
+      - '.github/workflows/android-aar.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: android-aar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to push the rebuilt AAR back
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so auto-commit can push back on push events.
+          fetch-depth: 0
+          # Use a PAT or the default GITHUB_TOKEN; the latter is fine for
+          # same-repo branches. PR auto-commits require a PAT when the PR
+          # is from a fork \u2014 fork PRs are rebuilt but not committed back.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK 27.2.12479018
+        run: |
+          echo "y" | sdkmanager --install "ndk;27.2.12479018" >/dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.2.12479018" >> $GITHUB_ENV
+
+      - name: Install platform + build-tools
+        run: |
+          echo "y" | sdkmanager --install "platforms;android-34" "build-tools;34.0.0" >/dev/null
+
+      - name: Bootstrap Gradle wrapper (if missing)
+        working-directory: android-src
+        run: |
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Gradle wrapper jar missing \u2014 generating via system gradle"
+            gradle wrapper --gradle-version 8.10.2 --distribution-type bin
+          fi
+          chmod +x gradlew
+
+      - name: Build release AAR
+        working-directory: android-src
+        run: ./gradlew :bugpunch:assembleRelease --no-daemon --stacktrace
+
+      - name: Copy AAR into UPM package
+        run: |
+          cp android-src/bugpunch/build/outputs/aar/bugpunch-release.aar \
+             package/Bugpunch/Plugins/Android/BugpunchPlugin.aar
+
+      - name: Ensure .aar.meta exists
+        run: |
+          META=package/Bugpunch/Plugins/Android/BugpunchPlugin.aar.meta
+          if [ ! -f "$META" ]; then
+            GUID=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
+            sed "s/__GUID__/$GUID/" android-src/BugpunchPlugin.aar.meta.template > "$META"
+          fi
+
+      - name: Upload AAR artifact (always, even on PRs from forks)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BugpunchPlugin-aar
+          path: package/Bugpunch/Plugins/Android/BugpunchPlugin.aar
+          retention-days: 30
+
+      - name: Commit rebuilt AAR
+        # Only on same-repo events (push / same-repo PR). Fork PRs can't push
+        # back; the artifact upload above is their paper trail.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'ci: rebuild Android AAR'
+          file_pattern: |
+            package/Bugpunch/Plugins/Android/BugpunchPlugin.aar
+            package/Bugpunch/Plugins/Android/BugpunchPlugin.aar.meta
+          commit_user_name: 'bugpunch-ci'
+          commit_user_email: 'ci@oddgames.com.au'

@@ -124,14 +124,27 @@ static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
         return;
     }
 
-    NSString* boundary = [NSString stringWithFormat:@"----BugpunchBoundary%@",
-        [[NSUUID UUID] UUIDString]];
-    NSData* body = BPBuildMultipart(manifest, boundary);
+    NSString* rawJsonBody = manifest[@"rawJsonBody"];
+    BOOL isJson = [rawJsonBody isKindOfClass:[NSString class]];
+
+    NSString* boundary = nil;
+    NSData* body;
+    if (isJson) {
+        body = [rawJsonBody dataUsingEncoding:NSUTF8StringEncoding];
+    } else {
+        boundary = [NSString stringWithFormat:@"----BugpunchBoundary%@",
+            [[NSUUID UUID] UUIDString]];
+        body = BPBuildMultipart(manifest, boundary);
+    }
 
     NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     req.HTTPMethod = @"POST";
-    [req setValue:[NSString stringWithFormat:@"multipart/form-data; boundary=%@", boundary]
-        forHTTPHeaderField:@"Content-Type"];
+    if (isJson) {
+        [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    } else {
+        [req setValue:[NSString stringWithFormat:@"multipart/form-data; boundary=%@", boundary]
+            forHTTPHeaderField:@"Content-Type"];
+    }
     NSDictionary* headers = manifest[@"headers"];
     if ([headers isKindOfClass:[NSDictionary class]]) {
         for (NSString* k in headers) {
@@ -154,6 +167,12 @@ static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
                 NSLog(@"[BugpunchUploader] uploaded %@", urlStr);
                 BPCleanup(manifest);
                 [[NSFileManager defaultManager] removeItemAtPath:manifestPath error:nil];
+                // /api/crashes responses carry matchedDirectives[] \u2014 apply them.
+                if ([urlStr hasSuffix:@"/api/crashes"] && d.length > 0) {
+                    extern void BPDirectives_OnUploadResponse(const char*, const char*);
+                    NSString* respBody = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+                    if (respBody) BPDirectives_OnUploadResponse([urlStr UTF8String], [respBody UTF8String]);
+                }
             } else {
                 NSInteger attempts = [manifest[@"attempts"] integerValue] + 1;
                 BOOL terminal = (code == 400 || code == 401 || code == 403);
@@ -299,6 +318,33 @@ void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
 /// Kick the worker to scan and drain the queue.
 void Bugpunch_DrainUploadQueue(void) {
     dispatch_async(BPUploaderQueue(), ^{
+        BPDrainQueueSync();
+    });
+}
+
+/// Enqueue a JSON POST. Used by directive enrichment \u2014 same retry +
+/// app-kill survival as multipart uploads.
+void BugpunchUploader_EnqueueJson(const char* urlC, const char* apiKeyC,
+                                  const char* jsonBodyC) {
+    if (!urlC || !apiKeyC) return;
+    NSString* url = [NSString stringWithUTF8String:urlC];
+    NSString* apiKey = [NSString stringWithUTF8String:apiKeyC];
+    NSString* body = jsonBodyC ? [NSString stringWithUTF8String:jsonBodyC] : @"{}";
+
+    dispatch_async(BPUploaderQueue(), ^{
+        NSMutableDictionary* m = [NSMutableDictionary dictionary];
+        m[@"url"] = url;
+        m[@"headers"] = @{ @"X-Api-Key": apiKey, @"Content-Type": @"application/json" };
+        m[@"rawJsonBody"] = body;
+        m[@"attempts"] = @0;
+
+        NSError* err = nil;
+        NSData* data = [NSJSONSerialization dataWithJSONObject:m options:0 error:&err];
+        if (!data) { NSLog(@"[BugpunchUploader] json manifest serialize failed: %@", err); return; }
+        NSString* dir = BPQueueDirPath();
+        NSString* path = [dir stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"%@.upload.json", [[NSUUID UUID] UUIDString]]];
+        [data writeToFile:path atomically:YES];
         BPDrainQueueSync();
     });
 }

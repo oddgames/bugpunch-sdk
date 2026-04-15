@@ -1,0 +1,53 @@
+// Standalone library build — no Unity dependency. Produces
+// bugpunch-release.aar containing classes.jar + libbugpunch_crash.so for
+// arm64-v8a / armeabi-v7a. The output is copied by ../../build-android.ps1
+// to sdk/package/Bugpunch/Plugins/Android/BugpunchPlugin.aar.
+//
+// Requirements (developer machine or CI):
+//   * Android SDK with platform-34 + build-tools-34
+//   * Android NDK 27.2.x (matches Unity 6's bundled NDK)
+//   * JDK 17 (AGP 8.x)
+//
+// Point at them via ANDROID_HOME + ANDROID_NDK_ROOT (or local.properties).
+
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'au.com.oddgames.bugpunch'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+        //noinspection ExpiredTargetSdkVersion
+        targetSdk 34
+        consumerProguardFiles 'consumer-proguard.pro'
+        // Match Unity 6's default ABIs. Unity will strip unused ABIs from
+        // the final player anyway.
+        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src/main/java']
+            res.srcDirs = ['src/main/res']
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildFeatures {
+        buildConfig false
+    }
+}

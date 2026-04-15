@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace ODDGames.Bugpunch.DeviceConnect
@@ -19,7 +20,31 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Auto-connect on app start (debug builds / editor). When off, the game must call BugpunchClient.StartConnection() explicitly.")]
         public bool autoStart = false;
 
+        [Header("Crash Attachment Allow-list")]
+        [Tooltip("Files Bugpunch is allowed to read and upload with a crash report. " +
+                 "Server 'Request More Info' directives can only reference paths that " +
+                 "match at least one rule here \u2014 the game stays in control of what " +
+                 "can leave the device. Supported path tokens: [PersistentDataPath], " +
+                 "[TemporaryCachePath], [DataPath].")]
+        public AttachmentRule[] attachmentRules = Array.Empty<AttachmentRule>();
+
         public enum ScriptPermission { Ask, Always, Never }
+
+        [Serializable]
+        public class AttachmentRule
+        {
+            [Tooltip("Friendly identifier shown in the dashboard.")]
+            public string name = "saves";
+
+            [Tooltip("Directory \u2014 use a token like [PersistentDataPath]/saves.")]
+            public string path = "[PersistentDataPath]";
+
+            [Tooltip("Glob pattern, e.g. *.json or save_*.dat. Use * for everything.")]
+            public string pattern = "*";
+
+            [Tooltip("Per-file size cap in bytes. Files larger than this are skipped.")]
+            public long maxBytes = 1024 * 1024;
+        }
 
         // -- Defaults (not exposed in inspector) --
 
@@ -67,6 +92,25 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     baseUrl = "ws://" + baseUrl.Substring(7);
                 return baseUrl + "/api/devices/tunnel";
             }
+        }
+
+        /// <summary>
+        /// Resolve a path that may begin with a known Unity token
+        /// ([PersistentDataPath], [TemporaryCachePath], [DataPath]) to an
+        /// absolute path. Returns null if the token is unknown or unavailable
+        /// on the current platform. Caller is responsible for further
+        /// validation (rejecting "..", etc).
+        /// </summary>
+        public static string ResolvePathToken(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            if (path.StartsWith("[PersistentDataPath]"))
+                return Application.persistentDataPath + path.Substring("[PersistentDataPath]".Length);
+            if (path.StartsWith("[TemporaryCachePath]"))
+                return Application.temporaryCachePath + path.Substring("[TemporaryCachePath]".Length);
+            if (path.StartsWith("[DataPath]"))
+                return Application.dataPath + path.Substring("[DataPath]".Length);
+            return null;
         }
 
         public static BugpunchConfig Load()

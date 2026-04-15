@@ -65,6 +65,26 @@ namespace ODDGames.Bugpunch
         }
 
         /// <summary>
+        /// Add a runtime attachment allow-list rule. Prefer configuring rules
+        /// in the BugpunchConfig ScriptableObject (reviewable in the Inspector)
+        /// \u2014 this API is the escape hatch for genuinely dynamic paths. Server
+        /// "Request More Info" directives can only target paths that match an
+        /// allow-list rule, so the game stays in control of what may leave the
+        /// device. Call any time; rules take effect on the next config sync.
+        /// </summary>
+        public static void AddAttachmentRule(string name, string path, string pattern, long maxBytes)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(pattern)) return;
+            BugpunchClient.AddRuntimeAttachmentRule(new BugpunchConfig.AttachmentRule
+            {
+                name = name ?? "rule",
+                path = path,
+                pattern = pattern,
+                maxBytes = maxBytes,
+            });
+        }
+
+        /// <summary>
         /// Mark a moment in the session with a label. Included in any
         /// subsequent bug report as a trace event (ring buffer, max 50).
         /// No-op if BugpunchClient isn't initialized.

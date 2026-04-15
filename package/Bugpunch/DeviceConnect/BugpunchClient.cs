@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using ODDGames.Bugpunch.DeviceConnect.Database;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -48,6 +49,34 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public static event Action OnAnyConnected;
 
         bool _debugSessionActive;
+
+        /// <summary>
+        /// Attachment rules added at runtime via <see cref="Bugpunch.AddAttachmentRule"/>.
+        /// Merged with the ScriptableObject rules when building the native
+        /// startup config and when resolving server directives.
+        /// </summary>
+        static readonly List<BugpunchConfig.AttachmentRule> s_runtimeAttachmentRules = new();
+
+        internal static void AddRuntimeAttachmentRule(BugpunchConfig.AttachmentRule rule)
+        {
+            if (rule == null) return;
+            lock (s_runtimeAttachmentRules)
+            {
+                s_runtimeAttachmentRules.Add(rule);
+            }
+        }
+
+        public static IReadOnlyList<BugpunchConfig.AttachmentRule> GetEffectiveAttachmentRules(BugpunchConfig config)
+        {
+            var list = new List<BugpunchConfig.AttachmentRule>();
+            if (config != null && config.attachmentRules != null)
+                list.AddRange(config.attachmentRules);
+            lock (s_runtimeAttachmentRules)
+            {
+                list.AddRange(s_runtimeAttachmentRules);
+            }
+            return list;
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoInitialize()
@@ -173,6 +202,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // C# just pushes scene/fps and forwards managed exceptions.
             BugpunchNative.Start(Config);
             gameObject.AddComponent<BugpunchSceneTick>();
+            // Managed-side paxscript bridge for server "Request More Info"
+            // directives. Everything else (directive fetching, caching,
+            // queue matching, file globs, dialogs, denial prefs) lives
+            // natively — this component just exists so native has a
+            // UnitySendMessage target named "BugpunchClient".
+            gameObject.AddComponent<CrashDirectiveHandler>().Init();
 
             // C# managed exception catcher — forwards to native ReportBug.
             if (Config.enableNativeCrashHandler)
