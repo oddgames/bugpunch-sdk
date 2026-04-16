@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using ODDGames.Bugpunch.DeviceConnect.Database;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -49,6 +50,24 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public static event Action OnAnyConnected;
 
         bool _debugSessionActive;
+
+        /// <summary>
+        /// Resolved game config variables. Global variables merged with
+        /// device-matched overrides. Populated by <see cref="FetchGameConfig"/>.
+        /// </summary>
+        static readonly Dictionary<string, string> s_variables = new();
+        static bool s_configFetched;
+
+        /// <summary>
+        /// Read a game config variable set on the Bugpunch dashboard.
+        /// Returns <paramref name="defaultValue"/> if the variable is not set
+        /// or config hasn't been fetched yet.
+        /// </summary>
+        public static string GetVariable(string key, string defaultValue = null)
+        {
+            if (key == null) return defaultValue;
+            lock (s_variables) { return s_variables.TryGetValue(key, out var v) ? v : defaultValue; }
+        }
 
         /// <summary>
         /// Attachment rules added at runtime via <see cref="Bugpunch.AddAttachmentRule"/>.
@@ -222,6 +241,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 UnityExceptionForwarder.Install();
             }
 
+            // Fetch unified game config from server (perf thresholds, variables,
+            // overrides). Non-blocking — game runs normally if fetch fails.
+            StartCoroutine(FetchGameConfig());
+
             // NOTE: WebRTCStreamer is NOT created here. It is initialized lazily
             // when a debug session starts (or WebSocket connects). This avoids
             // loading the Unity.WebRTC assembly (and native libwebrtc.so) at startup.
@@ -264,6 +287,293 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     Tunnel.Connect();
                 yield return new WaitForSeconds(Config.reconnectDelay);
             }
+        }
+
+        /// <summary>
+        /// Fetch unified game config from the server on startup. Populates
+        /// variables (global + device-matched overrides) and starts the native
+        /// performance monitor if enabled. Non-blocking — game runs normally
+        /// if the fetch fails.
+        /// </summary>
+        IEnumerator FetchGameConfig()
+        {
+            var url = Config.HttpBaseUrl + "/api/v1/config";
+            using var req = UnityWebRequest.Get(url);
+            req.SetRequestHeader("X-Api-Key", Config.apiKey);
+            req.timeout = 10;
+            yield return req.SendWebRequest();
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                Debug.Log($"[Bugpunch] Game config fetch failed ({req.error}) — perf monitoring disabled");
+                yield break;
+            }
+
+            var json = req.downloadHandler.text;
+            if (string.IsNullOrEmpty(json))
+            {
+                Debug.Log("[Bugpunch] Game config empty — perf monitoring disabled");
+                yield break;
+            }
+
+            Debug.Log("[Bugpunch] Game config fetched");
+
+            // Parse variables + overrides and resolve for this device
+            ResolveVariables(json);
+
+            // Start native performance monitor if enabled
+            var perfJson = ExtractJsonObject(json, "performance");
+            if (perfJson != null && perfJson.Contains("\"enabled\":true"))
+            {
+                BugpunchNative.StartPerfMonitor(perfJson);
+            }
+
+            s_configFetched = true;
+        }
+
+        /// <summary>
+        /// Parse global variables and overrides from the config JSON, evaluate
+        /// overrides against this device's properties, and merge into the
+        /// resolved variables dictionary.
+        /// </summary>
+        void ResolveVariables(string configJson)
+        {
+            // Extract variables object
+            var varsJson = ExtractJsonObject(configJson, "variables");
+            var pairs = ExtractStringPairs(varsJson);
+
+            // Extract overrides array and evaluate each against this device
+            var overridesJson = ExtractJsonArray(configJson, "overrides");
+            if (overridesJson != null)
+            {
+                // For each override, check if device matches, merge variables
+                // Simple approach: extract each override's match and variables
+                // Device info for matching
+                var gpu = SystemInfo.graphicsDeviceName ?? "";
+                var memMB = SystemInfo.systemMemorySize;
+                var screenW = Screen.width;
+                var screenH = Screen.height;
+                var platform = Application.platform.ToString();
+
+                foreach (var ovr in ExtractArrayElements(overridesJson))
+                {
+                    var matchJson = ExtractJsonObject(ovr, "match");
+                    if (matchJson == null) continue;
+
+                    if (!DeviceMatchesOverride(matchJson, gpu, memMB, screenW, screenH, platform))
+                        continue;
+
+                    // This override matches — merge its variables on top
+                    var ovrVars = ExtractJsonObject(ovr, "variables");
+                    if (ovrVars != null)
+                    {
+                        foreach (var kv in ExtractStringPairs(ovrVars))
+                            pairs[kv.Key] = kv.Value;
+                    }
+                }
+            }
+
+            lock (s_variables)
+            {
+                s_variables.Clear();
+                foreach (var kv in pairs)
+                    s_variables[kv.Key] = kv.Value;
+            }
+
+            if (pairs.Count > 0)
+                Debug.Log($"[Bugpunch] Resolved {pairs.Count} game config variable(s)");
+        }
+
+        static bool DeviceMatchesOverride(string matchJson, string gpu, int memMB, int screenW, int screenH, string platform)
+        {
+            // Check gpu glob match
+            var gpuPattern = ExtractJsonString(matchJson, "gpu");
+            if (gpuPattern != null && !GlobMatch(gpu, gpuPattern)) return false;
+
+            // Check platform
+            var platPattern = ExtractJsonString(matchJson, "platform");
+            if (platPattern != null && !GlobMatch(platform, platPattern)) return false;
+
+            // Check systemMemoryMB range
+            var memObj = ExtractJsonObject(matchJson, "systemMemoryMB");
+            if (memObj != null)
+            {
+                var maxStr = ExtractJsonString(memObj, "max") ?? ExtractJsonNumber(memObj, "max");
+                if (maxStr != null && int.TryParse(maxStr, out var max) && memMB > max) return false;
+                var minStr = ExtractJsonString(memObj, "min") ?? ExtractJsonNumber(memObj, "min");
+                if (minStr != null && int.TryParse(minStr, out var min) && memMB < min) return false;
+            }
+
+            // Check screenSize range
+            var screenObj = ExtractJsonObject(matchJson, "screenSize");
+            if (screenObj != null)
+            {
+                var maxWStr = ExtractJsonString(screenObj, "maxWidth") ?? ExtractJsonNumber(screenObj, "maxWidth");
+                if (maxWStr != null && int.TryParse(maxWStr, out var maxW) && screenW > maxW) return false;
+                var minWStr = ExtractJsonString(screenObj, "minWidth") ?? ExtractJsonNumber(screenObj, "minWidth");
+                if (minWStr != null && int.TryParse(minWStr, out var minW) && screenW < minW) return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>Simple glob matcher supporting * wildcards.</summary>
+        static bool GlobMatch(string input, string pattern)
+        {
+            if (pattern == "*") return true;
+            // Convert glob to simple check: "Mali-G*" matches "Mali-G76"
+            if (pattern.EndsWith("*"))
+                return input.StartsWith(pattern.Substring(0, pattern.Length - 1), StringComparison.OrdinalIgnoreCase);
+            if (pattern.StartsWith("*"))
+                return input.EndsWith(pattern.Substring(1), StringComparison.OrdinalIgnoreCase);
+            return string.Equals(input, pattern, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ── Minimal JSON extraction helpers ──
+        // Avoids pulling in a full JSON parser for startup config. The config
+        // JSON has a known, simple structure emitted by the server.
+
+        static string ExtractJsonObject(string json, string key)
+        {
+            if (json == null) return null;
+            var needle = "\"" + key + "\":";
+            int i = json.IndexOf(needle, StringComparison.Ordinal);
+            if (i < 0) return null;
+            i += needle.Length;
+            while (i < json.Length && json[i] == ' ') i++;
+            if (i >= json.Length || json[i] != '{') return null;
+            return ExtractBalanced(json, i, '{', '}');
+        }
+
+        static string ExtractJsonArray(string json, string key)
+        {
+            if (json == null) return null;
+            var needle = "\"" + key + "\":";
+            int i = json.IndexOf(needle, StringComparison.Ordinal);
+            if (i < 0) return null;
+            i += needle.Length;
+            while (i < json.Length && json[i] == ' ') i++;
+            if (i >= json.Length || json[i] != '[') return null;
+            return ExtractBalanced(json, i, '[', ']');
+        }
+
+        static string ExtractBalanced(string json, int start, char open, char close)
+        {
+            int depth = 0;
+            bool inString = false;
+            for (int i = start; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (c == '\\' && inString) { i++; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (c == open) depth++;
+                else if (c == close) { depth--; if (depth == 0) return json.Substring(start, i - start + 1); }
+            }
+            return null;
+        }
+
+        /// <summary>Extract top-level string key/value pairs from a JSON object.</summary>
+        static Dictionary<string, string> ExtractStringPairs(string json)
+        {
+            var result = new Dictionary<string, string>();
+            if (string.IsNullOrEmpty(json)) return result;
+            // Simple scanner: find "key":"value" pairs
+            int i = 0;
+            while (i < json.Length)
+            {
+                // Find next key
+                int kStart = json.IndexOf('"', i);
+                if (kStart < 0) break;
+                int kEnd = json.IndexOf('"', kStart + 1);
+                if (kEnd < 0) break;
+                var key = json.Substring(kStart + 1, kEnd - kStart - 1);
+
+                // Skip to colon
+                int colon = json.IndexOf(':', kEnd + 1);
+                if (colon < 0) break;
+                int vi = colon + 1;
+                while (vi < json.Length && json[vi] == ' ') vi++;
+
+                if (vi < json.Length && json[vi] == '"')
+                {
+                    // String value
+                    var sb = new StringBuilder();
+                    vi++;
+                    while (vi < json.Length)
+                    {
+                        char c = json[vi++];
+                        if (c == '\\' && vi < json.Length) { sb.Append(json[vi++]); continue; }
+                        if (c == '"') break;
+                        sb.Append(c);
+                    }
+                    result[key] = sb.ToString();
+                    i = vi;
+                }
+                else if (vi < json.Length)
+                {
+                    // Non-string value (bool, number) — read until , or }
+                    int vEnd = vi;
+                    while (vEnd < json.Length && json[vEnd] != ',' && json[vEnd] != '}') vEnd++;
+                    result[key] = json.Substring(vi, vEnd - vi).Trim();
+                    i = vEnd;
+                }
+                else break;
+            }
+            return result;
+        }
+
+        static string ExtractJsonString(string json, string key)
+        {
+            if (json == null) return null;
+            var needle = "\"" + key + "\":\"";
+            int i = json.IndexOf(needle, StringComparison.Ordinal);
+            if (i < 0) return null;
+            i += needle.Length;
+            var sb = new StringBuilder();
+            while (i < json.Length)
+            {
+                char c = json[i++];
+                if (c == '\\' && i < json.Length) { sb.Append(json[i++]); continue; }
+                if (c == '"') return sb.ToString();
+                sb.Append(c);
+            }
+            return null;
+        }
+
+        static string ExtractJsonNumber(string json, string key)
+        {
+            if (json == null) return null;
+            var needle = "\"" + key + "\":";
+            int i = json.IndexOf(needle, StringComparison.Ordinal);
+            if (i < 0) return null;
+            i += needle.Length;
+            while (i < json.Length && json[i] == ' ') i++;
+            if (i >= json.Length || json[i] == '"' || json[i] == '{' || json[i] == '[') return null;
+            int start = i;
+            while (i < json.Length && json[i] != ',' && json[i] != '}' && json[i] != ']') i++;
+            return json.Substring(start, i - start).Trim();
+        }
+
+        /// <summary>Split a JSON array into its top-level element strings.</summary>
+        static List<string> ExtractArrayElements(string arrayJson)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrEmpty(arrayJson) || arrayJson[0] != '[') return result;
+            int i = 1;
+            while (i < arrayJson.Length)
+            {
+                while (i < arrayJson.Length && (arrayJson[i] == ' ' || arrayJson[i] == ',')) i++;
+                if (i >= arrayJson.Length || arrayJson[i] == ']') break;
+                if (arrayJson[i] == '{')
+                {
+                    var obj = ExtractBalanced(arrayJson, i, '{', '}');
+                    if (obj != null) { result.Add(obj); i += obj.Length; }
+                    else break;
+                }
+                else i++;
+            }
+            return result;
         }
 
         void Update() => Tunnel?.ProcessMessages();

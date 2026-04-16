@@ -211,6 +211,10 @@ public class BugpunchCrashHandler {
         private final String mCrashDir;
         private volatile long mLastTickMs;
         private volatile boolean mRunning = true;
+        // After firing an ANR, suppress further reports for this long.
+        // One ANR per hang is enough — the server groups by fingerprint anyway.
+        private static final long COOLDOWN_MS = 60_000;
+        private volatile long mLastAnrFiredMs = 0;
         private final android.os.Handler mMainHandler =
             new android.os.Handler(Looper.getMainLooper());
         // Self-ticking Runnable. Posts to main Handler every 1s; when the main
@@ -255,18 +259,30 @@ public class BugpunchCrashHandler {
                     continue;
                 }
 
-                long elapsed = System.currentTimeMillis() - mLastTickMs;
+                long now = System.currentTimeMillis();
+                long elapsed = now - mLastTickMs;
                 if (elapsed > mTimeoutMs) {
+                    // Cooldown: only fire one ANR per 60s window.
+                    if (now - mLastAnrFiredMs < COOLDOWN_MS) {
+                        mLastTickMs = now;
+                        continue;
+                    }
                     Log.e(TAG, "ANR detected! Main thread unresponsive for " + elapsed + "ms");
+                    mLastAnrFiredMs = now;
                     writeAnrReport(elapsed);
                     // Reset tick so we don't fire again immediately
-                    mLastTickMs = System.currentTimeMillis();
+                    mLastTickMs = now;
                 }
             }
         }
 
         private void writeAnrReport(long elapsedMs) {
             try {
+                // Capture a screenshot via PixelCopy (runs on compositor thread,
+                // works even when the main thread is stuck).
+                String shotPath = mCrashDir + "/anr_" + System.currentTimeMillis() + ".jpg";
+                BugpunchScreenshot.captureSync(shotPath, 75);
+
                 // Capture the main thread's stack trace
                 Thread mainThread = Looper.getMainLooper().getThread();
                 StackTraceElement[] stack = mainThread.getStackTrace();
@@ -277,6 +293,11 @@ public class BugpunchCrashHandler {
                 sb.append("timestamp:").append(System.currentTimeMillis()).append('\n');
                 sb.append("elapsed_ms:").append(elapsedMs).append('\n');
                 sb.append("thread:main\n");
+                // Include screenshot path so drainPendingCrashFiles can attach it.
+                File shotFile = new File(shotPath);
+                if (shotFile.exists() && shotFile.length() > 0) {
+                    sb.append("screenshot:").append(shotPath).append('\n');
+                }
                 sb.append("---STACK---\n");
                 for (StackTraceElement frame : stack) {
                     sb.append(frame.getClassName()).append('.')

@@ -56,6 +56,7 @@ extern "C" {
 + (void)startWithMaxEntries:(NSInteger)n;
 + (void)stop;
 + (NSString*)snapshotJson;
++ (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace;
 @end
 
 @interface BPShake : NSObject
@@ -220,11 +221,12 @@ static NSString* BPBuildMetadataJson(NSString* type, NSString* title,
         @"gpu":      d.metadata[@"gpu"] ?: @"",
     };
     m[@"app"] = @{
-        @"version":      d.metadata[@"appVersion"] ?: @"",
-        @"bundleId":     d.metadata[@"bundleId"] ?: @"",
-        @"unityVersion": d.metadata[@"unityVersion"] ?: @"",
-        @"scene":        d.metadata[@"scene"] ?: @"",
-        @"fps":          @(d.fps),
+        @"version":       d.metadata[@"appVersion"] ?: @"",
+        @"bundleId":      d.metadata[@"bundleId"] ?: @"",
+        @"unityVersion":  d.metadata[@"unityVersion"] ?: @"",
+        @"scene":         d.metadata[@"scene"] ?: @"",
+        @"fps":           @(d.fps),
+        @"installerMode": d.metadata[@"installerMode"] ?: @"unknown",
     };
     NSMutableDictionary* custom = [d.customData mutableCopy];
     if (extra) {
@@ -396,6 +398,15 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         }
     }
 
+    // Detect installer mode (App Store / TestFlight / sideload).
+    NSURL* receiptURL = [[NSBundle mainBundle] appStoreReceiptURL];
+    if (receiptURL) {
+        d.metadata[@"installerMode"] = [[receiptURL lastPathComponent]
+            isEqualToString:@"sandboxReceipt"] ? @"testflight" : @"store";
+    } else {
+        d.metadata[@"installerMode"] = @"sideload";
+    }
+
     // Crash handlers — write crashes to caches dir. Install also drains the uploader.
     NSString* caches = NSSearchPathForDirectoriesInDomains(
         NSCachesDirectory, NSUserDomainMask, YES).firstObject;
@@ -559,9 +570,18 @@ void Bugpunch_SetCustomData(const char* key, const char* value) {
     else d.customData[k] = [NSString stringWithUTF8String:value];
 }
 
+extern void BugpunchPerfMonitor_OnSceneChange(NSString* newScene);
+
 void Bugpunch_UpdateScene(const char* scene) {
     BPDebugMode* d = [BPDebugMode shared];
-    if (scene) d.metadata[@"scene"] = [NSString stringWithUTF8String:scene];
+    NSString* s = scene ? [NSString stringWithUTF8String:scene] : nil;
+    if (s) d.metadata[@"scene"] = s;
+    BugpunchPerfMonitor_OnSceneChange(s);
+}
+
+const char* Bugpunch_GetInstallerMode(void) {
+    NSString* m = [BPDebugMode shared].metadata[@"installerMode"] ?: @"unknown";
+    return strdup([m UTF8String]);
 }
 
 void Bugpunch_SubmitReport(const char* title, const char* description,
@@ -660,6 +680,19 @@ void Bugpunch_TraceScreenshot(const char* label, const char* tagsJson) {
     // BPPrepareTraceAttachments will include it. Tag the event with the
     // expected path so we can check on drain.
     ev.screenshotPath = shotPath;
+}
+
+/// Push a Unity C# log entry into the native log buffer. Called from
+/// BugpunchSceneTick via P/Invoke — ensures Unity Debug.Log output
+/// appears in crash report logs even when OSLogStore misses them.
+void Bugpunch_PushLogEntry(const char* type, const char* message,
+                           const char* stackTrace) {
+    if (!message) return;
+    NSString* nsType = type ? [NSString stringWithUTF8String:type] : @"Log";
+    NSString* nsMsg = [NSString stringWithUTF8String:message];
+    NSString* nsStack = (stackTrace && *stackTrace)
+        ? [NSString stringWithUTF8String:stackTrace] : @"";
+    [BPLogReader pushEntryWithType:nsType message:nsMsg stackTrace:nsStack];
 }
 
 }
@@ -776,6 +809,37 @@ static NSDate* gLastFetch;
     if (combined.count == 0) return @"[]";
     NSData* d = [NSJSONSerialization dataWithJSONObject:combined options:0 error:nil];
     return d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"[]";
+}
+
++ (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace {
+    if (!gLogBuffer) return;  // not started yet
+    @synchronized (gLogBuffer) {
+        // Dedup against tail (same as pullOnce).
+        NSMutableDictionary* last = gLogBuffer.lastObject;
+        if (!last && gStartupBuffer.count > 0) last = gStartupBuffer.lastObject;
+        if (last && [last[@"type"] isEqualToString:type]
+                 && [last[@"message"] isEqualToString:message]) {
+            last[@"repeat"] = @([last[@"repeat"] integerValue] + 1);
+            return;
+        }
+        NSMutableDictionary* entry = [@{
+            @"time": @([[NSDate date] timeIntervalSince1970] * 1000),
+            @"type": type ?: @"Log",
+            @"message": message ?: @"",
+            @"stackTrace": stackTrace ?: @"",
+            @"repeat": @1,
+        } mutableCopy];
+        if (!gStartupFull) {
+            [gStartupBuffer addObject:entry];
+            if ((NSInteger)gStartupBuffer.count >= kStartupSize) gStartupFull = YES;
+        } else {
+            [gLogBuffer addObject:entry];
+            while ((NSInteger)gLogBuffer.count > gMaxEntries) {
+                [gLogBuffer removeObjectAtIndex:0];
+                gSkippedCount++;
+            }
+        }
+    }
 }
 @end
 

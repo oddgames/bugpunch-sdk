@@ -64,7 +64,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 name = _config.EffectiveDeviceName,
                 platform = Application.platform.ToString(),
                 appVersion = Application.version,
-                scriptPermission = _config.scriptPermission.ToString().ToLower()
+                scriptPermission = _config.scriptPermission.ToString().ToLower(),
+                installerMode = BugpunchNative.GetInstallerMode()
             });
 
             using var req = new UnityWebRequest(url, "POST");
@@ -149,7 +150,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         // JSON serializable types
-        [Serializable] struct RegisterBody { public string deviceId, name, platform, appVersion, scriptPermission; }
+        [Serializable] struct RegisterBody { public string deviceId, name, platform, appVersion, scriptPermission, installerMode; }
         [Serializable] struct RegisterResponse { public string token; }
         [Serializable] public struct PendingScript { public string Id, Name, Code; }
         [Serializable] struct PollResponse { public PendingScript[] scripts; public bool upgradeToWebSocket; }

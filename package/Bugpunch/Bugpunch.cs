@@ -163,6 +163,44 @@ namespace ODDGames.Bugpunch
             return sb.ToString();
         }
 
+        // ── Game Config Variables ──
+
+        /// <summary>
+        /// Read a game config variable set on the Bugpunch dashboard.
+        /// Variables are fetched from the server on startup. Overrides
+        /// matched to this device's GPU/memory/screen/platform are
+        /// automatically applied — the caller gets the resolved value.
+        /// Returns <paramref name="defaultValue"/> if the key is not set
+        /// or config hasn't been fetched yet.
+        /// </summary>
+        public static string GetVariable(string key, string defaultValue = null)
+            => BugpunchClient.GetVariable(key, defaultValue);
+
+        /// <summary>Convenience: read a boolean game config variable.</summary>
+        public static bool GetVariableBool(string key, bool defaultValue = false)
+        {
+            var v = GetVariable(key);
+            if (v == null) return defaultValue;
+            if (v == "true" || v == "1") return true;
+            if (v == "false" || v == "0") return false;
+            return defaultValue;
+        }
+
+        /// <summary>Convenience: read an integer game config variable.</summary>
+        public static int GetVariableInt(string key, int defaultValue = 0)
+        {
+            var v = GetVariable(key);
+            return v != null && int.TryParse(v, out var n) ? n : defaultValue;
+        }
+
+        /// <summary>Convenience: read a float game config variable.</summary>
+        public static float GetVariableFloat(string key, float defaultValue = 0f)
+        {
+            var v = GetVariable(key);
+            return v != null && float.TryParse(v, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : defaultValue;
+        }
+
         static bool EnsureStarted()
         {
             if (BugpunchClient.Instance != null) return true;

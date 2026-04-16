@@ -92,6 +92,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Returns the installer mode detected by native at startup:
+        /// "store", "testflight", "sideload", or "unknown".
+        /// </summary>
+        public static string GetInstallerMode()
+        {
+#if UNITY_EDITOR
+            return "editor";
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchDebugMode");
+                return cls.CallStatic<string>("getMetadata", "installerMode") ?? "unknown";
+            }
+            catch { return "unknown"; }
+#elif UNITY_IOS
+            try { return Bugpunch_GetInstallerMode() ?? "unknown"; }
+            catch { return "unknown"; }
+#else
+            return "unknown";
+#endif
+        }
+
+        /// <summary>
         /// Prompt the user with a native consent sheet for debug recording. On
         /// accept, the native ring buffer starts (on Android this chains to the
         /// MediaProjection system dialog); on cancel nothing happens. No-op if
@@ -173,6 +196,19 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// queue, keyed by the pending directive + event ids stored when the
         /// directive match was received.
         /// </summary>
+        /// <summary>
+        /// Push a Unity log entry into the native log buffer. iOS only — on
+        /// Android, Unity writes to logcat which the native reader already tails.
+        /// </summary>
+        public static void PushLogEntry(string type, string message, string stackTrace)
+        {
+            if (!s_started) return;
+#if !UNITY_EDITOR && UNITY_IOS
+            try { Bugpunch_PushLogEntry(type ?? "Log", message ?? "", stackTrace ?? ""); }
+            catch { }
+#endif
+        }
+
         public static void PostPaxScriptResult(string directiveId, string resultJson)
         {
             if (!s_started || string.IsNullOrEmpty(directiveId)) return;
@@ -190,6 +226,31 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
+        /// <summary>
+        /// Start the native performance monitor with server-provided config.
+        /// Called after the game config fetch succeeds and performance.enabled
+        /// is true. The native monitor runs on a background thread, sampling
+        /// FPS and memory every 1s. It fires perf events on memory pressure
+        /// or sustained low FPS.
+        /// </summary>
+        public static void StartPerfMonitor(string configJson)
+        {
+            if (!s_started || string.IsNullOrEmpty(configJson)) return;
+#if UNITY_EDITOR
+            Debug.Log("[Bugpunch] Perf monitor: no-op in Editor");
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPerfMonitor");
+                cls.CallStatic("start", configJson);
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] StartPerfMonitor failed: {e.Message}"); }
+#elif UNITY_IOS
+            try { Bugpunch_StartPerfMonitor(configJson); }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] StartPerfMonitor failed: {e.Message}"); }
+#endif
+        }
+
 #if !UNITY_EDITOR && UNITY_IOS
         [DllImport("__Internal")] static extern bool Bugpunch_StartDebugMode(string configJson);
         [DllImport("__Internal")] static extern void Bugpunch_StopDebugMode();
@@ -201,6 +262,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_Trace(string label, string tagsJson);
         [DllImport("__Internal")] static extern void Bugpunch_TraceScreenshot(string label, string tagsJson);
         [DllImport("__Internal")] static extern void Bugpunch_PostPaxScriptResult(string directiveId, string resultJson);
+        [DllImport("__Internal")] static extern void Bugpunch_PushLogEntry(string type, string message, string stackTrace);
+        [DllImport("__Internal")] static extern void Bugpunch_StartPerfMonitor(string configJson);
+        [DllImport("__Internal")] static extern string Bugpunch_GetInstallerMode();
 #endif
 
         // ── Build config JSON from BugpunchConfig ScriptableObject ──
@@ -295,9 +359,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
     }
 
     /// <summary>
-    /// Pushes the active Unity scene name to native on change. The only piece
-    /// of runtime state that can't be derived on the native side. Added by
-    /// BugpunchClient after <see cref="BugpunchNative.Start"/>.
+    /// Pushes the active Unity scene name to native on change, and forwards
+    /// Unity log messages to the native log buffer on iOS (Android's logcat
+    /// reader already captures them). Added by BugpunchClient after
+    /// <see cref="BugpunchNative.Start"/>.
     /// </summary>
     public class BugpunchSceneTick : MonoBehaviour
     {
@@ -305,9 +370,38 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             SceneManager.activeSceneChanged += OnSceneChanged;
             BugpunchNative.UpdateScene(SceneManager.GetActiveScene().name);
+#if !UNITY_EDITOR && UNITY_IOS
+            Application.logMessageReceivedThreaded += OnLog;
+#endif
         }
-        void OnDisable() => SceneManager.activeSceneChanged -= OnSceneChanged;
+        void OnDisable()
+        {
+            SceneManager.activeSceneChanged -= OnSceneChanged;
+#if !UNITY_EDITOR && UNITY_IOS
+            Application.logMessageReceivedThreaded -= OnLog;
+#endif
+        }
 
         void OnSceneChanged(Scene _, Scene next) => BugpunchNative.UpdateScene(next.name);
+
+#if !UNITY_EDITOR && UNITY_IOS
+        static void OnLog(string condition, string stackTrace, LogType type)
+        {
+            string nativeType;
+            switch (type)
+            {
+                case LogType.Error:
+                case LogType.Assert:
+                    nativeType = "Error"; break;
+                case LogType.Warning:
+                    nativeType = "Warning"; break;
+                case LogType.Exception:
+                    nativeType = "Error"; break;
+                default:
+                    nativeType = "Log"; break;
+            }
+            BugpunchNative.PushLogEntry(nativeType, condition ?? "", stackTrace ?? "");
+        }
+#endif
     }
 }

@@ -44,6 +44,7 @@ public class BugpunchDebugMode {
 
     private static boolean sStarted;
     private static JSONObject sConfig;
+    private static Context sAppContext;
 
     // Live metadata — seeded from config. scene is pushed by Unity; fps is
     // measured natively via Choreographer.
@@ -69,6 +70,7 @@ public class BugpunchDebugMode {
     public static synchronized boolean startDebugMode(Activity activity, String configJson) {
         if (sStarted) return true;
         if (activity == null) { Log.w(TAG, "null activity"); return false; }
+        sAppContext = activity.getApplicationContext();
 
         try {
             sConfig = new JSONObject(configJson != null ? configJson : "{}");
@@ -86,6 +88,14 @@ public class BugpunchDebugMode {
             }
         }
 
+        // Detect installer mode (store vs sideload).
+        String installerPkg = null;
+        try { installerPkg = sAppContext.getPackageManager().getInstallerPackageName(sAppContext.getPackageName()); }
+        catch (Exception ignored) {}
+        sMetadata.put("installerMode",
+            "com.android.vending".equals(installerPkg) ? "store" :
+            (installerPkg == null || installerPkg.isEmpty()) ? "sideload" : "unknown");
+
         // 1) Crash handlers + ANR watchdog (already native; also drains uploader).
         int anrMs = sConfig.optInt("anrTimeoutMs", 5000);
         BugpunchCrashHandler.initialize(activity, anrMs);
@@ -101,7 +111,10 @@ public class BugpunchDebugMode {
         int logSize = sConfig.optInt("logBufferSize", 2000);
         BugpunchLogReader.start(logSize);
 
-        // 3) Shake detector (opt-in).
+        // 3) Cache the SurfaceView for ANR screenshot capture.
+        BugpunchScreenshot.cacheSurfaceView();
+
+        // 4) Shake detector (opt-in).
         JSONObject shake = sConfig.optJSONObject("shake");
         if (shake != null && shake.optBoolean("enabled", false)) {
             float threshold = (float) shake.optDouble("threshold", 2.5);
@@ -163,7 +176,15 @@ public class BugpunchDebugMode {
             }
             try {
                 JSONObject body = buildCrashPayload(raw);
-                BugpunchUploader.enqueueJson(activity, url, apiKey, body.toString());
+                // Check for a screenshot path embedded in the crash file.
+                String shotPath = extractField(raw, "screenshot");
+                if (shotPath != null && new java.io.File(shotPath).exists()) {
+                    // Use multipart upload so the screenshot is included.
+                    BugpunchUploader.enqueue(activity, url, apiKey,
+                        body.toString(), shotPath, "", "", null, null, null);
+                } else {
+                    BugpunchUploader.enqueueJson(activity, url, apiKey, body.toString());
+                }
                 BugpunchCrashHandler.deleteCrashFile(path);
                 Log.i(TAG, "queued pending crash: " + path);
             } catch (Throwable t) {
@@ -180,6 +201,15 @@ public class BugpunchDebugMode {
      * parse (build-id table, maps, etc.), so this doesn't need to be
      * exhaustive.
      */
+    /** Extract a header field from a crash file's key:value lines (before ---STACK---). */
+    private static String extractField(String raw, String key) {
+        for (String line : raw.split("\\r?\\n")) {
+            if (line.startsWith("---")) break;
+            if (line.startsWith(key + ":")) return line.substring(key.length() + 1);
+        }
+        return null;
+    }
+
     private static JSONObject buildCrashPayload(String raw) throws JSONException {
         JSONObject body = new JSONObject();
         body.put("stackTrace", raw);
@@ -206,14 +236,18 @@ public class BugpunchDebugMode {
         }
 
         // errorMessage is what the dashboard lists as the one-line summary.
+        // category controls the Issues page tab (crash / exception / anr).
         if ("NATIVE_SIGNAL".equals(type)) {
             body.put("errorMessage",
                 (signal != null ? signal : "NATIVE") +
                 (faultAddr != null ? " at " + faultAddr : ""));
+            body.put("category", "crash");
         } else if ("ANR".equals(type)) {
             body.put("errorMessage", "ANR — main thread unresponsive");
+            body.put("category", "anr");
         } else {
             body.put("errorMessage", type != null ? type : "Native crash");
+            body.put("category", "crash");
         }
         return body;
     }
@@ -503,6 +537,7 @@ public class BugpunchDebugMode {
     /** Update the current Unity scene name (the one thing we can't derive natively). */
     public static void updateScene(String scene) {
         if (scene != null) sMetadata.put("scene", scene);
+        BugpunchPerfMonitor.onSceneChange(scene);
     }
 
     // ── Accessors for BugpunchDirectives ─────────────────────────────────
@@ -518,6 +553,22 @@ public class BugpunchDebugMode {
 
     public static String getApiKey() {
         return sConfig != null ? sConfig.optString("apiKey", "") : "";
+    }
+
+    /** Application context, stored at startDebugMode time. */
+    public static Context getAppContext() { return sAppContext; }
+
+    /** Current FPS measured by the Choreographer frame callback. */
+    public static int getFps() { return sFps; }
+
+    /** Read a single metadata field (seeded from config, scene pushed by Unity). */
+    public static String getMetadata(String key) {
+        return sMetadata.getOrDefault(key, "");
+    }
+
+    /** Snapshot of the current custom data map (for perf event tags). */
+    public static Map<String, String> getCustomDataSnapshot() {
+        return new ConcurrentHashMap<>(sCustomData);
     }
 
     /**
@@ -760,6 +811,7 @@ public class BugpunchDebugMode {
             app.put("unityVersion", sMetadata.getOrDefault("unityVersion", ""));
             app.put("scene", sMetadata.getOrDefault("scene", ""));
             app.put("fps", sFps);
+            app.put("installerMode", sMetadata.getOrDefault("installerMode", "unknown"));
             m.put("app", app);
 
             JSONObject custom = new JSONObject(sCustomData);

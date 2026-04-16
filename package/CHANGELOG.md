@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-04-16
+
+### Added
+- **Game Config Variables** — new `Bugpunch.GetVariable`, `GetVariableBool`, `GetVariableInt`, `GetVariableFloat` API. Variables are fetched from the server on startup with device-matched overrides (GPU, memory, screen size, platform) automatically resolved.
+- **Native Performance Monitor** — new `BugpunchPerfMonitor` on Android (Java) and iOS (Obj-C). Enabled via server config, samples FPS and memory natively on a background thread, fires perf events on memory pressure or sustained low FPS.
+- **ANR Screenshots** — Android ANR reports now include a screenshot captured via PixelCopy from a cached SurfaceView (works even with the main thread stuck).
+- **iOS Log Push** — Unity `Debug.Log` entries are now pushed to the native iOS log buffer via P/Invoke. Android already captures these via logcat.
+- **Installer Mode Detection** — Android and iOS detect store/testflight/sideload at startup, included in crash metadata and device registration.
+
+### Changed
+- **ANR Cooldown** — 60s cooldown between ANR reports to prevent duplicate firing during a single hang.
+- **Crash Category Field** — crash payloads now include a `category` field (`crash`/`anr`) for server-side Issues page tab routing.
+
 ## [1.5.23] - 2026-04-16
 
 ### Changed

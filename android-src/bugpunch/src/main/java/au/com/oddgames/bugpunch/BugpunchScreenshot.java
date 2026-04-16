@@ -16,6 +16,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Native screenshot capture via PixelCopy. Reads the Unity SurfaceView's GPU
@@ -30,6 +33,54 @@ public class BugpunchScreenshot {
     private static HandlerThread sThread;
     private static Handler sHandler;
     private static final ConcurrentHashMap<String, Boolean> sInFlight = new ConcurrentHashMap<>();
+    // Cached for ANR screenshots — finding the SurfaceView requires the UI
+    // thread, which is stuck during an ANR.
+    private static volatile SurfaceView sCachedSurface;
+
+    /** Cache the Unity SurfaceView for later use by captureSync (ANR path). */
+    public static void cacheSurfaceView() {
+        Activity activity = BugpunchUnity.currentActivity();
+        if (activity == null) return;
+        activity.runOnUiThread(new Runnable() {
+            @Override public void run() {
+                try {
+                    View root = activity.getWindow().getDecorView();
+                    sCachedSurface = findSurfaceView(root);
+                } catch (Throwable t) {
+                    Log.w(TAG, "cacheSurfaceView failed", t);
+                }
+            }
+        });
+    }
+
+    /**
+     * Blocking screenshot for ANR path. Uses the cached SurfaceView + PixelCopy
+     * from a background thread. Times out after 3 seconds. Does NOT touch the
+     * main thread (which is stuck during ANR).
+     */
+    public static void captureSync(String outputPath, int quality) {
+        SurfaceView sv = sCachedSurface;
+        if (sv == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
+        try {
+            int w = sv.getWidth(), h = sv.getHeight();
+            if (w <= 0 || h <= 0) return;
+            final Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            final CountDownLatch latch = new CountDownLatch(1);
+            final AtomicReference<Boolean> success = new AtomicReference<>(false);
+            PixelCopy.request(sv, bitmap, new PixelCopy.OnPixelCopyFinishedListener() {
+                @Override public void onPixelCopyFinished(int result) {
+                    success.set(result == PixelCopy.SUCCESS);
+                    latch.countDown();
+                }
+            }, getHandler());
+            if (latch.await(3, TimeUnit.SECONDS) && success.get()) {
+                writeJpeg(bitmap, outputPath, quality);
+            }
+            bitmap.recycle();
+        } catch (Throwable t) {
+            Log.w(TAG, "captureSync failed", t);
+        }
+    }
 
     private static synchronized Handler getHandler() {
         if (sThread == null) {
