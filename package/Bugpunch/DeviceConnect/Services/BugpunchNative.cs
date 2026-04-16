@@ -212,7 +212,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Field(sb, "serverUrl", HttpBase(c.serverUrl)); sb.Append(',');
             Field(sb, "apiKey",    c.apiKey);              sb.Append(',');
             sb.Append("\"anrTimeoutMs\":").Append(c.anrTimeoutMs).Append(',');
-            sb.Append("\"logBufferSize\":500,");
+            sb.Append("\"logBufferSize\":2000,");
             sb.Append("\"autoReportCooldownSeconds\":30,");
             sb.Append("\"shake\":{\"enabled\":false,\"threshold\":2.5},");
             sb.Append("\"video\":{\"enabled\":true,\"bufferSeconds\":")

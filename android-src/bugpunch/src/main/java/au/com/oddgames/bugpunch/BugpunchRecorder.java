@@ -60,6 +60,18 @@ public class BugpunchRecorder {
     private volatile boolean mRunning;
     private MediaFormat mOutputFormat; // captured from INFO_OUTPUT_FORMAT_CHANGED
 
+    // Populated on every successful dump(). MediaCodec Surface-input PTS is
+    // System.nanoTime()-derived (exposed as microseconds by MediaCodec), so
+    // multiplying back by 1000 yields nanos comparable to MotionEvent event
+    // time nanos — which is what the touch recorder needs to align overlays.
+    private volatile long mLastDumpStartNanos;
+    private volatile long mLastDumpEndNanos;
+
+    public long getLastDumpStartNanos() { return mLastDumpStartNanos; }
+    public long getLastDumpEndNanos()   { return mLastDumpEndNanos; }
+    public int  getWidth()  { return mWidth;  }
+    public int  getHeight() { return mHeight; }
+
     // Ring buffer of encoded samples
     private final Deque<Sample> mBuffer = new ArrayDeque<>();
     private final Object mBufferLock = new Object();
@@ -248,6 +260,7 @@ public class BugpunchRecorder {
             muxer.start();
 
             long baseUs = snapshot[firstKeyframeIdx].ptsUs;
+            long lastPtsUs = baseUs;
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
             int written = 0;
             for (int i = firstKeyframeIdx; i < snapshot.length; i++) {
@@ -261,6 +274,7 @@ public class BugpunchRecorder {
                 info.presentationTimeUs = s.ptsUs - baseUs;
                 info.flags = s.flags;
                 muxer.writeSampleData(trackIdx, bb, info);
+                lastPtsUs = s.ptsUs;
                 written++;
             }
             if (written == 0) {
@@ -273,6 +287,8 @@ public class BugpunchRecorder {
                 return false;
             }
             muxer.stop();
+            mLastDumpStartNanos = baseUs * 1000L;
+            mLastDumpEndNanos   = lastPtsUs * 1000L;
             Log.i(TAG, "dump: wrote " + written + " samples to " + outputPath);
             return true;
         } catch (Exception e) {

@@ -74,6 +74,11 @@ struct EncodedSample {
     BOOL _running;
     BOOL _configured;
     CMTime _sessionStartTime;
+
+    // Host-time window of the last successful dump (seconds since boot,
+    // same clock as UITouch.timestamp — ReplayKit PTS uses host time).
+    double _lastDumpStartHost;
+    double _lastDumpEndHost;
 }
 
 + (instancetype)shared;
@@ -86,6 +91,8 @@ struct EncodedSample {
 - (BOOL)hasFootage;
 - (BOOL)dumpToPath:(NSString *)outputPath;
 - (int64_t)bufferSizeBytes;
+- (double)lastDumpStartHost;
+- (double)lastDumpEndHost;
 - (void)handleEncodedSampleBuffer:(CMSampleBufferRef)sampleBuffer;
 
 @end
@@ -565,6 +572,9 @@ static void BugpunchVTCompressionOutputCallback(void *outputCallbackRefCon,
     return size;
 }
 
+- (double)lastDumpStartHost { return _lastDumpStartHost; }
+- (double)lastDumpEndHost   { return _lastDumpEndHost; }
+
 // ---------------------------------------------------------------------------
 #pragma mark - Dump to MP4
 // ---------------------------------------------------------------------------
@@ -802,7 +812,14 @@ static void BugpunchVTCompressionOutputCallback(void *outputCallbackRefCon,
     CFRelease(formatDesc);
 
     if (writeSuccess) {
-        BPLog(@"dump: wrote %d samples to %@", samplesWritten, outputPath);
+        // Remember host-time window so sidecar data (touches) can be filtered
+        // and rebased to match the dumped MP4's t=0.
+        EncodedSample *lastSampleInRange =
+            (EncodedSample *)[snapshot.lastObject pointerValue];
+        _lastDumpStartHost = CMTimeGetSeconds(basePts);
+        _lastDumpEndHost   = CMTimeGetSeconds(lastSampleInRange->pts);
+        BPLog(@"dump: wrote %d samples to %@ (host window %.3f..%.3f)",
+              samplesWritten, outputPath, _lastDumpStartHost, _lastDumpEndHost);
     }
 
     return writeSuccess;
@@ -870,6 +887,16 @@ int64_t BugpunchRing_GetBufferSizeBytes(void)
     @autoreleasepool {
         return [[BugpunchRingRecorderImpl shared] bufferSizeBytes];
     }
+}
+
+double BugpunchRing_GetLastDumpStartHostTime(void)
+{
+    return [[BugpunchRingRecorderImpl shared] lastDumpStartHost];
+}
+
+double BugpunchRing_GetLastDumpEndHostTime(void)
+{
+    return [[BugpunchRingRecorderImpl shared] lastDumpEndHost];
 }
 
 } // extern "C"

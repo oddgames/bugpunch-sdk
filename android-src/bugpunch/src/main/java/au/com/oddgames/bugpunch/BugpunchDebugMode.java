@@ -23,11 +23,15 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.GZIPOutputStream;
 
 /**
  * Master coordinator for Bugpunch debug mode. Unity C# calls startDebugMode()
@@ -94,7 +98,7 @@ public class BugpunchDebugMode {
             sMetadata.getOrDefault("gpu", ""));
 
         // 2) Log reader — our own logcat ring buffer.
-        int logSize = sConfig.optInt("logBufferSize", 500);
+        int logSize = sConfig.optInt("logBufferSize", 2000);
         BugpunchLogReader.start(logSize);
 
         // 3) Shake detector (opt-in).
@@ -117,7 +121,101 @@ public class BugpunchDebugMode {
 
         sStarted = true;
         Log.i(TAG, "debug mode started");
+
+        // 6) Drain any native crash reports written by the signal handler /
+        //    ANR watchdog on a previous launch. We do this AFTER everything
+        //    else is wired so metadata is available and the uploader has a
+        //    valid URL + API key.
+        try { drainPendingCrashFiles(activity); } catch (Throwable t) {
+            Log.w(TAG, "crash drain failed", t);
+        }
         return true;
+    }
+
+    /**
+     * Pick up every .crash file the native handler / ANR watchdog wrote on
+     * a previous launch, wrap the raw text as a /api/crashes JSON payload,
+     * enqueue via the durable uploader (so a failed POST resumes on the
+     * next launch), and delete the local file.
+     *
+     * Intentionally sends the **raw** crash text as the `stackTrace` field —
+     * server's crashSymbolicator parses it to find the ---STACK--- and
+     * ---BUILD_IDS--- sections. This means no format divergence between
+     * what we wrote and what we upload.
+     */
+    private static void drainPendingCrashFiles(Activity activity) {
+        String[] paths = BugpunchCrashHandler.getPendingCrashFiles(activity);
+        if (paths == null || paths.length == 0) return;
+
+        String serverUrl = sConfig != null ? sConfig.optString("serverUrl", "") : "";
+        String apiKey    = sConfig != null ? sConfig.optString("apiKey", "") : "";
+        if (serverUrl.isEmpty() || apiKey.isEmpty()) {
+            Log.w(TAG, "native crashes pending but serverUrl/apiKey not configured");
+            return;
+        }
+        String url = serverUrl.replaceAll("/+$", "") + "/api/crashes";
+
+        for (String path : paths) {
+            String raw = BugpunchCrashHandler.readCrashFile(path);
+            if (raw == null || raw.isEmpty()) {
+                BugpunchCrashHandler.deleteCrashFile(path);
+                continue;
+            }
+            try {
+                JSONObject body = buildCrashPayload(raw);
+                BugpunchUploader.enqueueJson(activity, url, apiKey, body.toString());
+                BugpunchCrashHandler.deleteCrashFile(path);
+                Log.i(TAG, "queued pending crash: " + path);
+            } catch (Throwable t) {
+                Log.w(TAG, "failed to queue crash " + path, t);
+                // Leave the file on disk so next launch retries.
+            }
+        }
+    }
+
+    /**
+     * Map the flat <code>key:value</code> header lines bp.c writes into the
+     * JSON fields crashService.ingestCrash expects. Anything unrecognized
+     * still lives inside the full `stackTrace` string for the server to
+     * parse (build-id table, maps, etc.), so this doesn't need to be
+     * exhaustive.
+     */
+    private static JSONObject buildCrashPayload(String raw) throws JSONException {
+        JSONObject body = new JSONObject();
+        body.put("stackTrace", raw);
+        body.put("platform", "android");
+
+        // Pull the header fields bp.c writes before ---STACK---. Each line is
+        // "key:value" — stop at the first section marker.
+        String signal = null, faultAddr = null, type = null;
+        for (String line : raw.split("\\r?\\n")) {
+            if (line.startsWith("---")) break;
+            int c = line.indexOf(':');
+            if (c < 0) continue;
+            String k = line.substring(0, c);
+            String v = line.substring(c + 1);
+            switch (k) {
+                case "signal":       signal = v; break;
+                case "fault_addr":   faultAddr = v; break;
+                case "type":         type = v; break;
+                case "app_version":  body.put("buildVersion", v); break;
+                case "bundle_id":    body.put("bundleId", v); break;
+                case "device_model": body.put("deviceName", v); break;
+                default: /* fall through — preserved in stackTrace */ break;
+            }
+        }
+
+        // errorMessage is what the dashboard lists as the one-line summary.
+        if ("NATIVE_SIGNAL".equals(type)) {
+            body.put("errorMessage",
+                (signal != null ? signal : "NATIVE") +
+                (faultAddr != null ? " at " + faultAddr : ""));
+        } else if ("ANR".equals(type)) {
+            body.put("errorMessage", "ANR — main thread unresponsive");
+        } else {
+            body.put("errorMessage", type != null ? type : "Native crash");
+        }
+        return body;
     }
 
     private static void startFrameTick() {
@@ -272,6 +370,10 @@ public class BugpunchDebugMode {
         int bitrate = video != null ? video.optInt("bitrate", 2_000_000) : 2_000_000;
         int windowSec = video != null ? video.optInt("bufferSeconds", 30) : 30;
         DisplayMetrics dm = activity.getResources().getDisplayMetrics();
+        // Touch recorder shares the same window; sized generously so a
+        // multi-finger session over the buffer window never drops events.
+        BugpunchTouchRecorder.configure(windowSec * 600);
+        BugpunchTouchRecorder.start(activity);
         // Fire BugpunchProjectionRequest which handles the system-level
         // MediaProjection consent dialog and kicks off the recorder service.
         // Empty callback — we don't need Unity to hear about it; state lives
@@ -285,6 +387,7 @@ public class BugpunchDebugMode {
         if (!sStarted) return;
         BugpunchShakeDetector.stop();
         BugpunchLogReader.stop();
+        BugpunchTouchRecorder.stop();
         BugpunchCrashHandler.shutdown();
         sStarted = false;
     }
@@ -475,18 +578,19 @@ public class BugpunchDebugMode {
         }
 
         // Silent path — assemble manifest directly.
-        final String videoPath = dumpRingIfRunning(activity);
+        final DumpResult dump = dumpRingAndTouches(activity);
         BugpunchScreenshot.capture("rb_" + System.nanoTime(), shotPath, 85, "", "");
 
         JSONObject extra = parseOr(extraJson);
         String logsJson = BugpunchLogReader.snapshotJson();
+        String logsGzPath = writeGzipLogs(activity, logsJson);
         String metadataJson = buildMetadataJson(type, title, description,
-            extra, logsJson, /* reporterEmail */ null, /* severity */ null);
+            extra, /* reporterEmail */ null, /* severity */ null, dump);
         Object[] traceAttach = prepareTraceAttachments(activity);
         String tracesJsonPath = traceAttach != null ? (String) traceAttach[0] : null;
         String[] traceShots = traceAttach != null ? (String[]) traceAttach[1] : null;
-        enqueueManifest(activity, endpointFor(type), metadataJson, shotPath, videoPath, null,
-            tracesJsonPath, traceShots);
+        enqueueManifest(activity, endpointFor(type), metadataJson, shotPath, dump.videoPath, null,
+            tracesJsonPath, traceShots, logsGzPath);
     }
 
     /**
@@ -501,15 +605,57 @@ public class BugpunchDebugMode {
         Activity activity = BugpunchUnity.currentActivity();
         if (activity == null) return;
 
-        String videoPath = dumpRingIfRunning(activity);
+        DumpResult dump = dumpRingAndTouches(activity);
         String logsJson = BugpunchLogReader.snapshotJson();
+        String logsGzPath = writeGzipLogs(activity, logsJson);
         String metadataJson = buildMetadataJson("bug", title, description,
-            null, logsJson, email, severity);
+            null, email, severity, dump);
         Object[] traceAttach = prepareTraceAttachments(activity);
         String tracesJsonPath = traceAttach != null ? (String) traceAttach[0] : null;
         String[] traceShots = traceAttach != null ? (String[]) traceAttach[1] : null;
         enqueueManifest(activity, "/api/reports/bug", metadataJson,
-            screenshotPath, videoPath, annotationsPath, tracesJsonPath, traceShots);
+            screenshotPath, dump.videoPath, annotationsPath, tracesJsonPath, traceShots, logsGzPath);
+    }
+
+    /**
+     * Holds the result of dumping the video ring: the MP4 path (or null) and,
+     * if any touches landed in the video's PTS window, a JSON array of touch
+     * records (rebased to video t=0) and a video descriptor for the report
+     * metadata. Mirrors iOS BPDumpRingAndTouches.
+     */
+    private static final class DumpResult {
+        String videoPath;
+        JSONArray touches;
+        JSONObject videoMeta;
+    }
+
+    private static DumpResult dumpRingAndTouches(Activity activity) {
+        DumpResult r = new DumpResult();
+        r.videoPath = dumpRingIfRunning(activity);
+        if (r.videoPath == null) return r;
+
+        BugpunchRecorder rec = BugpunchRecorder.getInstance();
+        long startNs = rec.getLastDumpStartNanos();
+        long endNs   = rec.getLastDumpEndNanos();
+        if (endNs <= startNs) return r;
+
+        try {
+            JSONObject v = new JSONObject();
+            v.put("durationMs", (int) ((endNs - startNs) / 1_000_000L));
+            int w = rec.getWidth(), h = rec.getHeight();
+            if (w > 0 && h > 0) {
+                v.put("width", w);
+                v.put("height", h);
+            }
+            r.videoMeta = v;
+        } catch (JSONException ignored) {}
+
+        String touchesJson = BugpunchTouchRecorder.snapshotJson(startNs, endNs);
+        if (touchesJson != null) {
+            try { r.touches = new JSONArray(touchesJson); }
+            catch (JSONException ignored) {}
+        }
+        return r;
     }
 
     private static String dumpRingIfRunning(Activity activity) {
@@ -539,7 +685,8 @@ public class BugpunchDebugMode {
     private static void enqueueManifest(Activity activity, String endpointPath,
                                         String metadataJson, String shotPath,
                                         String videoPath, String annotationsPath,
-                                        String tracesJsonPath, String[] traceScreenshotPaths) {
+                                        String tracesJsonPath, String[] traceScreenshotPaths,
+                                        String logsGzPath) {
         String serverUrl = sConfig.optString("serverUrl", "");
         String apiKey = sConfig.optString("apiKey", "");
         if (serverUrl.isEmpty() || apiKey.isEmpty()) {
@@ -548,7 +695,8 @@ public class BugpunchDebugMode {
         }
         String url = serverUrl.replaceAll("/+$", "") + endpointPath;
         BugpunchUploader.enqueue(activity, url, apiKey, metadataJson,
-            shotPath, videoPath, annotationsPath, tracesJsonPath, traceScreenshotPaths);
+            shotPath, videoPath, annotationsPath, tracesJsonPath, traceScreenshotPaths,
+            logsGzPath);
     }
 
     private static String endpointFor(String type) {
@@ -568,9 +716,26 @@ public class BugpunchDebugMode {
         try { return new JSONObject(json); } catch (JSONException e) { return new JSONObject(); }
     }
 
+    /** Gzip a JSON string to a temp file. Returns the path, or null on error. */
+    private static String writeGzipLogs(Activity activity, String logsJson) {
+        if (logsJson == null || logsJson.isEmpty() || logsJson.equals("[]")) return null;
+        try {
+            File f = new File(activity.getCacheDir(), "bp_logs_" + System.nanoTime() + ".json.gz");
+            FileOutputStream fos = new FileOutputStream(f);
+            GZIPOutputStream gz = new GZIPOutputStream(fos);
+            gz.write(logsJson.getBytes("UTF-8"));
+            gz.close();
+            return f.getAbsolutePath();
+        } catch (IOException e) {
+            Log.w(TAG, "writeGzipLogs failed", e);
+            return null;
+        }
+    }
+
     private static String buildMetadataJson(String type, String title, String description,
-                                            JSONObject extra, String logsJson,
-                                            String reporterEmail, String severity) {
+                                            JSONObject extra,
+                                            String reporterEmail, String severity,
+                                            DumpResult dump) {
         try {
             JSONObject m = new JSONObject();
             m.put("type", type != null ? type : "bug");
@@ -606,8 +771,14 @@ public class BugpunchDebugMode {
             }
             m.put("customData", custom);
 
-            if (logsJson != null && !logsJson.isEmpty()) {
-                m.put("logs", new JSONArray(logsJson));
+            // Top-level `touches` + `videoMeta` matching iOS. Dashboard uses
+            // these to overlay animated finger indicators on the video clip.
+            // Key is `videoMeta` (not `video`) — the multipart uploader uses
+            // `video` for the MP4 binary; the server middleware would clobber
+            // this object.
+            if (dump != null) {
+                if (dump.videoMeta != null) m.put("videoMeta", dump.videoMeta);
+                if (dump.touches != null)   m.put("touches", dump.touches);
             }
             return m.toString();
         } catch (JSONException e) {

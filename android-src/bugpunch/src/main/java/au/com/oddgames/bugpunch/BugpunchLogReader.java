@@ -6,21 +6,32 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tails our own process's logcat into a bounded ring buffer. Android 7+
  * restricts logcat to the calling app's own lines which is exactly what we
  * want — Unity's Debug.Log output comes through with tag "Unity".
+ *
+ * Keeps the first STARTUP_SIZE entries separately so they're never evicted,
+ * then a rolling ring of the most recent entries. On snapshot, emits:
+ *   [startup entries] + [breaker with skipped count] + [recent entries]
  */
 public class BugpunchLogReader {
     private static final String TAG = "BugpunchLogReader";
+    private static final int STARTUP_SIZE = 200;
 
     private static Thread sThread;
     private static final AtomicBoolean sRunning = new AtomicBoolean();
+    private static List<Entry> sStartupBuffer = new ArrayList<>();
     private static Deque<Entry> sBuffer = new ArrayDeque<>();
-    private static int sMaxEntries = 500;
+    private static int sMaxEntries = 2000;
+    private static long sSkippedCount = 0;
+    private static boolean sStartupFull = false;
+    private static long sTotalIngested = 0;
     private static final Object sLock = new Object();
 
     private static class Entry {
@@ -28,12 +39,20 @@ public class BugpunchLogReader {
         final String level;
         final String tag;
         final String message;
-        Entry(long t, String l, String tg, String m) { time = t; level = l; tag = tg; message = m; }
+        int repeat;
+        Entry(long t, String l, String tg, String m) { time = t; level = l; tag = tg; message = m; repeat = 1; }
+        boolean matches(Entry o) {
+            return o != null && level.equals(o.level) && tag.equals(o.tag) && message.equals(o.message);
+        }
     }
 
     public static synchronized void start(int maxEntries) {
         if (sRunning.get()) return;
         sMaxEntries = Math.max(50, maxEntries);
+        sStartupBuffer = new ArrayList<>();
+        sStartupFull = false;
+        sSkippedCount = 0;
+        sTotalIngested = 0;
         sRunning.set(true);
         sThread = new Thread(new Runnable() {
             @Override public void run() { runLoop(); }
@@ -50,23 +69,43 @@ public class BugpunchLogReader {
 
     /** Snapshot the current buffer as a JSON array string. */
     public static String snapshotJson() {
-        StringBuilder sb = new StringBuilder(4096);
+        StringBuilder sb = new StringBuilder(8192);
         sb.append('[');
         synchronized (sLock) {
             boolean first = true;
+            // 1) Startup entries (always preserved).
+            for (Entry e : sStartupBuffer) {
+                if (!first) sb.append(',');
+                first = false;
+                appendEntry(sb, e);
+            }
+            // 2) Breaker if entries were skipped between startup and ring.
+            if (sSkippedCount > 0) {
+                if (!first) sb.append(',');
+                first = false;
+                sb.append("{\"type\":\"Log\",\"message\":\"--- ")
+                    .append(sSkippedCount)
+                    .append(" log entries omitted ---\",\"stackTrace\":\"\"}");
+            }
+            // 3) Recent ring buffer entries.
             for (Entry e : sBuffer) {
                 if (!first) sb.append(',');
                 first = false;
-                sb.append('{');
-                sb.append("\"time\":").append(e.time).append(',');
-                sb.append("\"type\":\"").append(jsonEsc(mapType(e.level))).append("\",");
-                sb.append("\"message\":\"").append(jsonEsc(e.tag + ": " + e.message)).append("\",");
-                sb.append("\"stackTrace\":\"\"");
-                sb.append('}');
+                appendEntry(sb, e);
             }
         }
         sb.append(']');
         return sb.toString();
+    }
+
+    private static void appendEntry(StringBuilder sb, Entry e) {
+        sb.append('{');
+        sb.append("\"time\":").append(e.time).append(',');
+        sb.append("\"type\":\"").append(jsonEsc(mapType(e.level))).append("\",");
+        sb.append("\"message\":\"").append(jsonEsc(e.tag + ": " + e.message)).append("\",");
+        sb.append("\"stackTrace\":\"\"");
+        if (e.repeat > 1) sb.append(",\"repeat\":").append(e.repeat);
+        sb.append('}');
     }
 
     // ── Reader loop ──
@@ -85,8 +124,28 @@ public class BugpunchLogReader {
                 Entry e = parse(line);
                 if (e == null) continue;
                 synchronized (sLock) {
+                    sTotalIngested++;
+                    // Dedup: collapse consecutive identical messages.
+                    // Check ring buffer tail first, then startup buffer tail.
+                    Entry last = sBuffer.peekLast();
+                    if (last == null && !sStartupBuffer.isEmpty())
+                        last = sStartupBuffer.get(sStartupBuffer.size() - 1);
+                    if (last != null && last.matches(e)) {
+                        last.repeat++;
+                        continue;
+                    }
+                    // Fill startup buffer first.
+                    if (!sStartupFull) {
+                        sStartupBuffer.add(e);
+                        if (sStartupBuffer.size() >= STARTUP_SIZE) sStartupFull = true;
+                        continue;
+                    }
+                    // Ring buffer.
                     sBuffer.addLast(e);
-                    while (sBuffer.size() > sMaxEntries) sBuffer.removeFirst();
+                    while (sBuffer.size() > sMaxEntries) {
+                        sBuffer.removeFirst();
+                        sSkippedCount++;
+                    }
                 }
             }
         } catch (IOException e) {

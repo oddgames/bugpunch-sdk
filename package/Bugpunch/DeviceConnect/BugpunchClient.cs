@@ -211,7 +211,16 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             // C# managed exception catcher — forwards to native ReportBug.
             if (Config.enableNativeCrashHandler)
+            {
+                // Ensure exception logs include stack traces. Default in
+                // release builds can be None, which would leave us with just
+                // the message and no frames at all. Don't downgrade if the
+                // game has explicitly set Full.
+                if (Application.GetStackTraceLogType(LogType.Exception) == StackTraceLogType.None)
+                    Application.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
+
                 UnityExceptionForwarder.Install();
+            }
 
             // NOTE: WebRTCStreamer is NOT created here. It is initialized lazily
             // when a debug session starts (or WebSocket connects). This avoids

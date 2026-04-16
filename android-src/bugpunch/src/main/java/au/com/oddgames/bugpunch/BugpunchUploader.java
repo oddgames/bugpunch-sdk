@@ -71,19 +71,21 @@ public class BugpunchUploader {
                                final String metadataJson, final String screenshotPath,
                                final String videoPath, final String annotationsPath) {
         enqueue(ctx, url, apiKey, metadataJson, screenshotPath, videoPath,
-            annotationsPath, null, null);
+            annotationsPath, null, null, null);
     }
 
     /**
-     * Full overload that accepts trace attachments. {@code tracesJsonPath} is
-     * a multipart field {@code traces} (application/json). {@code traceScreenshotPaths}
-     * each become multipart fields {@code trace_0}, {@code trace_1}, ...
+     * Full overload that accepts trace attachments and gzip'd logs.
+     * {@code tracesJsonPath} is a multipart field {@code traces} (application/json).
+     * {@code traceScreenshotPaths} each become multipart fields {@code trace_0}, {@code trace_1}, ...
+     * {@code logsGzPath} is a gzip'd JSON array of log entries sent as the {@code logs} field.
      */
     public static void enqueue(Context ctx, final String url, final String apiKey,
                                final String metadataJson, final String screenshotPath,
                                final String videoPath, final String annotationsPath,
                                final String tracesJsonPath,
-                               final String[] traceScreenshotPaths) {
+                               final String[] traceScreenshotPaths,
+                               final String logsGzPath) {
         ensureStarted(ctx);
         sHandler.post(new Runnable() {
             @Override public void run() {
@@ -133,6 +135,15 @@ public class BugpunchUploader {
                         f.put("path", tracesJsonPath);
                         files.put(f);
                         cleanup.put(tracesJsonPath);
+                    }
+                    if (logsGzPath != null && !logsGzPath.isEmpty()) {
+                        JSONObject f = new JSONObject();
+                        f.put("field", "logs");
+                        f.put("filename", "logs.json.gz");
+                        f.put("contentType", "application/gzip");
+                        f.put("path", logsGzPath);
+                        files.put(f);
+                        cleanup.put(logsGzPath);
                     }
                     if (traceScreenshotPaths != null) {
                         for (int i = 0; i < traceScreenshotPaths.length; i++) {

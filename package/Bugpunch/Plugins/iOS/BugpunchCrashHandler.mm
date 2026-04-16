@@ -24,10 +24,25 @@
 #include <sys/sysctl.h>
 #include <mach/mach.h>
 #include <pthread.h>
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
 
 #define MAX_PATH 512
 #define MAX_FRAMES 64
 #define MAX_METADATA 256
+// Mirrors the Android module table. Each entry is a loaded image with its
+// Mach-O LC_UUID build-id — the same identifier the server's symbol store
+// uses as primary key (see /api/symbols/check).
+#define MAX_MODULES 128
+#define MAX_UUID_HEX 33  /* 16-byte Mach-O UUID → 32 hex + null */
+
+struct bp_module {
+    uintptr_t load_addr;        /* header address in memory, matches the frame PCs */
+    char uuid[MAX_UUID_HEX];    /* hex-encoded LC_UUID, or "" if none */
+    char path[MAX_PATH];        /* dyld image name */
+};
+static struct bp_module s_modules[MAX_MODULES];
+static int s_module_count = 0;
 
 #pragma mark - Static state
 
@@ -120,6 +135,75 @@ static int build_crash_path(char* path, int maxlen, const char* prefix) {
     return pi;
 }
 
+#pragma mark - Module table capture (LC_UUID per dyld image)
+
+// Scan a Mach-O header's load commands for LC_UUID, hex-encode the 16-byte
+// UUID into `out`. Returns 1 on success.
+static int read_macho_uuid(const struct mach_header* hdr, char* out, int out_size) {
+    if (!hdr) { out[0] = '\0'; return 0; }
+    int is64 = (hdr->magic == MH_MAGIC_64 || hdr->magic == MH_CIGAM_64);
+    if (!is64 && hdr->magic != MH_MAGIC && hdr->magic != MH_CIGAM) {
+        out[0] = '\0'; return 0;
+    }
+    const uint8_t* cmds = (const uint8_t*)hdr +
+        (is64 ? sizeof(struct mach_header_64) : sizeof(struct mach_header));
+    uint32_t ncmds = hdr->ncmds;
+    for (uint32_t i = 0; i < ncmds; i++) {
+        const struct load_command* lc = (const struct load_command*)cmds;
+        if (lc->cmd == LC_UUID && out_size >= 33) {
+            const struct uuid_command* uc = (const struct uuid_command*)lc;
+            static const char hex[] = "0123456789abcdef";
+            for (int b = 0; b < 16; b++) {
+                out[b * 2]     = hex[(uc->uuid[b] >> 4) & 0xf];
+                out[b * 2 + 1] = hex[uc->uuid[b] & 0xf];
+            }
+            out[32] = '\0';
+            return 1;
+        }
+        cmds += lc->cmdsize;
+    }
+    out[0] = '\0';
+    return 0;
+}
+
+// Populate the module table from dyld. Called once at install time —
+// _dyld_* is not strictly async-signal-safe, so we never call it from the
+// signal handler. Late-loaded images (after Bugpunch init) are missed;
+// same tradeoff as Android.
+static void capture_modules(void) {
+    uint32_t n = _dyld_image_count();
+    s_module_count = 0;
+    for (uint32_t i = 0; i < n && s_module_count < MAX_MODULES; i++) {
+        const struct mach_header* hdr = _dyld_get_image_header(i);
+        const char* name = _dyld_get_image_name(i);
+        if (!hdr) continue;
+
+        struct bp_module* m = &s_modules[s_module_count];
+        m->load_addr = (uintptr_t)hdr;
+        const char* p = name ? name : "";
+        int j = 0;
+        while (p[j] && j < MAX_PATH - 1) { m->path[j] = p[j]; j++; }
+        m->path[j] = '\0';
+        read_macho_uuid(hdr, m->uuid, sizeof(m->uuid));
+        s_module_count++;
+    }
+}
+
+// Write the ---BUILD_IDS--- section consumed by server/crashSymbolicator.
+// Format matches bp.c exactly: "<load_addr_hex> <uuid|-> <path|->".
+static void write_build_ids(int fd) {
+    safe_write_str(fd, "---BUILD_IDS---\n");
+    for (int i = 0; i < s_module_count; i++) {
+        safe_write_hex(fd, s_modules[i].load_addr);
+        safe_write_str(fd, " ");
+        safe_write_str(fd, s_modules[i].uuid[0] ? s_modules[i].uuid : "-");
+        safe_write_str(fd, " ");
+        safe_write_str(fd, s_modules[i].path[0] ? s_modules[i].path : "-");
+        safe_write_str(fd, "\n");
+    }
+    safe_write_str(fd, "---END_BUILD_IDS---\n");
+}
+
 static void write_metadata(int fd) {
     safe_write_str(fd, "platform:iOS\n");
     safe_write_str(fd, "app_version:"); safe_write_str(fd, s_app_version); safe_write_str(fd, "\n");
@@ -177,6 +261,8 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* ucontext) {
         }
     }
     safe_write_str(fd, "---END---\n");
+
+    write_build_ids(fd);
 
     close(fd);
 
@@ -261,19 +347,29 @@ static void* mach_exception_thread(void* arg) {
             [report appendFormat:@"gpu:%s\n", s_gpu_name];
 
             // Get stack trace of the crashing thread
+            // Hex-only frames — the server's crashSymbolicator regex matches
+            // `^0x[0-9a-f]+$` per line, so a backtrace_symbols-formatted
+            // line would be silently skipped. dSYM resolution on the server
+            // produces better symbols than backtrace_symbols anyway.
             [report appendString:@"---STACK---\n"];
             void* frames[MAX_FRAMES];
             int count = backtrace(frames, MAX_FRAMES);
-            char** symbols = backtrace_symbols(frames, count);
             for (int i = 0; i < count; i++) {
-                if (symbols && symbols[i]) {
-                    [report appendFormat:@"%s\n", symbols[i]];
-                } else {
-                    [report appendFormat:@"0x%lx\n", (unsigned long)frames[i]];
-                }
+                [report appendFormat:@"0x%lx\n", (unsigned long)frames[i]];
             }
-            if (symbols) free(symbols);
             [report appendString:@"---END---\n"];
+
+            // Build-ID table — identical format to the signal-handler path,
+            // identical format to Android's bp.c. Server symbolicator parses
+            // one set of rules for all three.
+            [report appendString:@"---BUILD_IDS---\n"];
+            for (int i = 0; i < s_module_count; i++) {
+                [report appendFormat:@"0x%lx %s %s\n",
+                    (unsigned long)s_modules[i].load_addr,
+                    s_modules[i].uuid[0] ? s_modules[i].uuid : "-",
+                    s_modules[i].path[0] ? s_modules[i].path : "-"];
+            }
+            [report appendString:@"---END_BUILD_IDS---\n"];
 
             // Write to disk
             NSError* error = nil;
@@ -361,7 +457,12 @@ bool Bugpunch_InstallCrashHandlers(const char* crashDir) {
         }
     }
 
-    NSLog(@"[BugpunchCrash] Signal handlers installed (dir=%s)", s_crash_dir);
+    // Snapshot loaded images so the signal handler can write a build-id
+     // table without calling the non-signal-safe _dyld_* APIs.
+    capture_modules();
+
+    NSLog(@"[BugpunchCrash] Signal handlers installed (dir=%s, modules=%d)",
+        s_crash_dir, s_module_count);
 
     // Drain anything left in the upload queue from previous launches.
     extern void Bugpunch_DrainUploadQueue(void);

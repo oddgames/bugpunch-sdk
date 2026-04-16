@@ -3,9 +3,14 @@ package au.com.oddgames.bugpunch;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.text.InputType;
 import android.util.Log;
@@ -17,6 +22,7 @@ import android.view.WindowInsets;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -36,6 +42,17 @@ import android.widget.Toast;
 public class BugpunchReportActivity extends Activity {
     private static final String TAG = "BugpunchReport";
     private static final int REQ_ANNOTATE = 4201;
+
+    // ── Palette (kept in sync with the iOS form). ──
+    private static final int COLOR_BG          = 0xFF0B0D10;
+    private static final int COLOR_SURFACE     = 0xFF171B20;
+    private static final int COLOR_SURFACE_ALT = 0xFF1E242B;
+    private static final int COLOR_BORDER      = 0xFF2A3139;
+    private static final int COLOR_TEXT        = 0xFFF1F4F7;
+    private static final int COLOR_TEXT_DIM    = 0xFF8B95A2;
+    private static final int COLOR_TEXT_LABEL  = 0xFFB8C2CF;
+    private static final int COLOR_ACCENT      = 0xFF3B82F6;
+    private static final int COLOR_ACCENT_DARK = 0xFF2563EB;
 
     private static final String EX_SHOT = "bp_shot";
     private static final String EX_TITLE = "bp_title";
@@ -89,103 +106,232 @@ public class BugpunchReportActivity extends Activity {
         BugpunchDebugMode.clearReportInProgress();
     }
 
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // Activity has android:configChanges="orientation|screenSize" so the OS
+        // won't recreate us. Snapshot the form values, rebuild for the new
+        // orientation, restore them.
+        String email = mEmail != null ? mEmail.getText().toString() : null;
+        String desc = mDescription != null ? mDescription.getText().toString() : null;
+        int sev = mSeverity != null ? mSeverity.getSelectedItemPosition() : 1;
+        buildUi();
+        if (email != null) mEmail.setText(email);
+        if (desc != null) mDescription.setText(desc);
+        mSeverity.setSelection(sev);
+    }
+
+    private boolean isLandscape() {
+        return getResources().getConfiguration().orientation
+            == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
     private void buildUi() {
-        final ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(0xFF101418);
-        final LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        final boolean landscape = isLandscape();
         final int pad = dp(20);
-        root.setPadding(pad, pad, pad, pad);
-        root.setBackgroundColor(0xFF101418);
 
-        // Pad above the system status + nav bars so header / Send button are reachable.
-        scroll.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
-            @Override public WindowInsets onApplyWindowInsets(View v, WindowInsets ins) {
-                int top = 0, bottom = 0;
-                if (android.os.Build.VERSION.SDK_INT >= 30) {
-                    android.graphics.Insets sb = ins.getInsets(WindowInsets.Type.systemBars());
-                    top = sb.top; bottom = sb.bottom;
-                } else {
-                    top = ins.getSystemWindowInsetTop();
-                    bottom = ins.getSystemWindowInsetBottom();
-                }
-                root.setPadding(pad, pad + top, pad, pad + bottom);
-                return ins;
-            }
-        });
-        scroll.requestApplyInsets();
-
+        // Header: title + accent underline so the form has a visual anchor.
+        LinearLayout headerBlock = new LinearLayout(this);
+        headerBlock.setOrientation(LinearLayout.VERTICAL);
+        TextView eyebrow = new TextView(this);
+        eyebrow.setText("BUG REPORT");
+        eyebrow.setTextColor(COLOR_ACCENT);
+        eyebrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        eyebrow.setLetterSpacing(0.2f);
+        eyebrow.setTypeface(Typeface.DEFAULT_BOLD);
+        headerBlock.addView(eyebrow);
         TextView header = new TextView(this);
-        header.setText("Report a bug");
-        header.setTextColor(Color.WHITE);
+        header.setText("Tell us what happened");
+        header.setTextColor(COLOR_TEXT);
         header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        header.setPadding(0, 0, 0, dp(16));
-        root.addView(header);
+        header.setTypeface(Typeface.DEFAULT_BOLD);
+        header.setPadding(0, dp(4), 0, dp(6));
+        headerBlock.addView(header);
+        View accentBar = new View(this);
+        GradientDrawable bar = new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[] { COLOR_ACCENT, COLOR_ACCENT_DARK });
+        bar.setCornerRadius(dp(2));
+        accentBar.setBackground(bar);
+        LinearLayout.LayoutParams lpBar = new LinearLayout.LayoutParams(dp(32), dp(3));
+        lpBar.bottomMargin = dp(18);
+        headerBlock.addView(accentBar, lpBar);
 
-        // Screenshot preview — tap to annotate
+        // Screenshot preview — tap to annotate. Framed in a rounded card.
+        FrameLayout previewCard = new FrameLayout(this);
+        previewCard.setBackground(surface(COLOR_SURFACE_ALT, dp(12), COLOR_BORDER));
+        previewCard.setElevation(dp(4));
+        previewCard.setClipToPadding(false);
+
         mPreview = new ImageView(this);
         mPreview.setAdjustViewBounds(true);
-        mPreview.setMaxHeight(dp(260));
         mPreview.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        mPreview.setBackgroundColor(0xFF1A1F25);
         mPreview.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { openAnnotate(); }
         });
-        LinearLayout.LayoutParams lpShot = new LinearLayout.LayoutParams(
-            LayoutParams.MATCH_PARENT, dp(260));
-        lpShot.bottomMargin = dp(4);
-        root.addView(mPreview, lpShot);
+        FrameLayout.LayoutParams lpPrevInner = new FrameLayout.LayoutParams(
+            LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+        int previewPad = dp(4);
+        lpPrevInner.setMargins(previewPad, previewPad, previewPad, previewPad);
+        previewCard.addView(mPreview, lpPrevInner);
 
-        TextView hint = new TextView(this);
-        hint.setText("Tap screenshot to annotate");
-        hint.setTextColor(0xFF7A8899);
-        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        hint.setPadding(0, 0, 0, dp(16));
-        root.addView(hint);
+        // Tap-to-annotate pill floats bottom-right on top of the screenshot.
+        TextView pill = new TextView(this);
+        pill.setText("\u270E  Tap to annotate");
+        pill.setTextColor(COLOR_TEXT);
+        pill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        pill.setTypeface(Typeface.DEFAULT_BOLD);
+        pill.setPadding(dp(10), dp(5), dp(10), dp(5));
+        GradientDrawable pillBg = new GradientDrawable();
+        pillBg.setShape(GradientDrawable.RECTANGLE);
+        pillBg.setCornerRadius(dp(999));
+        pillBg.setColor(0xCC0B0D10);
+        pillBg.setStroke(dp(1), 0x332A3139);
+        pill.setBackground(pillBg);
+        FrameLayout.LayoutParams lpPill = new FrameLayout.LayoutParams(
+            LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        lpPill.gravity = Gravity.END | Gravity.BOTTOM;
+        lpPill.setMargins(0, 0, dp(10), dp(10));
+        previewCard.addView(pill, lpPill);
 
-        root.addView(label("Your email"));
+        TextView emailLabel = label("Your email");
         mEmail = input(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        root.addView(mEmail);
+        mEmail.setHint("you@studio.com");
+        mEmail.setHintTextColor(COLOR_TEXT_DIM);
 
-        root.addView(label("Description"));
+        TextView descLabel = label("Description");
         mDescription = input(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         mDescription.setMinLines(4);
         mDescription.setGravity(Gravity.TOP | Gravity.START);
+        mDescription.setHint("What went wrong? Steps to reproduce?");
+        mDescription.setHintTextColor(COLOR_TEXT_DIM);
         if (mInitialDescription != null) mDescription.setText(mInitialDescription);
-        root.addView(mDescription);
 
-        root.addView(label("Severity"));
+        TextView sevLabel = label("Severity");
         mSeverity = new Spinner(this);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item,
-            new String[] { "Low", "Medium", "High", "Critical" });
+            new String[] { "Low", "Medium", "High", "Critical" }) {
+            @Override public View getView(int pos, View convert, android.view.ViewGroup p) {
+                TextView v = (TextView) super.getView(pos, convert, p);
+                v.setTextColor(COLOR_TEXT);
+                v.setPadding(dp(12), dp(10), dp(12), dp(10));
+                return v;
+            }
+        };
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mSeverity.setAdapter(adapter);
+        mSeverity.setBackground(surface(COLOR_SURFACE, dp(10), COLOR_BORDER));
         mSeverity.setSelection(1);
-        root.addView(mSeverity);
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.END);
         buttons.setPadding(0, dp(24), 0, 0);
-        Button cancel = button("Cancel", 0xFF394048, Color.WHITE);
+        Button cancel = secondaryButton("Cancel");
         cancel.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { finish(); }
         });
         LinearLayout.LayoutParams lpBtn = new LinearLayout.LayoutParams(
-            LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            LayoutParams.WRAP_CONTENT, dp(46));
         lpBtn.rightMargin = dp(12);
         buttons.addView(cancel, lpBtn);
-        Button send = button("Send", 0xFF2A7BE0, Color.WHITE);
+        Button send = primaryButton("Send report");
         send.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onSend(); }
         });
-        buttons.addView(send);
-        root.addView(buttons);
+        LinearLayout.LayoutParams lpSend = new LinearLayout.LayoutParams(
+            LayoutParams.WRAP_CONTENT, dp(46));
+        buttons.addView(send, lpSend);
 
-        scroll.addView(root);
-        setContentView(scroll);
+        final View content;
+        final View insetsTarget;
 
+        if (landscape) {
+            // Two columns: screenshot preview on the left, scrollable form on
+            // the right. In landscape the screen is short, so the preview
+            // flexes with the viewport instead of eating a fixed 260dp.
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setBackgroundColor(COLOR_BG);
+            row.setPadding(pad, pad, pad, pad);
+
+            LinearLayout left = new LinearLayout(this);
+            left.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams lpPrevRow = new LinearLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, 0, 1f);
+            left.addView(previewCard, lpPrevRow);
+            LinearLayout.LayoutParams lpLeft = new LinearLayout.LayoutParams(
+                0, LayoutParams.MATCH_PARENT, 1f);
+            lpLeft.rightMargin = dp(20);
+            row.addView(left, lpLeft);
+
+            ScrollView formScroll = new ScrollView(this);
+            formScroll.setClipToPadding(false);
+            LinearLayout form = new LinearLayout(this);
+            form.setOrientation(LinearLayout.VERTICAL);
+            form.addView(headerBlock);
+            form.addView(emailLabel);
+            form.addView(mEmail);
+            form.addView(descLabel);
+            form.addView(mDescription);
+            form.addView(sevLabel);
+            form.addView(mSeverity);
+            form.addView(buttons);
+            formScroll.addView(form);
+            LinearLayout.LayoutParams lpRight = new LinearLayout.LayoutParams(
+                0, LayoutParams.MATCH_PARENT, 1f);
+            row.addView(formScroll, lpRight);
+
+            content = row;
+            insetsTarget = row;
+        } else {
+            final ScrollView scroll = new ScrollView(this);
+            scroll.setBackgroundColor(COLOR_BG);
+            scroll.setClipToPadding(false);
+            LinearLayout root = new LinearLayout(this);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(pad, pad, pad, pad);
+            root.setBackgroundColor(COLOR_BG);
+            root.addView(headerBlock);
+            LinearLayout.LayoutParams lpShot = new LinearLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, dp(240));
+            lpShot.bottomMargin = dp(20);
+            root.addView(previewCard, lpShot);
+            root.addView(emailLabel);
+            root.addView(mEmail);
+            root.addView(descLabel);
+            root.addView(mDescription);
+            root.addView(sevLabel);
+            root.addView(mSeverity);
+            root.addView(buttons);
+            scroll.addView(root);
+            content = scroll;
+            insetsTarget = root;
+        }
+
+        // Pad around the system status + nav bars so header / Send button are
+        // reachable in both orientations (display cutouts include the side
+        // insets that matter in landscape).
+        insetsTarget.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override public WindowInsets onApplyWindowInsets(View v, WindowInsets ins) {
+                int top = 0, bottom = 0, left = 0, right = 0;
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    android.graphics.Insets sb = ins.getInsets(WindowInsets.Type.systemBars());
+                    top = sb.top; bottom = sb.bottom; left = sb.left; right = sb.right;
+                } else {
+                    top = ins.getSystemWindowInsetTop();
+                    bottom = ins.getSystemWindowInsetBottom();
+                    left = ins.getSystemWindowInsetLeft();
+                    right = ins.getSystemWindowInsetRight();
+                }
+                v.setPadding(pad + left, pad + top, pad + right, pad + bottom);
+                return ins;
+            }
+        });
+        content.requestApplyInsets();
+
+        setContentView(content);
         refreshPreview();
     }
 
@@ -246,28 +392,68 @@ public class BugpunchReportActivity extends Activity {
 
     private TextView label(String text) {
         TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextColor(0xFFB0BAC5);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        t.setPadding(0, dp(12), 0, dp(4));
+        t.setText(text.toUpperCase());
+        t.setTextColor(COLOR_TEXT_LABEL);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        t.setLetterSpacing(0.12f);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setPadding(0, dp(16), 0, dp(6));
         return t;
     }
 
     private EditText input(int inputType) {
         EditText e = new EditText(this);
         e.setInputType(inputType);
-        e.setBackgroundColor(0xFF1A1F25);
-        e.setTextColor(Color.WHITE);
-        e.setPadding(dp(12), dp(10), dp(12), dp(10));
+        e.setBackground(surface(COLOR_SURFACE, dp(10), COLOR_BORDER));
+        e.setTextColor(COLOR_TEXT);
+        e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        e.setPadding(dp(14), dp(12), dp(14), dp(12));
+        e.setElevation(dp(1));
         return e;
     }
 
-    private Button button(String text, int bg, int fg) {
+    /// Rounded, bordered background used for inputs, cards, and the spinner.
+    private GradientDrawable surface(int fill, int radius, int border) {
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.RECTANGLE);
+        g.setColor(fill);
+        g.setCornerRadius(radius);
+        g.setStroke(dp(1), border);
+        return g;
+    }
+
+    /// Primary action — filled accent, subtle shadow, ripple on press.
+    private Button primaryButton(String text) {
         Button b = new Button(this);
         b.setText(text);
-        b.setTextColor(fg);
-        b.setBackgroundColor(bg);
+        b.setTextColor(Color.WHITE);
         b.setAllCaps(false);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setPadding(dp(22), 0, dp(22), 0);
+        GradientDrawable fill = new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[] { COLOR_ACCENT, COLOR_ACCENT_DARK });
+        fill.setCornerRadius(dp(10));
+        b.setBackground(new RippleDrawable(
+            ColorStateList.valueOf(0x33FFFFFF), fill, null));
+        b.setElevation(dp(6));
+        return b;
+    }
+
+    /// Secondary action — bordered, transparent fill.
+    private Button secondaryButton(String text) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setTextColor(COLOR_TEXT);
+        b.setAllCaps(false);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setPadding(dp(22), 0, dp(22), 0);
+        GradientDrawable fill = surface(COLOR_SURFACE, dp(10), COLOR_BORDER);
+        b.setBackground(new RippleDrawable(
+            ColorStateList.valueOf(0x22FFFFFF), fill, null));
+        b.setElevation(dp(2));
         return b;
     }
 

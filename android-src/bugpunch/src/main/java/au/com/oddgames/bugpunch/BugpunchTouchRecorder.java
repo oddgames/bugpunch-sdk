@@ -1,0 +1,345 @@
+package au.com.oddgames.bugpunch;
+
+import android.app.Activity;
+import android.os.Build;
+import android.util.Log;
+import android.view.ActionMode;
+import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.SearchEvent;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import android.view.accessibility.AccessibilityEvent;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+
+/**
+ * Always-on ring buffer of MotionEvent records for Bugpunch SDK (Android).
+ *
+ * Mirrors the iOS BugpunchTouchRecorder. Installs a Window.Callback proxy on
+ * the Unity Activity's window — dispatchTouchEvent is observed then delegated
+ * back to the original callback so Unity's input path is untouched.
+ *
+ * Clock alignment: MotionEvent.getEventTimeNanos() (API 34+) and its pre-34
+ * fallback getEventTime()*1e6 return SystemClock.uptimeMillis-derived nanos,
+ * the same monotonic source MediaCodec uses for Surface input PTS. So a
+ * touch's nanos is directly comparable to the recorder's last-dump nanos
+ * window, and (touchNs - dumpStartNs) / 1e6 is the ms offset into the MP4.
+ */
+public final class BugpunchTouchRecorder {
+    private static final String TAG = "BugpunchTouch";
+
+    private static final int PHASE_BEGAN     = 0;
+    private static final int PHASE_MOVED     = 1;
+    private static final int PHASE_ENDED     = 3;
+    private static final int PHASE_CANCELLED = 4;
+
+    private static final class Record {
+        final long tNanos;
+        final int  id;
+        final int  phase;
+        final float x;
+        final float y;
+        Record(long t, int id, int phase, float x, float y) {
+            this.tNanos = t; this.id = id; this.phase = phase; this.x = x; this.y = y;
+        }
+    }
+
+    private static int sMaxEvents = 10000;
+    private static final Object sLock = new Object();
+    private static final Deque<Record> sRing = new ArrayDeque<>();
+
+    private static volatile boolean sRunning;
+    private static volatile Activity sHostActivity;
+    private static volatile Window.Callback sOriginalCallback;
+    private static volatile Window.Callback sProxyCallback;
+
+    // Capture size populated on first event.
+    private static volatile int sCaptureW;
+    private static volatile int sCaptureH;
+
+    public static void configure(int maxEvents) {
+        if (maxEvents < 100) maxEvents = 100;
+        if (maxEvents > 100000) maxEvents = 100000;
+        sMaxEvents = maxEvents;
+    }
+
+    /** Install proxy on the given Activity's window. Safe to call again — no-op if already running. */
+    public static synchronized boolean start(Activity activity) {
+        if (sRunning) return true;
+        if (activity == null) { Log.w(TAG, "null activity"); return false; }
+        final Activity act = activity;
+        try {
+            act.runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    try {
+                        Window w = act.getWindow();
+                        if (w == null) { Log.w(TAG, "no window"); return; }
+                        Window.Callback original = w.getCallback();
+                        sOriginalCallback = original;
+                        sProxyCallback = new ProxyCallback(original);
+                        w.setCallback(sProxyCallback);
+                        sHostActivity = act;
+                        sRunning = true;
+                        Log.i(TAG, "started (max " + sMaxEvents + " events)");
+                    } catch (Throwable t) {
+                        Log.w(TAG, "start failed on UI thread", t);
+                    }
+                }
+            });
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "start failed", t);
+            return false;
+        }
+    }
+
+    /** Remove proxy. Ring contents are preserved until next start. */
+    public static synchronized void stop() {
+        if (!sRunning) return;
+        sRunning = false;
+        final Activity act = sHostActivity;
+        final Window.Callback original = sOriginalCallback;
+        final Window.Callback proxy = sProxyCallback;
+        sHostActivity = null;
+        sOriginalCallback = null;
+        sProxyCallback = null;
+        if (act == null) return;
+        try {
+            act.runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    try {
+                        Window w = act.getWindow();
+                        // Only restore if our proxy is still the installed callback.
+                        // If something else wrapped us since, leave it alone.
+                        if (w != null && w.getCallback() == proxy) {
+                            w.setCallback(original);
+                        }
+                    } catch (Throwable t) {
+                        Log.w(TAG, "stop restore failed", t);
+                    }
+                }
+            });
+        } catch (Throwable ignored) {}
+        Log.i(TAG, "stopped");
+    }
+
+    public static boolean isRunning() { return sRunning; }
+
+    public static int getCaptureWidth()  { return sCaptureW; }
+    public static int getCaptureHeight() { return sCaptureH; }
+
+    /**
+     * Snapshot events whose timestamp nanos fall in [startNanos, endNanos],
+     * rebased to video t=0. Returns JSON array string or null if empty.
+     */
+    public static String snapshotJson(long startNanos, long endNanos) {
+        if (endNanos <= startNanos) return null;
+        Record[] snap;
+        synchronized (sLock) {
+            if (sRing.isEmpty()) return null;
+            snap = sRing.toArray(new Record[0]);
+        }
+        try {
+            JSONArray arr = new JSONArray();
+            for (Record r : snap) {
+                if (r.tNanos < startNanos || r.tNanos > endNanos) continue;
+                int tMs = (int) ((r.tNanos - startNanos) / 1_000_000L);
+                if (tMs < 0) tMs = 0;
+                JSONObject o = new JSONObject();
+                o.put("t", tMs);
+                o.put("id", r.id);
+                o.put("phase", phaseName(r.phase));
+                o.put("x", (double) r.x);
+                o.put("y", (double) r.y);
+                arr.put(o);
+            }
+            if (arr.length() == 0) return null;
+            return arr.toString();
+        } catch (JSONException e) {
+            Log.w(TAG, "snapshotJson failed", e);
+            return null;
+        }
+    }
+
+    private static String phaseName(int p) {
+        switch (p) {
+            case PHASE_BEGAN:     return "began";
+            case PHASE_MOVED:     return "moved";
+            case PHASE_ENDED:     return "ended";
+            case PHASE_CANCELLED: return "cancelled";
+            default:              return "moved";
+        }
+    }
+
+    private static int mapAction(int actionMasked) {
+        switch (actionMasked) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN:
+                return PHASE_BEGAN;
+            case MotionEvent.ACTION_MOVE:
+                return PHASE_MOVED;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_POINTER_UP:
+                return PHASE_ENDED;
+            case MotionEvent.ACTION_CANCEL:
+                return PHASE_CANCELLED;
+            default:
+                return -1;
+        }
+    }
+
+    private static long eventTimeNanos(MotionEvent ev) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            try { return ev.getEventTimeNanos(); }
+            catch (Throwable ignored) {}
+        }
+        return ev.getEventTime() * 1_000_000L;
+    }
+
+    private static void record(MotionEvent ev) {
+        if (!sRunning || ev == null) return;
+        try {
+            if (sCaptureW == 0 || sCaptureH == 0) {
+                Activity act = sHostActivity;
+                if (act != null) {
+                    android.util.DisplayMetrics dm = act.getResources().getDisplayMetrics();
+                    sCaptureW = dm.widthPixels;
+                    sCaptureH = dm.heightPixels;
+                }
+            }
+            int action = ev.getActionMasked();
+            int mapped = mapAction(action);
+            if (mapped < 0) return;
+
+            long tNs = eventTimeNanos(ev);
+            int pointerCount = ev.getPointerCount();
+
+            // For POINTER_DOWN/UP only the pointer at getActionIndex() changes;
+            // everything else is effectively stationary. Android has no
+            // stationary phase in our schema, so emit a single record for the
+            // action pointer and one "moved" per other pointer (cheap and
+            // keeps dashboard playback smooth).
+            synchronized (sLock) {
+                if (action == MotionEvent.ACTION_POINTER_DOWN
+                    || action == MotionEvent.ACTION_POINTER_UP) {
+                    int idx = ev.getActionIndex();
+                    if (idx >= 0 && idx < pointerCount) {
+                        sRing.addLast(new Record(tNs,
+                            ev.getPointerId(idx), mapped,
+                            ev.getX(idx), ev.getY(idx)));
+                    }
+                    for (int i = 0; i < pointerCount; i++) {
+                        if (i == idx) continue;
+                        sRing.addLast(new Record(tNs,
+                            ev.getPointerId(i), PHASE_MOVED,
+                            ev.getX(i), ev.getY(i)));
+                    }
+                } else {
+                    for (int i = 0; i < pointerCount; i++) {
+                        sRing.addLast(new Record(tNs,
+                            ev.getPointerId(i), mapped,
+                            ev.getX(i), ev.getY(i)));
+                    }
+                }
+                while (sRing.size() > sMaxEvents) sRing.pollFirst();
+            }
+        } catch (Throwable t) {
+            // Never let instrumentation break the host input path.
+            Log.w(TAG, "record failed", t);
+        }
+    }
+
+    // ─── Window.Callback proxy ──────────────────────────────────────────
+    //
+    // Delegates every method to the original callback. Only dispatchTouchEvent
+    // is observed — recorded before delegating, so Unity still receives the
+    // event unchanged.
+
+    private static final class ProxyCallback implements Window.Callback {
+        private final Window.Callback base;
+        ProxyCallback(Window.Callback base) { this.base = base; }
+
+        @Override public boolean dispatchTouchEvent(MotionEvent event) {
+            record(event);
+            return base != null && base.dispatchTouchEvent(event);
+        }
+
+        @Override public boolean dispatchKeyEvent(KeyEvent event) {
+            return base != null && base.dispatchKeyEvent(event);
+        }
+        @Override public boolean dispatchKeyShortcutEvent(KeyEvent event) {
+            return base != null && base.dispatchKeyShortcutEvent(event);
+        }
+        @Override public boolean dispatchTrackballEvent(MotionEvent event) {
+            return base != null && base.dispatchTrackballEvent(event);
+        }
+        @Override public boolean dispatchGenericMotionEvent(MotionEvent event) {
+            return base != null && base.dispatchGenericMotionEvent(event);
+        }
+        @Override public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
+            return base != null && base.dispatchPopulateAccessibilityEvent(event);
+        }
+        @Override public View onCreatePanelView(int featureId) {
+            return base != null ? base.onCreatePanelView(featureId) : null;
+        }
+        @Override public boolean onCreatePanelMenu(int featureId, Menu menu) {
+            return base != null && base.onCreatePanelMenu(featureId, menu);
+        }
+        @Override public boolean onPreparePanel(int featureId, View view, Menu menu) {
+            return base != null && base.onPreparePanel(featureId, view, menu);
+        }
+        @Override public boolean onMenuOpened(int featureId, Menu menu) {
+            return base != null && base.onMenuOpened(featureId, menu);
+        }
+        @Override public boolean onMenuItemSelected(int featureId, MenuItem item) {
+            return base != null && base.onMenuItemSelected(featureId, item);
+        }
+        @Override public void onWindowAttributesChanged(WindowManager.LayoutParams attrs) {
+            if (base != null) base.onWindowAttributesChanged(attrs);
+        }
+        @Override public void onContentChanged() {
+            if (base != null) base.onContentChanged();
+        }
+        @Override public void onWindowFocusChanged(boolean hasFocus) {
+            if (base != null) base.onWindowFocusChanged(hasFocus);
+        }
+        @Override public void onAttachedToWindow() {
+            if (base != null) base.onAttachedToWindow();
+        }
+        @Override public void onDetachedFromWindow() {
+            if (base != null) base.onDetachedFromWindow();
+        }
+        @Override public void onPanelClosed(int featureId, Menu menu) {
+            if (base != null) base.onPanelClosed(featureId, menu);
+        }
+        @Override public boolean onSearchRequested() {
+            return base != null && base.onSearchRequested();
+        }
+        @Override public boolean onSearchRequested(SearchEvent searchEvent) {
+            return base != null && base.onSearchRequested(searchEvent);
+        }
+        @Override public ActionMode onWindowStartingActionMode(ActionMode.Callback callback) {
+            return base != null ? base.onWindowStartingActionMode(callback) : null;
+        }
+        @Override public ActionMode onWindowStartingActionMode(ActionMode.Callback callback, int type) {
+            return base != null ? base.onWindowStartingActionMode(callback, type) : null;
+        }
+        @Override public void onActionModeStarted(ActionMode mode) {
+            if (base != null) base.onActionModeStarted(mode);
+        }
+        @Override public void onActionModeFinished(ActionMode mode) {
+            if (base != null) base.onActionModeFinished(mode);
+        }
+    }
+
+    private BugpunchTouchRecorder() {}
+}

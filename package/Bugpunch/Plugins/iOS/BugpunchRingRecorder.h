@@ -50,6 +50,13 @@ bool BugpunchRing_Dump(const char* outputPath);
 /// Returns approximate memory usage of the ring buffer in bytes.
 int64_t BugpunchRing_GetBufferSizeBytes(void);
 
+/// Host time (seconds since boot, same clock as UITouch.timestamp) of the
+/// first frame in the most recent successful dump. 0 if no dump yet.
+double BugpunchRing_GetLastDumpStartHostTime(void);
+
+/// Host time of the last frame in the most recent successful dump.
+double BugpunchRing_GetLastDumpEndHostTime(void);
+
 #ifdef __cplusplus
 }
 #endif

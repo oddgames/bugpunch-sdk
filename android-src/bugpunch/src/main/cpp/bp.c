@@ -19,6 +19,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <android/log.h>
+#include <link.h>       /* dl_iterate_phdr, ElfW, PT_NOTE */
+#include <elf.h>        /* NT_GNU_BUILD_ID */
 
 /* Optional: use <unwind.h> for stack trace on ARM/ARM64. */
 #include <unwind.h>
@@ -27,6 +29,11 @@
 #define MAX_PATH 512
 #define MAX_FRAMES 64
 #define MAX_METADATA 256
+/* Build-ID table — populated at init, read at crash. Sized for a typical
+ * Unity IL2CPP process (libunity, libil2cpp, libmain, libc, libart, a
+ * handful of AAR-side .so, and game native plugins) with headroom. */
+#define MAX_MODULES 64
+#define MAX_BUILDID_HEX 41  /* 20-byte GNU build-id → 40 hex + null */
 
 /* ── Static state (pre-allocated, no malloc in handler) ── */
 
@@ -50,6 +57,17 @@ static volatile int s_handling_crash = 0; /* re-entry guard */
 /* Stack trace frames (pre-allocated) */
 static uintptr_t s_frames[MAX_FRAMES];
 static int s_frame_count = 0;
+
+/* Loaded-module table. Populated once at init via dl_iterate_phdr (which
+ * acquires the loader lock — NOT async-signal-safe). Read at crash time
+ * from pre-filled static buffers — no dl* calls in the signal path. */
+struct bp_module {
+    uintptr_t load_addr;                 /* dlpi_addr — base to subtract from frame PCs */
+    char path[MAX_PATH];                 /* dlpi_name (may be "[vdso]" or "") */
+    char build_id[MAX_BUILDID_HEX];      /* hex-encoded NT_GNU_BUILD_ID, or "" if none */
+};
+static struct bp_module s_modules[MAX_MODULES];
+static int s_module_count = 0;
 
 /* ── Async-signal-safe helpers ── */
 
@@ -105,6 +123,77 @@ static const char* signal_name(int sig) {
         case SIGILL:  return "SIGILL";
         default:      return "UNKNOWN";
     }
+}
+
+/* ── Build-ID capture (runs at init, NOT in signal handler) ── */
+
+/* Hex-encode `n` bytes of `src` into `dst` (dst must have >= 2*n+1 bytes).
+ * Signal-safe: only indexes a small static table. */
+static void hex_encode(char* dst, const unsigned char* src, int n) {
+    static const char hex[] = "0123456789abcdef";
+    int i;
+    for (i = 0; i < n; i++) {
+        dst[i * 2]     = hex[(src[i] >> 4) & 0xf];
+        dst[i * 2 + 1] = hex[src[i] & 0xf];
+    }
+    dst[n * 2] = '\0';
+}
+
+/* Search a library's PT_NOTE segments for NT_GNU_BUILD_ID, hex-encode into
+ * out. Returns 1 if found. */
+static int extract_build_id(struct dl_phdr_info* info, char* out, int out_size) {
+    int i;
+    for (i = 0; i < info->dlpi_phnum; i++) {
+        const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
+        if (phdr->p_type != PT_NOTE) continue;
+
+        const char* notes = (const char*)(info->dlpi_addr + phdr->p_vaddr);
+        const char* end = notes + phdr->p_memsz;
+        while (notes + sizeof(ElfW(Nhdr)) <= end) {
+            const ElfW(Nhdr)* nhdr = (const ElfW(Nhdr)*)notes;
+            /* Note payload is 4-byte aligned after name and after desc. */
+            int name_pad = (nhdr->n_namesz + 3) & ~3;
+            int desc_pad = (nhdr->n_descsz + 3) & ~3;
+            if (nhdr->n_type == NT_GNU_BUILD_ID &&
+                nhdr->n_descsz > 0 &&
+                nhdr->n_descsz * 2 + 1 <= out_size) {
+                const unsigned char* desc = (const unsigned char*)(
+                    notes + sizeof(*nhdr) + name_pad);
+                hex_encode(out, desc, nhdr->n_descsz);
+                return 1;
+            }
+            notes += sizeof(*nhdr) + name_pad + desc_pad;
+        }
+    }
+    out[0] = '\0';
+    return 0;
+}
+
+static int module_callback(struct dl_phdr_info* info, size_t size, void* data) {
+    (void)size; (void)data;
+    if (s_module_count >= MAX_MODULES) return 0;
+    struct bp_module* m = &s_modules[s_module_count];
+    m->load_addr = (uintptr_t)info->dlpi_addr;
+
+    /* Copy path (truncate if longer than buffer). */
+    const char* p = info->dlpi_name ? info->dlpi_name : "";
+    int i = 0;
+    while (p[i] && i < MAX_PATH - 1) { m->path[i] = p[i]; i++; }
+    m->path[i] = '\0';
+
+    extract_build_id(info, m->build_id, sizeof(m->build_id));
+    s_module_count++;
+    return 0;
+}
+
+/* Snapshot the current module map. Called once from init (post-System.loadLibrary)
+ * and ideally again if the game dlopens more native plugins — but we
+ * currently don't observe such events, so late-loaded libs won't be in the
+ * table. Acceptable MVP tradeoff since the key targets (libil2cpp/libunity/
+ * game plugins) load before Bugpunch init. */
+static void capture_modules(void) {
+    s_module_count = 0;
+    dl_iterate_phdr(module_callback, NULL);
 }
 
 /* ── Stack walking via _Unwind_Backtrace ── */
@@ -231,6 +320,25 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* ucontext) {
     }
     safe_write_str(fd, "---END---\n");
 
+    /* Loaded modules (name | load_addr | GNU build-id). Paired with the
+     * server-side symbol store: server matches the build-id to the
+     * corresponding unstripped .so, subtracts load_addr from each frame
+     * PC to get an offset, runs llvm-symbolizer. No need to parse /maps
+     * for the frames this table covers. */
+    safe_write_str(fd, "---BUILD_IDS---\n");
+    {
+        int i;
+        for (i = 0; i < s_module_count; i++) {
+            safe_write_hex(fd, s_modules[i].load_addr);
+            safe_write_str(fd, " ");
+            safe_write_str(fd, s_modules[i].build_id[0] ? s_modules[i].build_id : "-");
+            safe_write_str(fd, " ");
+            safe_write_str(fd, s_modules[i].path[0] ? s_modules[i].path : "-");
+            safe_write_str(fd, "\n");
+        }
+    }
+    safe_write_str(fd, "---END_BUILD_IDS---\n");
+
     /* Read /proc/self/maps for symbolication (truncated to 64KB) */
     safe_write_str(fd, "---MAPS---\n");
     {
@@ -319,7 +427,13 @@ Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeInstallSignalHandlers(
         sigaltstack(&ss, NULL);
     }
 
-    __android_log_print(ANDROID_LOG_INFO, TAG, "Signal handlers installed (dir=%s)", s_crash_dir);
+    /* Snapshot loaded modules so the signal handler can write a build-id
+     * table without calling the non-signal-safe loader APIs. */
+    capture_modules();
+
+    __android_log_print(ANDROID_LOG_INFO, TAG,
+        "Signal handlers installed (dir=%s, modules=%d)",
+        s_crash_dir, s_module_count);
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 

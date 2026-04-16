@@ -222,12 +222,13 @@ extern "C" {
 
 // Forward declaration so the thin `Bugpunch_EnqueueReport` trampoline can
 // call the extended variant defined below.
-void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
-                                      const char* metadataJson,
-                                      const char* screenshotPath, const char* videoPath,
-                                      const char* annotationsPath,
-                                      const char* tracesJsonPath,
-                                      const char* traceScreenshotPathsCsv);
+void Bugpunch_EnqueueReportFull(const char* url, const char* apiKey,
+                                const char* metadataJson,
+                                const char* screenshotPath, const char* videoPath,
+                                const char* annotationsPath,
+                                const char* tracesJsonPath,
+                                const char* traceScreenshotPathsCsv,
+                                const char* logsGzPath);
 
 /// Enqueue a report. All args passed as primitive C strings — no JSON glue
 /// in C#. Empty-string paths are treated as absent.
@@ -235,18 +236,30 @@ void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
                             const char* metadataJson,
                             const char* screenshotPath, const char* videoPath,
                             const char* annotationsPath) {
-    Bugpunch_EnqueueReportWithTraces(url, apiKey, metadataJson,
-        screenshotPath, videoPath, annotationsPath, NULL, NULL);
+    Bugpunch_EnqueueReportFull(url, apiKey, metadataJson,
+        screenshotPath, videoPath, annotationsPath, NULL, NULL, NULL);
 }
 
-/// Extended variant — additionally accepts a traces JSON file path and a
-/// CSV string of per-trace screenshot paths. Either may be NULL.
+/// Legacy variant without logsGzPath — forwards to full version.
 void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
                                       const char* metadataJson,
                                       const char* screenshotPath, const char* videoPath,
                                       const char* annotationsPath,
                                       const char* tracesJsonPath,
                                       const char* traceScreenshotPathsCsv) {
+    Bugpunch_EnqueueReportFull(url, apiKey, metadataJson,
+        screenshotPath, videoPath, annotationsPath,
+        tracesJsonPath, traceScreenshotPathsCsv, NULL);
+}
+
+/// Full variant — traces + gzip'd logs file.
+void Bugpunch_EnqueueReportFull(const char* url, const char* apiKey,
+                                const char* metadataJson,
+                                const char* screenshotPath, const char* videoPath,
+                                const char* annotationsPath,
+                                const char* tracesJsonPath,
+                                const char* traceScreenshotPathsCsv,
+                                const char* logsGzPath) {
     if (!url || !*url) return;
     NSString* nsUrl = [NSString stringWithUTF8String:url];
     NSString* nsKey = apiKey ? [NSString stringWithUTF8String:apiKey] : @"";
@@ -259,6 +272,8 @@ void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
         ? [NSString stringWithUTF8String:annotationsPath] : nil;
     NSString* nsTraces = (tracesJsonPath && *tracesJsonPath)
         ? [NSString stringWithUTF8String:tracesJsonPath] : nil;
+    NSString* nsLogsGz = (logsGzPath && *logsGzPath)
+        ? [NSString stringWithUTF8String:logsGzPath] : nil;
     NSArray<NSString*>* nsTraceShots = nil;
     if (traceScreenshotPathsCsv && *traceScreenshotPathsCsv) {
         NSString* csv = [NSString stringWithUTF8String:traceScreenshotPathsCsv];
@@ -303,6 +318,11 @@ void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
                     @"path": p }];
                 [cleanup addObject:p];
             }
+        }
+        if (nsLogsGz) {
+            [files addObject:@{ @"field": @"logs", @"filename": @"logs.json.gz",
+                                @"contentType": @"application/gzip", @"path": nsLogsGz }];
+            [cleanup addObject:nsLogsGz];
         }
         m[@"files"] = files;
         m[@"cleanupPaths"] = cleanup;

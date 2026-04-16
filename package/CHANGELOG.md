@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.22] - 2026-04-16
+
+### Changed
+- **Log buffer 500 → 2000** — native log ring buffer on both Android and iOS now keeps 2000 entries (was 500). Since crash collection is budgeted to 10 per fingerprint per version, larger buffers have negligible bandwidth impact.
+- **Gzip log compression** — logs are now gzip'd and sent as a separate multipart file instead of embedded in the metadata JSON. Reduces upload size ~5×.
+- **Startup log preservation** — first 200 log entries are kept in a permanent buffer that's never evicted. When entries between startup and recent are dropped, a "--- N log entries omitted ---" breaker is inserted so you always see how the app started.
+- **SDK-level log dedup** — consecutive identical log messages (same level + tag + message) are collapsed into a single entry with a `repeat` count. Eliminates buffer-wasting spam (e.g. Vulkan per-frame logs).
+- **iOS startup log lookback** — OSLogStore now queries 60 seconds before init on its first poll, capturing logs written before BugpunchDebugMode started.
+
+### Fixed
+- **Android AAR local build** — `build.gradle` updated for local build with Unity's bundled SDK/NDK (compileSdk 36, build-tools 36, Java 11 source compat, `ndkPath` instead of env-only).
+
 ## [1.5.21] - 2026-04-16
 
 ### Fixed
