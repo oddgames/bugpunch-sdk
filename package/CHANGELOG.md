@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.23] - 2026-04-16
+
+### Changed
+- **Startup log buffer raised to 2000** — matches the ring buffer size so the full boot sequence is captured even on noisy devices.
+
 ## [1.5.22] - 2026-04-16
 
 ### Changed

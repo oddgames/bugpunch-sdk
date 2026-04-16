@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class BugpunchLogReader {
     private static final String TAG = "BugpunchLogReader";
-    private static final int STARTUP_SIZE = 200;
+    private static final int STARTUP_SIZE = 2000;
 
     private static Thread sThread;
     private static final AtomicBoolean sRunning = new AtomicBoolean();

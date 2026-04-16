@@ -673,7 +673,7 @@ void Bugpunch_TraceScreenshot(const char* label, const char* tagsJson) {
 @implementation BPLogReader {
 }
 
-static const NSInteger kStartupSize = 200;
+static const NSInteger kStartupSize = 2000;
 static NSMutableArray* gStartupBuffer;
 static NSMutableArray* gLogBuffer;
 static NSInteger gMaxEntries = 2000;
