@@ -27,6 +27,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
         bool _gridEnabled = true;
         string _currentRenderMode = "default";
 
+        // Smooth camera lerp
+        Vector3? _lerpTargetPos;
+        Quaternion? _lerpTargetRot;
+        const float LerpSpeed = 12f;
+
         // Sensitivity multipliers
         const float OrbitSensitivity = 0.3f;
         const float PanSensitivity = 0.01f;
@@ -43,6 +48,24 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public void SetStreamer(IStreamer streamer)
         {
             _streamer = streamer;
+        }
+
+        void Update()
+        {
+            if (_sceneCameraGo == null || !_lerpTargetPos.HasValue) return;
+            var t = _sceneCameraGo.transform;
+            var dt = Time.unscaledDeltaTime;
+            var factor = 1f - Mathf.Exp(-LerpSpeed * dt);
+            t.position = Vector3.Lerp(t.position, _lerpTargetPos.Value, factor);
+            t.rotation = Quaternion.Slerp(t.rotation, _lerpTargetRot.Value, factor);
+            // Snap when close enough
+            if ((t.position - _lerpTargetPos.Value).sqrMagnitude < 0.0001f)
+            {
+                t.position = _lerpTargetPos.Value;
+                t.rotation = _lerpTargetRot.Value;
+                _lerpTargetPos = null;
+                _lerpTargetRot = null;
+            }
         }
 
         /// <summary>
@@ -125,11 +148,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_sceneCamera == null)
                 return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
 
-            _sceneCameraGo.transform.position = position;
-            _sceneCameraGo.transform.eulerAngles = eulerAngles;
+            _lerpTargetPos = position;
+            _lerpTargetRot = Quaternion.Euler(eulerAngles);
 
-            // Update focus point to stay in front of camera
-            _focusPoint = position + _sceneCameraGo.transform.forward * _orbitDistance;
+            // Update focus point to stay in front of target
+            var fwd = _lerpTargetRot.Value * Vector3.forward;
+            _focusPoint = position + fwd * _orbitDistance;
 
             return "{\"ok\":true}";
         }

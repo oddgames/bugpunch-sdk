@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.1] - 2026-04-18
+
+### Added
+- **Scene Camera Smooth Lerp** — scene camera now smoothly interpolates toward target position/rotation instead of snapping.
+- **Watch Service** — live variable watching: search, pin, poll values, apply changes from Remote IDE.
+- **Texture Service** — browse, thumbnail, and full-size capture of in-game textures.
+- **Material Service** — browse materials, view shader properties, preview textures.
+
 ## [1.7.0] - 2026-04-17
 
 ### Added

@@ -196,9 +196,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var dbPlugins = new DatabasePluginRegistry();
             dbPlugins.ScanIfNeeded();
             IScriptRunner scriptRunner = new PaxScriptRunner();
+            var textures = new TextureService();
+            var materials = gameObject.AddComponent<MaterialService>();
 
             // Create scene camera service
             SceneCamera = gameObject.AddComponent<SceneCameraService>();
+
+            // Create watch service (MonoBehaviour — samples in FixedUpdate)
+            var watch = gameObject.AddComponent<WatchService>();
 
             // Create router — Streamer starts null, set when debug session starts
             Router = new RequestRouter
@@ -213,6 +218,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Files = files,
                 DeviceInfo = deviceInfo,
                 DatabasePlugins = dbPlugins,
+                Textures = textures,
+                Materials = materials,
+                Watch = watch,
                 Streamer = null
             };
 
@@ -604,6 +612,30 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     Tunnel.SendBinaryResponse(requestId, captureResponse.binaryBody, captureResponse.contentType);
                 else
                     Tunnel.SendResponse(requestId, captureResponse.status, captureResponse.body, captureResponse.contentType);
+                yield break;
+            }
+
+            if (response == null && path.StartsWith("/materials/thumbnail"))
+            {
+                // Material sphere render needs rendering context
+                yield return new WaitForEndOfFrame();
+                var matResponse = Router.HandleMaterialThumbnail(path);
+                if (matResponse.isBinary)
+                    Tunnel.SendBinaryResponse(requestId, matResponse.binaryBody, matResponse.contentType);
+                else
+                    Tunnel.SendResponse(requestId, matResponse.status, matResponse.body, matResponse.contentType);
+                yield break;
+            }
+
+            if (response == null && path.StartsWith("/materials/texture"))
+            {
+                // Material texture extraction needs rendering context
+                yield return new WaitForEndOfFrame();
+                var matTexResponse = Router.HandleMaterialTexture(path);
+                if (matTexResponse.isBinary)
+                    Tunnel.SendBinaryResponse(requestId, matTexResponse.binaryBody, matTexResponse.contentType);
+                else
+                    Tunnel.SendResponse(requestId, matTexResponse.status, matTexResponse.body, matTexResponse.contentType);
                 yield break;
             }
 

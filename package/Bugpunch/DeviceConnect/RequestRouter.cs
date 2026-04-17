@@ -21,6 +21,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public FileService Files;
         public DeviceInfoService DeviceInfo;
         public DatabasePluginRegistry DatabasePlugins;
+        public TextureService Textures;
+        public MaterialService Materials;
+        public WatchService Watch;
 
         public struct Response
         {
@@ -369,6 +372,77 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     return Response.NotFound(path);
                 }
 
+                // Textures
+                if (path.StartsWith("/textures"))
+                {
+                    if (Textures == null)
+                        return Response.Error("Texture service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/textures/list" || subPath == "/textures")
+                    {
+                        var filter = Q(path, "filter");
+                        var typeFilter = Q(path, "type");
+                        return Response.Json(Textures.ListTextures(filter, typeFilter));
+                    }
+
+                    if (subPath == "/textures/thumbnail")
+                    {
+                        var id = int.TryParse(Q(path, "id"), out var tid) ? tid : 0;
+                        var maxSize = int.TryParse(Q(path, "maxSize"), out var ms) ? ms : 128;
+                        var quality = int.TryParse(Q(path, "quality"), out var tq) ? tq : 75;
+                        var jpeg = Textures.GetThumbnail(id, maxSize, quality);
+                        if (jpeg != null) return Response.Binary(jpeg, "image/jpeg");
+                        return Response.Error("Failed to generate thumbnail", 500);
+                    }
+
+                    if (subPath == "/textures/full")
+                    {
+                        var id = int.TryParse(Q(path, "id"), out var fid) ? fid : 0;
+                        var scale = float.TryParse(Q(path, "scale"), out var fs) ? fs : 1f;
+                        var quality = int.TryParse(Q(path, "quality"), out var fq) ? fq : 85;
+                        var jpeg = Textures.GetFullTexture(id, scale, quality);
+                        if (jpeg != null) return Response.Binary(jpeg, "image/jpeg");
+                        return Response.Error("Failed to capture texture", 500);
+                    }
+
+                    if (subPath == "/textures/info")
+                    {
+                        var id = int.TryParse(Q(path, "id"), out var iid) ? iid : 0;
+                        return Response.Json(Textures.GetTextureInfo(iid));
+                    }
+
+                    return Response.NotFound(path);
+                }
+
+                // Materials
+                if (path.StartsWith("/materials"))
+                {
+                    if (Materials == null)
+                        return Response.Error("Material service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/materials/list" || subPath == "/materials")
+                        return Response.Json(Materials.ListMaterials());
+
+                    if (subPath == "/materials/textures")
+                    {
+                        var id = int.TryParse(Q(path, "id"), out var mid) ? mid : 0;
+                        return Response.Json(Materials.GetTextureProperties(id));
+                    }
+
+                    // Thumbnail + texture need rendering — return null for async handling
+                    if (subPath == "/materials/thumbnail")
+                        return null;
+
+                    if (subPath == "/materials/texture")
+                        return null;
+
+                    return Response.NotFound(path);
+                }
+
                 // File browser
                 if (path.StartsWith("/files"))
                 {
@@ -450,6 +524,57 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     }
                 }
 
+                // Variable Watch
+                if (path.StartsWith("/watch"))
+                {
+                    if (Watch == null)
+                        return Response.Error("Watch service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/watch/search")
+                    {
+                        var q = Q(path, "q") ?? "";
+                        var max = int.TryParse(Q(path, "max"), out var m) ? m : 50;
+                        return Response.Json(Watch.Search(q, max));
+                    }
+
+                    if (subPath == "/watch/add" && method == "POST")
+                    {
+                        return Response.Json(Watch.AddWatch(
+                            Q(path, "instanceid"),
+                            Q(path, "componentid"),
+                            Q(path, "field"),
+                            Q(path, "isproperty") ?? "false"));
+                    }
+
+                    if (subPath == "/watch/remove" && method == "POST")
+                        return Response.Json(Watch.RemoveWatch(Q(path, "id")));
+
+                    if (subPath == "/watch/clear" && method == "POST")
+                        return Response.Json(Watch.ClearAll());
+
+                    if (subPath == "/watch/list")
+                        return Response.Json(Watch.GetWatchList());
+
+                    if (subPath == "/watch/poll")
+                        return Response.Json(Watch.Poll());
+
+                    if (subPath == "/watch/apply" && method == "POST")
+                    {
+                        return Response.Json(Watch.ApplyValue(
+                            Q(path, "instanceid"),
+                            Q(path, "componentid"),
+                            Q(path, "field"),
+                            body));
+                    }
+
+                    if (subPath == "/watch/apply-batch" && method == "POST")
+                        return Response.Json(Watch.ApplyBatch(body));
+
+                    return Response.NotFound(path);
+                }
+
                 // Input injection — tap/swipe from browser coordinates (normalized 0-1)
                 if (path.StartsWith("/input/") && method == "POST")
                     return null; // Handled async by BugpunchClient (needs main thread)
@@ -461,6 +586,32 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Debug.LogError($"[Bugpunch] Route error ({path}): {ex}");
                 return Response.Error(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Handle material thumbnail request. Renders material on a sphere.
+        /// </summary>
+        public Response HandleMaterialThumbnail(string path)
+        {
+            var id = int.TryParse(Q(path, "id"), out var mid) ? mid : 0;
+            var size = int.TryParse(Q(path, "size"), out var ms) ? ms : 128;
+            var quality = int.TryParse(Q(path, "quality"), out var mq) ? mq : 80;
+            var jpeg = Materials?.RenderThumbnail(id, size, quality);
+            if (jpeg != null) return Response.Binary(jpeg, "image/jpeg");
+            return Response.Error("Failed to render material thumbnail", 500);
+        }
+
+        /// <summary>
+        /// Handle material texture request. Extracts a texture from a material.
+        /// </summary>
+        public Response HandleMaterialTexture(string path)
+        {
+            var id = int.TryParse(Q(path, "id"), out var mid) ? mid : 0;
+            var prop = Q(path, "property");
+            var maxSize = int.TryParse(Q(path, "maxSize"), out var ms) ? ms : 1024;
+            var png = Materials?.GetTexture(id, prop, maxSize);
+            if (png != null) return Response.Binary(png, "image/png");
+            return Response.Error("Failed to extract texture", 500);
         }
 
         /// <summary>
