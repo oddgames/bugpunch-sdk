@@ -17,6 +17,13 @@ extern "C" {
     void Bugpunch_SetCrashMetadata(const char* appVersion, const char* bundleId,
         const char* unityVersion, const char* deviceModel,
         const char* osVersion, const char* gpuName);
+    void Bugpunch_StartAnrWatchdog(int timeoutMs);
+    void Bugpunch_StopAnrWatchdog(void);
+    void Bugpunch_TickAnrWatchdog(void);
+    bool Bugpunch_InitBackbuffer(void);
+    bool Bugpunch_BackbufferReady(void);
+    bool Bugpunch_WriteBackbufferJPEG(const char* outputPath, float quality);
+    void Bugpunch_ShutdownBackbuffer(void);
     void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
         int quality, void (*cb)(const char*, int, const char*));
     void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
@@ -30,6 +37,12 @@ extern "C" {
         const char* metadataJson, const char* screenshotPath, const char* videoPath,
         const char* annotationsPath, const char* tracesJsonPath,
         const char* traceScreenshotPathsCsv, const char* logsGzPath);
+    void Bugpunch_EnqueueReportWithContext(const char* url, const char* apiKey,
+        const char* metadataJson, const char* screenshotPath,
+        const char* contextScreenshotPath,
+        const char* videoPath, const char* annotationsPath,
+        const char* tracesJsonPath, const char* traceScreenshotPathsCsv,
+        const char* logsGzPath);
     void Bugpunch_DrainUploadQueue(void);
     void Bugpunch_PresentReportForm(const char* screenshotPath,
         const char* title, const char* description);
@@ -89,6 +102,10 @@ extern "C" {
     return i;
 }
 - (void)onFrame:(CADisplayLink*)link {
+    // Tick the ANR watchdog from the main thread — this proves the main
+    // thread is alive and processing display link callbacks.
+    Bugpunch_TickAnrWatchdog();
+
     CFTimeInterval now = link.timestamp;
     if (self.fpsWindowStart == 0) { self.fpsWindowStart = now; self.frameCount = 0; return; }
     self.frameCount++;
@@ -325,11 +342,25 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
 
     NSString* caches = NSSearchPathForDirectoriesInDomains(
         NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+
+    // Context screenshot — last GPU-rendered frame from the Metal backbuffer.
+    // This is what was on screen at the moment of the event (or just before).
+    NSString* ctxShotPath = nil;
+    long long ctxShotTs = (long long)([[NSDate date] timeIntervalSince1970] * 1000);
+    if (Bugpunch_BackbufferReady()) {
+        ctxShotPath = [caches stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"bp_ctx_%f.jpg", now]];
+        if (!Bugpunch_WriteBackbufferJPEG([ctxShotPath UTF8String], 0.85f)) {
+            ctxShotPath = nil;
+        }
+    }
+
+    // Event screenshot — also from the backbuffer (fast path, no main-thread dependency).
     NSString* shotPath = [caches stringByAppendingPathComponent:
-        [NSString stringWithFormat:@"bp_shot_%f.jpg", [NSDate timeIntervalSinceReferenceDate]]];
-    Bugpunch_CaptureScreenshot([[NSString stringWithFormat:@"rb_%f",
-        [NSDate timeIntervalSinceReferenceDate]] UTF8String],
-        [shotPath UTF8String], 85, NULL);
+        [NSString stringWithFormat:@"bp_shot_%f.jpg", now]];
+    long long eventShotTs = (long long)([[NSDate date] timeIntervalSince1970] * 1000);
+    Bugpunch_WriteBackbufferJPEG([shotPath UTF8String], 0.85f);
 
     // User-initiated bug reports show the form; silent reports enqueue directly.
     BOOL showForm = [type isEqualToString:@"bug"];
@@ -356,6 +387,20 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
     NSString* videoPath = nil;
     NSMutableDictionary* mergedExtra = extra ? [extra mutableCopy] : [NSMutableDictionary dictionary];
     BPDumpRingAndTouches(&videoPath, mergedExtra);
+
+    // Attach timestamped screenshots array to metadata so the dashboard can
+    // show prev/next navigation between context and event screenshots.
+    NSMutableArray* screenshotsMeta = [NSMutableArray array];
+    if (ctxShotPath) {
+        [screenshotsMeta addObject:@{
+            @"type": @"context", @"timestampMs": @(ctxShotTs), @"field": @"context_screenshot"
+        }];
+    }
+    [screenshotsMeta addObject:@{
+        @"type": @"event", @"timestampMs": @(eventShotTs), @"field": @"screenshot"
+    }];
+    mergedExtra[@"screenshots"] = screenshotsMeta;
+
     NSString* metadataJson = BPBuildMetadataJson(type, title, description, mergedExtra, nil, nil);
     NSString* logsGzPath = BPWriteGzipLogs();
 
@@ -364,8 +409,9 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
     NSArray<NSString*>* traceShots = traceAttach ? (NSArray*)traceAttach[1] : nil;
     NSString* traceShotsCsv = traceShots.count ? [traceShots componentsJoinedByString:@","] : nil;
 
-    Bugpunch_EnqueueReportFull([url UTF8String], [apiKey UTF8String],
+    Bugpunch_EnqueueReportWithContext([url UTF8String], [apiKey UTF8String],
         [metadataJson UTF8String], [shotPath UTF8String],
+        ctxShotPath ? [ctxShotPath UTF8String] : "",
         videoPath ? [videoPath UTF8String] : "", "",
         tracesPath ? [tracesPath UTF8String] : NULL,
         traceShotsCsv ? [traceShotsCsv UTF8String] : NULL,
@@ -421,6 +467,18 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         [d.metadata[@"deviceModel"] ?: @"" UTF8String],
         [d.metadata[@"osVersion"] ?: @"" UTF8String],
         [d.metadata[@"gpu"] ?: @"" UTF8String]);
+
+    // Metal backbuffer capture — swizzles presentDrawable to blit each frame
+    // to a shared-memory texture. Near-zero CPU cost per frame. Used for:
+    //   - ANR screenshots (background thread reads last frame)
+    //   - Fast-path exception screenshots (no main-thread dependency)
+    //   - Rolling 1/sec pre-capture (replaces drawViewHierarchyInRect timer)
+    Bugpunch_InitBackbuffer();
+
+    // ANR watchdog — background thread checks that the main thread ticks.
+    int anrMs = [cfg[@"anrTimeoutMs"] intValue];
+    if (anrMs <= 0) anrMs = 5000;
+    Bugpunch_StartAnrWatchdog(anrMs);
 
     NSInteger logSize = [cfg[@"logBufferSize"] integerValue];
     if (logSize < 50) logSize = 2000;
@@ -493,19 +551,43 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                     if ([type isEqualToString:@"NATIVE_SIGNAL"]) {
                         body[@"errorMessage"] = [NSString stringWithFormat:@"%@%@",
                             signal ?: @"NATIVE", faultAddr ? [@" at " stringByAppendingString:faultAddr] : @""];
+                        body[@"category"] = @"crash";
                     } else if ([type isEqualToString:@"MACH_EXCEPTION"]) {
                         body[@"errorMessage"] = @"Mach exception";
+                        body[@"category"] = @"crash";
+                    } else if ([type isEqualToString:@"ANR"]) {
+                        body[@"errorMessage"] = @"ANR — main thread unresponsive";
+                        body[@"category"] = @"anr";
                     } else {
                         body[@"errorMessage"] = type ?: @"iOS crash";
+                        body[@"category"] = @"crash";
                     }
+                    // Extract screenshot path for ANR reports.
+                    NSString* shotPath = nil;
+                    for (NSString* line in [rawStr componentsSeparatedByString:@"\n"]) {
+                        if ([line hasPrefix:@"---"]) break;
+                        if ([line hasPrefix:@"screenshot:"]) {
+                            shotPath = [line substringFromIndex:@"screenshot:".length];
+                            break;
+                        }
+                    }
+                    BOOL hasShot = shotPath.length > 0 &&
+                        [[NSFileManager defaultManager] fileExistsAtPath:shotPath];
+
                     NSError* e = nil;
                     NSData* bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:&e];
                     if (bodyData) {
                         NSString* bodyStr = [[NSString alloc] initWithData:bodyData
                             encoding:NSUTF8StringEncoding];
-                        BugpunchUploader_EnqueueJson([url UTF8String], [key UTF8String], [bodyStr UTF8String]);
+                        if (hasShot) {
+                            // Use multipart upload so the ANR screenshot is attached.
+                            Bugpunch_EnqueueReport([url UTF8String], [key UTF8String],
+                                [bodyStr UTF8String], [shotPath UTF8String], "", "");
+                        } else {
+                            BugpunchUploader_EnqueueJson([url UTF8String], [key UTF8String], [bodyStr UTF8String]);
+                        }
                         Bugpunch_DeleteCrashFile([p UTF8String]);
-                        NSLog(@"[Bugpunch] queued pending crash: %@", p);
+                        NSLog(@"[Bugpunch] queued pending crash: %@ (screenshot=%@)", p, hasShot ? @"yes" : @"no");
                     } else {
                         NSLog(@"[Bugpunch] failed to serialize crash payload: %@", e);
                         // File stays — retry next launch.
@@ -539,6 +621,9 @@ static void BPStartRingFromConfig(void) {
     // multi-finger session over 30s never drops events.
     BugpunchTouch_Configure(windowSec * 600);
     BugpunchTouch_Start();
+    // Show the floating debug widget (recording indicator + tools).
+    extern void Bugpunch_ShowDebugWidget(void);
+    Bugpunch_ShowDebugWidget();
 }
 
 void Bugpunch_EnterDebugMode(int skipConsent) {
@@ -558,6 +643,8 @@ void Bugpunch_StopDebugMode(void) {
     [BPShake stop];
     [BPLogReader stop];
     BugpunchTouch_Stop();
+    Bugpunch_StopAnrWatchdog();
+    Bugpunch_ShutdownBackbuffer();
     [d.displayLink invalidate]; d.displayLink = nil;
     d.started = NO;
 }

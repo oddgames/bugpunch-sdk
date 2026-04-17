@@ -96,12 +96,23 @@ namespace ODDGames.Bugpunch
         }
 
         /// <summary>
-        /// Mark a moment with a label and extra tags.
+        /// Mark a moment with a label and extra string tags.
         /// </summary>
         public static void Trace(string label, System.Collections.Generic.Dictionary<string, string> tags)
         {
             if (BugpunchClient.Instance == null) return;
             BugpunchNative.Trace(label, SerializeTags(tags));
+        }
+
+        /// <summary>
+        /// Mark a moment with a label and arbitrary key-value data.
+        /// Values are serialized by type: numbers stay numeric, bools stay
+        /// boolean, null stays null, everything else is ToString'd.
+        /// </summary>
+        public static void Trace(string label, System.Collections.IDictionary data)
+        {
+            if (BugpunchClient.Instance == null) return;
+            BugpunchNative.Trace(label, SerializeDict(data));
         }
 
         /// <summary>
@@ -123,6 +134,15 @@ namespace ODDGames.Bugpunch
             BugpunchNative.TraceScreenshot(label, SerializeTags(tags));
         }
 
+        /// <summary>
+        /// Same as TraceScreenshot but with arbitrary key-value data.
+        /// </summary>
+        public static void TraceScreenshot(string label, System.Collections.IDictionary data)
+        {
+            if (BugpunchClient.Instance == null) return;
+            BugpunchNative.TraceScreenshot(label, SerializeDict(data));
+        }
+
         static string SerializeTags(System.Collections.Generic.Dictionary<string, string> tags)
         {
             if (tags == null || tags.Count == 0) return null;
@@ -139,6 +159,35 @@ namespace ODDGames.Bugpunch
             }
             sb.Append('}');
             return sb.ToString();
+        }
+
+        static string SerializeDict(System.Collections.IDictionary dict)
+        {
+            if (dict == null || dict.Count == 0) return null;
+            var sb = new System.Text.StringBuilder(128);
+            sb.Append('{');
+            bool first = true;
+            foreach (System.Collections.DictionaryEntry entry in dict)
+            {
+                if (entry.Key == null) continue;
+                if (!first) sb.Append(',');
+                first = false;
+                sb.Append('"').Append(EscJson(entry.Key.ToString())).Append("\":");
+                AppendJsonValue(sb, entry.Value);
+            }
+            sb.Append('}');
+            return sb.ToString();
+        }
+
+        static void AppendJsonValue(System.Text.StringBuilder sb, object value)
+        {
+            if (value == null) { sb.Append("null"); return; }
+            if (value is bool b) { sb.Append(b ? "true" : "false"); return; }
+            if (value is int i) { sb.Append(i); return; }
+            if (value is long l) { sb.Append(l); return; }
+            if (value is float f) { sb.Append(f.ToString(System.Globalization.CultureInfo.InvariantCulture)); return; }
+            if (value is double d) { sb.Append(d.ToString(System.Globalization.CultureInfo.InvariantCulture)); return; }
+            sb.Append('"').Append(EscJson(value.ToString())).Append('"');
         }
 
         static string EscJson(string s)

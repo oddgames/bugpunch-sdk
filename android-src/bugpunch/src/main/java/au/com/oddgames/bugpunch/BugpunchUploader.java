@@ -18,7 +18,9 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -63,29 +65,42 @@ public class BugpunchUploader {
     }
 
     /**
-     * Enqueue a report. Writes a manifest describing the request and kicks
-     * the worker. All args passed as primitives — no JSON glue in C#.
-     * Empty-string paths are treated as absent.
+     * A named file to include in a multipart upload.
+     * Callers build a list of these and pass to {@link #enqueue}.
      */
-    public static void enqueue(Context ctx, final String url, final String apiKey,
-                               final String metadataJson, final String screenshotPath,
-                               final String videoPath, final String annotationsPath) {
-        enqueue(ctx, url, apiKey, metadataJson, screenshotPath, videoPath,
-            annotationsPath, null, null, null);
+    public static class FileAttachment {
+        public final String field;       // multipart field name
+        public final String filename;    // filename in the multipart part
+        public final String contentType; // MIME type
+        public final String path;        // absolute path on disk
+
+        public FileAttachment(String field, String filename, String contentType, String path) {
+            this.field = field;
+            this.filename = filename;
+            this.contentType = contentType;
+            this.path = path;
+        }
+
+        /** Convenience: JPEG image attachment. */
+        public static FileAttachment jpeg(String field, String path) {
+            return new FileAttachment(field, field + ".jpg", "image/jpeg", path);
+        }
+
+        /** Convenience: numbered JPEG (trace_0, anr_screenshot_1, etc.). */
+        public static FileAttachment jpeg(String fieldPrefix, int index, String path) {
+            String name = fieldPrefix + "_" + index;
+            return new FileAttachment(name, name + ".jpg", "image/jpeg", path);
+        }
     }
 
     /**
-     * Full overload that accepts trace attachments and gzip'd logs.
-     * {@code tracesJsonPath} is a multipart field {@code traces} (application/json).
-     * {@code traceScreenshotPaths} each become multipart fields {@code trace_0}, {@code trace_1}, ...
-     * {@code logsGzPath} is a gzip'd JSON array of log entries sent as the {@code logs} field.
+     * Enqueue a multipart upload. The metadata JSON becomes the {@code metadata}
+     * text field; each {@link FileAttachment} becomes a binary part. All temp
+     * files in the list are cleaned up after successful upload.
      */
     public static void enqueue(Context ctx, final String url, final String apiKey,
-                               final String metadataJson, final String screenshotPath,
-                               final String videoPath, final String annotationsPath,
-                               final String tracesJsonPath,
-                               final String[] traceScreenshotPaths,
-                               final String logsGzPath) {
+                               final String metadataJson,
+                               final List<FileAttachment> attachments) {
         ensureStarted(ctx);
         sHandler.post(new Runnable() {
             @Override public void run() {
@@ -100,62 +115,16 @@ public class BugpunchUploader {
                     m.put("fields", fields);
                     JSONArray files = new JSONArray();
                     JSONArray cleanup = new JSONArray();
-                    if (screenshotPath != null && !screenshotPath.isEmpty()) {
-                        JSONObject f = new JSONObject();
-                        f.put("field", "screenshot");
-                        f.put("filename", "screenshot.jpg");
-                        f.put("contentType", "image/jpeg");
-                        f.put("path", screenshotPath);
-                        files.put(f);
-                        cleanup.put(screenshotPath);
-                    }
-                    if (videoPath != null && !videoPath.isEmpty()) {
-                        JSONObject f = new JSONObject();
-                        f.put("field", "video");
-                        f.put("filename", "video.mp4");
-                        f.put("contentType", "video/mp4");
-                        f.put("path", videoPath);
-                        files.put(f);
-                        cleanup.put(videoPath);
-                    }
-                    if (annotationsPath != null && !annotationsPath.isEmpty()) {
-                        JSONObject f = new JSONObject();
-                        f.put("field", "annotations");
-                        f.put("filename", "annotations.png");
-                        f.put("contentType", "image/png");
-                        f.put("path", annotationsPath);
-                        files.put(f);
-                        cleanup.put(annotationsPath);
-                    }
-                    if (tracesJsonPath != null && !tracesJsonPath.isEmpty()) {
-                        JSONObject f = new JSONObject();
-                        f.put("field", "traces");
-                        f.put("filename", "traces.json");
-                        f.put("contentType", "application/json");
-                        f.put("path", tracesJsonPath);
-                        files.put(f);
-                        cleanup.put(tracesJsonPath);
-                    }
-                    if (logsGzPath != null && !logsGzPath.isEmpty()) {
-                        JSONObject f = new JSONObject();
-                        f.put("field", "logs");
-                        f.put("filename", "logs.json.gz");
-                        f.put("contentType", "application/gzip");
-                        f.put("path", logsGzPath);
-                        files.put(f);
-                        cleanup.put(logsGzPath);
-                    }
-                    if (traceScreenshotPaths != null) {
-                        for (int i = 0; i < traceScreenshotPaths.length; i++) {
-                            String p = traceScreenshotPaths[i];
-                            if (p == null || p.isEmpty()) continue;
+                    if (attachments != null) {
+                        for (FileAttachment a : attachments) {
+                            if (a.path == null || a.path.isEmpty()) continue;
                             JSONObject f = new JSONObject();
-                            f.put("field", "trace_" + i);
-                            f.put("filename", "trace_" + i + ".jpg");
-                            f.put("contentType", "image/jpeg");
-                            f.put("path", p);
+                            f.put("field", a.field);
+                            f.put("filename", a.filename);
+                            f.put("contentType", a.contentType);
+                            f.put("path", a.path);
                             files.put(f);
-                            cleanup.put(p);
+                            cleanup.put(a.path);
                         }
                     }
                     m.put("files", files);
@@ -172,6 +141,23 @@ public class BugpunchUploader {
                 }
             }
         });
+    }
+
+    /**
+     * Legacy overload for C# bridge and crash drain callers.
+     * Wraps named paths into a {@link FileAttachment} list.
+     */
+    public static void enqueue(Context ctx, String url, String apiKey,
+                               String metadataJson, String screenshotPath,
+                               String videoPath, String annotationsPath) {
+        List<FileAttachment> files = new ArrayList<>();
+        if (screenshotPath != null && !screenshotPath.isEmpty())
+            files.add(FileAttachment.jpeg("screenshot", screenshotPath));
+        if (videoPath != null && !videoPath.isEmpty())
+            files.add(new FileAttachment("video", "video.mp4", "video/mp4", videoPath));
+        if (annotationsPath != null && !annotationsPath.isEmpty())
+            files.add(new FileAttachment("annotations", "annotations.png", "image/png", annotationsPath));
+        enqueue(ctx, url, apiKey, metadataJson, files);
     }
 
     /**

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using UnityEngine;
@@ -32,6 +33,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
         const float ZoomSensitivity = 1f;
         const float MinOrbitDistance = 0.1f;
         const float FocusDistance = 5f;
+
+        // Collider streaming
+        const int MeshVertexBudget = 2000;
+        List<(Collider collider, int tier, int instanceId)> _colliderCache;
+        HashSet<int> _colliderKnownIds; // tracks IDs already sent to client
+        float _colliderSearchRadius;     // current expansion radius
 
         public void SetStreamer(IStreamer streamer)
         {
@@ -757,6 +764,213 @@ Shader ""Hidden/Bugpunch/Overdraw"" {
 
             sb.Append("]");
             return sb.ToString();
+        }
+
+        // -----------------------------------------------------------------
+        // Collider streaming
+        // -----------------------------------------------------------------
+
+        static int ClassifyTier(Collider c)
+        {
+            var rb = c.attachedRigidbody;
+            if (rb == null) return 0;           // static
+            if (rb.isKinematic) return 1;       // kinematic
+            return 2;                            // dynamic
+        }
+
+        /// <summary>
+        /// Incremental collider snapshot — returns NEW colliders not yet sent to client.
+        /// First call (reset=true) clears state and starts from a small radius.
+        /// Subsequent calls expand the search radius progressively.
+        /// Uses Physics.OverlapSphere for spatial queries (leverages Unity's broadphase).
+        /// </summary>
+        public string GetColliders(float maxDistance = 500f, int maxCount = 200, bool reset = false)
+        {
+            var cam = _sceneCamera ?? Camera.main;
+            var camPos = cam != null ? cam.transform.position : Vector3.zero;
+
+            if (reset || _colliderKnownIds == null)
+            {
+                _colliderCache = new List<(Collider, int, int)>();
+                _colliderKnownIds = new HashSet<int>();
+                _colliderSearchRadius = 0f;
+            }
+
+            // Expand search radius: 50 → 150 → 350 → 750 → maxDistance
+            float nextRadius = _colliderSearchRadius == 0f ? 50f
+                : Mathf.Min(_colliderSearchRadius * 2f + 50f, maxDistance);
+
+            var hits = Physics.OverlapSphere(camPos, nextRadius, ~0, QueryTriggerInteraction.Collide);
+            _colliderSearchRadius = nextRadius;
+
+            var sb = new StringBuilder();
+            sb.Append("{\"colliders\":[");
+            int count = 0;
+            bool done = nextRadius >= maxDistance;
+
+            foreach (var col in hits)
+            {
+                if (count >= maxCount) break;
+
+                int id = col.gameObject.GetInstanceID();
+                if (_colliderKnownIds.Contains(id)) continue; // already sent
+
+                int tier = ClassifyTier(col);
+                _colliderKnownIds.Add(id);
+                _colliderCache.Add((col, tier, id));
+
+                if (count > 0) sb.Append(",");
+                sb.Append("{");
+                string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
+
+                var go = col.gameObject;
+                var t = col.transform;
+                var wPos = t.position;
+                var rot = t.eulerAngles;
+                var ls = t.lossyScale;
+                sb.Append($"\"id\":{id},\"name\":\"{EscapeJson(go.name)}\",");
+                sb.Append($"\"tier\":{tier},");
+
+                SerializeShape(sb, col, F);
+
+                sb.Append($",\"px\":{F(wPos.x)},\"py\":{F(wPos.y)},\"pz\":{F(wPos.z)},");
+                sb.Append($"\"rx\":{F(rot.x)},\"ry\":{F(rot.y)},\"rz\":{F(rot.z)},");
+                sb.Append($"\"lsx\":{F(ls.x)},\"lsy\":{F(ls.y)},\"lsz\":{F(ls.z)}");
+
+                sb.Append("}");
+                count++;
+            }
+
+            sb.Append("],\"done\":");
+            sb.Append(done && count == 0 ? "true" : "false");
+            sb.Append(",\"radius\":");
+            sb.Append(nextRadius.ToString("F0", CultureInfo.InvariantCulture));
+            sb.Append("}");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Compact transform-only update for a given tier.
+        /// Returns {"t":[[id,px,py,pz,rx,ry,rz],...], "r":[removedIds]}
+        /// </summary>
+        public string GetColliderTransforms(int tier)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"t\":[");
+
+            List<int> removed = null;
+            int written = 0;
+
+            if (_colliderCache != null)
+            {
+                for (int i = _colliderCache.Count - 1; i >= 0; i--)
+                {
+                    var (col, t, cachedId) = _colliderCache[i];
+                    if (t != tier) continue;
+
+                    // Collider destroyed or disabled since snapshot
+                    if (col == null || !col.enabled || !col.gameObject.activeInHierarchy)
+                    {
+                        if (removed == null) removed = new List<int>();
+                        removed.Add(cachedId);
+                        _colliderCache.RemoveAt(i);
+                        continue;
+                    }
+
+                    var pos = col.transform.position;
+                    var rot = col.transform.eulerAngles;
+                    string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
+
+                    if (written > 0) sb.Append(",");
+                    sb.Append($"[{cachedId},{F(pos.x)},{F(pos.y)},{F(pos.z)},{F(rot.x)},{F(rot.y)},{F(rot.z)}]");
+                    written++;
+                }
+            }
+
+            sb.Append("],\"r\":[");
+            if (removed != null)
+            {
+                for (int i = 0; i < removed.Count; i++)
+                {
+                    if (i > 0) sb.Append(",");
+                    sb.Append(removed[i]);
+                }
+            }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        static void SerializeAabb(StringBuilder sb, Bounds b, Func<float, string> F)
+        {
+            sb.Append("\"type\":\"mesh-aabb\",\"shape\":{");
+            sb.Append($"\"cx\":{F(b.center.x)},\"cy\":{F(b.center.y)},\"cz\":{F(b.center.z)},");
+            sb.Append($"\"ex\":{F(b.extents.x)},\"ey\":{F(b.extents.y)},\"ez\":{F(b.extents.z)}");
+            sb.Append("}");
+        }
+
+        static void SerializeShape(StringBuilder sb, Collider col, Func<float, string> F)
+        {
+            if (col is BoxCollider box)
+            {
+                sb.Append("\"type\":\"box\",\"shape\":{");
+                sb.Append($"\"cx\":{F(box.center.x)},\"cy\":{F(box.center.y)},\"cz\":{F(box.center.z)},");
+                sb.Append($"\"sx\":{F(box.size.x)},\"sy\":{F(box.size.y)},\"sz\":{F(box.size.z)}");
+                sb.Append("}");
+            }
+            else if (col is SphereCollider sphere)
+            {
+                sb.Append("\"type\":\"sphere\",\"shape\":{");
+                sb.Append($"\"cx\":{F(sphere.center.x)},\"cy\":{F(sphere.center.y)},\"cz\":{F(sphere.center.z)},");
+                sb.Append($"\"r\":{F(sphere.radius)}");
+                sb.Append("}");
+            }
+            else if (col is CapsuleCollider capsule)
+            {
+                sb.Append("\"type\":\"capsule\",\"shape\":{");
+                sb.Append($"\"cx\":{F(capsule.center.x)},\"cy\":{F(capsule.center.y)},\"cz\":{F(capsule.center.z)},");
+                sb.Append($"\"r\":{F(capsule.radius)},\"h\":{F(capsule.height)},\"d\":{capsule.direction}");
+                sb.Append("}");
+            }
+            else if (col is MeshCollider mesh)
+            {
+                var sharedMesh = mesh.sharedMesh;
+                if (sharedMesh == null)
+                {
+                    // No mesh — local-space zero-centered box
+                    SerializeAabb(sb, new Bounds(Vector3.zero, Vector3.one), F);
+                    return;
+                }
+
+                var verts = sharedMesh.vertices;
+                if (!mesh.convex && verts.Length >= MeshVertexBudget)
+                {
+                    // Too large — use mesh's local-space bounds as fallback
+                    SerializeAabb(sb, sharedMesh.bounds, F);
+                    return;
+                }
+
+                sb.Append("\"type\":\"mesh\",\"shape\":{\"verts\":[");
+                for (int i = 0; i < verts.Length; i++)
+                {
+                    if (i > 0) sb.Append(",");
+                    sb.Append(F(verts[i].x)); sb.Append(",");
+                    sb.Append(F(verts[i].y)); sb.Append(",");
+                    sb.Append(F(verts[i].z));
+                }
+                sb.Append("],\"tris\":[");
+                var tris = sharedMesh.triangles;
+                for (int i = 0; i < tris.Length; i++)
+                {
+                    if (i > 0) sb.Append(",");
+                    sb.Append(tris[i]);
+                }
+                sb.Append("]}");
+            }
+            else
+            {
+                // Unknown collider type — local-space zero-centered box
+                SerializeAabb(sb, new Bounds(Vector3.zero, Vector3.one), F);
+            }
         }
 
         static string EscapeJson(string s) =>

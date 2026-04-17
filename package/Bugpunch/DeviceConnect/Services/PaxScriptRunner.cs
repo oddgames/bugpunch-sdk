@@ -36,7 +36,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (sender.HasErrors)
                     {
                         foreach (ScriptError err in sender.Error_List)
-                            errors.AppendLine($"({err.LineNumber}) {err.Message}");
+                            errors.AppendLine($"({err.LineNumber + 1}) {err.Message}");
                     }
                 };
 
@@ -83,7 +83,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (errors.Length > 0) return;
             if (scripter.Error_List == null) return;
             foreach (ScriptError err in scripter.Error_List)
-                errors.AppendLine($"({err.LineNumber}) {err.Message}");
+                errors.AppendLine($"({err.LineNumber + 1}) {err.Message}");
         }
 
         static string BuildErrorResponse(PaxScripter scripter, StringBuilder errorText)
@@ -99,7 +99,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 {
                     if (!first) sb.Append(",");
                     first = false;
-                    sb.Append($"{{\"line\":{err.LineNumber},\"message\":\"{Esc(err.Message)}\"}}");
+                    sb.Append($"{{\"line\":{err.LineNumber + 1},\"message\":\"{Esc(err.Message)}\"}}");
                 }
             }
 

@@ -278,10 +278,39 @@ public class BugpunchCrashHandler {
 
         private void writeAnrReport(long elapsedMs) {
             try {
-                // Capture a screenshot via PixelCopy (runs on compositor thread,
-                // works even when the main thread is stuck).
-                String shotPath = mCrashDir + "/anr_" + System.currentTimeMillis() + ".jpg";
-                BugpunchScreenshot.captureSync(shotPath, 75);
+                long baseTs = System.currentTimeMillis();
+
+                // 1 frame BEFORE (from the shared rolling buffer — last frame
+                // captured ~1s ago while the main thread was still healthy).
+                // + 2 frames AFTER (live PixelCopy captures at 500ms intervals
+                // to check if the screen is still updating).
+                List<String> shotPaths = new ArrayList<>();
+                List<Long> shotTimestamps = new ArrayList<>();
+
+                // Before-frame from rolling buffer.
+                if (BugpunchScreenshot.hasLastFrame()) {
+                    long beforeTs = BugpunchScreenshot.getLastFrameTimestamp();
+                    String beforePath = mCrashDir + "/anr_" + beforeTs + "_before.jpg";
+                    if (BugpunchScreenshot.writeLastFrame(beforePath, 75)) {
+                        shotPaths.add(beforePath);
+                        shotTimestamps.add(beforeTs);
+                    }
+                }
+
+                // 2 after-frames via live PixelCopy.
+                for (int i = 0; i < 2; i++) {
+                    if (i > 0) {
+                        try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+                    }
+                    long shotTs = System.currentTimeMillis();
+                    String path = mCrashDir + "/anr_" + shotTs + "_after" + i + ".jpg";
+                    BugpunchScreenshot.captureSync(path, 75);
+                    File f = new File(path);
+                    if (f.exists() && f.length() > 0) {
+                        shotPaths.add(path);
+                        shotTimestamps.add(shotTs);
+                    }
+                }
 
                 // Capture the main thread's stack trace
                 Thread mainThread = Looper.getMainLooper().getThread();
@@ -290,14 +319,22 @@ public class BugpunchCrashHandler {
                 StringBuilder sb = new StringBuilder();
                 sb.append("BUGPUNCH_CRASH_V1\n");
                 sb.append("type:ANR\n");
-                sb.append("timestamp:").append(System.currentTimeMillis()).append('\n');
+                sb.append("timestamp:").append(baseTs).append('\n');
                 sb.append("elapsed_ms:").append(elapsedMs).append('\n');
                 sb.append("thread:main\n");
-                // Include screenshot path so drainPendingCrashFiles can attach it.
-                File shotFile = new File(shotPath);
-                if (shotFile.exists() && shotFile.length() > 0) {
-                    sb.append("screenshot:").append(shotPath).append('\n');
+                // Include screenshot paths so drainPendingCrashFiles can attach them.
+                // First screenshot goes in the standard field for backwards compat.
+                if (!shotPaths.isEmpty()) {
+                    sb.append("screenshot:").append(shotPaths.get(0)).append('\n');
                 }
+                // Additional ANR screenshots (the burst series) with timestamps.
+                for (int i = 0; i < shotPaths.size(); i++) {
+                    sb.append("anr_screenshot_").append(i).append(':')
+                      .append(shotPaths.get(i)).append('\n');
+                    sb.append("anr_screenshot_ts_").append(i).append(':')
+                      .append(shotTimestamps.get(i)).append('\n');
+                }
+                sb.append("screenshot_count:").append(shotPaths.size()).append('\n');
                 sb.append("---STACK---\n");
                 for (StackTraceElement frame : stack) {
                     sb.append(frame.getClassName()).append('.')
@@ -328,7 +365,8 @@ public class BugpunchCrashHandler {
                 writer.write(sb.toString());
                 writer.close();
 
-                Log.i(TAG, "ANR report written: " + file.getAbsolutePath());
+                Log.i(TAG, "ANR report written: " + file.getAbsolutePath()
+                    + " (" + shotPaths.size() + " screenshots)");
             } catch (Exception e) {
                 Log.e(TAG, "Failed to write ANR report", e);
             }

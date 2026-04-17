@@ -59,6 +59,7 @@ public class BugpunchReportActivity extends Activity {
     private static final String EX_DESC = "bp_desc";
 
     static String sAnnotationsPath;        // filled by annotate activity on return
+    private static final String EX_EXTRA_SHOTS = "bp_extra_shots";
 
     private String mShotPath;
     private String mAnnotationsPath;
@@ -67,14 +68,26 @@ public class BugpunchReportActivity extends Activity {
     private Spinner mSeverity;
     private String mInitialDescription;
     private String mInitialTitle;
+    private java.util.ArrayList<String> mExtraShots = new java.util.ArrayList<>();
+    private LinearLayout mThumbStrip;
+    private TextView mThumbCountLabel;
+    private boolean mThumbExpanded = false;
 
     public static void launch(String screenshotPath, String title, String description) {
+        launch(screenshotPath, title, description, null);
+    }
+
+    public static void launch(String screenshotPath, String title, String description,
+                              String[] extraScreenshots) {
         Activity host = BugpunchUnity.currentActivity();
         if (host == null) { Log.w(TAG, "no activity"); return; }
         Intent i = new Intent(host, BugpunchReportActivity.class);
         i.putExtra(EX_SHOT, screenshotPath);
         i.putExtra(EX_TITLE, title == null ? "" : title);
         i.putExtra(EX_DESC, description == null ? "" : description);
+        if (extraScreenshots != null && extraScreenshots.length > 0) {
+            i.putExtra(EX_EXTRA_SHOTS, extraScreenshots);
+        }
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         host.startActivity(i);
     }
@@ -85,6 +98,13 @@ public class BugpunchReportActivity extends Activity {
         mShotPath = getIntent().getStringExtra(EX_SHOT);
         mInitialTitle = getIntent().getStringExtra(EX_TITLE);
         mInitialDescription = getIntent().getStringExtra(EX_DESC);
+        String[] extras = getIntent().getStringArrayExtra(EX_EXTRA_SHOTS);
+        if (extras != null) {
+            for (String p : extras) {
+                if (p != null && !p.isEmpty() && new java.io.File(p).exists())
+                    mExtraShots.add(p);
+            }
+        }
 
         buildUi();
     }
@@ -194,6 +214,11 @@ public class BugpunchReportActivity extends Activity {
         lpPill.setMargins(0, 0, dp(10), dp(10));
         previewCard.addView(pill, lpPill);
 
+        // ── Extra screenshots thumbnail strip ──
+        // Horizontal scroll of dismissable thumbnails for manual screenshots
+        // captured via the debug widget. Shown only when there are extras.
+        View thumbSection = buildThumbStrip();
+
         TextView emailLabel = label("Your email");
         mEmail = input(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         mEmail.setHint("you@studio.com");
@@ -271,6 +296,7 @@ public class BugpunchReportActivity extends Activity {
             LinearLayout form = new LinearLayout(this);
             form.setOrientation(LinearLayout.VERTICAL);
             form.addView(headerBlock);
+            if (thumbSection != null) form.addView(thumbSection);
             form.addView(emailLabel);
             form.addView(mEmail);
             form.addView(descLabel);
@@ -298,6 +324,7 @@ public class BugpunchReportActivity extends Activity {
                 LayoutParams.MATCH_PARENT, dp(240));
             lpShot.bottomMargin = dp(20);
             root.addView(previewCard, lpShot);
+            if (thumbSection != null) root.addView(thumbSection);
             root.addView(emailLabel);
             root.addView(mEmail);
             root.addView(descLabel);
@@ -377,15 +404,105 @@ public class BugpunchReportActivity extends Activity {
             return;
         }
         try {
+            String[] extras = mExtraShots.isEmpty() ? null : mExtraShots.toArray(new String[0]);
             BugpunchDebugMode.submitReport(
                 mInitialTitle != null ? mInitialTitle : "Bug report",
-                desc, email, severity, mShotPath, mAnnotationsPath);
+                desc, email, severity, mShotPath, mAnnotationsPath, extras);
             Toast.makeText(this, "Report sent", Toast.LENGTH_SHORT).show();
         } catch (Throwable t) {
             Log.w(TAG, "submit failed", t);
             Toast.makeText(this, "Failed to send report", Toast.LENGTH_SHORT).show();
         }
         finish();
+    }
+
+    // ── Screenshot thumbnail strip ──
+
+    private View buildThumbStrip() {
+        if (mExtraShots.isEmpty()) return null;
+
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams wrapLp = new LinearLayout.LayoutParams(
+            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        wrapLp.topMargin = dp(8);
+        wrapLp.bottomMargin = dp(4);
+        wrapper.setLayoutParams(wrapLp);
+
+        // Header row: label + count
+        mThumbCountLabel = new TextView(this);
+        mThumbCountLabel.setTextColor(COLOR_TEXT_LABEL);
+        mThumbCountLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        mThumbCountLabel.setLetterSpacing(0.12f);
+        mThumbCountLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        mThumbCountLabel.setPadding(0, 0, 0, dp(6));
+        wrapper.addView(mThumbCountLabel);
+
+        // Scrollable thumbnail row
+        android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(this);
+        scroll.setHorizontalScrollBarEnabled(false);
+        mThumbStrip = new LinearLayout(this);
+        mThumbStrip.setOrientation(LinearLayout.HORIZONTAL);
+        scroll.addView(mThumbStrip);
+        wrapper.addView(scroll);
+
+        rebuildThumbs();
+        return wrapper;
+    }
+
+    private void rebuildThumbs() {
+        if (mThumbStrip == null) return;
+        mThumbStrip.removeAllViews();
+        mThumbCountLabel.setText("SCREENSHOTS (" + mExtraShots.size() + ")");
+
+        int thumbH = dp(64);
+        for (int idx = 0; idx < mExtraShots.size(); idx++) {
+            String path = mExtraShots.get(idx);
+            final int capturedIdx = idx;
+
+            FrameLayout frame = new FrameLayout(this);
+            LinearLayout.LayoutParams frameLp = new LinearLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT, thumbH);
+            frameLp.rightMargin = dp(6);
+            frame.setLayoutParams(frameLp);
+
+            // Thumbnail image
+            ImageView thumb = new ImageView(this);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setAdjustViewBounds(false);
+            try {
+                android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+                opts.inSampleSize = 4; // quarter resolution for thumbnails
+                android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(path, opts);
+                if (bmp != null) thumb.setImageBitmap(bmp);
+            } catch (Throwable ignored) {}
+            FrameLayout.LayoutParams thumbLp = new FrameLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT);
+            thumb.setBackground(surface(COLOR_SURFACE_ALT, dp(8), COLOR_BORDER));
+            thumb.setClipToOutline(true);
+            frame.addView(thumb, thumbLp);
+
+            // Dismiss X button
+            TextView dismiss = new TextView(this);
+            dismiss.setText("✕");
+            dismiss.setTextColor(Color.WHITE);
+            dismiss.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            dismiss.setGravity(Gravity.CENTER);
+            GradientDrawable xBg = new GradientDrawable();
+            xBg.setShape(GradientDrawable.OVAL);
+            xBg.setColor(0xCC000000);
+            dismiss.setBackground(xBg);
+            FrameLayout.LayoutParams xLp = new FrameLayout.LayoutParams(dp(20), dp(20));
+            xLp.gravity = Gravity.TOP | Gravity.END;
+            xLp.setMargins(0, dp(2), dp(2), 0);
+            dismiss.setOnClickListener(v -> {
+                mExtraShots.remove(capturedIdx);
+                rebuildThumbs();
+            });
+            frame.addView(dismiss, xLp);
+
+            mThumbStrip.addView(frame);
+        }
     }
 
     // ── Small builders to keep this file terse ──

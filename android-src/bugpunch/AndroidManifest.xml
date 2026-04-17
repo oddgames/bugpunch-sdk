@@ -43,6 +43,13 @@
             android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
+        <activity
+            android:name="au.com.oddgames.bugpunch.BugpunchToolsActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
         <service
             android:name="au.com.oddgames.bugpunch.BugpunchProjectionService"
             android:foregroundServiceType="mediaProjection"

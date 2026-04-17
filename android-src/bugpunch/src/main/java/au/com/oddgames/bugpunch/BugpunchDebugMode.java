@@ -114,6 +114,12 @@ public class BugpunchDebugMode {
         // 3) Cache the SurfaceView for ANR screenshot capture.
         BugpunchScreenshot.cacheSurfaceView();
 
+        // 3b) Start the rolling screenshot buffer — captures the GPU surface
+        // via PixelCopy ~1/sec and keeps the raw Bitmap in memory. Any code
+        // path (ANR, exception, crash, report) can grab the last frame.
+        // Only activates on high-end devices with enough RAM.
+        BugpunchScreenshot.startRollingBuffer();
+
         // 4) Shake detector (opt-in).
         JSONObject shake = sConfig.optJSONObject("shake");
         if (shake != null && shake.optBoolean("enabled", false)) {
@@ -176,12 +182,43 @@ public class BugpunchDebugMode {
             }
             try {
                 JSONObject body = buildCrashPayload(raw);
-                // Check for a screenshot path embedded in the crash file.
+                // Check for screenshot paths embedded in the crash file.
                 String shotPath = extractField(raw, "screenshot");
+                // Collect ANR screenshot burst (anr_screenshot_0, _1, ...) with timestamps.
+                int shotCount = 0;
+                try {
+                    String countStr = extractField(raw, "screenshot_count");
+                    if (countStr != null) shotCount = Integer.parseInt(countStr);
+                } catch (NumberFormatException ignored) {}
+                String[] anrShotPaths = null;
+                if (shotCount > 0) {
+                    java.util.ArrayList<String> valid = new java.util.ArrayList<>();
+                    JSONArray tsArray = new JSONArray();
+                    for (int i = 0; i < shotCount; i++) {
+                        String p = extractField(raw, "anr_screenshot_" + i);
+                        String ts = extractField(raw, "anr_screenshot_ts_" + i);
+                        if (p != null && new java.io.File(p).exists()) {
+                            valid.add(p);
+                            tsArray.put(ts != null ? Long.parseLong(ts) : 0);
+                        }
+                    }
+                    if (!valid.isEmpty()) {
+                        anrShotPaths = valid.toArray(new String[0]);
+                        body.put("anrScreenshotTimestamps", tsArray);
+                    }
+                }
+                // Build attachment list for the crash upload.
+                List<BugpunchUploader.FileAttachment> files = new ArrayList<>();
                 if (shotPath != null && new java.io.File(shotPath).exists()) {
-                    // Use multipart upload so the screenshot is included.
-                    BugpunchUploader.enqueue(activity, url, apiKey,
-                        body.toString(), shotPath, "", "", null, null, null);
+                    files.add(BugpunchUploader.FileAttachment.jpeg("screenshot", shotPath));
+                }
+                if (anrShotPaths != null) {
+                    for (int i = 0; i < anrShotPaths.length; i++) {
+                        files.add(BugpunchUploader.FileAttachment.jpeg("anr_screenshot", i, anrShotPaths[i]));
+                    }
+                }
+                if (!files.isEmpty()) {
+                    BugpunchUploader.enqueue(activity, url, apiKey, body.toString(), files);
                 } else {
                     BugpunchUploader.enqueueJson(activity, url, apiKey, body.toString());
                 }
@@ -408,6 +445,8 @@ public class BugpunchDebugMode {
         // multi-finger session over the buffer window never drops events.
         BugpunchTouchRecorder.configure(windowSec * 600);
         BugpunchTouchRecorder.start(activity);
+        // Show the floating debug widget (recording indicator + tools).
+        BugpunchDebugWidget.show();
         // Fire BugpunchProjectionRequest which handles the system-level
         // MediaProjection consent dialog and kicks off the recorder service.
         // Empty callback — we don't need Unity to hear about it; state lives
@@ -422,6 +461,7 @@ public class BugpunchDebugMode {
         BugpunchShakeDetector.stop();
         BugpunchLogReader.stop();
         BugpunchTouchRecorder.stop();
+        BugpunchScreenshot.stopRollingBuffer();
         BugpunchCrashHandler.shutdown();
         sStarted = false;
     }
@@ -630,9 +670,45 @@ public class BugpunchDebugMode {
 
         // Silent path — assemble manifest directly.
         final DumpResult dump = dumpRingAndTouches(activity);
+
+        // Context screenshot — last frame from the rolling buffer (~1s before
+        // the event). Additional to the event screenshot taken below.
+        String contextShotPath = null;
+        long contextShotTs = 0;
+        if (BugpunchScreenshot.hasLastFrame()) {
+            contextShotPath = activity.getCacheDir().getAbsolutePath()
+                + "/bp_ctx_" + System.nanoTime() + ".jpg";
+            contextShotTs = BugpunchScreenshot.getLastFrameTimestamp();
+            if (!BugpunchScreenshot.writeLastFrame(contextShotPath, 85)) {
+                contextShotPath = null;
+            }
+        }
+
+        // Event screenshot — captured right now at the moment of the event.
         BugpunchScreenshot.capture("rb_" + System.nanoTime(), shotPath, 85, "", "");
 
         JSONObject extra = parseOr(extraJson);
+        long eventShotTs = System.currentTimeMillis();
+
+        // Build screenshots manifest — every screenshot gets a timestamp.
+        JSONArray screenshotsMeta = new JSONArray();
+        try {
+            if (contextShotPath != null && contextShotTs > 0) {
+                JSONObject ctx = new JSONObject();
+                ctx.put("type", "context");
+                ctx.put("timestampMs", contextShotTs);
+                ctx.put("field", "context_screenshot");
+                screenshotsMeta.put(ctx);
+            }
+            JSONObject evt = new JSONObject();
+            evt.put("type", "event");
+            evt.put("timestampMs", eventShotTs);
+            evt.put("field", "screenshot");
+            screenshotsMeta.put(evt);
+        } catch (JSONException ignored) {}
+        try { extra.put("screenshots", screenshotsMeta); }
+        catch (JSONException ignored) {}
+
         String logsJson = BugpunchLogReader.snapshotJson();
         String logsGzPath = writeGzipLogs(activity, logsJson);
         String metadataJson = buildMetadataJson(type, title, description,
@@ -641,7 +717,7 @@ public class BugpunchDebugMode {
         String tracesJsonPath = traceAttach != null ? (String) traceAttach[0] : null;
         String[] traceShots = traceAttach != null ? (String[]) traceAttach[1] : null;
         enqueueManifest(activity, endpointFor(type), metadataJson, shotPath, dump.videoPath, null,
-            tracesJsonPath, traceShots, logsGzPath);
+            tracesJsonPath, traceShots, logsGzPath, contextShotPath);
     }
 
     /**
@@ -652,20 +728,94 @@ public class BugpunchDebugMode {
     public static void submitReport(String title, String description, String email,
                                     String severity, String screenshotPath,
                                     String annotationsPath) {
+        submitReport(title, description, email, severity, screenshotPath, annotationsPath, null);
+    }
+
+    public static void submitReport(String title, String description, String email,
+                                    String severity, String screenshotPath,
+                                    String annotationsPath, String[] extraScreenshots) {
         if (!sStarted) return;
         Activity activity = BugpunchUnity.currentActivity();
         if (activity == null) return;
 
         DumpResult dump = dumpRingAndTouches(activity);
+
+        // Build screenshots metadata with timestamps
+        JSONObject extra = new JSONObject();
+        JSONArray screenshotsMeta = new JSONArray();
+        try {
+            // Context screenshot from rolling buffer
+            String contextPath = null;
+            long contextTs = 0;
+            if (BugpunchScreenshot.hasLastFrame()) {
+                contextPath = activity.getCacheDir().getAbsolutePath()
+                    + "/bp_ctx_" + System.nanoTime() + ".jpg";
+                contextTs = BugpunchScreenshot.getLastFrameTimestamp();
+                if (!BugpunchScreenshot.writeLastFrame(contextPath, 85)) contextPath = null;
+            }
+            if (contextPath != null) {
+                JSONObject ctx = new JSONObject();
+                ctx.put("type", "context");
+                ctx.put("timestampMs", contextTs);
+                ctx.put("field", "context_screenshot");
+                screenshotsMeta.put(ctx);
+            }
+            // Event screenshot
+            JSONObject evt = new JSONObject();
+            evt.put("type", "event");
+            evt.put("timestampMs", System.currentTimeMillis());
+            evt.put("field", "screenshot");
+            screenshotsMeta.put(evt);
+            // Extra manual screenshots
+            if (extraScreenshots != null) {
+                for (int i = 0; i < extraScreenshots.length; i++) {
+                    JSONObject es = new JSONObject();
+                    es.put("type", "manual");
+                    es.put("timestampMs", 0);
+                    es.put("field", "extra_screenshot_" + i);
+                    screenshotsMeta.put(es);
+                }
+            }
+            extra.put("screenshots", screenshotsMeta);
+        } catch (JSONException ignored) {}
+
         String logsJson = BugpunchLogReader.snapshotJson();
         String logsGzPath = writeGzipLogs(activity, logsJson);
         String metadataJson = buildMetadataJson("bug", title, description,
-            null, email, severity, dump);
+            extra, email, severity, dump);
         Object[] traceAttach = prepareTraceAttachments(activity);
         String tracesJsonPath = traceAttach != null ? (String) traceAttach[0] : null;
         String[] traceShots = traceAttach != null ? (String[]) traceAttach[1] : null;
-        enqueueManifest(activity, "/api/reports/bug", metadataJson,
-            screenshotPath, dump.videoPath, annotationsPath, tracesJsonPath, traceShots, logsGzPath);
+
+        // Build file attachment list
+        String serverUrl = sConfig.optString("serverUrl", "");
+        String apiKey = sConfig.optString("apiKey", "");
+        if (serverUrl.isEmpty() || apiKey.isEmpty()) return;
+        String url = serverUrl.replaceAll("/+$", "") + "/api/reports/bug";
+        List<BugpunchUploader.FileAttachment> files = new ArrayList<>();
+        if (screenshotPath != null && !screenshotPath.isEmpty())
+            files.add(BugpunchUploader.FileAttachment.jpeg("screenshot", screenshotPath));
+        if (dump.videoPath != null && !dump.videoPath.isEmpty())
+            files.add(new BugpunchUploader.FileAttachment("video", "video.mp4", "video/mp4", dump.videoPath));
+        if (annotationsPath != null && !annotationsPath.isEmpty())
+            files.add(new BugpunchUploader.FileAttachment("annotations", "annotations.png", "image/png", annotationsPath));
+        if (tracesJsonPath != null && !tracesJsonPath.isEmpty())
+            files.add(new BugpunchUploader.FileAttachment("traces", "traces.json", "application/json", tracesJsonPath));
+        if (logsGzPath != null && !logsGzPath.isEmpty())
+            files.add(new BugpunchUploader.FileAttachment("logs", "logs.json.gz", "application/gzip", logsGzPath));
+        if (traceShots != null) {
+            for (int i = 0; i < traceShots.length; i++) {
+                if (traceShots[i] != null && !traceShots[i].isEmpty())
+                    files.add(BugpunchUploader.FileAttachment.jpeg("trace", i, traceShots[i]));
+            }
+        }
+        if (extraScreenshots != null) {
+            for (int i = 0; i < extraScreenshots.length; i++) {
+                if (extraScreenshots[i] != null && !extraScreenshots[i].isEmpty())
+                    files.add(BugpunchUploader.FileAttachment.jpeg("extra_screenshot", i, extraScreenshots[i]));
+            }
+        }
+        BugpunchUploader.enqueue(activity, url, apiKey, metadataJson, files);
     }
 
     /**
@@ -733,11 +883,25 @@ public class BugpunchDebugMode {
         }
     }
 
+    /**
+     * Build the file attachment list and enqueue via the uploader.
+     * All screenshot/video/trace/log paths are assembled into a single
+     * {@link BugpunchUploader.FileAttachment} list — no parameter explosion.
+     */
     private static void enqueueManifest(Activity activity, String endpointPath,
                                         String metadataJson, String shotPath,
                                         String videoPath, String annotationsPath,
                                         String tracesJsonPath, String[] traceScreenshotPaths,
                                         String logsGzPath) {
+        enqueueManifest(activity, endpointPath, metadataJson, shotPath, videoPath,
+            annotationsPath, tracesJsonPath, traceScreenshotPaths, logsGzPath, null);
+    }
+
+    private static void enqueueManifest(Activity activity, String endpointPath,
+                                        String metadataJson, String shotPath,
+                                        String videoPath, String annotationsPath,
+                                        String tracesJsonPath, String[] traceScreenshotPaths,
+                                        String logsGzPath, String contextShotPath) {
         String serverUrl = sConfig.optString("serverUrl", "");
         String apiKey = sConfig.optString("apiKey", "");
         if (serverUrl.isEmpty() || apiKey.isEmpty()) {
@@ -745,9 +909,28 @@ public class BugpunchDebugMode {
             return;
         }
         String url = serverUrl.replaceAll("/+$", "") + endpointPath;
-        BugpunchUploader.enqueue(activity, url, apiKey, metadataJson,
-            shotPath, videoPath, annotationsPath, tracesJsonPath, traceScreenshotPaths,
-            logsGzPath);
+
+        List<BugpunchUploader.FileAttachment> files = new ArrayList<>();
+        if (contextShotPath != null && !contextShotPath.isEmpty())
+            files.add(BugpunchUploader.FileAttachment.jpeg("context_screenshot", contextShotPath));
+        if (shotPath != null && !shotPath.isEmpty())
+            files.add(BugpunchUploader.FileAttachment.jpeg("screenshot", shotPath));
+        if (videoPath != null && !videoPath.isEmpty())
+            files.add(new BugpunchUploader.FileAttachment("video", "video.mp4", "video/mp4", videoPath));
+        if (annotationsPath != null && !annotationsPath.isEmpty())
+            files.add(new BugpunchUploader.FileAttachment("annotations", "annotations.png", "image/png", annotationsPath));
+        if (tracesJsonPath != null && !tracesJsonPath.isEmpty())
+            files.add(new BugpunchUploader.FileAttachment("traces", "traces.json", "application/json", tracesJsonPath));
+        if (logsGzPath != null && !logsGzPath.isEmpty())
+            files.add(new BugpunchUploader.FileAttachment("logs", "logs.json.gz", "application/gzip", logsGzPath));
+        if (traceScreenshotPaths != null) {
+            for (int i = 0; i < traceScreenshotPaths.length; i++) {
+                String p = traceScreenshotPaths[i];
+                if (p != null && !p.isEmpty())
+                    files.add(BugpunchUploader.FileAttachment.jpeg("trace", i, p));
+            }
+        }
+        BugpunchUploader.enqueue(activity, url, apiKey, metadataJson, files);
     }
 
     private static String endpointFor(String type) {

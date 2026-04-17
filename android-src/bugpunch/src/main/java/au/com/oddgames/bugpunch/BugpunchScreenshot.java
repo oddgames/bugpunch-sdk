@@ -37,6 +37,99 @@ public class BugpunchScreenshot {
     // thread, which is stuck during an ANR.
     private static volatile SurfaceView sCachedSurface;
 
+    // ── Shared rolling screenshot buffer ──
+    // Periodically captures the GPU surface via PixelCopy (~1/sec) and keeps
+    // the last frame as a raw Bitmap in memory. No compression — just the raw
+    // pixels. JPEG compression only happens when writing to disk at report time.
+    // Any code path (ANR, exception, crash, user report) can call
+    // writeLastFrame() to get the most recent screenshot.
+    // Only active on devices with enough RAM.
+    private static volatile Bitmap sLastFrame;
+    private static volatile long sLastFrameTs;
+    private static volatile boolean sRollingActive;
+    private static final long ROLLING_INTERVAL_MS = 1000;
+
+    /**
+     * Start the rolling screenshot buffer. Call once at startup.
+     * Only activates on high-end devices (>= 256MB heap).
+     */
+    public static void startRollingBuffer() {
+        long maxMb = Runtime.getRuntime().maxMemory() / (1024 * 1024);
+        if (maxMb < 256) {
+            Log.i(TAG, "rolling buffer skipped — low memory device (" + maxMb + "MB heap)");
+            return;
+        }
+        if (sRollingActive) return;
+        sRollingActive = true;
+        Handler h = getHandler();
+        h.post(new Runnable() {
+            @Override public void run() {
+                if (!sRollingActive) return;
+                captureToBuffer();
+                getHandler().postDelayed(this, ROLLING_INTERVAL_MS);
+            }
+        });
+        Log.i(TAG, "rolling buffer started (" + maxMb + "MB heap)");
+    }
+
+    /** Stop the rolling buffer. */
+    public static void stopRollingBuffer() {
+        sRollingActive = false;
+        sLastFrame = null;
+    }
+
+    /** Capture one frame into the rolling buffer via PixelCopy (sync, background thread). */
+    private static void captureToBuffer() {
+        SurfaceView sv = sCachedSurface;
+        if (sv == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
+        try {
+            int w = sv.getWidth(), h = sv.getHeight();
+            if (w <= 0 || h <= 0) return;
+            final Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            final CountDownLatch latch = new CountDownLatch(1);
+            final AtomicReference<Boolean> success = new AtomicReference<>(false);
+            PixelCopy.request(sv, bitmap, new PixelCopy.OnPixelCopyFinishedListener() {
+                @Override public void onPixelCopyFinished(int result) {
+                    success.set(result == PixelCopy.SUCCESS);
+                    latch.countDown();
+                }
+            }, getHandler());
+            if (latch.await(2, TimeUnit.SECONDS) && success.get()) {
+                // Keep raw bitmap — no JPEG compression until write time.
+                Bitmap old = sLastFrame;
+                sLastFrame = bitmap;
+                sLastFrameTs = System.currentTimeMillis();
+                if (old != null && old != bitmap) old.recycle();
+            } else {
+                bitmap.recycle();
+            }
+        } catch (Throwable t) {
+            // Silent — don't crash the app for a background screenshot.
+        }
+    }
+
+    /** Epoch ms timestamp of the last captured frame, or 0 if none. */
+    public static long getLastFrameTimestamp() { return sLastFrameTs; }
+
+    /** Whether the rolling buffer is active and has at least one frame. */
+    public static boolean hasLastFrame() { return sLastFrame != null; }
+
+    /**
+     * Write the last buffered frame to a JPEG file. Compression happens here,
+     * not in the rolling capture loop. Thread-safe.
+     * @return true if written successfully.
+     */
+    public static boolean writeLastFrame(String outputPath, int quality) {
+        Bitmap frame = sLastFrame;
+        if (frame == null) return false;
+        try {
+            return writeJpeg(frame, outputPath, quality) == null;
+        } catch (Throwable t) {
+            Log.w(TAG, "writeLastFrame failed", t);
+            return false;
+        }
+    }
+
     /** Cache the Unity SurfaceView for later use by captureSync (ANR path). */
     public static void cacheSurfaceView() {
         Activity activity = BugpunchUnity.currentActivity();

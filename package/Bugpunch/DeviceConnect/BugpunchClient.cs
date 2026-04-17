@@ -321,11 +321,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Parse variables + overrides and resolve for this device
             ResolveVariables(json);
 
-            // Start native performance monitor if enabled
-            var perfJson = ExtractJsonObject(json, "performance");
-            if (perfJson != null && perfJson.Contains("\"enabled\":true"))
+            // Start native performance monitor if enabled in the ScriptableObject
+            // config AND the server hasn't explicitly disabled it.
+            if (Config != null && Config.performanceMonitoring)
             {
-                BugpunchNative.StartPerfMonitor(perfJson);
+                var perfJson = ExtractJsonObject(json, "performance");
+                // Default to enabled — only skip if the server explicitly sends enabled:false
+                bool serverDisabled = perfJson != null && perfJson.Contains("\"enabled\":false");
+                if (!serverDisabled)
+                {
+                    BugpunchNative.StartPerfMonitor(perfJson ?? "{\"enabled\":true}");
+                }
             }
 
             s_configFetched = true;

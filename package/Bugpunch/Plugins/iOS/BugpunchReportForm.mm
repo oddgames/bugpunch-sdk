@@ -193,6 +193,8 @@ extern "C" void Bugpunch_ClearReportInProgress(void);
 @property (nonatomic, strong) UISegmentedControl* severity;
 @property (nonatomic, copy) NSString* annotationsPath;
 @property (nonatomic, strong) UIView* root;   // the swappable layout root
+@property (nonatomic, strong) NSMutableArray<NSString*>* extraScreenshots;
+@property (nonatomic, strong) UIStackView* thumbStrip;
 @end
 
 @implementation BPReportFormViewController
@@ -353,6 +355,12 @@ extern "C" void Bugpunch_ClearReportInProgress(void);
     [_descField removeFromSuperview];
     [_severity removeFromSuperview];
 
+    // Extra screenshots strip (only in landscape — portrait adds it to the outer column)
+    if (includeHeader) {
+        UIView* thumbs = [self buildThumbStrip];
+        if (thumbs) [form addArrangedSubview:thumbs];
+    }
+
     [form addArrangedSubview:[self fieldLabel:@"Your email"]];
     [form addArrangedSubview:_emailField];
 
@@ -383,6 +391,106 @@ extern "C" void Bugpunch_ClearReportInProgress(void);
 
 // Rebuild the layout tree for the given viewport size. Swaps between a
 // single scrolling column (portrait) and two columns (landscape).
+// ── Extra screenshots thumbnail strip ──
+
+- (UIView*)buildThumbStrip {
+    if (!_extraScreenshots || _extraScreenshots.count == 0) return nil;
+    if (!_thumbStrip) {
+        _thumbStrip = [UIStackView new];
+        _thumbStrip.axis = UILayoutConstraintAxisHorizontal;
+        _thumbStrip.spacing = 6;
+        _thumbStrip.alignment = UIStackViewAlignmentCenter;
+    }
+    // Rebuild contents
+    for (UIView* v in _thumbStrip.arrangedSubviews) [v removeFromSuperview];
+
+    UIView* wrapper = [UIView new];
+    wrapper.translatesAutoresizingMaskIntoConstraints = NO;
+
+    // Header label
+    UILabel* lbl = [UILabel new];
+    lbl.text = [NSString stringWithFormat:@"SCREENSHOTS (%lu)", (unsigned long)_extraScreenshots.count];
+    lbl.textColor = BP_COLOR_TEXT_LABEL;
+    lbl.font = [UIFont boldSystemFontOfSize:11];
+    lbl.translatesAutoresizingMaskIntoConstraints = NO;
+    [wrapper addSubview:lbl];
+
+    UIScrollView* scroll = [UIScrollView new];
+    scroll.showsHorizontalScrollIndicator = NO;
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    [wrapper addSubview:scroll];
+
+    _thumbStrip.translatesAutoresizingMaskIntoConstraints = NO;
+    [scroll addSubview:_thumbStrip];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [lbl.topAnchor constraintEqualToAnchor:wrapper.topAnchor],
+        [lbl.leadingAnchor constraintEqualToAnchor:wrapper.leadingAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:lbl.bottomAnchor constant:6],
+        [scroll.leadingAnchor constraintEqualToAnchor:wrapper.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:wrapper.trailingAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:wrapper.bottomAnchor],
+        [scroll.heightAnchor constraintEqualToConstant:70],
+        [_thumbStrip.topAnchor constraintEqualToAnchor:scroll.topAnchor],
+        [_thumbStrip.leadingAnchor constraintEqualToAnchor:scroll.leadingAnchor],
+        [_thumbStrip.trailingAnchor constraintEqualToAnchor:scroll.trailingAnchor],
+        [_thumbStrip.bottomAnchor constraintEqualToAnchor:scroll.bottomAnchor],
+        [_thumbStrip.heightAnchor constraintEqualToAnchor:scroll.heightAnchor],
+    ]];
+
+    for (NSUInteger i = 0; i < _extraScreenshots.count; i++) {
+        NSString* path = _extraScreenshots[i];
+        UIView* frame = [UIView new];
+        frame.translatesAutoresizingMaskIntoConstraints = NO;
+        [frame.widthAnchor constraintEqualToConstant:90].active = YES;
+        [frame.heightAnchor constraintEqualToConstant:64].active = YES;
+
+        UIImageView* img = [UIImageView new];
+        img.contentMode = UIViewContentModeScaleAspectCover;
+        img.clipsToBounds = YES;
+        img.layer.cornerRadius = 6;
+        img.image = [UIImage imageWithContentsOfFile:path];
+        img.translatesAutoresizingMaskIntoConstraints = NO;
+        [frame addSubview:img];
+        [NSLayoutConstraint activateConstraints:@[
+            [img.topAnchor constraintEqualToAnchor:frame.topAnchor],
+            [img.leadingAnchor constraintEqualToAnchor:frame.leadingAnchor],
+            [img.trailingAnchor constraintEqualToAnchor:frame.trailingAnchor],
+            [img.bottomAnchor constraintEqualToAnchor:frame.bottomAnchor],
+        ]];
+
+        // Dismiss X
+        UIButton* x = [UIButton new];
+        [x setTitle:@"✕" forState:UIControlStateNormal];
+        [x setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+        x.titleLabel.font = [UIFont systemFontOfSize:11];
+        x.backgroundColor = [UIColor colorWithWhite:0 alpha:0.7];
+        x.layer.cornerRadius = 10;
+        x.translatesAutoresizingMaskIntoConstraints = NO;
+        x.tag = (NSInteger)i;
+        [x addTarget:self action:@selector(dismissThumb:) forControlEvents:UIControlEventTouchUpInside];
+        [frame addSubview:x];
+        [NSLayoutConstraint activateConstraints:@[
+            [x.topAnchor constraintEqualToAnchor:frame.topAnchor constant:2],
+            [x.trailingAnchor constraintEqualToAnchor:frame.trailingAnchor constant:-2],
+            [x.widthAnchor constraintEqualToConstant:20],
+            [x.heightAnchor constraintEqualToConstant:20],
+        ]];
+
+        [_thumbStrip addArrangedSubview:frame];
+    }
+
+    return wrapper;
+}
+
+- (void)dismissThumb:(UIButton*)sender {
+    NSInteger idx = sender.tag;
+    if (idx >= 0 && idx < (NSInteger)_extraScreenshots.count) {
+        [_extraScreenshots removeObjectAtIndex:idx];
+        [self buildLayoutForSize:self.view.bounds.size];
+    }
+}
+
 - (void)buildLayoutForSize:(CGSize)size {
     [_root removeFromSuperview];
 
@@ -447,6 +555,8 @@ extern "C" void Bugpunch_ClearReportInProgress(void);
         preview.translatesAutoresizingMaskIntoConstraints = NO;
         [preview.heightAnchor constraintEqualToConstant:240].active = YES;
         [column addArrangedSubview:preview];
+        UIView* thumbs = [self buildThumbStrip];
+        if (thumbs) [column addArrangedSubview:thumbs];
         [column addArrangedSubview:form];
 
         [scroll addSubview:column];
@@ -591,14 +701,29 @@ extern "C" void Bugpunch_ClearReportInProgress(void);
 extern "C" void Bugpunch_PresentReportForm(const char* screenshotPath,
                                            const char* title,
                                            const char* description) {
+    Bugpunch_PresentReportFormWithExtras(screenshotPath, title, description, NULL);
+}
+
+extern "C" void Bugpunch_PresentReportFormWithExtras(const char* screenshotPath,
+                                                      const char* title,
+                                                      const char* description,
+                                                      const char* extraPathsCsv) {
     NSString* shot = screenshotPath ? [NSString stringWithUTF8String:screenshotPath] : nil;
     NSString* t = title ? [NSString stringWithUTF8String:title] : nil;
     NSString* d = description ? [NSString stringWithUTF8String:description] : nil;
+    NSMutableArray<NSString*>* extras = [NSMutableArray array];
+    if (extraPathsCsv && *extraPathsCsv) {
+        for (NSString* p in [[NSString stringWithUTF8String:extraPathsCsv] componentsSeparatedByString:@","]) {
+            if (p.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:p])
+                [extras addObject:p];
+        }
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         BPReportFormViewController* vc = [BPReportFormViewController new];
         vc.screenshotPath = shot;
         vc.title_ = t;
         vc.description_ = d;
+        vc.extraScreenshots = extras;
         vc.modalPresentationStyle = UIModalPresentationFullScreen;
 
         UIViewController* top = nil;

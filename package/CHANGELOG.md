@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-04-17
+
+### Added
+- **Scene Camera Collider Streaming** — Remote IDE scene camera overlay now streams actual collider geometry (box, sphere, capsule, mesh) instead of renderer bounding boxes. Colliders load progressively near-to-far via Physics.OverlapSphere.
+- **Tiered Transform Updates** — dynamic rigidbody colliders update at 150ms, kinematic at 500ms, static colliders sent once. Transform-only polls are lightweight (7 numbers per object).
+- **Debug Tools Bridge** — new DebugToolsBridge, DebugToolAttributes for in-game debug tool registration and native debug widget (Android BugpunchToolsActivity, iOS BugpunchToolsPanel).
+- **iOS Backbuffer Capture** — new BugpunchBackbuffer.mm for Metal backbuffer screenshot path.
+
+### Changed
+- **Inspector Service** — improvements to component inspection.
+- **PaxScript Runner** — updates to script execution service.
+- **Crash Handler** — Android crash handler improvements, iOS crash handler updates.
+- **Report Form** — updated native bug report form (Android BugpunchReportActivity, iOS BugpunchReportForm).
+- **Uploader** — Android and iOS uploader improvements.
+- **Exception Forwarding** — updated UnityExceptionForwarder.
+
 ## [1.6.0] - 2026-04-16
 
 ### Added

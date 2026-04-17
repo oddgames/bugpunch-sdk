@@ -14,6 +14,7 @@
  */
 
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -387,9 +388,273 @@ static void* mach_exception_thread(void* arg) {
     return NULL;
 }
 
+#pragma mark - ANR Watchdog
+
+// ANR detection thread — mirrors Android's AnrWatchdog. The main thread
+// calls Bugpunch_TickAnrWatchdog() every ~1 second (via the CADisplayLink
+// frame callback); if that stops arriving within the timeout, an ANR is
+// declared and a crash report is written.
+//
+// iOS screenshot strategy: drawViewHierarchyInRect requires the main thread,
+// and during ANR the main thread is stuck. iOS has no equivalent to Android's
+// PixelCopy (which reads the GPU compositor buffer from any thread). We use
+// a pre-capture rolling buffer: every ~1s the main thread captures a
+// half-resolution screenshot and stores it. When the ANR fires, the watchdog
+// thread reads the latest pre-captured frame. It's at most ~1s stale, but
+// during ANR the screen is frozen anyway so it's accurate.
+
+// ── Pre-capture screenshot ring buffer ──
+#define ANR_SHOT_BUFFER_SIZE 4
+static NSData* s_anr_shot_buffer[ANR_SHOT_BUFFER_SIZE];
+static int     s_anr_shot_index = 0;
+static NSObject* s_anr_shot_lock;
+static dispatch_once_t s_anr_shot_once;
+
+static void bp_anr_shot_init(void) {
+    dispatch_once(&s_anr_shot_once, ^{
+        s_anr_shot_lock = [NSObject new];
+    });
+}
+
+// Called from the main thread (CADisplayLink tick). Captures a half-resolution
+// screenshot and stores it in the ring buffer. ~2-4ms on modern iPhones.
+static void bp_anr_precapture(void) {
+    bp_anr_shot_init();
+    @autoreleasepool {
+        UIWindow* window = nil;
+        if (@available(iOS 13.0, *)) {
+            for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
+                if (scene.activationState != UISceneActivationStateForegroundActive) continue;
+                if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+                UIWindowScene* ws = (UIWindowScene*)scene;
+                for (UIWindow* w in ws.windows) {
+                    if (w.isKeyWindow) { window = w; break; }
+                }
+                if (window) break;
+                if (ws.windows.count > 0) window = ws.windows.firstObject;
+            }
+        }
+        if (!window) {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            window = UIApplication.sharedApplication.keyWindow;
+            #pragma clang diagnostic pop
+        }
+        if (!window || window.bounds.size.width <= 0) return;
+
+        // Half scale for performance — ANR screenshots are diagnostic, not pixel-perfect.
+        UIGraphicsImageRendererFormat* fmt = [UIGraphicsImageRendererFormat defaultFormat];
+        fmt.opaque = YES;
+        fmt.scale = window.screen.scale * 0.5;
+        UIGraphicsImageRenderer* renderer =
+            [[UIGraphicsImageRenderer alloc] initWithSize:window.bounds.size format:fmt];
+
+        UIImage* img = [renderer imageWithActions:^(UIGraphicsImageRendererContext* ctx) {
+            [window drawViewHierarchyInRect:window.bounds afterScreenUpdates:NO];
+        }];
+        NSData* jpeg = UIImageJPEGRepresentation(img, 0.5);
+        if (!jpeg || jpeg.length == 0) return;
+
+        @synchronized (s_anr_shot_lock) {
+            s_anr_shot_buffer[s_anr_shot_index] = jpeg;
+            s_anr_shot_index = (s_anr_shot_index + 1) % ANR_SHOT_BUFFER_SIZE;
+        }
+    }
+}
+
+// Called from the ANR watchdog background thread. Returns the latest
+// pre-captured JPEG data, or nil if none available.
+static NSData* bp_anr_get_latest_shot(void) {
+    bp_anr_shot_init();
+    NSData* latest = nil;
+    @synchronized (s_anr_shot_lock) {
+        int idx = (s_anr_shot_index - 1 + ANR_SHOT_BUFFER_SIZE) % ANR_SHOT_BUFFER_SIZE;
+        latest = s_anr_shot_buffer[idx];
+    }
+    return latest;
+}
+
+static volatile uint64_t s_anr_last_tick_ms = 0;
+static volatile bool s_anr_running = false;
+static pthread_t s_anr_thread;
+static int s_anr_timeout_ms = 5000;
+static const int64_t ANR_COOLDOWN_MS = 60000;
+static volatile int64_t s_anr_last_fired_ms = 0;
+
+static uint64_t bp_now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+}
+
+static void write_anr_report(uint64_t elapsed_ms) {
+    @autoreleasepool {
+        NSString* crashDir = [NSString stringWithUTF8String:s_crash_dir];
+        uint64_t tsMs = (uint64_t)([[NSDate date] timeIntervalSince1970] * 1000);
+        NSString* filename = [NSString stringWithFormat:@"anr_%llu.crash", (unsigned long long)tsMs];
+        NSString* path = [crashDir stringByAppendingPathComponent:filename];
+
+        // 1 frame BEFORE (from Metal backbuffer — last rendered frame, ~0-16ms old)
+        // + 2 frames AFTER (re-read backbuffer at 500ms intervals to detect
+        // screen movement). Same pattern as Android.
+        extern bool Bugpunch_WriteBackbufferJPEG(const char*, float);
+
+        NSMutableArray<NSString*>* shotPaths = [NSMutableArray array];
+        NSMutableArray<NSNumber*>* shotTimestamps = [NSMutableArray array];
+
+        // Before-frame — the last frame rendered before the ANR.
+        NSString* beforePath = [crashDir stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"anr_%llu_before.jpg", (unsigned long long)tsMs]];
+        if (Bugpunch_WriteBackbufferJPEG([beforePath UTF8String], 0.75f)) {
+            [shotPaths addObject:beforePath];
+            [shotTimestamps addObject:@(tsMs)];
+        }
+
+        // 2 after-frames — re-read backbuffer at 500ms intervals.
+        for (int i = 0; i < 2; i++) {
+            usleep(500000); // 500ms
+            uint64_t afterTs = (uint64_t)([[NSDate date] timeIntervalSince1970] * 1000);
+            NSString* afterPath = [crashDir stringByAppendingPathComponent:
+                [NSString stringWithFormat:@"anr_%llu_after%d.jpg", (unsigned long long)afterTs, i]];
+            if (Bugpunch_WriteBackbufferJPEG([afterPath UTF8String], 0.75f)) {
+                [shotPaths addObject:afterPath];
+                [shotTimestamps addObject:@(afterTs)];
+            }
+        }
+
+        NSString* shotPath = shotPaths.count > 0 ? shotPaths[0] : nil;
+
+        NSMutableString* report = [NSMutableString string];
+        [report appendString:@"BUGPUNCH_CRASH_V1\n"];
+        [report appendString:@"type:ANR\n"];
+        [report appendFormat:@"timestamp:%llu\n", (unsigned long long)tsMs];
+        [report appendFormat:@"elapsed_ms:%llu\n", (unsigned long long)elapsed_ms];
+        [report appendString:@"thread:main\n"];
+        if (shotPath) {
+            [report appendFormat:@"screenshot:%@\n", shotPath];
+        }
+        for (NSUInteger i = 0; i < shotPaths.count; i++) {
+            [report appendFormat:@"anr_screenshot_%lu:%@\n", (unsigned long)i, shotPaths[i]];
+            [report appendFormat:@"anr_screenshot_ts_%lu:%@\n", (unsigned long)i, shotTimestamps[i]];
+        }
+        [report appendFormat:@"screenshot_count:%lu\n", (unsigned long)shotPaths.count];
+        [report appendFormat:@"platform:iOS\n"];
+        [report appendFormat:@"app_version:%s\n", s_app_version];
+        [report appendFormat:@"bundle_id:%s\n", s_bundle_id];
+        [report appendFormat:@"unity_version:%s\n", s_unity_version];
+        [report appendFormat:@"device_model:%s\n", s_device_model];
+        [report appendFormat:@"os_version:%s\n", s_os_version];
+        [report appendFormat:@"gpu:%s\n", s_gpu_name];
+
+        // Capture thread stacks via Mach thread API (works from any thread).
+        [report appendString:@"---STACK---\n"];
+        thread_act_array_t threads;
+        mach_msg_type_number_t threadCount;
+        if (task_threads(mach_task_self(), &threads, &threadCount) == KERN_SUCCESS) {
+            for (mach_msg_type_number_t i = 0; i < threadCount; i++) {
+                char name[64] = {0};
+                pthread_t pt = pthread_from_mach_thread_np(threads[i]);
+                if (pt) {
+                    pthread_getname_np(pt, name, sizeof(name));
+                }
+                [report appendFormat:@"thread:%s id=%u state=",
+                    name[0] ? name : "?", (unsigned)i];
+
+                // Get thread basic info for run state
+                thread_basic_info_data_t binfo;
+                mach_msg_type_number_t binfoCount = THREAD_BASIC_INFO_COUNT;
+                if (thread_info(threads[i], THREAD_BASIC_INFO,
+                    (thread_info_t)&binfo, &binfoCount) == KERN_SUCCESS) {
+                    switch (binfo.run_state) {
+                        case TH_STATE_RUNNING:    [report appendString:@"RUNNING\n"]; break;
+                        case TH_STATE_STOPPED:    [report appendString:@"STOPPED\n"]; break;
+                        case TH_STATE_WAITING:    [report appendString:@"WAITING\n"]; break;
+                        case TH_STATE_UNINTERRUPTIBLE: [report appendString:@"UNINTERRUPTIBLE\n"]; break;
+                        case TH_STATE_HALTED:     [report appendString:@"HALTED\n"]; break;
+                        default:                  [report appendFormat:@"%d\n", binfo.run_state]; break;
+                    }
+                } else {
+                    [report appendString:@"?\n"];
+                }
+                mach_port_deallocate(mach_task_self(), threads[i]);
+            }
+            vm_deallocate(mach_task_self(), (vm_address_t)threads,
+                threadCount * sizeof(thread_act_t));
+        }
+
+        // backtrace() on this watchdog thread — shows where the ANR logic ran.
+        // (Can't get the main thread's backtrace portably without register walking.)
+        [report appendString:@"\n--- ANR watchdog thread stack ---\n"];
+        void* frames[MAX_FRAMES];
+        int count = backtrace(frames, MAX_FRAMES);
+        for (int i = 0; i < count; i++) {
+            [report appendFormat:@"0x%lx\n", (unsigned long)frames[i]];
+        }
+        [report appendString:@"---END---\n"];
+
+        NSError* error = nil;
+        [report writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:&error];
+        if (error) {
+            NSLog(@"[BugpunchCrash] Failed to write ANR report: %@", error);
+        } else {
+            NSLog(@"[BugpunchCrash] ANR report written: %@ (elapsed %llums, screenshot=%@)",
+                path, (unsigned long long)elapsed_ms, shotPath ? @"yes" : @"no");
+        }
+    }
+}
+
+static void* anr_watchdog_thread(void* arg) {
+    pthread_setname_np("BugpunchANR");
+    while (s_anr_running) {
+        usleep((useconds_t)(s_anr_timeout_ms * 500));  // sleep half the timeout
+        if (!s_anr_running) break;
+
+        uint64_t now = bp_now_ms();
+        uint64_t last = s_anr_last_tick_ms;
+        if (last == 0) continue;  // not started yet
+
+        uint64_t elapsed = now - last;
+        if (elapsed > (uint64_t)s_anr_timeout_ms) {
+            // Cooldown: one ANR per 60s
+            if (now - (uint64_t)s_anr_last_fired_ms < ANR_COOLDOWN_MS) {
+                s_anr_last_tick_ms = now;
+                continue;
+            }
+            NSLog(@"[BugpunchCrash] ANR detected! Main thread unresponsive for %llums",
+                (unsigned long long)elapsed);
+            s_anr_last_fired_ms = (int64_t)now;
+            write_anr_report(elapsed);
+            s_anr_last_tick_ms = now;  // reset so we don't fire again immediately
+        }
+    }
+    return NULL;
+}
+
 #pragma mark - C API (called from Unity C# via DllImport)
 
 extern "C" {
+
+void Bugpunch_StartAnrWatchdog(int timeoutMs) {
+    if (s_anr_running) return;
+    s_anr_timeout_ms = timeoutMs > 0 ? timeoutMs : 5000;
+    s_anr_last_tick_ms = bp_now_ms();
+    s_anr_running = true;
+    pthread_create(&s_anr_thread, NULL, anr_watchdog_thread, NULL);
+    NSLog(@"[BugpunchCrash] ANR watchdog started (timeout=%dms)", s_anr_timeout_ms);
+}
+
+void Bugpunch_StopAnrWatchdog(void) {
+    if (!s_anr_running) return;
+    s_anr_running = false;
+    pthread_join(s_anr_thread, NULL);
+    NSLog(@"[BugpunchCrash] ANR watchdog stopped");
+}
+
+void Bugpunch_TickAnrWatchdog(void) {
+    s_anr_last_tick_ms = bp_now_ms();
+    // The Metal backbuffer blit happens automatically on every presentDrawable
+    // (swizzled in BugpunchBackbuffer.mm) — no explicit pre-capture needed here.
+}
 
 bool Bugpunch_InstallCrashHandlers(const char* crashDir) {
     if (!crashDir) return false;

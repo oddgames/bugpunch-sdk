@@ -316,6 +316,20 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(SceneCamera.GetSceneBounds(dist, max));
                     }
 
+                    if (subPath == "/scene-camera/colliders")
+                    {
+                        var dist = float.TryParse(Q(path, "distance"), out var cd) ? cd : 500f;
+                        var max = int.TryParse(Q(path, "max"), out var cm) ? cm : 200;
+                        var reset = Q(path, "reset") == "1";
+                        return Response.Json(SceneCamera.GetColliders(dist, max, reset));
+                    }
+
+                    if (subPath == "/scene-camera/collider-transforms")
+                    {
+                        var tier = int.TryParse(Q(path, "tier"), out var ct) ? ct : 2;
+                        return Response.Json(SceneCamera.GetColliderTransforms(tier));
+                    }
+
                     if (subPath == "/scene-camera/raycast" && method == "POST")
                     {
                         var nx = float.TryParse(JsonVal(body, "x") ?? Q(path, "x"), out var rx) ? rx : 0.5f;

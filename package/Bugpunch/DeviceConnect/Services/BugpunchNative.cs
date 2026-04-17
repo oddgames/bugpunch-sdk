@@ -269,19 +269,46 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         // ── Build config JSON from BugpunchConfig ScriptableObject ──
 
+        /// Device tier: "high" (6GB+, 6+ cores), "mid" (3-6GB, 4+ cores), "low" (rest).
+        /// Used to scale buffer sizes, video quality, and screenshot frequency.
+        internal static string DeviceTier { get; private set; } = "mid";
+
+        static void DetectDeviceTier()
+        {
+            int memMb = SystemInfo.systemMemorySize;  // total RAM in MB
+            int cores = SystemInfo.processorCount;
+            DeviceTier = (memMb >= 6144 && cores >= 6) ? "high"
+                       : (memMb >= 3072 && cores >= 4) ? "mid" : "low";
+            Debug.Log($"[Bugpunch] Device tier: {DeviceTier} (RAM={memMb}MB, cores={cores})");
+        }
+
         static string BuildConfigJson(BugpunchConfig c)
         {
+            DetectDeviceTier();
+
+            // Tier-based defaults — config ScriptableObject values override these
+            // only if they differ from the hardcoded defaults (meaning the dev
+            // intentionally set them).
+            int logBuffer = DeviceTier switch { "low" => 500, "mid" => 2000, _ => 5000 };
+            int videoBuffer = c.videoBufferSeconds != 30 ? c.videoBufferSeconds
+                : DeviceTier switch { "low" => 10, "mid" => 20, _ => 30 };
+            int videoFps = c.bugReportVideoFps != 10 ? c.bugReportVideoFps
+                : DeviceTier switch { "low" => 10, "mid" => 15, _ => 30 };
+            int videoBitrate = DeviceTier switch { "low" => 1_000_000, "mid" => 1_500_000, _ => 2_000_000 };
+
             var sb = new StringBuilder(512);
             sb.Append('{');
             Field(sb, "serverUrl", HttpBase(c.serverUrl)); sb.Append(',');
             Field(sb, "apiKey",    c.apiKey);              sb.Append(',');
+            Field(sb, "deviceTier", DeviceTier);           sb.Append(',');
             sb.Append("\"anrTimeoutMs\":").Append(c.anrTimeoutMs).Append(',');
-            sb.Append("\"logBufferSize\":2000,");
+            sb.Append("\"logBufferSize\":").Append(logBuffer).Append(',');
             sb.Append("\"autoReportCooldownSeconds\":30,");
             sb.Append("\"shake\":{\"enabled\":false,\"threshold\":2.5},");
             sb.Append("\"video\":{\"enabled\":true,\"bufferSeconds\":")
-                .Append(c.videoBufferSeconds).Append(",\"fps\":")
-                .Append(c.bugReportVideoFps).Append("},");
+                .Append(videoBuffer).Append(",\"fps\":")
+                .Append(videoFps).Append(",\"bitrate\":")
+                .Append(videoBitrate).Append("},");
             sb.Append("\"metadata\":{");
             Field(sb, "appVersion",   Application.version);           sb.Append(',');
             Field(sb, "bundleId",     Application.identifier);        sb.Append(',');

@@ -279,30 +279,56 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var type = FindType(typeName);
             if (type == null) return "[]";
 
-            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy)
-                .Where(m => m.Name == methodName)
-                .ToArray();
-
             var sb = new StringBuilder();
             sb.Append("[");
-            for (int i = 0; i < methods.Length; i++)
-            {
-                if (i > 0) sb.Append(",");
-                var m = methods[i];
-                var parameters = m.GetParameters();
+            bool first = true;
 
-                sb.Append("{");
-                sb.Append($"\"label\":\"{EscapeJson(m.ReturnType.Name)} {m.Name}({string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"))})\",");
-                sb.Append("\"parameters\":[");
-                for (int j = 0; j < parameters.Length; j++)
+            if (methodName == ".ctor")
+            {
+                // Constructor signatures
+                var ctors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var ctor in ctors)
                 {
-                    if (j > 0) sb.Append(",");
-                    sb.Append($"{{\"name\":\"{EscapeJson(parameters[j].Name)}\",\"type\":\"{EscapeJson(parameters[j].ParameterType.Name)}\"}}");
+                    if (!first) sb.Append(",");
+                    first = false;
+                    var parameters = ctor.GetParameters();
+                    sb.Append("{");
+                    sb.Append($"\"label\":\"{EscapeJson(type.Name)}({string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"))})\",");
+                    AppendParams(sb, parameters);
+                    sb.Append("}");
                 }
-                sb.Append("]}");
             }
+            else
+            {
+                // Method signatures (including overloads)
+                var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy)
+                    .Where(m => m.Name == methodName)
+                    .ToArray();
+                foreach (var m in methods)
+                {
+                    if (!first) sb.Append(",");
+                    first = false;
+                    var parameters = m.GetParameters();
+                    sb.Append("{");
+                    sb.Append($"\"label\":\"{EscapeJson(m.ReturnType.Name)} {m.Name}({string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"))})\",");
+                    AppendParams(sb, parameters);
+                    sb.Append("}");
+                }
+            }
+
             sb.Append("]");
             return sb.ToString();
+        }
+
+        static void AppendParams(StringBuilder sb, System.Reflection.ParameterInfo[] parameters)
+        {
+            sb.Append("\"parameters\":[");
+            for (int j = 0; j < parameters.Length; j++)
+            {
+                if (j > 0) sb.Append(",");
+                sb.Append($"{{\"name\":\"{EscapeJson(parameters[j].Name)}\",\"type\":\"{EscapeJson(parameters[j].ParameterType.Name)}\"}}");
+            }
+            sb.Append("]");
         }
 
         /// <summary>
@@ -316,13 +342,115 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             try
             {
-                JsonUtility.FromJsonOverwrite(json, component);
+                // Parse JSON fields and apply via reflection — works for both
+                // serialized fields AND properties (like Transform.localPosition).
+                // JsonUtility.FromJsonOverwrite only handles Unity-serialized fields,
+                // which misses properties entirely.
+                var dict = Newtonsoft.Json.JsonConvert.DeserializeObject<
+                    System.Collections.Generic.Dictionary<string, object>>(json);
+                if (dict == null)
+                    return "{\"ok\":false,\"error\":\"Failed to parse JSON\"}";
+
+                var type = component.GetType();
+                var errors = new System.Text.StringBuilder();
+
+                foreach (var kv in dict)
+                {
+                    try
+                    {
+                        // Try property first (Transform.localPosition, etc.)
+                        var prop = type.GetProperty(kv.Key,
+                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                        if (prop != null && prop.CanWrite)
+                        {
+                            var converted = ConvertJsonValue(kv.Value, prop.PropertyType);
+                            prop.SetValue(component, converted);
+                            continue;
+                        }
+
+                        // Try field (serialized fields)
+                        var field = type.GetField(kv.Key,
+                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic |
+                            System.Reflection.BindingFlags.Instance);
+                        if (field != null)
+                        {
+                            var converted = ConvertJsonValue(kv.Value, field.FieldType);
+                            field.SetValue(component, converted);
+                            continue;
+                        }
+
+                        errors.Append($"{kv.Key}: no writable field/property found; ");
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Append($"{kv.Key}: {ex.Message}; ");
+                    }
+                }
+
+                if (errors.Length > 0)
+                    return $"{{\"ok\":false,\"error\":\"{EscapeJson(errors.ToString())}\"}}";
+
                 return "{\"ok\":true}";
             }
             catch (Exception ex)
             {
                 return $"{{\"ok\":false,\"error\":\"{EscapeJson(ex.Message)}\"}}";
             }
+        }
+
+        /// <summary>
+        /// Convert a JSON-deserialized value (Newtonsoft JObject/JValue/etc.) to the
+        /// target CLR type. Handles Vector2/3/4, Color, Quaternion, Rect, enums,
+        /// and primitives.
+        /// </summary>
+        static object ConvertJsonValue(object jsonValue, Type targetType)
+        {
+            if (jsonValue == null) return null;
+
+            // Newtonsoft deserializes objects as JObject, numbers as long/double
+            var jobj = jsonValue as Newtonsoft.Json.Linq.JObject;
+
+            // Vector2/3/4
+            if (targetType == typeof(Vector2) && jobj != null)
+                return new Vector2(jobj.Value<float>("x"), jobj.Value<float>("y"));
+            if (targetType == typeof(Vector3) && jobj != null)
+                return new Vector3(jobj.Value<float>("x"), jobj.Value<float>("y"), jobj.Value<float>("z"));
+            if (targetType == typeof(Vector4) && jobj != null)
+                return new Vector4(jobj.Value<float>("x"), jobj.Value<float>("y"), jobj.Value<float>("z"), jobj.Value<float>("w"));
+
+            // Quaternion
+            if (targetType == typeof(Quaternion) && jobj != null)
+                return Quaternion.Euler(jobj.Value<float>("x"), jobj.Value<float>("y"), jobj.Value<float>("z"));
+
+            // Color
+            if (targetType == typeof(Color) && jobj != null)
+                return new Color(jobj.Value<float>("r"), jobj.Value<float>("g"), jobj.Value<float>("b"), jobj.Value<float>("a"));
+
+            // Rect
+            if (targetType == typeof(Rect) && jobj != null)
+                return new Rect(jobj.Value<float>("x"), jobj.Value<float>("y"), jobj.Value<float>("width"), jobj.Value<float>("height"));
+
+            // Enum (sent as string)
+            if (targetType.IsEnum && jsonValue is string s)
+                return Enum.Parse(targetType, s);
+
+            // Primitives
+            if (targetType == typeof(bool))
+                return Convert.ToBoolean(jsonValue);
+            if (targetType == typeof(int))
+                return Convert.ToInt32(jsonValue);
+            if (targetType == typeof(float))
+                return Convert.ToSingle(jsonValue);
+            if (targetType == typeof(double))
+                return Convert.ToDouble(jsonValue);
+            if (targetType == typeof(string))
+                return Convert.ToString(jsonValue);
+
+            // Fallback: try Newtonsoft conversion
+            if (jsonValue is Newtonsoft.Json.Linq.JToken jt)
+                return jt.ToObject(targetType);
+
+            return Convert.ChangeType(jsonValue, targetType);
         }
 
         /// <summary>

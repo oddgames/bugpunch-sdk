@@ -252,6 +252,109 @@ void Bugpunch_EnqueueReportWithTraces(const char* url, const char* apiKey,
         tracesJsonPath, traceScreenshotPathsCsv, NULL);
 }
 
+/// Full variant with context screenshot — includes the "before" frame from
+/// the rolling buffer alongside the event screenshot.
+void Bugpunch_EnqueueReportWithContext(const char* url, const char* apiKey,
+                                       const char* metadataJson,
+                                       const char* screenshotPath,
+                                       const char* contextScreenshotPath,
+                                       const char* videoPath,
+                                       const char* annotationsPath,
+                                       const char* tracesJsonPath,
+                                       const char* traceScreenshotPathsCsv,
+                                       const char* logsGzPath) {
+    if (!url || !*url) return;
+    NSString* nsUrl = [NSString stringWithUTF8String:url];
+    NSString* nsKey = apiKey ? [NSString stringWithUTF8String:apiKey] : @"";
+    NSString* nsMeta = metadataJson ? [NSString stringWithUTF8String:metadataJson] : @"";
+    NSString* nsShot = (screenshotPath && *screenshotPath)
+        ? [NSString stringWithUTF8String:screenshotPath] : nil;
+    NSString* nsCtxShot = (contextScreenshotPath && *contextScreenshotPath)
+        ? [NSString stringWithUTF8String:contextScreenshotPath] : nil;
+    NSString* nsVideo = (videoPath && *videoPath)
+        ? [NSString stringWithUTF8String:videoPath] : nil;
+    NSString* nsAnno = (annotationsPath && *annotationsPath)
+        ? [NSString stringWithUTF8String:annotationsPath] : nil;
+    NSString* nsTraces = (tracesJsonPath && *tracesJsonPath)
+        ? [NSString stringWithUTF8String:tracesJsonPath] : nil;
+    NSString* nsLogsGz = (logsGzPath && *logsGzPath)
+        ? [NSString stringWithUTF8String:logsGzPath] : nil;
+    NSArray<NSString*>* nsTraceShots = nil;
+    if (traceScreenshotPathsCsv && *traceScreenshotPathsCsv) {
+        NSString* csv = [NSString stringWithUTF8String:traceScreenshotPathsCsv];
+        nsTraceShots = [csv componentsSeparatedByString:@","];
+    }
+
+    dispatch_async(BPUploaderQueue(), ^{
+        NSMutableDictionary* m = [NSMutableDictionary dictionary];
+        m[@"url"] = nsUrl;
+        m[@"headers"] = @{ @"X-Api-Key": nsKey };
+        m[@"fields"] = @{ @"metadata": nsMeta };
+        NSMutableArray* files = [NSMutableArray array];
+        NSMutableArray* cleanup = [NSMutableArray array];
+        if (nsCtxShot) {
+            [files addObject:@{ @"field": @"context_screenshot", @"filename": @"context_screenshot.jpg",
+                                @"contentType": @"image/jpeg", @"path": nsCtxShot }];
+            [cleanup addObject:nsCtxShot];
+        }
+        if (nsShot) {
+            [files addObject:@{ @"field": @"screenshot", @"filename": @"screenshot.jpg",
+                                @"contentType": @"image/jpeg", @"path": nsShot }];
+            [cleanup addObject:nsShot];
+        }
+        if (nsVideo) {
+            [files addObject:@{ @"field": @"video", @"filename": @"video.mp4",
+                                @"contentType": @"video/mp4", @"path": nsVideo }];
+            [cleanup addObject:nsVideo];
+        }
+        if (nsAnno) {
+            [files addObject:@{ @"field": @"annotations", @"filename": @"annotations.png",
+                                @"contentType": @"image/png", @"path": nsAnno }];
+            [cleanup addObject:nsAnno];
+        }
+        if (nsTraces) {
+            [files addObject:@{ @"field": @"traces", @"filename": @"traces.json",
+                                @"contentType": @"application/json", @"path": nsTraces }];
+            [cleanup addObject:nsTraces];
+        }
+        if (nsTraceShots) {
+            for (NSUInteger i = 0; i < nsTraceShots.count; i++) {
+                NSString* p = nsTraceShots[i];
+                if (p.length == 0) continue;
+                [files addObject:@{
+                    @"field": [NSString stringWithFormat:@"trace_%lu", (unsigned long)i],
+                    @"filename": [NSString stringWithFormat:@"trace_%lu.jpg", (unsigned long)i],
+                    @"contentType": @"image/jpeg",
+                    @"path": p }];
+                [cleanup addObject:p];
+            }
+        }
+        if (nsLogsGz) {
+            [files addObject:@{ @"field": @"logs", @"filename": @"logs.json.gz",
+                                @"contentType": @"application/gzip", @"path": nsLogsGz }];
+            [cleanup addObject:nsLogsGz];
+        }
+        m[@"files"] = files;
+        m[@"cleanupPaths"] = cleanup;
+        m[@"attempts"] = @0;
+
+        NSError* err = nil;
+        NSData* data = [NSJSONSerialization dataWithJSONObject:m options:0 error:&err];
+        if (!data) {
+            NSLog(@"[BugpunchUploader] manifest serialize failed: %@", err);
+            return;
+        }
+        NSString* dir = BPQueueDirPath();
+        NSString* path = [dir stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"%@.upload.json", [[NSUUID UUID] UUIDString]]];
+        if (![data writeToFile:path atomically:YES]) {
+            NSLog(@"[BugpunchUploader] manifest write failed: %@", path);
+            return;
+        }
+        BPDrainQueueSync();
+    });
+}
+
 /// Full variant — traces + gzip'd logs file.
 void Bugpunch_EnqueueReportFull(const char* url, const char* apiKey,
                                 const char* metadataJson,

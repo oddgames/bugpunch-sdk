@@ -13,6 +13,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("API key (from project settings on the dashboard)")]
         public string apiKey = "";
 
+        [Header("Performance Monitoring")]
+        [Tooltip("Enable native performance monitoring (FPS, memory, thermals, ANR detection). " +
+                 "Runs on a background thread with minimal overhead. Reports are sent alongside " +
+                 "crash/bug reports and displayed on the Performance dashboard page.")]
+        public bool performanceMonitoring = true;
+
         [Header("Advanced")]
         [Tooltip("Script permission policy for remote execution")]
         public ScriptPermission scriptPermission = ScriptPermission.Ask;
