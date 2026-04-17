@@ -73,3 +73,4 @@ crashlytics-build.properties
 # Settings with API keys (should not be committed)
 **/AITestSettings.asset
 **/BugpunchConfig.asset
+android-src/bugpunch/.cxx/

@@ -198,6 +198,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             IScriptRunner scriptRunner = new PaxScriptRunner();
             var textures = new TextureService();
             var materials = gameObject.AddComponent<MaterialService>();
+            var memorySnapshots = new MemorySnapshotService();
 
             // Create scene camera service
             SceneCamera = gameObject.AddComponent<SceneCameraService>();
@@ -221,6 +222,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Textures = textures,
                 Materials = materials,
                 Watch = watch,
+                MemorySnapshots = memorySnapshots,
                 Streamer = null
             };
 

@@ -24,6 +24,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public TextureService Textures;
         public MaterialService Materials;
         public WatchService Watch;
+        public MemorySnapshotService MemorySnapshots;
 
         public struct Response
         {
@@ -369,6 +370,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(DatabasePlugins.ListProviders());
                     if (subPath == "/databases/parse")
                         return Response.Json(DatabasePlugins.Parse(Q(path, "path"), Q(path, "provider")));
+                    return Response.NotFound(path);
+                }
+
+                // Memory snapshots
+                if (path.StartsWith("/memory"))
+                {
+                    if (MemorySnapshots == null)
+                        return Response.Error("Memory snapshot service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/memory/snapshot" && method == "POST")
+                        return Response.Json(MemorySnapshots.TakeSnapshot());
+
+                    if (subPath == "/memory/status")
+                        return Response.Json(MemorySnapshots.GetStatus());
+
+                    if (subPath == "/memory/list")
+                        return Response.Json(MemorySnapshots.ListSnapshots());
+
+                    if (subPath == "/memory/delete" && method == "POST")
+                        return Response.Json(MemorySnapshots.DeleteSnapshot(Q(path, "path") ?? JsonVal(body, "path")));
+
                     return Response.NotFound(path);
                 }
 
