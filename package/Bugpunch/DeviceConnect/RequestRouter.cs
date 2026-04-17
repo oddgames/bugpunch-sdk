@@ -393,6 +393,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (subPath == "/memory/delete" && method == "POST")
                         return Response.Json(MemorySnapshots.DeleteSnapshot(Q(path, "path") ?? JsonVal(body, "path")));
 
+                    if (subPath == "/memory/stats")
+                        return Response.Json(MemorySnapshots.GetMemoryStats());
+
                     return Response.NotFound(path);
                 }
 

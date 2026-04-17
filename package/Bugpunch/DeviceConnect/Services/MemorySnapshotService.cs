@@ -159,6 +159,69 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
+        /// <summary>
+        /// Get current memory stats as JSON. Polled by the dashboard to show
+        /// live memory usage with scene context.
+        /// </summary>
+        public string GetMemoryStats()
+        {
+            var totalAllocated = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();
+            var totalReserved = UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong();
+            var totalUnused = UnityEngine.Profiling.Profiler.GetTotalUnusedReservedMemoryLong();
+            var monoHeap = UnityEngine.Profiling.Profiler.GetMonoHeapSizeLong();
+            var monoUsed = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong();
+            var gfxTotal = UnityEngine.Profiling.Profiler.GetAllocatedMemoryForGraphicsDriver();
+            var tempAllocator = UnityEngine.Profiling.Profiler.GetTempAllocatorSize();
+
+            // Current scene
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            var sceneName = scene.IsValid() ? scene.name : "Unknown";
+
+            // Texture/mesh/audio memory (count loaded assets)
+            var textures = Resources.FindObjectsOfTypeAll<Texture>();
+            long texMem = 0;
+            foreach (var t in textures)
+                if (t != null) texMem += UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(t);
+
+            var meshes = Resources.FindObjectsOfTypeAll<Mesh>();
+            long meshMem = 0;
+            foreach (var m in meshes)
+                if (m != null) meshMem += UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(m);
+
+            var clips = Resources.FindObjectsOfTypeAll<AudioClip>();
+            long audioMem = 0;
+            foreach (var c in clips)
+                if (c != null) audioMem += UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(c);
+
+            var animations = Resources.FindObjectsOfTypeAll<AnimationClip>();
+            long animMem = 0;
+            foreach (var a in animations)
+                if (a != null) animMem += UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(a);
+
+            var materials = Resources.FindObjectsOfTypeAll<Material>();
+            long matMem = 0;
+            foreach (var mat in materials)
+                if (mat != null) matMem += UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(mat);
+
+            return $"{{" +
+                $"\"totalAllocatedMB\":{totalAllocated / (1024.0 * 1024.0):F1}," +
+                $"\"totalReservedMB\":{totalReserved / (1024.0 * 1024.0):F1}," +
+                $"\"totalUnusedMB\":{totalUnused / (1024.0 * 1024.0):F1}," +
+                $"\"gcHeapMB\":{monoHeap / (1024.0 * 1024.0):F1}," +
+                $"\"gcUsedMB\":{monoUsed / (1024.0 * 1024.0):F1}," +
+                $"\"gfxMB\":{gfxTotal / (1024.0 * 1024.0):F1}," +
+                $"\"tempAllocatorMB\":{tempAllocator / (1024.0 * 1024.0):F1}," +
+                $"\"scene\":\"{Esc(sceneName)}\"," +
+                $"\"breakdown\":{{" +
+                    $"\"texturesMB\":{texMem / (1024.0 * 1024.0):F1},\"textureCount\":{textures.Length}," +
+                    $"\"meshesMB\":{meshMem / (1024.0 * 1024.0):F1},\"meshCount\":{meshes.Length}," +
+                    $"\"audioMB\":{audioMem / (1024.0 * 1024.0):F1},\"audioCount\":{clips.Length}," +
+                    $"\"animationMB\":{animMem / (1024.0 * 1024.0):F1},\"animationCount\":{animations.Length}," +
+                    $"\"materialsMB\":{matMem / (1024.0 * 1024.0):F1},\"materialCount\":{materials.Length}" +
+                $"}}" +
+            $"}}";
+        }
+
         static string Esc(string s) =>
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
