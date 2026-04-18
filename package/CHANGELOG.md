@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.5] - 2026-04-18
+
+### Fixed
+- **Faster reconnect on network switch** — on app resume (e.g. WiFi↔mobile swap), proactively drop the tunnel socket so `ConnectLoop` reconnects immediately instead of waiting 1–2 min for Android's TCP stack to notice the half-open socket.
+
 ## [1.7.4] - 2026-04-18
 
 ### Added

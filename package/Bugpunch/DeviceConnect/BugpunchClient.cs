@@ -70,6 +70,33 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Returns all resolved game config variables as a JSON object string.
+        /// Used by the Remote IDE to display current config on the device.
+        /// </summary>
+        public static string GetGameConfigJson()
+        {
+            lock (s_variables)
+            {
+                if (s_variables.Count == 0) return "{}";
+                var sb = new StringBuilder(256);
+                sb.Append('{');
+                bool first = true;
+                foreach (var kv in s_variables)
+                {
+                    if (!first) sb.Append(',');
+                    first = false;
+                    sb.Append('"');
+                    sb.Append(RequestRouter.EscapeJson(kv.Key));
+                    sb.Append("\":\"");
+                    sb.Append(RequestRouter.EscapeJson(kv.Value));
+                    sb.Append('"');
+                }
+                sb.Append('}');
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>
         /// Attachment rules added at runtime via <see cref="Bugpunch.AddAttachmentRule"/>.
         /// Merged with the ScriptableObject rules when building the native
         /// startup config and when resolving server directives.
@@ -317,14 +344,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.Log($"[Bugpunch] Game config fetch failed ({req.error}) — perf monitoring disabled");
+                Debug.Log($"[Bugpunch] Game config fetch failed ({req.error}) — using defaults");
                 yield break;
             }
 
             var json = req.downloadHandler.text;
             if (string.IsNullOrEmpty(json))
             {
-                Debug.Log("[Bugpunch] Game config empty — perf monitoring disabled");
+                Debug.Log("[Bugpunch] Game config empty — using defaults");
                 yield break;
             }
 
@@ -332,6 +359,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             // Parse variables + overrides and resolve for this device
             ResolveVariables(json);
+
+            // Push resolved game config variables to native custom data so they
+            // are included in crash/bug reports automatically.
+            PushGameConfigToNative();
 
             // Start native performance monitor if enabled in the ScriptableObject
             // config AND the server hasn't explicitly disabled it.
@@ -400,6 +431,24 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             if (pairs.Count > 0)
                 Debug.Log($"[Bugpunch] Resolved {pairs.Count} game config variable(s)");
+        }
+
+        /// <summary>
+        /// Push all resolved game config variables to native custom data with a
+        /// "gc." prefix so they are included in crash/bug reports and visible on
+        /// the dashboard Game Config tab.
+        /// </summary>
+        void PushGameConfigToNative()
+        {
+            Dictionary<string, string> snapshot;
+            lock (s_variables)
+            {
+                snapshot = new Dictionary<string, string>(s_variables);
+            }
+            foreach (var kv in snapshot)
+            {
+                BugpunchNative.SetCustomData($"gc.{kv.Key}", kv.Value);
+            }
         }
 
         static bool DeviceMatchesOverride(string matchJson, string gpu, int memMB, int screenW, int screenH, string platform)
@@ -595,6 +644,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         void Update() => Tunnel?.ProcessMessages();
+
+        // Android keeps half-open TCP sockets for 1–2 min after WiFi↔mobile swaps,
+        // so IsConnected stays true and ConnectLoop skips reconnect. Dropping the
+        // socket on resume forces ConnectLoop to rebuild immediately.
+        void OnApplicationPause(bool paused)
+        {
+            if (paused || Tunnel == null || !Tunnel.IsConnected) return;
+            Tunnel.Disconnect();
+        }
 
         void HandleRequest(string requestId, string method, string path, string body)
         {
