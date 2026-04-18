@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.6] - 2026-04-18
+
+### Changed
+- **Log connect failures** — surface the actual exception type + message when the tunnel WebSocket fails to connect, instead of firing a silent `OnError` event nobody subscribes to. Makes "stuck retrying" situations (mobile carrier blocking, TLS issues, DNS) diagnosable.
+
 ## [1.7.5] - 2026-04-18
 
 ### Fixed
