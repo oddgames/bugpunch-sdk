@@ -1,17 +1,14 @@
 // BugpunchDebugWidget.mm — Draggable floating debug widget for iOS.
 //
-// Shows a recording indicator (blinking red dot + elapsed time) and a "Tools"
-// button. Can be dragged anywhere on screen. Added to the key UIWindow.
+// Shows a blinking recording indicator plus Report / Screenshot / Tools
+// buttons. Can be dragged anywhere on screen. Added to the key UIWindow.
 
 #import <UIKit/UIKit.h>
 
 extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 
 @interface BPDebugWidget : UIView
-@property (nonatomic, strong) UILabel* timeLabel;
 @property (nonatomic, strong) UIView* recDot;
-@property (nonatomic, strong) NSTimer* timer;
-@property (nonatomic, assign) NSTimeInterval startTime;
 @property (nonatomic, assign) CGPoint dragStart;
 @property (nonatomic, assign) CGPoint originStart;
 @end
@@ -19,7 +16,7 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 @implementation BPDebugWidget
 
 - (instancetype)init {
-    self = [super initWithFrame:CGRectMake(16, 80, 290, 40)];
+    self = [super initWithFrame:CGRectMake(16, 80, 210, 40)];
     if (!self) return nil;
 
     self.backgroundColor = [UIColor colorWithRed:0.08 green:0.09 blue:0.11 alpha:0.88];
@@ -38,21 +35,9 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
     _recDot.layer.cornerRadius = 5;
     [self addSubview:_recDot];
 
-    // Time label
-    _timeLabel = [[UILabel alloc] initWithFrame:CGRectMake(28, 0, 50, 40)];
-    _timeLabel.text = @"0:00";
-    _timeLabel.textColor = [UIColor colorWithRed:0.90 green:0.91 blue:0.93 alpha:1];
-    _timeLabel.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightBold];
-    [self addSubview:_timeLabel];
-
-    // Divider
-    UIView* div = [[UIView alloc] initWithFrame:CGRectMake(82, 10, 1, 20)];
-    div.backgroundColor = [UIColor colorWithRed:0.23 green:0.24 blue:0.30 alpha:1];
-    [self addSubview:div];
-
     // Report button
     UIButton* report = [UIButton new];
-    report.frame = CGRectMake(90, 5, 60, 30);
+    report.frame = CGRectMake(32, 5, 60, 30);
     [report setTitle:@"Report" forState:UIControlStateNormal];
     [report setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     report.titleLabel.font = [UIFont boldSystemFontOfSize:12];
@@ -63,7 +48,7 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 
     // Screenshot button
     UIButton* shot = [UIButton new];
-    shot.frame = CGRectMake(156, 5, 28, 30);
+    shot.frame = CGRectMake(98, 5, 28, 30);
     if (@available(iOS 13.0, *)) {
         [shot setImage:[UIImage systemImageNamed:@"camera" withConfiguration:
             [UIImageSymbolConfiguration configurationWithPointSize:14]] forState:UIControlStateNormal];
@@ -80,7 +65,7 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 
     // Tools button
     UIButton* tools = [UIButton new];
-    tools.frame = CGRectMake(190, 5, 60, 30);
+    tools.frame = CGRectMake(132, 5, 60, 30);
     [tools setTitle:@"Tools" forState:UIControlStateNormal];
     [tools setTitleColor:[UIColor colorWithRed:0.55 green:0.57 blue:0.62 alpha:1]
                forState:UIControlStateNormal];
@@ -95,17 +80,14 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
         initWithTarget:self action:@selector(handlePan:)];
     [self addGestureRecognizer:pan];
 
-    _startTime = [NSDate timeIntervalSinceReferenceDate];
-
-    // Timer for elapsed time + dot blink
-    _timer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer* t) {
-        NSTimeInterval elapsed = [NSDate timeIntervalSinceReferenceDate] - self.startTime;
-        int min = (int)(elapsed / 60);
-        int sec = (int)elapsed % 60;
-        self.timeLabel.text = [NSString stringWithFormat:@"%d:%02d", min, sec];
-        // Blink
-        self.recDot.alpha = self.recDot.alpha > 0.5 ? 0.2 : 1.0;
-    }];
+    // Blink the recording dot
+    [UIView animateWithDuration:0.5
+                          delay:0
+                        options:(UIViewAnimationOptionRepeat |
+                                 UIViewAnimationOptionAutoreverse |
+                                 UIViewAnimationOptionAllowUserInteraction)
+                     animations:^{ self.recDot.alpha = 0.2; }
+                     completion:nil];
 
     return self;
 }
@@ -164,8 +146,7 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 }
 
 - (void)removeFromSuperview {
-    [_timer invalidate];
-    _timer = nil;
+    [_recDot.layer removeAllAnimations];
     [super removeFromSuperview];
 }
 

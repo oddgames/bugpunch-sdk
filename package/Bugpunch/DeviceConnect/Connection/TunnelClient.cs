@@ -77,7 +77,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 IsConnecting = false;
                 IsConnected = false;
-                Debug.LogWarning($"[Bugpunch] Connect failed: {ex.GetType().Name}: {ex.Message}");
+                var inner = ex.InnerException;
+                var innerStr = inner != null ? $" — inner {inner.GetType().Name}: {inner.Message}" : "";
+                Debug.LogWarning($"[Bugpunch] Connect failed: {ex.GetType().Name}: {ex.Message}{innerStr}");
                 _mainThreadQueue.Enqueue(() => OnError?.Invoke(ex.Message));
             }
         }

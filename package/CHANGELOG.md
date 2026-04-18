@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.7] - 2026-04-18
+
+### Changed
+- **Debug widget: remove elapsed-time counter** — the widget was showing a ticking `0:00` timer, but the recording is a rolling ring buffer, not a session. The number didn't represent anything the user could act on. Widget now shows only the blinking red dot + Report / Screenshot / Tools buttons (Android + iOS).
+- **Log inner exception on tunnel connect failure** — surface the wrapped `SocketException` / `AuthenticationException` etc. so mobile-carrier connectivity issues can be diagnosed instead of just seeing the generic `WebSocketException: Unable to connect to the remote server`.
+
 ## [1.7.6] - 2026-04-18
 
 ### Changed

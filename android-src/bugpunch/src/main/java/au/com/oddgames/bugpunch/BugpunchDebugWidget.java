@@ -5,7 +5,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
-import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -22,8 +21,8 @@ import android.widget.TextView;
 
 /**
  * Small draggable floating widget that appears when debug mode is active.
- * Shows a recording indicator (red dot + elapsed time) and a "Tools" button
- * to open the native debug tools panel. Can be dragged anywhere on screen.
+ * Shows a blinking recording indicator plus Report / Screenshot / Tools
+ * buttons. Can be dragged anywhere on screen.
  *
  * Added to the Unity Activity's content view as a window overlay — no extra
  * permissions needed (it's inside our own Activity, not a system overlay).
@@ -37,10 +36,8 @@ public class BugpunchDebugWidget {
     private static final int COL_TOOLS = 0xFF333849;
 
     private static FrameLayout sWidget;
-    private static TextView sTimeLabel;
     private static View sRecDot;
     private static Handler sHandler;
-    private static long sStartTimeMs;
     private static boolean sShowing;
 
     /**
@@ -50,7 +47,6 @@ public class BugpunchDebugWidget {
         Activity activity = BugpunchUnity.currentActivity();
         if (activity == null || sShowing) return;
         sShowing = true;
-        sStartTimeMs = System.currentTimeMillis();
         sHandler = new Handler(Looper.getMainLooper());
 
         activity.runOnUiThread(() -> {
@@ -90,25 +86,6 @@ public class BugpunchDebugWidget {
             LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dotSize, dotSize);
             dotLp.rightMargin = dp8;
             row.addView(sRecDot, dotLp);
-
-            // Time label
-            sTimeLabel = new TextView(activity);
-            sTimeLabel.setText("0:00");
-            sTimeLabel.setTextColor(COL_TEXT);
-            sTimeLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            sTimeLabel.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-            LinearLayout.LayoutParams timeLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            timeLp.rightMargin = dp12;
-            row.addView(sTimeLabel, timeLp);
-
-            // Divider
-            View div = new View(activity);
-            div.setBackgroundColor(0xFF3A3E4C);
-            LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams(
-                dp(activity, 1), dp(activity, 20));
-            divLp.rightMargin = dp12;
-            row.addView(div, divLp);
 
             // Report button
             TextView reportBtn = new TextView(activity);
@@ -177,9 +154,6 @@ public class BugpunchDebugWidget {
 
             root.addView(sWidget, widgetLp);
 
-            // Start timer update
-            startTimerTick();
-
             // Blink the recording dot
             startRecDotBlink();
         });
@@ -196,27 +170,12 @@ public class BugpunchDebugWidget {
                 ViewGroup parent = (ViewGroup) sWidget.getParent();
                 if (parent != null) parent.removeView(sWidget);
                 sWidget = null;
-                sTimeLabel = null;
                 sRecDot = null;
             });
         }
     }
 
     public static boolean isShowing() { return sShowing; }
-
-    private static void startTimerTick() {
-        if (!sShowing || sHandler == null) return;
-        sHandler.postDelayed(new Runnable() {
-            @Override public void run() {
-                if (!sShowing || sTimeLabel == null) return;
-                long elapsed = (System.currentTimeMillis() - sStartTimeMs) / 1000;
-                long min = elapsed / 60;
-                long sec = elapsed % 60;
-                sTimeLabel.setText(String.format("%d:%02d", min, sec));
-                sHandler.postDelayed(this, 1000);
-            }
-        }, 1000);
-    }
 
     private static void startRecDotBlink() {
         if (!sShowing || sHandler == null) return;
