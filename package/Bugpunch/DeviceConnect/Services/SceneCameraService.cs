@@ -141,6 +141,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Update the scene camera aspect ratio (e.g. when dashboard panel resizes).
+        /// </summary>
+        public string SetAspect(int width, int height)
+        {
+            if (_sceneCamera == null)
+                return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
+            if (width > 0 && height > 0)
+                _sceneCamera.aspect = (float)width / height;
+            return "{\"ok\":true}";
+        }
+
+        /// <summary>
         /// Set camera position and rotation directly.
         /// </summary>
         public string UpdateTransform(Vector3 position, Vector3 eulerAngles)

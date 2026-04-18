@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.4] - 2026-04-18
+
+### Added
+- **Scene Camera Aspect Ratio Sync** — new `/scene-camera/aspect` endpoint lets the dashboard update the scene camera's aspect ratio when the panel resizes, keeping game and scene views properly framed.
+
 ## [1.7.3] - 2026-04-18
 
 ### Added

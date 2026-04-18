@@ -228,6 +228,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(SceneCamera.StopSceneCamera());
                     }
 
+                    if (subPath == "/scene-camera/aspect" && method == "POST")
+                    {
+                        var w = int.TryParse(JsonVal(body, "width"), out var aw) ? aw : 0;
+                        var h = int.TryParse(JsonVal(body, "height"), out var ah) ? ah : 0;
+                        return Response.Json(SceneCamera.SetAspect(w, h));
+                    }
+
                     if (subPath == "/scene-camera/orbit" && method == "POST")
                     {
                         var dx = float.TryParse(JsonVal(body, "deltaX"), out var odx) ? odx : 0f;
