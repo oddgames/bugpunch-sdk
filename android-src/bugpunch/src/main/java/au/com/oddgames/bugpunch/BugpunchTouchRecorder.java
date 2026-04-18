@@ -1,7 +1,9 @@
 package au.com.oddgames.bugpunch;
 
 import android.app.Activity;
+import android.app.Instrumentation;
 import android.os.Build;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.ActionMode;
 import android.view.KeyEvent;
@@ -256,6 +258,73 @@ public final class BugpunchTouchRecorder {
             // Never let instrumentation break the host input path.
             Log.w(TAG, "record failed", t);
         }
+    }
+
+    /**
+     * Return recent touch events (last trailMs) wrapped with screen dimensions.
+     * JSON: {"events":[...], "w":1080, "h":1920}
+     */
+    public static String getLiveTouches(int trailMs) {
+        long nowNanos = SystemClock.uptimeMillis() * 1_000_000L;
+        long startNanos = nowNanos - ((long) trailMs * 1_000_000L);
+        String events = snapshotJson(startNanos, nowNanos);
+        return "{\"events\":" + (events != null ? events : "[]") +
+                ",\"w\":" + sCaptureW + ",\"h\":" + sCaptureH + "}";
+    }
+
+    /**
+     * Inject a tap at pixel coordinates (x, y) via Instrumentation.
+     * Runs on a background thread — sendPointerSync blocks until the event
+     * is consumed, so it must NOT be called from the UI thread.
+     */
+    public static void injectTap(final float x, final float y) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    Instrumentation inst = new Instrumentation();
+                    long down = SystemClock.uptimeMillis();
+                    inst.sendPointerSync(MotionEvent.obtain(down, down,
+                            MotionEvent.ACTION_DOWN, x, y, 0));
+                    inst.sendPointerSync(MotionEvent.obtain(down, down + 50,
+                            MotionEvent.ACTION_UP, x, y, 0));
+                } catch (Throwable t) {
+                    Log.w(TAG, "injectTap failed", t);
+                }
+            }
+        }, "BugpunchInjectTap").start();
+    }
+
+    /**
+     * Inject a swipe from (x1,y1) to (x2,y2) over durationMs milliseconds.
+     * Runs on a background thread.
+     */
+    public static void injectSwipe(final float x1, final float y1,
+                                    final float x2, final float y2,
+                                    final int durationMs) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    Instrumentation inst = new Instrumentation();
+                    int steps = Math.max(durationMs / 16, 2);
+                    long down = SystemClock.uptimeMillis();
+                    inst.sendPointerSync(MotionEvent.obtain(down, down,
+                            MotionEvent.ACTION_DOWN, x1, y1, 0));
+                    for (int i = 1; i <= steps; i++) {
+                        float f = (float) i / steps;
+                        float cx = x1 + (x2 - x1) * f;
+                        float cy = y1 + (y2 - y1) * f;
+                        long t = down + (long) ((float) durationMs * f);
+                        inst.sendPointerSync(MotionEvent.obtain(down, t,
+                                MotionEvent.ACTION_MOVE, cx, cy, 0));
+                    }
+                    long up = down + durationMs;
+                    inst.sendPointerSync(MotionEvent.obtain(down, up,
+                            MotionEvent.ACTION_UP, x2, y2, 0));
+                } catch (Throwable t) {
+                    Log.w(TAG, "injectSwipe failed", t);
+                }
+            }
+        }, "BugpunchInjectSwipe").start();
     }
 
     // ─── Window.Callback proxy ──────────────────────────────────────────

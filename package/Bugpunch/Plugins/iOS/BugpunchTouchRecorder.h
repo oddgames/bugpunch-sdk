@@ -49,6 +49,17 @@ void BugpunchTouch_FreeJson(const char* json);
 /// first Start; safe to call after.
 void BugpunchTouch_GetCaptureSize(int* outWidth, int* outHeight);
 
+/// Return recent touch events (last trailMs) wrapped with screen dimensions.
+/// JSON: {"events":[...],"w":<px>,"h":<px>}
+/// Caller frees with BugpunchTouch_FreeJson.
+const char* BugpunchTouch_GetLiveTouches(int trailMs);
+
+/// Inject a tap at pixel coords. iOS: no-op (uses C# InputInjector path).
+void BugpunchTouch_InjectTap(float x, float y);
+
+/// Inject a swipe. iOS: no-op (uses C# InputInjector path).
+void BugpunchTouch_InjectSwipe(float x1, float y1, float x2, float y2, int durationMs);
+
 #ifdef __cplusplus
 }
 #endif

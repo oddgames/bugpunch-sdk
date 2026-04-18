@@ -227,4 +227,52 @@ void BugpunchTouch_FreeJson(const char* json) {
     if (json) free((void*)json);
 }
 
+/// Return recent touch events (last trailMs) wrapped with screen dimensions.
+/// JSON: {"events":[...], "w":1125, "h":2436}
+/// Caller frees with BugpunchTouch_FreeJson.
+const char* BugpunchTouch_GetLiveTouches(int trailMs) {
+    double now = [NSProcessInfo processInfo].systemUptime;
+    double start = now - (trailMs / 1000.0);
+
+    int w = gCaptureW.load();
+    int h = gCaptureH.load();
+    if (w == 0 || h == 0) {
+        UIScreen* screen = UIScreen.mainScreen;
+        CGSize sz = screen.bounds.size;
+        CGFloat scale = screen.scale;
+        w = (int)(sz.width * scale);
+        h = (int)(sz.height * scale);
+    }
+
+    // Reuse SnapshotJson for the events array
+    const char* eventsJson = BugpunchTouch_SnapshotJson(start, now);
+    NSString* events = eventsJson ? [NSString stringWithUTF8String:eventsJson] : @"[]";
+    if (eventsJson) free((void*)eventsJson);
+
+    NSString* result = [NSString stringWithFormat:@"{\"events\":%@,\"w\":%d,\"h\":%d}",
+                        events, w, h];
+    const char* utf8 = [result UTF8String];
+    if (!utf8) return NULL;
+    size_t len = strlen(utf8) + 1;
+    char* out = (char*)malloc(len);
+    if (!out) return NULL;
+    memcpy(out, utf8, len);
+    return out;
+}
+
+/// Inject a tap at pixel coordinates. Dispatches on a background queue
+/// using UIApplication.sendEvent: with synthesized UITouch/UIEvent.
+/// For debug builds only — uses private API.
+void BugpunchTouch_InjectTap(float x, float y) {
+    // Use the Instrumentation approach: create MotionEvents via IOHIDEvent
+    // Not available on iOS in the same way as Android.
+    // Fallback: Post a notification that C# can pick up and inject via Input System.
+    // For now, this is a no-op on iOS — touch injection uses the C# InputInjector path.
+    BPTLog(@"injectTap(%.0f, %.0f) — iOS native injection not implemented, use C# path", x, y);
+}
+
+void BugpunchTouch_InjectSwipe(float x1, float y1, float x2, float y2, int durationMs) {
+    BPTLog(@"injectSwipe — iOS native injection not implemented, use C# path");
+}
+
 } // extern "C"

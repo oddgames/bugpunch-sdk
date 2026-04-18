@@ -390,17 +390,32 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     Graphics.Blit(_screenCapRT, _rt, new Vector2(1, -1), new Vector2(0, 1));
                 }
 
-                // Send camera metadata via data channel (every other frame to reduce overhead)
+                // Send camera metadata + touch data via data channel (every other frame)
                 _metadataFrameSkip++;
                 var metaCam = _targetCamera ? _targetCamera : Camera.main;
-                if (_metadataFrameSkip >= 2 && metaCam != null && _metadataChannel != null && _metadataChannel.ReadyState == RTCDataChannelState.Open)
+                if (_metadataFrameSkip >= 2 && _metadataChannel != null && _metadataChannel.ReadyState == RTCDataChannelState.Open)
                 {
                     _metadataFrameSkip = 0;
-                    var t = metaCam.transform;
-                    var p = t.position;
-                    var r = t.eulerAngles;
                     string F(float v) => v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-                    _metadataChannel.Send($"{{\"px\":{F(p.x)},\"py\":{F(p.y)},\"pz\":{F(p.z)},\"rx\":{F(r.x)},\"ry\":{F(r.y)},\"rz\":{F(r.z)}}}");
+
+                    var sb = new System.Text.StringBuilder(256);
+                    sb.Append('{');
+
+                    // Camera metadata
+                    if (metaCam != null)
+                    {
+                        var ct = metaCam.transform;
+                        var cp = ct.position;
+                        var cr = ct.eulerAngles;
+                        sb.Append($"\"px\":{F(cp.x)},\"py\":{F(cp.y)},\"pz\":{F(cp.z)},\"rx\":{F(cr.x)},\"ry\":{F(cr.y)},\"rz\":{F(cr.z)},");
+                    }
+
+                    // Native OS touch data — read from platform touch recorder
+                    var touchJson = RequestRouter.GetLiveTouchesForStream(500);
+                    sb.Append(touchJson);
+
+                    sb.Append('}');
+                    _metadataChannel.Send(sb.ToString());
                 }
             }
         }

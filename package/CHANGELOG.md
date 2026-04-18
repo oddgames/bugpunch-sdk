@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.3] - 2026-04-18
+
+### Added
+- **Live Touch Overlay** — native OS touch data streamed via WebRTC data channel for real-time visualization in Remote IDE. Shows finger circles with swipe tails, frame-synced to the video stream.
+- **Native Touch Injection (Android)** — tap and swipe commands from the dashboard inject at the OS level via `Instrumentation.sendPointerSync`, captured by the native touch recorder for round-trip visualization.
+- **`/input/touches` endpoint** — poll native touch state via tunnel proxy (Android JNI, iOS P/Invoke, Editor mouse fallback).
+
 ## [1.7.2] - 2026-04-18
 
 ### Added

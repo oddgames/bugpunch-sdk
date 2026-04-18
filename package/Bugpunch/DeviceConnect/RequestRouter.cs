@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.InteropServices;
+using System.Text;
 using ODDGames.Bugpunch.DeviceConnect.Database;
 using UnityEngine;
 
@@ -634,9 +636,22 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     return Response.NotFound(path);
                 }
 
-                // Input injection — tap/swipe from browser coordinates (normalized 0-1)
-                if (path.StartsWith("/input/") && method == "POST")
-                    return null; // Handled async by BugpunchClient (needs main thread)
+                // Input — live touch polling + injection
+                if (path.StartsWith("/input/"))
+                {
+                    // GET /input/touches?trail=500 — poll native OS touch data
+                    if ((path == "/input/touches" || path.StartsWith("/input/touches?")) && method == "GET")
+                    {
+                        var trail = int.TryParse(Q(path, "trail"), out var t) ? t : 500;
+                        return Response.Json(GetLiveTouches(trail));
+                    }
+
+                    // POST — tap/swipe injection, handled async by BugpunchClient
+                    if (method == "POST")
+                        return null;
+
+                    return Response.NotFound(path);
+                }
 
                 return Response.NotFound(path);
             }
@@ -730,6 +745,150 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 return Response.Binary(jpeg, "image/jpeg");
 
             return Response.Error("Capture failed", 500);
+        }
+
+        // ── Native touch bridge ─────────────────────────────────────────────
+
+#if !UNITY_EDITOR && UNITY_IOS
+        [DllImport("__Internal")] static extern IntPtr BugpunchTouch_GetLiveTouches(int trailMs);
+        [DllImport("__Internal")] static extern void BugpunchTouch_FreeJson(IntPtr json);
+        [DllImport("__Internal")] static extern void BugpunchTouch_InjectTap(float x, float y);
+        [DllImport("__Internal")] static extern void BugpunchTouch_InjectSwipe(float x1, float y1, float x2, float y2, int durationMs);
+#endif
+
+        /// <summary>
+        /// Get touch data formatted for embedding in the WebRTC data channel.
+        /// Returns JSON fields (no outer braces): "touches":[...],"tw":1080,"th":1920
+        /// </summary>
+        internal static string GetLiveTouchesForStream(int trailMs)
+        {
+            var full = GetLiveTouches(trailMs);
+            // Parse the events array and dimensions from the full JSON
+            // Full format: {"events":[...],"w":1080,"h":1920}
+            // We need:     "touches":[...],"tw":1080,"th":1920
+            try
+            {
+                // Extract events array
+                var evIdx = full.IndexOf("\"events\":", StringComparison.Ordinal);
+                if (evIdx < 0) return "\"touches\":[],\"tw\":0,\"th\":0";
+                var arrStart = full.IndexOf('[', evIdx);
+                if (arrStart < 0) return "\"touches\":[],\"tw\":0,\"th\":0";
+                // Find matching ]
+                int depth = 0;
+                int arrEnd = -1;
+                for (int i = arrStart; i < full.Length; i++)
+                {
+                    if (full[i] == '[') depth++;
+                    else if (full[i] == ']') { depth--; if (depth == 0) { arrEnd = i; break; } }
+                }
+                if (arrEnd < 0) return "\"touches\":[],\"tw\":0,\"th\":0";
+
+                var eventsArr = full.Substring(arrStart, arrEnd - arrStart + 1);
+
+                // Extract w and h
+                var w = JsonVal(full, "w") ?? "0";
+                var h = JsonVal(full, "h") ?? "0";
+
+                return $"\"touches\":{eventsArr},\"tw\":{w},\"th\":{h}";
+            }
+            catch
+            {
+                return "\"touches\":[],\"tw\":0,\"th\":0";
+            }
+        }
+
+        /// <summary>
+        /// Get live OS touch data from native touch recorder.
+        /// Android: calls BugpunchTouchRecorder.getLiveTouches via JNI.
+        /// iOS: calls BugpunchTouch_GetLiveTouches via P/Invoke.
+        /// Editor: returns mouse position as a single touch.
+        /// </summary>
+        static string GetLiveTouches(int trailMs)
+        {
+#if UNITY_EDITOR
+            // Editor fallback: report mouse as a single touch
+            var sb = new StringBuilder(256);
+            sb.Append("{\"events\":[");
+            if (Input.GetMouseButton(0))
+            {
+                var pos = Input.mousePosition;
+                sb.Append($"{{\"t\":0,\"id\":0,\"x\":{pos.x:F1},\"y\":{(Screen.height - pos.y):F1},\"phase\":\"moved\"}}");
+            }
+            sb.Append($"],\"w\":{Screen.width},\"h\":{Screen.height}}}");
+            return sb.ToString();
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTouchRecorder");
+                return cls.CallStatic<string>("getLiveTouches", trailMs)
+                       ?? $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Bugpunch] getLiveTouches failed: {e.Message}");
+                return $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
+            }
+#elif UNITY_IOS
+            try
+            {
+                var ptr = BugpunchTouch_GetLiveTouches(trailMs);
+                if (ptr == IntPtr.Zero)
+                    return $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
+                var json = Marshal.PtrToStringAnsi(ptr);
+                BugpunchTouch_FreeJson(ptr);
+                return json ?? $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Bugpunch] getLiveTouches failed: {e.Message}");
+                return $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
+            }
+#else
+            return $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
+#endif
+        }
+
+        /// <summary>
+        /// Inject a tap at normalized coordinates via native OS touch injection.
+        /// Android: Instrumentation.sendPointerSync. iOS: falls back to C# InputInjector.
+        /// </summary>
+        internal static void NativeInjectTap(float normX, float normY)
+        {
+#if UNITY_EDITOR
+            // no-op in Editor
+#elif UNITY_ANDROID
+            try
+            {
+                float px = normX * Screen.width;
+                float py = (1f - normY) * Screen.height;
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTouchRecorder");
+                cls.CallStatic("injectTap", px, py);
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] injectTap failed: {e.Message}"); }
+#elif UNITY_IOS
+            BugpunchTouch_InjectTap(normX * Screen.width, (1f - normY) * Screen.height);
+#endif
+        }
+
+        /// <summary>
+        /// Inject a swipe at normalized coordinates via native OS touch injection.
+        /// </summary>
+        internal static void NativeInjectSwipe(float x1, float y1, float x2, float y2, int durationMs)
+        {
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                float px1 = x1 * Screen.width, py1 = (1f - y1) * Screen.height;
+                float px2 = x2 * Screen.width, py2 = (1f - y2) * Screen.height;
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTouchRecorder");
+                cls.CallStatic("injectSwipe", px1, py1, px2, py2, durationMs);
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] injectSwipe failed: {e.Message}"); }
+#elif UNITY_IOS
+            BugpunchTouch_InjectSwipe(x1 * Screen.width, (1f - y1) * Screen.height,
+                                       x2 * Screen.width, (1f - y2) * Screen.height, durationMs);
+#endif
         }
 
         public static string Q(string path, string key)

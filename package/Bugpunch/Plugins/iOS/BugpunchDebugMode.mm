@@ -62,6 +62,9 @@ extern "C" {
     const char* BugpunchTouch_SnapshotJson(double startHostTime, double endHostTime);
     void BugpunchTouch_FreeJson(const char* json);
     void BugpunchTouch_GetCaptureSize(int* outWidth, int* outHeight);
+    const char* BugpunchTouch_GetLiveTouches(int trailMs);
+    void BugpunchTouch_InjectTap(float x, float y);
+    void BugpunchTouch_InjectSwipe(float x1, float y1, float x2, float y2, int durationMs);
 }
 
 // Log reader (same file for now — compact enough to inline).
