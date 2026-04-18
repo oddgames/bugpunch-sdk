@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.11] - 2026-04-18
+
+### Fixed
+- **Don't tear down WebRTC on transient ICE Disconnected** — ICE `Disconnected` is recoverable per the spec; the prior handler eagerly teared the peer connection down on that state, which killed the stream when switching to scene camera (brief main-thread hang tripped ICE keepalives). Now we only clean up on `Failed` / `Closed`.
+
 ## [1.7.10] - 2026-04-18
 
 ### Changed

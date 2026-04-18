@@ -255,8 +255,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _pc.OnConnectionStateChange = state =>
             {
                 Debug.Log($"[Bugpunch] WebRTC connection state: {state}");
-                if (state == RTCPeerConnectionState.Disconnected ||
-                    state == RTCPeerConnectionState.Failed ||
+                // `Disconnected` is transient per the WebRTC spec — ICE keepalives
+                // can recover without intervention (and often do after a camera
+                // swap or brief main-thread hang). Don't tear the session down
+                // on Disconnected; only on Failed (terminal) or Closed (local).
+                if (state == RTCPeerConnectionState.Failed ||
                     state == RTCPeerConnectionState.Closed)
                 {
                     _streaming = false;
