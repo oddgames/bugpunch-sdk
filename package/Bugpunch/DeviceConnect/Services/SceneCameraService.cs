@@ -30,7 +30,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // Smooth camera lerp
         Vector3? _lerpTargetPos;
         Quaternion? _lerpTargetRot;
-        const float LerpSpeed = 12f;
+        const float LerpSpeed = 8f;
 
         // Sensitivity multipliers
         const float OrbitSensitivity = 0.3f;

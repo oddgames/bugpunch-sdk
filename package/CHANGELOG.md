@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.8] - 2026-04-18
+
+### Changed
+- **Looser scene camera lerp** — `LerpSpeed` dropped 12 → 8 so the device-side camera eases into position with a softer trailing feel instead of snapping hard to the dashboard's drag target.
+
 ## [1.7.7] - 2026-04-18
 
 ### Changed
