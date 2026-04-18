@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.2] - 2026-04-18
+
+### Added
+- **PlayerPrefs Service** — enumerate, read, edit, and delete PlayerPrefs from Remote IDE. Platform-specific key discovery: Windows registry, Android XML, macOS plist.
+- **Memory Snapshot Service** — trigger Unity Memory Profiler snapshots on-device, download .snap files for analysis in Unity's Memory Profiler window. Live memory stats with asset breakdown (textures, meshes, audio, animation, materials).
+
 ## [1.7.1] - 2026-04-18
 
 ### Added

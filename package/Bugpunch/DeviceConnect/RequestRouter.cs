@@ -25,6 +25,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public MaterialService Materials;
         public WatchService Watch;
         public MemorySnapshotService MemorySnapshots;
+        public PlayerPrefsService PlayerPrefs;
 
         public struct Response
         {
@@ -395,6 +396,37 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                     if (subPath == "/memory/stats")
                         return Response.Json(MemorySnapshots.GetMemoryStats());
+
+                    return Response.NotFound(path);
+                }
+
+                // PlayerPrefs
+                if (path.StartsWith("/playerprefs"))
+                {
+                    if (PlayerPrefs == null)
+                        return Response.Error("PlayerPrefs service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/playerprefs/list" || subPath == "/playerprefs")
+                        return Response.Json(PlayerPrefs.GetAll());
+
+                    if (subPath == "/playerprefs/set" && method == "POST")
+                    {
+                        var key = Q(path, "key") ?? JsonVal(body, "key");
+                        var type = Q(path, "type") ?? JsonVal(body, "type") ?? "string";
+                        var value = Q(path, "value") ?? JsonVal(body, "value") ?? "";
+                        return Response.Json(PlayerPrefs.SetPref(key, type, value));
+                    }
+
+                    if (subPath == "/playerprefs/delete" && method == "POST")
+                    {
+                        var key = Q(path, "key") ?? JsonVal(body, "key");
+                        return Response.Json(PlayerPrefs.DeletePref(key));
+                    }
+
+                    if (subPath == "/playerprefs/delete-all" && method == "POST")
+                        return Response.Json(PlayerPrefs.DeleteAll());
 
                     return Response.NotFound(path);
                 }

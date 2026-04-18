@@ -199,6 +199,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var textures = new TextureService();
             var materials = gameObject.AddComponent<MaterialService>();
             var memorySnapshots = new MemorySnapshotService();
+            var playerPrefs = new PlayerPrefsService();
 
             // Create scene camera service
             SceneCamera = gameObject.AddComponent<SceneCameraService>();
@@ -223,6 +224,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Materials = materials,
                 Watch = watch,
                 MemorySnapshots = memorySnapshots,
+                PlayerPrefs = playerPrefs,
                 Streamer = null
             };
 
