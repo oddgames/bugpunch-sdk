@@ -277,6 +277,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _videoTrack = new VideoStreamTrack(_rt);
             _pc.AddTrack(_videoTrack);
 
+            // Cap outgoing bitrate. Without this, Unity.WebRTC can push 8+ Mbps
+            // at 720p which collapses on cellular links; GCC's ramp-up is slow
+            // to recover. A 2.5 Mbps ceiling is visually indistinguishable for
+            // a debug viewport at 30fps and gives congestion control a sane
+            // target to work against.
+            SetVideoMaxBitrate(2_500_000, 30);
+
             // Set remote description (the offer)
             Debug.Log("[Bugpunch] WebRTC: setting remote description...");
             var offerDesc = new RTCSessionDescription
@@ -458,6 +465,32 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 _videoTrack.Dispose();
                 _videoTrack = null;
+            }
+        }
+
+        /// <summary>
+        /// Apply a bitrate + framerate ceiling to the video sender. Call any time
+        /// after the track has been added (e.g. from a data-channel message sent
+        /// by the dashboard adapting to measured link conditions).
+        /// </summary>
+        public void SetVideoMaxBitrate(ulong bps, uint maxFps)
+        {
+            if (_pc == null) return;
+            foreach (var sender in _pc.GetSenders())
+            {
+                if (sender?.Track == null || sender.Track.Kind != TrackKind.Video) continue;
+                var parameters = sender.GetParameters();
+                if (parameters?.encodings == null || parameters.encodings.Length == 0) continue;
+                foreach (var enc in parameters.encodings)
+                {
+                    enc.maxBitrate = bps;
+                    enc.maxFramerate = maxFps;
+                }
+                var err = sender.SetParameters(parameters);
+                if (err.errorType != RTCErrorType.None)
+                    Debug.LogWarning($"[Bugpunch] WebRTC: SetParameters failed: {err.message}");
+                else
+                    Debug.Log($"[Bugpunch] WebRTC: video cap → {bps / 1000} kbps, {maxFps} fps");
             }
         }
 

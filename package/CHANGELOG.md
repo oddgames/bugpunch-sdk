@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.9] - 2026-04-18
+
+### Added
+- **WebRTC bitrate cap** — outgoing video sender now caps at 2.5 Mbps / 30 fps via `RTCRtpSender.SetParameters`. Previously Unity.WebRTC could push 8+ Mbps which collapsed on weak cellular; the cap gives GCC a sane target and keeps quality smooth on mobile links. `WebRTCStreamer.SetVideoMaxBitrate(bps, fps)` exposed for dynamic tuning (dashboard can signal bandwidth changes later).
+
 ## [1.7.8] - 2026-04-18
 
 ### Changed
