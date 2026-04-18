@@ -50,10 +50,26 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _streamer = streamer;
         }
 
+        // Skip-ahead thresholds: if the camera is further than this behind the
+        // target, pull it within range so the lerp doesn't feel laggy after a
+        // big drag or teleport. Keeps the smooth feel for normal movement.
+        const float SnapPositionThreshold = 15f;   // metres
+        const float SnapRotationThreshold = 90f;   // degrees
+
         void Update()
         {
             if (_sceneCameraGo == null || !_lerpTargetPos.HasValue) return;
             var t = _sceneCameraGo.transform;
+
+            // Skip ahead when way behind — teleport to within lerp range, then
+            // let the exponential lerp smooth out the last stretch.
+            var toTarget = _lerpTargetPos.Value - t.position;
+            if (toTarget.magnitude > SnapPositionThreshold)
+                t.position = _lerpTargetPos.Value - toTarget.normalized * SnapPositionThreshold;
+            if (Quaternion.Angle(t.rotation, _lerpTargetRot.Value) > SnapRotationThreshold)
+                t.rotation = Quaternion.RotateTowards(t.rotation, _lerpTargetRot.Value,
+                    Quaternion.Angle(t.rotation, _lerpTargetRot.Value) - SnapRotationThreshold);
+
             var dt = Time.unscaledDeltaTime;
             var factor = 1f - Mathf.Exp(-LerpSpeed * dt);
             t.position = Vector3.Lerp(t.position, _lerpTargetPos.Value, factor);

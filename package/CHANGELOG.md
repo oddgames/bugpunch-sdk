@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.10] - 2026-04-18
+
+### Changed
+- **Scene camera skip-ahead** — if the device-side camera lags more than 15m or 90° behind the dashboard's target (fast drag, teleport, snap), it jumps to within that range before lerping the remainder. Keeps big moves responsive while preserving the smooth feel for small deltas.
+
 ## [1.7.9] - 2026-04-18
 
 ### Added
