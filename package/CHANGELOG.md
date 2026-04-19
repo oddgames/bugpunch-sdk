@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.12] - 2026-04-19
+
+### Added
+- **Pointer lifecycle input injection** (Android) — new `/input/pointer` endpoint accepts `{ action: down|move|up|cancel, x, y }` with persistent per-pointer state in `BugpunchTouchRecorder`. Lets the dashboard drive press-and-hold + drag gestures naturally instead of synthesising whole swipes at mouseup. iOS falls back to the existing tap/swipe primitives.
+
 ## [1.7.11] - 2026-04-18
 
 ### Fixed

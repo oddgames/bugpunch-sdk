@@ -272,6 +272,100 @@ public final class BugpunchTouchRecorder {
                 ",\"w\":" + sCaptureW + ",\"h\":" + sCaptureH + "}";
     }
 
+    // Persistent single-pointer injection state. Used by injectPointerDown /
+    // Move / Up so the dashboard can drive press-and-hold + drag from the
+    // Remote IDE without synthesising whole gestures client-side.
+    private static final Object sInjectLock = new Object();
+    private static volatile boolean sPointerDown;
+    private static volatile long sPointerDownTime;
+    private static volatile float sLastPointerX;
+    private static volatile float sLastPointerY;
+
+    public static void injectPointerDown(final float x, final float y) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                synchronized (sInjectLock) {
+                    try {
+                        if (sPointerDown) {
+                            // Cancel any stale state first — defensive.
+                            long t = SystemClock.uptimeMillis();
+                            new Instrumentation().sendPointerSync(MotionEvent.obtain(
+                                sPointerDownTime, t, MotionEvent.ACTION_CANCEL,
+                                sLastPointerX, sLastPointerY, 0));
+                        }
+                        long down = SystemClock.uptimeMillis();
+                        sPointerDownTime = down;
+                        sLastPointerX = x;
+                        sLastPointerY = y;
+                        sPointerDown = true;
+                        new Instrumentation().sendPointerSync(MotionEvent.obtain(
+                            down, down, MotionEvent.ACTION_DOWN, x, y, 0));
+                    } catch (Throwable t) {
+                        Log.w(TAG, "injectPointerDown failed", t);
+                    }
+                }
+            }
+        }, "BugpunchPointerDown").start();
+    }
+
+    public static void injectPointerMove(final float x, final float y) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                synchronized (sInjectLock) {
+                    if (!sPointerDown) return;
+                    try {
+                        sLastPointerX = x;
+                        sLastPointerY = y;
+                        long now = SystemClock.uptimeMillis();
+                        new Instrumentation().sendPointerSync(MotionEvent.obtain(
+                            sPointerDownTime, now, MotionEvent.ACTION_MOVE, x, y, 0));
+                    } catch (Throwable t) {
+                        Log.w(TAG, "injectPointerMove failed", t);
+                    }
+                }
+            }
+        }, "BugpunchPointerMove").start();
+    }
+
+    public static void injectPointerUp(final float x, final float y) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                synchronized (sInjectLock) {
+                    if (!sPointerDown) return;
+                    try {
+                        long now = SystemClock.uptimeMillis();
+                        new Instrumentation().sendPointerSync(MotionEvent.obtain(
+                            sPointerDownTime, now, MotionEvent.ACTION_UP, x, y, 0));
+                    } catch (Throwable t) {
+                        Log.w(TAG, "injectPointerUp failed", t);
+                    } finally {
+                        sPointerDown = false;
+                    }
+                }
+            }
+        }, "BugpunchPointerUp").start();
+    }
+
+    public static void injectPointerCancel() {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                synchronized (sInjectLock) {
+                    if (!sPointerDown) return;
+                    try {
+                        long now = SystemClock.uptimeMillis();
+                        new Instrumentation().sendPointerSync(MotionEvent.obtain(
+                            sPointerDownTime, now, MotionEvent.ACTION_CANCEL,
+                            sLastPointerX, sLastPointerY, 0));
+                    } catch (Throwable t) {
+                        Log.w(TAG, "injectPointerCancel failed", t);
+                    } finally {
+                        sPointerDown = false;
+                    }
+                }
+            }
+        }, "BugpunchPointerCancel").start();
+    }
+
     /**
      * Inject a tap at pixel coordinates (x, y) via Instrumentation.
      * Runs on a background thread — sendPointerSync blocks until the event

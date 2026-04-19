@@ -805,6 +805,27 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     yield break;
                 }
 
+                if (subPath == "/input/pointer")
+                {
+                    var action = RequestRouter.JsonVal(body, "action") ?? "up";
+                    var nx = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "x"), out var pxp) ? pxp : 0.5f);
+                    var ny = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "y"), out var pyp) ? pyp : 0.5f);
+#if !UNITY_EDITOR && UNITY_ANDROID
+                    RequestRouter.NativeInjectPointer(action, nx, ny);
+                    Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\"}}", "application/json");
+#else
+                    // iOS / Editor: map down+up pairs to a single tap, ignore standalone moves.
+                    if (action == "down" || action == "up")
+                    {
+                        var screenPos = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
+                        var tapTask = InputInjector.InjectPointerTap(screenPos);
+                        while (!tapTask.IsCompleted) yield return null;
+                    }
+                    Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\",\"fallback\":true}}", "application/json");
+#endif
+                    yield break;
+                }
+
                 Tunnel.SendResponse(requestId, 404, $"{{\"error\":\"Unknown input: {subPath}\"}}", "application/json");
                 yield break;
             }

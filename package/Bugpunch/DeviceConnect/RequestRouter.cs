@@ -370,6 +370,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (path == "/device-info" || path.StartsWith("/device-info?"))
                     return Response.Json(DeviceInfo?.GetDeviceInfo() ?? "{}");
 
+                // Game config — resolved variables from the dashboard
+                if (path == "/game-config" || path.StartsWith("/game-config?"))
+                    return Response.Json(BugpunchClient.GetGameConfigJson());
+
                 // Database plugins (device-side parsing for Siaqodb, Odin, etc.)
                 if (path.StartsWith("/databases/"))
                 {
@@ -895,6 +899,34 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #elif UNITY_IOS
             BugpunchTouch_InjectSwipe(x1 * Screen.width, (1f - y1) * Screen.height,
                                        x2 * Screen.width, (1f - y2) * Screen.height, durationMs);
+#endif
+        }
+
+        /// <summary>
+        /// Inject a pointer lifecycle event (down/move/up/cancel) at normalized
+        /// coordinates. Used by the Remote IDE dashboard to drive press-and-hold
+        /// and drag gestures.
+        /// </summary>
+        internal static void NativeInjectPointer(string action, float normX, float normY)
+        {
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                float px = normX * Screen.width;
+                float py = (1f - normY) * Screen.height;
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTouchRecorder");
+                switch (action)
+                {
+                    case "down":   cls.CallStatic("injectPointerDown",   px, py); break;
+                    case "move":   cls.CallStatic("injectPointerMove",   px, py); break;
+                    case "up":     cls.CallStatic("injectPointerUp",     px, py); break;
+                    case "cancel": cls.CallStatic("injectPointerCancel");         break;
+                }
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] injectPointer({action}) failed: {e.Message}"); }
+#elif UNITY_IOS
+            // iOS native injection not implemented; dashboard falls back to tap/swipe for iOS devices.
 #endif
         }
 
