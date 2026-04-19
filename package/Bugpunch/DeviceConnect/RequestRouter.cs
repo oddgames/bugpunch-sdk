@@ -763,8 +763,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #if !UNITY_EDITOR && UNITY_IOS
         [DllImport("__Internal")] static extern IntPtr BugpunchTouch_GetLiveTouches(int trailMs);
         [DllImport("__Internal")] static extern void BugpunchTouch_FreeJson(IntPtr json);
-        [DllImport("__Internal")] static extern void BugpunchTouch_InjectTap(float x, float y);
-        [DllImport("__Internal")] static extern void BugpunchTouch_InjectSwipe(float x1, float y1, float x2, float y2, int durationMs);
 #endif
 
         /// <summary>
@@ -856,77 +854,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
 #else
             return $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
-#endif
-        }
-
-        /// <summary>
-        /// Inject a tap at normalized coordinates via native OS touch injection.
-        /// Android: Instrumentation.sendPointerSync. iOS: falls back to C# InputInjector.
-        /// </summary>
-        internal static void NativeInjectTap(float normX, float normY)
-        {
-#if UNITY_EDITOR
-            // no-op in Editor
-#elif UNITY_ANDROID
-            try
-            {
-                float px = normX * Screen.width;
-                float py = (1f - normY) * Screen.height;
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTouchRecorder");
-                cls.CallStatic("injectTap", px, py);
-            }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch] injectTap failed: {e.Message}"); }
-#elif UNITY_IOS
-            BugpunchTouch_InjectTap(normX * Screen.width, (1f - normY) * Screen.height);
-#endif
-        }
-
-        /// <summary>
-        /// Inject a swipe at normalized coordinates via native OS touch injection.
-        /// </summary>
-        internal static void NativeInjectSwipe(float x1, float y1, float x2, float y2, int durationMs)
-        {
-#if UNITY_EDITOR
-#elif UNITY_ANDROID
-            try
-            {
-                float px1 = x1 * Screen.width, py1 = (1f - y1) * Screen.height;
-                float px2 = x2 * Screen.width, py2 = (1f - y2) * Screen.height;
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTouchRecorder");
-                cls.CallStatic("injectSwipe", px1, py1, px2, py2, durationMs);
-            }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch] injectSwipe failed: {e.Message}"); }
-#elif UNITY_IOS
-            BugpunchTouch_InjectSwipe(x1 * Screen.width, (1f - y1) * Screen.height,
-                                       x2 * Screen.width, (1f - y2) * Screen.height, durationMs);
-#endif
-        }
-
-        /// <summary>
-        /// Inject a pointer lifecycle event (down/move/up/cancel) at normalized
-        /// coordinates. Used by the Remote IDE dashboard to drive press-and-hold
-        /// and drag gestures.
-        /// </summary>
-        internal static void NativeInjectPointer(string action, float normX, float normY)
-        {
-#if UNITY_EDITOR
-#elif UNITY_ANDROID
-            try
-            {
-                float px = normX * Screen.width;
-                float py = (1f - normY) * Screen.height;
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTouchRecorder");
-                switch (action)
-                {
-                    case "down":   cls.CallStatic("injectPointerDown",   px, py); break;
-                    case "move":   cls.CallStatic("injectPointerMove",   px, py); break;
-                    case "up":     cls.CallStatic("injectPointerUp",     px, py); break;
-                    case "cancel": cls.CallStatic("injectPointerCancel");         break;
-                }
-            }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch] injectPointer({action}) failed: {e.Message}"); }
-#elif UNITY_IOS
-            // iOS native injection not implemented; dashboard falls back to tap/swipe for iOS devices.
 #endif
         }
 

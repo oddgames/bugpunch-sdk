@@ -63,8 +63,6 @@ extern "C" {
     void BugpunchTouch_FreeJson(const char* json);
     void BugpunchTouch_GetCaptureSize(int* outWidth, int* outHeight);
     const char* BugpunchTouch_GetLiveTouches(int trailMs);
-    void BugpunchTouch_InjectTap(float x, float y);
-    void BugpunchTouch_InjectSwipe(float x1, float y1, float x2, float y2, int durationMs);
 }
 
 // Log reader (same file for now — compact enough to inline).
@@ -91,6 +89,8 @@ extern "C" {
 @property (nonatomic, strong) CADisplayLink* displayLink;
 @property (nonatomic, assign) CFTimeInterval fpsWindowStart;
 @property (nonatomic, assign) int frameCount;
+@property (nonatomic, assign) int ctxShotFlushCounter;
+@property (nonatomic, copy) NSString* ctxShotDiskPath;
 + (instancetype)shared;
 - (void)onFrame:(CADisplayLink*)link;
 @end
@@ -117,6 +117,15 @@ extern "C" {
         self.fps = (int)(self.frameCount / elapsed);
         self.frameCount = 0;
         self.fpsWindowStart = now;
+
+        // Every ~3 seconds, persist the Metal backbuffer to disk so native
+        // crash reports (SIGSEGV etc.) have a context screenshot on next launch.
+        if (self.ctxShotDiskPath && ++self.ctxShotFlushCounter >= 3) {
+            self.ctxShotFlushCounter = 0;
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                Bugpunch_WriteBackbufferJPEG([self.ctxShotDiskPath UTF8String], 0.75f);
+            });
+        }
     }
 }
 @end
@@ -478,6 +487,11 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
     //   - Rolling 1/sec pre-capture (replaces drawViewHierarchyInRect timer)
     Bugpunch_InitBackbuffer();
 
+    // Set disk path for periodic context screenshot persistence. On native crash
+    // (SIGSEGV etc.) the process dies — this file on disk is the only way to get
+    // a context screenshot on next launch.
+    d.ctxShotDiskPath = [crashDir stringByAppendingPathComponent:@"context_screenshot.jpg"];
+
     // ANR watchdog — background thread checks that the main thread ticks.
     int anrMs = [cfg[@"anrTimeoutMs"] intValue];
     if (anrMs <= 0) anrMs = 5000;
@@ -576,21 +590,35 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                     }
                     BOOL hasShot = shotPath.length > 0 &&
                         [[NSFileManager defaultManager] fileExistsAtPath:shotPath];
+                    // For native crashes without an embedded screenshot, check the
+                    // rolling buffer's persisted context screenshot on disk.
+                    NSString* ctxShotPath = nil;
+                    if (!hasShot) {
+                        NSString* ctxPath = [crashDir stringByAppendingPathComponent:@"context_screenshot.jpg"];
+                        if ([[NSFileManager defaultManager] fileExistsAtPath:ctxPath]) {
+                            ctxShotPath = ctxPath;
+                        }
+                    }
 
                     NSError* e = nil;
                     NSData* bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:&e];
                     if (bodyData) {
                         NSString* bodyStr = [[NSString alloc] initWithData:bodyData
                             encoding:NSUTF8StringEncoding];
-                        if (hasShot) {
-                            // Use multipart upload so the ANR screenshot is attached.
-                            Bugpunch_EnqueueReport([url UTF8String], [key UTF8String],
-                                [bodyStr UTF8String], [shotPath UTF8String], "", "");
+                        if (hasShot || ctxShotPath) {
+                            // Use multipart upload so the screenshot is attached.
+                            NSString* shot = hasShot ? shotPath : @"";
+                            NSString* ctx = ctxShotPath ?: @"";
+                            Bugpunch_EnqueueReportWithContext([url UTF8String], [key UTF8String],
+                                [bodyStr UTF8String], [shot UTF8String],
+                                [ctx UTF8String], "", "",
+                                NULL, NULL, NULL);
                         } else {
                             BugpunchUploader_EnqueueJson([url UTF8String], [key UTF8String], [bodyStr UTF8String]);
                         }
                         Bugpunch_DeleteCrashFile([p UTF8String]);
-                        NSLog(@"[Bugpunch] queued pending crash: %@ (screenshot=%@)", p, hasShot ? @"yes" : @"no");
+                        NSLog(@"[Bugpunch] queued pending crash: %@ (screenshot=%@, context=%@)",
+                            p, hasShot ? @"yes" : @"no", ctxShotPath ? @"yes" : @"no");
                     } else {
                         NSLog(@"[Bugpunch] failed to serialize crash payload: %@", e);
                         // File stays — retry next launch.
@@ -627,6 +655,7 @@ static void BPStartRingFromConfig(void) {
     // Show the floating debug widget (recording indicator + tools).
     extern void Bugpunch_ShowDebugWidget(void);
     Bugpunch_ShowDebugWidget();
+
 }
 
 void Bugpunch_EnterDebugMode(int skipConsent) {

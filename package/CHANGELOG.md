@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.15] - 2026-04-19
+
+### Removed
+- **Dead OS-level injection code** — dropped `BugpunchTouchRecorder.injectTap / injectSwipe / injectPointer*` (Android Java), `RequestRouter.NativeInjectTap / NativeInjectSwipe / NativeInjectPointer` (C#), and the iOS `BugpunchTouch_InjectTap / InjectSwipe` stubs. All Remote IDE input lives in `InputInjector` (Unity Input System) after the previous release. Touch *recording* paths are unaffected.
+
 ## [1.7.14] - 2026-04-19
 
 ### Changed

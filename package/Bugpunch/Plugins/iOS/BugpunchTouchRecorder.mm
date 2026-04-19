@@ -260,19 +260,4 @@ const char* BugpunchTouch_GetLiveTouches(int trailMs) {
     return out;
 }
 
-/// Inject a tap at pixel coordinates. Dispatches on a background queue
-/// using UIApplication.sendEvent: with synthesized UITouch/UIEvent.
-/// For debug builds only — uses private API.
-void BugpunchTouch_InjectTap(float x, float y) {
-    // Use the Instrumentation approach: create MotionEvents via IOHIDEvent
-    // Not available on iOS in the same way as Android.
-    // Fallback: Post a notification that C# can pick up and inject via Input System.
-    // For now, this is a no-op on iOS — touch injection uses the C# InputInjector path.
-    BPTLog(@"injectTap(%.0f, %.0f) — iOS native injection not implemented, use C# path", x, y);
-}
-
-void BugpunchTouch_InjectSwipe(float x1, float y1, float x2, float y2, int durationMs) {
-    BPTLog(@"injectSwipe — iOS native injection not implemented, use C# path");
-}
-
 } // extern "C"
