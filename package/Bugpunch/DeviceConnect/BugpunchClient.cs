@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using ODDGames.Bugpunch.DeviceConnect.Database;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -814,14 +815,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     RequestRouter.NativeInjectPointer(action, nx, ny);
                     Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\"}}", "application/json");
 #else
-                    // iOS / Editor: map down+up pairs to a single tap, ignore standalone moves.
-                    if (action == "down" || action == "up")
+                    // iOS / Editor: stateful Unity Input System lifecycle.
+                    var screenP = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
+                    Task t = action switch
                     {
-                        var screenPos = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
-                        var tapTask = InputInjector.InjectPointerTap(screenPos);
-                        while (!tapTask.IsCompleted) yield return null;
-                    }
-                    Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\",\"fallback\":true}}", "application/json");
+                        "down"   => InputInjector.InjectPointerDown(screenP),
+                        "move"   => InputInjector.InjectPointerMove(screenP),
+                        "up"     => InputInjector.InjectPointerUp(screenP),
+                        "cancel" => InputInjector.InjectPointerCancel(),
+                        _        => Task.CompletedTask,
+                    };
+                    while (!t.IsCompleted) yield return null;
+                    Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\"}}", "application/json");
 #endif
                     yield break;
                 }

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.13] - 2026-04-19
+
+### Added
+- **Pointer lifecycle on iOS + Editor** — `InputInjector.InjectPointerDown/Move/Up/Cancel` use the Unity Input System's `TouchState` (touch devices) and `Mouse` state events (desktop) to hold persistent pointer state across calls. The `/input/pointer` route now routes to this on iOS and Editor builds so the Remote IDE drag / press-and-hold works on every platform.
+
 ## [1.7.12] - 2026-04-19
 
 ### Added

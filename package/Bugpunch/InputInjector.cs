@@ -1175,6 +1175,118 @@ namespace ODDGames.Bugpunch
         /// Injects a single-finger tap gesture using the Input System.
         /// Used on mobile platforms (iOS/Android).
         /// </summary>
+        // ──────────────────────────────────────────────────────────────────
+        // Pointer lifecycle (hold + drag) — stateful single-pointer injection
+        // used by the Remote IDE /input/pointer endpoint on iOS / Editor.
+        // Android goes straight through Instrumentation.sendPointerSync in the
+        // native BugpunchTouchRecorder; this is the managed fallback.
+        // ──────────────────────────────────────────────────────────────────
+
+        const int LifecycleTouchId = 7777;
+        static bool s_pointerActive;
+        static Vector2 s_pointerLastPos;
+
+        public static Task InjectPointerDown(Vector2 screenPosition)
+        {
+            s_pointerLastPos = screenPosition;
+            s_pointerActive = true;
+            InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
+            if (ShouldUseTouchInput())
+            {
+                var ts = GetTouchscreen();
+                if (ts == null) return Task.CompletedTask;
+                InputSystem.QueueStateEvent(ts, new TouchState
+                {
+                    touchId = LifecycleTouchId,
+                    position = screenPosition,
+                    delta = Vector2.zero,
+                    phase = UnityEngine.InputSystem.TouchPhase.Began,
+                    pressure = 1f,
+                });
+            }
+            else
+            {
+                var mouse = GetMouse();
+                if (mouse == null) return Task.CompletedTask;
+                using (StateEvent.From(mouse, out var e))
+                {
+                    mouse.position.WriteValueIntoEvent(screenPosition, e);
+                    mouse.delta.WriteValueIntoEvent(Vector2.zero, e);
+                    mouse.leftButton.WriteValueIntoEvent(1f, e);
+                    InputSystem.QueueEvent(e);
+                }
+            }
+            return Task.CompletedTask;
+        }
+
+        public static Task InjectPointerMove(Vector2 screenPosition)
+        {
+            if (!s_pointerActive) return Task.CompletedTask;
+            var delta = screenPosition - s_pointerLastPos;
+            s_pointerLastPos = screenPosition;
+            if (ShouldUseTouchInput())
+            {
+                var ts = GetTouchscreen();
+                if (ts == null) return Task.CompletedTask;
+                InputSystem.QueueStateEvent(ts, new TouchState
+                {
+                    touchId = LifecycleTouchId,
+                    position = screenPosition,
+                    delta = delta,
+                    phase = UnityEngine.InputSystem.TouchPhase.Moved,
+                    pressure = 1f,
+                });
+            }
+            else
+            {
+                var mouse = GetMouse();
+                if (mouse == null) return Task.CompletedTask;
+                using (StateEvent.From(mouse, out var e))
+                {
+                    mouse.position.WriteValueIntoEvent(screenPosition, e);
+                    mouse.delta.WriteValueIntoEvent(delta, e);
+                    mouse.leftButton.WriteValueIntoEvent(1f, e);
+                    InputSystem.QueueEvent(e);
+                }
+            }
+            return Task.CompletedTask;
+        }
+
+        public static Task InjectPointerUp(Vector2 screenPosition)
+        {
+            if (!s_pointerActive) return Task.CompletedTask;
+            s_pointerActive = false;
+            if (ShouldUseTouchInput())
+            {
+                var ts = GetTouchscreen();
+                if (ts == null) return Task.CompletedTask;
+                InputSystem.QueueStateEvent(ts, new TouchState
+                {
+                    touchId = LifecycleTouchId,
+                    position = screenPosition,
+                    delta = Vector2.zero,
+                    phase = UnityEngine.InputSystem.TouchPhase.Ended,
+                    pressure = 0f,
+                });
+            }
+            else
+            {
+                var mouse = GetMouse();
+                if (mouse == null) return Task.CompletedTask;
+                using (StateEvent.From(mouse, out var e))
+                {
+                    mouse.position.WriteValueIntoEvent(screenPosition, e);
+                    mouse.delta.WriteValueIntoEvent(Vector2.zero, e);
+                    mouse.leftButton.WriteValueIntoEvent(0f, e);
+                    InputSystem.QueueEvent(e);
+                }
+            }
+            InputVisualizer.RecordCursorEnd();
+            return Task.CompletedTask;
+        }
+
+        public static Task InjectPointerCancel() => s_pointerActive ? InjectPointerUp(s_pointerLastPos) : Task.CompletedTask;
+
         public static async Task InjectTouchTap(Vector2 screenPosition)
         {
             var touchscreen = GetTouchscreen();
