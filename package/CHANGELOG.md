@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.14] - 2026-04-19
+
+### Changed
+- **Remote IDE input goes through Unity Input System only** — dropped the Android native `Instrumentation.sendPointerSync` injection from `/input/tap`, `/input/swipe`, `/input/pointer`. WebRTC captures the Unity render texture, not the OS screen, so OS-level touches would land outside what the dashboard can see. Injection now uniformly uses `InputInjector` across Android, iOS, and Editor.
+- **`#if ENABLE_INPUT_SYSTEM` guards** on `InjectPointerDown/Move/Up/Cancel` so the code compiles even when a project has only the legacy Input Manager enabled (though injection is a no-op in that configuration).
+
 ## [1.7.13] - 2026-04-19
 
 ### Added

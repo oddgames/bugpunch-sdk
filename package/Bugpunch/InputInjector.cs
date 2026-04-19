@@ -1177,9 +1177,16 @@ namespace ODDGames.Bugpunch
         /// </summary>
         // ──────────────────────────────────────────────────────────────────
         // Pointer lifecycle (hold + drag) — stateful single-pointer injection
-        // used by the Remote IDE /input/pointer endpoint on iOS / Editor.
-        // Android goes straight through Instrumentation.sendPointerSync in the
-        // native BugpunchTouchRecorder; this is the managed fallback.
+        // used by the Remote IDE /input/pointer endpoint.
+        //
+        // On Android, the native BugpunchTouchRecorder.injectPointer* path
+        // fires at the OS input layer and is visible to both legacy
+        // Input.touches and the new Input System. These managed methods are
+        // also called so games that read *only* via the new Input System (and
+        // that happen to miss the native path) still receive events.
+        //
+        // On iOS / Editor, managed is the only route — private UIKit/Mouse
+        // APIs would block an App Store build.
         // ──────────────────────────────────────────────────────────────────
 
         const int LifecycleTouchId = 7777;
@@ -1190,6 +1197,7 @@ namespace ODDGames.Bugpunch
         {
             s_pointerLastPos = screenPosition;
             s_pointerActive = true;
+#if ENABLE_INPUT_SYSTEM
             InputVisualizer.RecordCursorPosition(screenPosition, !ShouldUseTouchInput());
             if (ShouldUseTouchInput())
             {
@@ -1216,6 +1224,7 @@ namespace ODDGames.Bugpunch
                     InputSystem.QueueEvent(e);
                 }
             }
+#endif
             return Task.CompletedTask;
         }
 
@@ -1224,6 +1233,7 @@ namespace ODDGames.Bugpunch
             if (!s_pointerActive) return Task.CompletedTask;
             var delta = screenPosition - s_pointerLastPos;
             s_pointerLastPos = screenPosition;
+#if ENABLE_INPUT_SYSTEM
             if (ShouldUseTouchInput())
             {
                 var ts = GetTouchscreen();
@@ -1249,6 +1259,7 @@ namespace ODDGames.Bugpunch
                     InputSystem.QueueEvent(e);
                 }
             }
+#endif
             return Task.CompletedTask;
         }
 
@@ -1256,6 +1267,7 @@ namespace ODDGames.Bugpunch
         {
             if (!s_pointerActive) return Task.CompletedTask;
             s_pointerActive = false;
+#if ENABLE_INPUT_SYSTEM
             if (ShouldUseTouchInput())
             {
                 var ts = GetTouchscreen();
@@ -1282,6 +1294,7 @@ namespace ODDGames.Bugpunch
                 }
             }
             InputVisualizer.RecordCursorEnd();
+#endif
             return Task.CompletedTask;
         }
 

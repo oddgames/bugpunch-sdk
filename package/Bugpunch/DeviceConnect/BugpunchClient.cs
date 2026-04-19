@@ -761,25 +761,22 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 var subPath = path.Split('?')[0];
 
+                // WebRTC captures only the Unity render texture — not the OS
+                // screen — so injection stays inside the Unity Input System.
+                // The native Android `Instrumentation.sendPointerSync` path was
+                // removed; it would land on Android UI that the dashboard
+                // never sees.
                 if (subPath == "/input/tap")
                 {
                     var nx = Mathf.Clamp01(float.TryParse(RequestRouter.Q(path, "x") ?? RequestRouter.JsonVal(body, "x"), out var px) ? px : 0.5f);
                     var ny = Mathf.Clamp01(float.TryParse(RequestRouter.Q(path, "y") ?? RequestRouter.JsonVal(body, "y"), out var py) ? py : 0.5f);
-#if !UNITY_EDITOR && UNITY_ANDROID
-                    // Native OS injection — fires on background thread, captured by touch recorder
-                    RequestRouter.NativeInjectTap(nx, ny);
                     var screenPos = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
-                    Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"native\":true,\"screen\":[{screenPos.x:F0},{screenPos.y:F0}]}}", "application/json");
-#else
-                    // Fallback to Unity Input System injection
-                    var screenPos2 = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
-                    var tapTask = InputInjector.InjectPointerTap(screenPos2);
+                    var tapTask = InputInjector.InjectPointerTap(screenPos);
                     while (!tapTask.IsCompleted) yield return null;
                     if (tapTask.IsFaulted)
                         Tunnel.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(tapTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
                     else
-                        Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"screen\":[{screenPos2.x:F0},{screenPos2.y:F0}]}}", "application/json");
-#endif
+                        Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"screen\":[{screenPos.x:F0},{screenPos.y:F0}]}}", "application/json");
                     yield break;
                 }
 
@@ -790,10 +787,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var x2 = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "x2"), out var sx2) ? sx2 : 0.5f);
                     var y2 = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "y2"), out var sy2) ? sy2 : 0.5f);
                     var durationMs = int.TryParse(RequestRouter.Q(path, "duration") ?? RequestRouter.JsonVal(body, "duration"), out var d) ? d : 300;
-#if !UNITY_EDITOR && UNITY_ANDROID
-                    RequestRouter.NativeInjectSwipe(x1, y1, x2, y2, durationMs);
-                    Tunnel.SendResponse(requestId, 200, "{\"ok\":true,\"native\":true}", "application/json");
-#else
                     var from = new Vector2(x1 * Screen.width, (1f - y1) * Screen.height);
                     var to = new Vector2(x2 * Screen.width, (1f - y2) * Screen.height);
                     var swipeTask = InputInjector.InjectPointerDrag(from, to, durationMs / 1000f);
@@ -802,7 +795,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         Tunnel.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(swipeTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
                     else
                         Tunnel.SendResponse(requestId, 200, "{\"ok\":true}", "application/json");
-#endif
                     yield break;
                 }
 
@@ -811,11 +803,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var action = RequestRouter.JsonVal(body, "action") ?? "up";
                     var nx = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "x"), out var pxp) ? pxp : 0.5f);
                     var ny = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "y"), out var pyp) ? pyp : 0.5f);
-#if !UNITY_EDITOR && UNITY_ANDROID
-                    RequestRouter.NativeInjectPointer(action, nx, ny);
-                    Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\"}}", "application/json");
-#else
-                    // iOS / Editor: stateful Unity Input System lifecycle.
                     var screenP = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
                     Task t = action switch
                     {
@@ -827,7 +814,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     };
                     while (!t.IsCompleted) yield return null;
                     Tunnel.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\"}}", "application/json");
-#endif
                     yield break;
                 }
 
