@@ -17,15 +17,13 @@ namespace ODDGames.Bugpunch.Editor
     /// Symbols is enabled), reads each library's GNU build-ID, asks the
     /// server which it's missing, uploads only those.
     ///
-    /// Server consumes the symbols later for crash symbolication — each
-    /// crash frame's PC is matched to a library by build-ID (see the
-    /// ---BUILD_IDS--- section written by <c>bp.c</c>), the corresponding
-    /// .sym.so is fetched from the symbol store, and llvm-symbolizer
-    /// resolves to source:line.
+    /// Symbol bytes are kept on disk throughout — the ELF parser reads only
+    /// the header + note segment, and the upload streams via UploadHandlerFile
+    /// with a multipart body constructed on disk. Peak managed RAM is bounded
+    /// regardless of how large libil2cpp.sym.so gets (can be 400MB+).
     ///
     /// iOS symbols (dSYM) are produced by Xcode, not Unity, so this hook
-    /// doesn't cover them. A CI-side uploader (post-archive) is the
-    /// appropriate place — out of scope here.
+    /// doesn't cover them — see Tools~/upload-ios-symbols.sh.
     /// </summary>
     public class BugpunchSymbolUploader : IPostprocessBuildWithReport
     {
@@ -36,7 +34,10 @@ namespace ODDGames.Bugpunch.Editor
 
         public void OnPostprocessBuild(BuildReport report)
         {
-            if (report.summary.result != BuildResult.Succeeded) return;
+            // Unity's BuildAndRun path leaves result==Unknown during post-build hooks;
+            // only bail on explicit failure. The symbols.zip presence is the real signal.
+            if (report.summary.result == BuildResult.Failed ||
+                report.summary.result == BuildResult.Cancelled) return;
             if (report.summary.platform != BuildTarget.Android) return;
 
             var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
@@ -45,18 +46,16 @@ namespace ODDGames.Bugpunch.Editor
                 Debug.Log("[Bugpunch] Skipping symbol upload — no config / API key.");
                 return;
             }
-            // Feature-flagged off until server-side storage + RAM budget are
-            // resolved (bugpunch-server#208, #209). Keep the code intact so
-            // flipping the flag re-enables without further work.
             if (!config.symbolUploadEnabled)
             {
                 Debug.Log("[Bugpunch] symbolUploadEnabled=false — skipping symbol upload.");
                 return;
             }
 
+            var found = new List<SymbolFile>();
             try
             {
-                var found = FindAndroidSymbols(report.summary.outputPath);
+                FindAndroidSymbols(report.summary.outputPath, found);
                 if (found.Count == 0)
                 {
                     Debug.Log("[Bugpunch] No Android symbol files found. " +
@@ -70,19 +69,29 @@ namespace ODDGames.Bugpunch.Editor
             {
                 Debug.LogError($"[Bugpunch] Symbol upload failed: {ex.Message}\n{ex.StackTrace}");
             }
+            finally
+            {
+                foreach (var f in found)
+                {
+                    if (!string.IsNullOrEmpty(f.TempPath))
+                    {
+                        try { if (File.Exists(f.TempPath)) File.Delete(f.TempPath); } catch { }
+                    }
+                }
+            }
         }
 
         /// <summary>
-        /// A single extracted symbol file, kept in memory until we know
-        /// whether the server wants it. Unity's symbols.zip is typically
-        /// 200–500MB total; we fan each entry out lazily.
+        /// Metadata for one extracted symbol file. The .so contents live at
+        /// TempPath on disk — never loaded into the managed heap.
         /// </summary>
         struct SymbolFile
         {
             public string BuildId;   // hex, lowercase
             public string Abi;       // "arm64-v8a", "armeabi-v7a", ...
             public string Filename;  // "libil2cpp.sym.so" etc.
-            public byte[] Bytes;     // full .so contents
+            public string TempPath;  // extracted .so on local disk
+            public long Size;
         }
 
         // ── Locate the symbols emitted by Unity for the Android build ──
@@ -93,21 +102,19 @@ namespace ODDGames.Bugpunch.Editor
         ///   &lt;outputDir&gt;/&lt;AppName&gt;-&lt;ver&gt;-v&lt;code&gt;-v2.symbols.zip
         /// depending on "Symbols" mode. Scan the parent directory.
         /// </summary>
-        static List<SymbolFile> FindAndroidSymbols(string outputPath)
+        static void FindAndroidSymbols(string outputPath, List<SymbolFile> into)
         {
-            var result = new List<SymbolFile>();
-            if (string.IsNullOrEmpty(outputPath)) return result;
+            if (string.IsNullOrEmpty(outputPath)) return;
 
             string searchDir = File.Exists(outputPath)
                 ? Path.GetDirectoryName(outputPath)
                 : Directory.Exists(outputPath) ? outputPath : null;
-            if (searchDir == null || !Directory.Exists(searchDir)) return result;
+            if (searchDir == null || !Directory.Exists(searchDir)) return;
 
             foreach (var zip in Directory.GetFiles(searchDir, "*symbols*.zip", SearchOption.TopDirectoryOnly))
             {
-                ExtractSymbolZip(zip, result);
+                ExtractSymbolZip(zip, into);
             }
-            return result;
         }
 
         static void ExtractSymbolZip(string zipPath, List<SymbolFile> into)
@@ -119,22 +126,34 @@ namespace ODDGames.Bugpunch.Editor
                 // Some Unity versions omit the .sym prefix. Accept any .so we find.
                 if (!entry.FullName.EndsWith(".so", StringComparison.OrdinalIgnoreCase)) continue;
                 var abi = GuessAbi(entry.FullName);
-                using var es = entry.Open();
-                using var ms = new MemoryStream();
-                es.CopyTo(ms);
-                var bytes = ms.ToArray();
-                var buildId = ElfBuildId.Read(bytes);
+
+                // Stream-copy the zip entry straight to a temp file — never
+                // materialises the full .so in managed memory.
+                var tempPath = Path.Combine(Path.GetTempPath(), $"bp_sym_{Guid.NewGuid():N}.so");
+                using (var es = entry.Open())
+                using (var fs = File.Create(tempPath))
+                {
+                    es.CopyTo(fs);
+                }
+
+                string buildId = null;
+                try { buildId = ElfBuildId.ReadFromFile(tempPath); }
+                catch { /* treat as missing build-id below */ }
+
                 if (string.IsNullOrEmpty(buildId))
                 {
                     Debug.LogWarning($"[Bugpunch] {entry.FullName} has no GNU build-id — skipping. " +
                         "Make sure IL2CPP produced an unstripped .so.");
+                    try { File.Delete(tempPath); } catch { }
                     continue;
                 }
+
                 into.Add(new SymbolFile {
                     BuildId = buildId,
                     Abi = abi,
                     Filename = Path.GetFileName(entry.FullName),
-                    Bytes = bytes,
+                    TempPath = tempPath,
+                    Size = new FileInfo(tempPath).Length,
                 });
             }
         }
@@ -169,7 +188,7 @@ namespace ODDGames.Bugpunch.Editor
                 if (UploadOne(baseUrl, config.apiKey, f))
                 {
                     uploaded++;
-                    totalBytes += f.Bytes.LongLength;
+                    totalBytes += f.Size;
                 }
             }
             Debug.Log($"[Bugpunch] Uploaded {uploaded}/{missing.Count} missing symbol files " +
@@ -222,27 +241,73 @@ namespace ODDGames.Bugpunch.Editor
             return result;
         }
 
+        /// <summary>
+        /// Streams the upload via a disk-backed multipart body. The .so file
+        /// is never loaded into Unity's managed heap — UploadHandlerFile reads
+        /// straight off disk. Peak managed RAM stays bounded regardless of
+        /// libil2cpp's size.
+        /// </summary>
         static bool UploadOne(string baseUrl, string apiKey, SymbolFile f)
         {
-            var form = new WWWForm();
-            form.AddField("buildId", f.BuildId);
-            form.AddField("platform", "android");
-            form.AddField("abi", f.Abi ?? "");
-            form.AddField("filename", f.Filename ?? "symbol.sym.so");
-            form.AddBinaryData("file", f.Bytes, f.Filename, "application/octet-stream");
-
-            using var req = UnityWebRequest.Post($"{baseUrl}/api/symbols/upload", form);
-            req.SetRequestHeader("X-Api-Key", apiKey);
-            var op = req.SendWebRequest();
-            while (!op.isDone) { }
-
-            if (req.result != UnityWebRequest.Result.Success)
+            var boundary = "----BugpunchBoundary" + Guid.NewGuid().ToString("N");
+            var bodyPath = Path.Combine(Path.GetTempPath(), $"bp_body_{Guid.NewGuid():N}.bin");
+            try
             {
-                Debug.LogError($"[Bugpunch] Symbol upload failed for {f.Filename} " +
-                    $"({f.BuildId}): {req.error} — {req.downloadHandler?.text}");
-                return false;
+                using (var bodyFs = File.Create(bodyPath))
+                {
+                    WriteFormField(bodyFs, boundary, "buildId", f.BuildId);
+                    WriteFormField(bodyFs, boundary, "platform", "android");
+                    WriteFormField(bodyFs, boundary, "abi", f.Abi ?? "");
+                    WriteFormField(bodyFs, boundary, "filename", f.Filename ?? "symbol.sym.so");
+                    WriteFileHeader(bodyFs, boundary, "file", f.Filename ?? "symbol.sym.so", "application/octet-stream");
+                    using (var soFs = File.OpenRead(f.TempPath))
+                    {
+                        soFs.CopyTo(bodyFs);
+                    }
+                    WriteAscii(bodyFs, $"\r\n--{boundary}--\r\n");
+                }
+
+                using var req = new UnityWebRequest($"{baseUrl}/api/symbols/upload", "POST");
+                req.uploadHandler = new UploadHandlerFile(bodyPath);
+                req.downloadHandler = new DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", $"multipart/form-data; boundary={boundary}");
+                req.SetRequestHeader("X-Api-Key", apiKey);
+                var op = req.SendWebRequest();
+                while (!op.isDone) { }
+
+                if (req.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogError($"[Bugpunch] Symbol upload failed for {f.Filename} " +
+                        $"({f.BuildId}): {req.error} — {req.downloadHandler?.text}");
+                    return false;
+                }
+                return true;
             }
-            return true;
+            finally
+            {
+                try { if (File.Exists(bodyPath)) File.Delete(bodyPath); } catch { }
+            }
+        }
+
+        static void WriteFormField(Stream s, string boundary, string name, string value)
+        {
+            WriteAscii(s, $"--{boundary}\r\n");
+            WriteAscii(s, $"Content-Disposition: form-data; name=\"{name}\"\r\n\r\n");
+            WriteAscii(s, value);
+            WriteAscii(s, "\r\n");
+        }
+
+        static void WriteFileHeader(Stream s, string boundary, string name, string filename, string contentType)
+        {
+            WriteAscii(s, $"--{boundary}\r\n");
+            WriteAscii(s, $"Content-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\n");
+            WriteAscii(s, $"Content-Type: {contentType}\r\n\r\n");
+        }
+
+        static void WriteAscii(Stream s, string text)
+        {
+            var bytes = Encoding.UTF8.GetBytes(text);
+            s.Write(bytes, 0, bytes.Length);
         }
 
         static string NormalizeBaseUrl(string url)
@@ -268,61 +333,80 @@ namespace ODDGames.Bugpunch.Editor
     }
 
     /// <summary>
-    /// Minimal ELF parser for extracting the GNU build-ID from a 64-bit
-    /// Android .so in memory. Supports ELF64 little-endian (arm64-v8a,
-    /// x86_64) and ELF32 little-endian (armeabi-v7a, x86) — the four ABIs
-    /// Unity actually targets.
+    /// Minimal ELF parser for extracting the GNU build-ID from a 64-bit or
+    /// 32-bit little-endian Android .so on disk. Supports ELF64 (arm64-v8a,
+    /// x86_64) and ELF32 (armeabi-v7a, x86) — the four ABIs Unity targets.
+    ///
+    /// Reads only the ELF header, program header table, and PT_NOTE segments
+    /// (usually &lt;1KB total). The rest of the .so is never touched.
     /// </summary>
     static class ElfBuildId
     {
         const int NT_GNU_BUILD_ID = 3;
 
-        public static string Read(byte[] elf)
+        public static string ReadFromFile(string path)
         {
-            if (elf == null || elf.Length < 64) return null;
-            if (elf[0] != 0x7F || elf[1] != 'E' || elf[2] != 'L' || elf[3] != 'F') return null;
-            bool is64 = elf[4] == 2;
-            bool isLE = elf[5] == 1;
+            using var fs = File.OpenRead(path);
+
+            var ehdr = new byte[64];
+            if (ReadFull(fs, ehdr, 0, 64) < 64) return null;
+            if (ehdr[0] != 0x7F || ehdr[1] != 'E' || ehdr[2] != 'L' || ehdr[3] != 'F') return null;
+            bool is64 = ehdr[4] == 2;
+            bool isLE = ehdr[5] == 1;
             if (!isLE) return null;
 
-            int phoffSize = is64 ? 8 : 4;
-            int phoff = is64
-                ? (int)ReadU64(elf, 32)
-                : (int)ReadU32(elf, 28);
-            int phentsize = is64 ? ReadU16(elf, 54) : ReadU16(elf, 42);
-            int phnum     = is64 ? ReadU16(elf, 56) : ReadU16(elf, 44);
+            long phoff = is64 ? (long)ReadU64(ehdr, 32) : ReadU32(ehdr, 28);
+            int phentsize = is64 ? ReadU16(ehdr, 54) : ReadU16(ehdr, 42);
+            int phnum     = is64 ? ReadU16(ehdr, 56) : ReadU16(ehdr, 44);
 
             if (phoff <= 0 || phentsize <= 0 || phnum <= 0) return null;
+            if (phentsize * (long)phnum > 64 * 1024) return null; // sanity
+
+            fs.Seek(phoff, SeekOrigin.Begin);
+            var ph = new byte[phentsize * phnum];
+            if (ReadFull(fs, ph, 0, ph.Length) < ph.Length) return null;
 
             for (int i = 0; i < phnum; i++)
             {
-                int off = phoff + i * phentsize;
-                if (off + phentsize > elf.Length) break;
-                uint pType = ReadU32(elf, off);
+                int off = i * phentsize;
+                uint pType = ReadU32(ph, off);
                 if (pType != 4 /* PT_NOTE */) continue;
 
-                int pOffset = is64
-                    ? (int)ReadU64(elf, off + 8)
-                    : (int)ReadU32(elf, off + 4);
-                int pFilesz = is64
-                    ? (int)ReadU64(elf, off + 32)
-                    : (int)ReadU32(elf, off + 16);
+                long pOffset = is64 ? (long)ReadU64(ph, off + 8)  : ReadU32(ph, off + 4);
+                long pFilesz = is64 ? (long)ReadU64(ph, off + 32) : ReadU32(ph, off + 16);
+                if (pOffset <= 0 || pFilesz <= 0 || pFilesz > 1024 * 1024) continue;
 
-                var hex = ScanNotesForBuildId(elf, pOffset, pFilesz);
-                if (hex != null) return hex;
+                fs.Seek(pOffset, SeekOrigin.Begin);
+                var notes = new byte[pFilesz];
+                if (ReadFull(fs, notes, 0, notes.Length) < notes.Length) continue;
+
+                var id = ScanNotesForBuildId(notes);
+                if (!string.IsNullOrEmpty(id)) return id;
             }
             return null;
         }
 
-        static string ScanNotesForBuildId(byte[] elf, int start, int length)
+        static int ReadFull(Stream s, byte[] buf, int offset, int count)
         {
-            int p = start;
-            int end = Math.Min(start + length, elf.Length);
+            int read = 0;
+            while (read < count)
+            {
+                int n = s.Read(buf, offset + read, count - read);
+                if (n <= 0) break;
+                read += n;
+            }
+            return read;
+        }
+
+        static string ScanNotesForBuildId(byte[] notes)
+        {
+            int p = 0;
+            int end = notes.Length;
             while (p + 12 <= end)
             {
-                int namesz = (int)ReadU32(elf, p);
-                int descsz = (int)ReadU32(elf, p + 4);
-                int type   = (int)ReadU32(elf, p + 8);
+                int namesz = (int)ReadU32(notes, p);
+                int descsz = (int)ReadU32(notes, p + 4);
+                int type   = (int)ReadU32(notes, p + 8);
                 int namePad = (namesz + 3) & ~3;
                 int descPad = (descsz + 3) & ~3;
                 int descStart = p + 12 + namePad;
@@ -330,7 +414,7 @@ namespace ODDGames.Bugpunch.Editor
                 {
                     var sb = new StringBuilder(descsz * 2);
                     for (int i = 0; i < descsz; i++)
-                        sb.Append(elf[descStart + i].ToString("x2"));
+                        sb.Append(notes[descStart + i].ToString("x2"));
                     return sb.ToString();
                 }
                 p = descStart + descPad;

@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.19] - 2026-04-20
+
+### Changed
+- **Native debug-tools button press feedback** — `BugpunchToolsActivity` (Android) and `BugpunchToolsPanel.mm` (iOS) now give instant visual feedback on tap. Android gets a `StateListDrawable` with a darkened pressed state plus an alpha flash; iOS gets a scale-down + dim on touch-down and a "Running…" title flash after click. The callback to Unity fires immediately on touch-up so the game runs the tool with zero added delay — the animation is purely for the user's sake, running in parallel with the click dispatch.
+
+## [1.7.18] - 2026-04-20
+
+### Fixed
+- **Post-build uploads skipped on `BuildAndRun`** — Unity's `BuildAndRun` pipeline leaves `BuildReport.summary.result == Unknown` when `IPostprocessBuildWithReport` runs; the `Succeeded` marker is only written after the hook returns. The previous `result != Succeeded` check treated `Unknown` as failure, so build artifact + type DB + symbol uploads all silently no-op'd even on successful builds. Now we only bail on explicit `Failed` / `Cancelled` and let the `File.Exists` check on the output path be the authority.
+
+## [1.7.17] - 2026-04-20
+
+### Changed
+- **Symbol upload streams through disk** — `BugpunchSymbolUploader` no longer buffers `.so` bytes in the managed heap. Scan pass extracts each zip entry to a temp file and reads only the ELF header + PT_NOTE segment (~1KB) to recover the GNU build-ID. Upload pass builds the multipart body on disk and streams via `UploadHandlerFile`. Peak Editor RAM during symbol upload drops from ~1GB (sum of all `libil2cpp.sym.so` across ABIs) to effectively zero. Temp files cleaned up in a `finally` so failed uploads don't leak.
+
+## [1.7.16] - 2026-04-20
+
+### Changed
+- **Symbol upload on by default** — `BugpunchConfig.symbolUploadEnabled` now defaults to `true`. Android IL2CPP builds will upload unstripped `.so` symbols from Unity's `symbols.zip` (requires Player Settings → Publishing Settings → Symbols enabled). Prior default was held off pending server storage + symbolicator RAM work; both are resolved on the Lightsail host (80GB disk, 4GB RAM), so the gate is removed. Crash frames will now resolve to source:line on the dashboard.
+
 ## [1.7.15] - 2026-04-19
 
 ### Removed

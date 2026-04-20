@@ -73,14 +73,29 @@ namespace ODDGames.Bugpunch.Editor
     {
         public int callbackOrder => 0;
 
+        static int s_invocationCounter;
+
         public void OnPostprocessBuild(BuildReport report)
         {
+            var n = ++s_invocationCounter;
+            var s = report.summary;
+            Debug.Log(
+                $"[Bugpunch][diag] PostprocessBuild #{n} " +
+                $"result={s.result} platform={s.platform} " +
+                $"outputPath='{s.outputPath}' " +
+                $"totalErrors={s.totalErrors} totalWarnings={s.totalWarnings} " +
+                $"totalTimeMs={(long)s.totalTime.TotalMilliseconds}");
+
             var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
             if (config == null || string.IsNullOrEmpty(config.apiKey)) return;
 
-            if (report.summary.result != BuildResult.Succeeded)
+            // Unity's BuildAndRun path leaves report.summary.result == Unknown at this
+            // point — the final 'Succeeded' marker is written after IPostprocessBuildWithReport
+            // returns. Only bail on explicit failure; we verify the output file below.
+            if (report.summary.result == BuildResult.Failed ||
+                report.summary.result == BuildResult.Cancelled)
             {
-                Debug.Log("[Bugpunch] Build failed — skipping artifact + type DB upload");
+                Debug.Log($"[Bugpunch] Build {report.summary.result} — skipping artifact + type DB upload");
                 return;
             }
 

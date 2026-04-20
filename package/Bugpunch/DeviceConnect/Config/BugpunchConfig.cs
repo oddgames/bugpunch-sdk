@@ -27,10 +27,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public bool autoStart = false;
 
         [Tooltip("Upload Android unstripped symbols (and — via upload-ios-symbols.sh — iOS dSYMs) after each Player build. " +
-                 "Feature is held off by default until server-side symbol storage + symbolicator RAM budget are resolved " +
-                 "(bugpunch-server#208, #209). Native crash reports still write build-IDs regardless; enabling this only " +
-                 "changes whether those IDs can be resolved to source on the dashboard.")]
-        public bool symbolUploadEnabled = false;
+                 "Native crash reports still write build-IDs regardless; enabling this changes whether those IDs can be " +
+                 "resolved to source on the dashboard.")]
+        public bool symbolUploadEnabled = true;
 
         [Header("Crash Attachment Allow-list")]
         [Tooltip("Files Bugpunch is allowed to read and upload with a crash report. " +
