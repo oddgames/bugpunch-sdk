@@ -65,6 +65,23 @@ namespace ODDGames.Bugpunch.DeviceConnect
         static readonly Dictionary<string, string> s_variables = new();
         static bool s_configFetched;
 
+        // Runtime overrides for BugpunchConfig.branch / .changeset. CI pipelines
+        // call SetBranch / SetChangeset before SDK init so each build reports its
+        // own git metadata without editing the ScriptableObject in source control.
+        static string s_branchOverride;
+        static string s_changesetOverride;
+
+        internal static void SetBranchOverride(string value) => s_branchOverride = value;
+        internal static void SetChangesetOverride(string value) => s_changesetOverride = value;
+
+        /// <summary>Effective branch label — runtime override wins over config field.</summary>
+        internal static string GetEffectiveBranch(BugpunchConfig config)
+            => !string.IsNullOrEmpty(s_branchOverride) ? s_branchOverride : (config?.branch ?? "");
+
+        /// <summary>Effective changeset id — runtime override wins over config field.</summary>
+        internal static string GetEffectiveChangeset(BugpunchConfig config)
+            => !string.IsNullOrEmpty(s_changesetOverride) ? s_changesetOverride : (config?.changeset ?? "");
+
         /// <summary>
         /// Read a game config variable set on the Bugpunch dashboard.
         /// Returns <paramref name="defaultValue"/> if the variable is not set
