@@ -1,13 +1,19 @@
 // =============================================================================
-// BugpunchDirectives — iOS handler for server-sent "Request More Info"
+// BugpunchDirectives - iOS handler for server-sent "Request More Info"
 // directives. Mirrors the Android BugpunchDirectives class.
 //
-// Flow: BugpunchUploader.mm POSTs a crash to /api/crashes. Response carries
-// eventId + matchedDirectives[]. BPDirectives_OnUploadResponse parses and
-// applies each action:
-//   - attach_files   — native glob inside the allow-list, POST bytes back
-//   - run_paxscript  — UnitySendMessage → managed PaxScript runner → callback
-//   - ask_user_for_help — UIAlertController, denial persisted in NSUserDefaults
+// Two entry points:
+//   1. BPDirectives_OnUploadResponse  - fires after a successful /api/crashes
+//      POST. Server response carries eventId + matchedDirectives[]. Result of
+//      each action is POSTed to /api/crashes/events/{eventId}/enrich.
+//   2. BPDirectives_OnPollDirectives  - fires from the native poll loop when
+//      /api/device-poll returns pendingDirectives[]. No crash context.
+//      Action results are POSTed to /api/directives/{directiveId}/result.
+//
+// Both paths run through the same handlers (attach_files / run_paxscript /
+// ask_user_for_help). The dispatcher builds the result URL once and passes it
+// down. enable_debug_tunnel is consumed server-side (flips the upgrade flag
+// on poll); no client-side action.
 // =============================================================================
 
 #import <Foundation/Foundation.h>
@@ -33,7 +39,9 @@ extern "C" void UnitySendMessage(const char* obj, const char* method, const char
 
 static NSString* const kBPDirectiveDeniedKey = @"bugpunch.directive.denied.";
 
-// Pending paxscript callbacks, keyed by directiveId → eventId.
+// Pending paxscript callbacks, keyed by directiveId -> resultUrl. The URL
+// encodes both the post target AND the event/directive id, so
+// postPaxScriptResult doesn't need to know which flow spawned it.
 static NSMutableDictionary<NSString*, NSString*>* gPendingPaxScript;
 static dispatch_queue_t gPendingLock;
 
@@ -45,7 +53,7 @@ static void BPEnsurePending(void) {
     });
 }
 
-// ── Helpers ──
+// -- Helpers --
 
 static NSString* BPServerUrl(void) {
     NSString* s = [BPDebugMode shared].config[@"serverUrl"];
@@ -57,29 +65,45 @@ static NSString* BPApiKey(void) {
     return [s isKindOfClass:[NSString class]] ? s : @"";
 }
 
+static NSString* BPTrimTrailingSlash(NSString* s) {
+    while ([s hasSuffix:@"/"]) s = [s substringToIndex:s.length - 1];
+    return s;
+}
+
+static NSString* BPEnrichUrl(NSString* eventId) {
+    NSString* server = BPTrimTrailingSlash(BPServerUrl());
+    if (server.length == 0 || eventId.length == 0) return @"";
+    return [NSString stringWithFormat:@"%@/api/crashes/events/%@/enrich", server, eventId];
+}
+
+static NSString* BPDirectiveResultUrl(NSString* directiveId) {
+    NSString* server = BPTrimTrailingSlash(BPServerUrl());
+    if (server.length == 0 || directiveId.length == 0) return @"";
+    return [NSString stringWithFormat:@"%@/api/directives/%@/result", server, directiveId];
+}
+
 static BOOL BPIsDenied(NSString* fingerprint) {
-    NSString* key = [kBPDirectiveDeniedKey stringByAppendingString:fingerprint ?: @""];
+    if (fingerprint.length == 0) return NO;
+    NSString* key = [kBPDirectiveDeniedKey stringByAppendingString:fingerprint];
     return [[NSUserDefaults standardUserDefaults] boolForKey:key];
 }
 
 static void BPSetDenied(NSString* fingerprint) {
-    NSString* key = [kBPDirectiveDeniedKey stringByAppendingString:fingerprint ?: @""];
+    if (fingerprint.length == 0) return;
+    NSString* key = [kBPDirectiveDeniedKey stringByAppendingString:fingerprint];
     [[NSUserDefaults standardUserDefaults] setBool:YES forKey:key];
 }
 
-static void BPPostEnrich(NSString* eventId, NSDictionary* body) {
-    NSString* server = BPServerUrl();
+/** Generic JSON POST through the upload queue. Caller pre-formats the URL. */
+static void BPPostJson(NSString* url, NSDictionary* body) {
     NSString* apiKey = BPApiKey();
-    if (server.length == 0 || apiKey.length == 0 || eventId.length == 0) return;
-    // Strip trailing slashes.
-    while ([server hasSuffix:@"/"]) server = [server substringToIndex:server.length - 1];
-    NSString* url = [NSString stringWithFormat:@"%@/api/crashes/events/%@/enrich", server, eventId];
+    if (url.length == 0 || apiKey.length == 0) return;
     NSData* data = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
     NSString* jsonStr = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
     BugpunchUploader_EnqueueJson([url UTF8String], [apiKey UTF8String], [jsonStr UTF8String]);
 }
 
-// ── attach_files: allow-list glob inside BugpunchConfig.attachmentRules ──
+// -- attach_files: allow-list glob inside BugpunchConfig.attachmentRules --
 
 static NSArray* BPAllowList(void) {
     NSArray* rules = [BPDebugMode shared].config[@"attachmentRules"];
@@ -105,7 +129,7 @@ static BOOL BPMatchGlob(NSString* pattern, NSString* name) {
     return pi == pl;
 }
 
-static void BPHandleAttachFiles(NSString* eventId, NSString* directiveId,
+static void BPHandleAttachFiles(NSString* resultUrl, NSString* directiveId,
                                 NSDictionary* action) {
     NSArray* paths = action[@"paths"];
     if (![paths isKindOfClass:[NSArray class]] || paths.count == 0) return;
@@ -159,15 +183,15 @@ static void BPHandleAttachFiles(NSString* eventId, NSString* directiveId,
         }
     }
 
-    BPPostEnrich(eventId, @{
+    BPPostJson(resultUrl, @{
         @"directiveId": directiveId,
         @"attachments": attachments,
     });
 }
 
-// ── run_paxscript: UnitySendMessage + pending callback ──
+// -- run_paxscript: UnitySendMessage + pending callback --
 
-static void BPHandleRunPaxScript(NSString* eventId, NSString* directiveId,
+static void BPHandleRunPaxScript(NSString* resultUrl, NSString* directiveId,
                                  NSDictionary* action) {
     NSString* code = action[@"code"];
     if (![code isKindOfClass:[NSString class]] || code.length == 0) return;
@@ -175,7 +199,7 @@ static void BPHandleRunPaxScript(NSString* eventId, NSString* directiveId,
     if (timeoutMs <= 0) timeoutMs = 2000;
 
     BPEnsurePending();
-    dispatch_sync(gPendingLock, ^{ gPendingPaxScript[directiveId] = eventId; });
+    dispatch_sync(gPendingLock, ^{ gPendingPaxScript[directiveId] = resultUrl ?: @""; });
 
     NSDictionary* payload = @{
         @"directiveId": directiveId,
@@ -187,11 +211,12 @@ static void BPHandleRunPaxScript(NSString* eventId, NSString* directiveId,
     UnitySendMessage("BugpunchClient", "DirectiveRunPaxScript", [jsonStr UTF8String]);
 }
 
-// ── ask_user_for_help: UIAlertController + persistent denial ──
+// -- ask_user_for_help: UIAlertController + persistent denial --
+// fingerprint is empty for device-targeted (poll) directives - denial
+// persistence is skipped in that case.
 
-static void BPHandleAskUser(NSString* eventId, NSString* fingerprint,
+static void BPHandleAskUser(NSString* resultUrl, NSString* fingerprint,
                             NSString* directiveId, NSDictionary* action) {
-    if (fingerprint.length == 0) return;
     if (BPIsDenied(fingerprint)) return;
 
     NSString* title = action[@"promptTitle"] ?: @"Help us fix this bug";
@@ -209,7 +234,7 @@ static void BPHandleAskUser(NSString* eventId, NSString* fingerprint,
             handler:^(UIAlertAction* _) {
                 Bugpunch_EnterDebugMode(1);
                 Bugpunch_SetCustomData("bugpunch.repro_attempt", "true");
-                BPPostEnrich(eventId, @{
+                BPPostJson(resultUrl, @{
                     @"directiveId": directiveId,
                     @"userPromptResult": @"accepted",
                 });
@@ -217,7 +242,7 @@ static void BPHandleAskUser(NSString* eventId, NSString* fingerprint,
         [alert addAction:[UIAlertAction actionWithTitle:decline style:UIAlertActionStyleCancel
             handler:^(UIAlertAction* _) {
                 BPSetDenied(fingerprint);
-                BPPostEnrich(eventId, @{
+                BPPostJson(resultUrl, @{
                     @"directiveId": directiveId,
                     @"userPromptResult": @"declined",
                 });
@@ -226,8 +251,29 @@ static void BPHandleAskUser(NSString* eventId, NSString* fingerprint,
     });
 }
 
-// ── Top-level dispatch ──
+// -- Shared dispatcher used by both entry points --
 
+static void BPApplyAction(NSString* resultUrl, NSString* fingerprint,
+                          NSString* directiveId, NSDictionary* action) {
+    NSString* type = action[@"type"];
+    @try {
+        if ([type isEqualToString:@"attach_files"]) {
+            BPHandleAttachFiles(resultUrl, directiveId, action);
+        } else if ([type isEqualToString:@"run_paxscript"]) {
+            BPHandleRunPaxScript(resultUrl, directiveId, action);
+        } else if ([type isEqualToString:@"ask_user_for_help"]) {
+            BPHandleAskUser(resultUrl, fingerprint, directiveId, action);
+        }
+        // enable_debug_tunnel is consumed server-side (flips upgrade flag on
+        // poll). No client-side action.
+    } @catch (NSException* ex) {
+        NSLog(@"[BPDirectives] action failed: %@", ex);
+    }
+}
+
+// -- Entry points --
+
+/** Crash-path directives: invoked after POST /api/crashes succeeds. */
 extern "C" void BPDirectives_OnUploadResponse(const char* urlC, const char* bodyC) {
     if (!urlC || !bodyC) return;
     NSString* url = [NSString stringWithUTF8String:urlC];
@@ -246,6 +292,9 @@ extern "C" void BPDirectives_OnUploadResponse(const char* urlC, const char* body
     if (![eventId isKindOfClass:[NSString class]] || eventId.length == 0) return;
     if (![directives isKindOfClass:[NSArray class]]) return;
 
+    NSString* resultUrl = BPEnrichUrl(eventId);
+    if (resultUrl.length == 0) return;
+
     for (NSDictionary* d in directives) {
         if (![d isKindOfClass:[NSDictionary class]]) continue;
         NSString* directiveId = d[@"id"];
@@ -253,18 +302,38 @@ extern "C" void BPDirectives_OnUploadResponse(const char* urlC, const char* body
         if (![directiveId isKindOfClass:[NSString class]] || ![actions isKindOfClass:[NSArray class]]) continue;
         for (NSDictionary* a in actions) {
             if (![a isKindOfClass:[NSDictionary class]]) continue;
-            NSString* type = a[@"type"];
-            @try {
-                if ([type isEqualToString:@"attach_files"]) {
-                    BPHandleAttachFiles(eventId, directiveId, a);
-                } else if ([type isEqualToString:@"run_paxscript"]) {
-                    BPHandleRunPaxScript(eventId, directiveId, a);
-                } else if ([type isEqualToString:@"ask_user_for_help"]) {
-                    BPHandleAskUser(eventId, fingerprint, directiveId, a);
-                }
-            } @catch (NSException* ex) {
-                NSLog(@"[BPDirectives] action failed: %@", ex);
-            }
+            BPApplyAction(resultUrl, fingerprint, directiveId, a);
+        }
+    }
+}
+
+/**
+ * Poll-path directives: invoked from the native poller when /api/device-poll
+ * returns pendingDirectives. Input is the raw JSON array:
+ *   [ { "id": "...", "actions": [ ... ] }, ... ]
+ */
+extern "C" void BPDirectives_OnPollDirectives(const char* jsonC) {
+    if (!jsonC || !*jsonC) return;
+    NSString* body = [NSString stringWithUTF8String:jsonC];
+    if (body.length == 0) return;
+
+    NSData* data = [body dataUsingEncoding:NSUTF8StringEncoding];
+    id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![parsed isKindOfClass:[NSArray class]]) return;
+
+    for (NSDictionary* d in (NSArray*)parsed) {
+        if (![d isKindOfClass:[NSDictionary class]]) continue;
+        NSString* directiveId = d[@"id"];
+        NSArray* actions = d[@"actions"];
+        if (![directiveId isKindOfClass:[NSString class]] || directiveId.length == 0) continue;
+        if (![actions isKindOfClass:[NSArray class]]) continue;
+
+        NSString* resultUrl = BPDirectiveResultUrl(directiveId);
+        if (resultUrl.length == 0) continue;
+
+        for (NSDictionary* a in actions) {
+            if (![a isKindOfClass:[NSDictionary class]]) continue;
+            BPApplyAction(resultUrl, @"", directiveId, a);
         }
     }
 }
@@ -275,19 +344,19 @@ extern "C" void Bugpunch_PostPaxScriptResult(const char* directiveIdC, const cha
     NSString* resultJson = resultJsonC ? [NSString stringWithUTF8String:resultJsonC] : @"{}";
 
     BPEnsurePending();
-    __block NSString* eventId = nil;
+    __block NSString* resultUrl = nil;
     dispatch_sync(gPendingLock, ^{
-        eventId = gPendingPaxScript[directiveId];
+        resultUrl = gPendingPaxScript[directiveId];
         [gPendingPaxScript removeObjectForKey:directiveId];
     });
-    if (eventId.length == 0) return;
+    if (resultUrl.length == 0) return;
 
     NSData* data = [resultJson dataUsingEncoding:NSUTF8StringEncoding];
     id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     NSDictionary* resultDict = [parsed isKindOfClass:[NSDictionary class]] ? parsed
         : @{ @"ok": @NO, @"errors": @[@"bad json from paxscript runner"] };
 
-    BPPostEnrich(eventId, @{
+    BPPostJson(resultUrl, @{
         @"directiveId": directiveId,
         @"paxscript": resultDict,
     });

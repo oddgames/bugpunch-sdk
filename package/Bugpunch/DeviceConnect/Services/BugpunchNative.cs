@@ -226,6 +226,82 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
+        // ─── Native poll loop (replaces the C# DeviceRegistration) ──────────
+        //
+        // Owns register + heartbeat poll + directive dispatch + token
+        // persistence. C# receives two callbacks via UnitySendMessage:
+        //   BugpunchClient.OnPollUpgradeRequested  — server asked for a
+        //     live tunnel; C# starts the WebSocket client.
+        //   BugpunchClient.OnPollScripts           — scheduled PaxScript(s)
+        //     to execute against managed code; result posted back via
+        //     PostScriptResult.
+
+        /// <summary>
+        /// Start the native poll loop. Must be called AFTER
+        /// <see cref="Start"/> so the native runtime has a populated config
+        /// (serverUrl / apiKey / metadata).
+        /// </summary>
+        public static void StartPoll(string scriptPermission, int pollIntervalSeconds)
+        {
+            if (!s_started) return;
+            string perm = string.IsNullOrEmpty(scriptPermission) ? "ask" : scriptPermission;
+            int interval = Math.Max(5, pollIntervalSeconds);
+#if UNITY_EDITOR
+            Debug.Log("[Bugpunch] StartPoll: no-op in Editor");
+#elif UNITY_ANDROID
+            try
+            {
+                using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+                using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPoller");
+                cls.CallStatic("start", activity, perm, interval);
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] StartPoll failed: {e.Message}"); }
+#elif UNITY_IOS
+            try { Bugpunch_StartPoll(perm, interval); }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] StartPoll failed: {e.Message}"); }
+#endif
+        }
+
+        public static void StopPoll()
+        {
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPoller");
+                cls.CallStatic("stop");
+            }
+            catch { /* best-effort */ }
+#elif UNITY_IOS
+            try { Bugpunch_StopPoll(); } catch { /* best-effort */ }
+#endif
+        }
+
+        /// <summary>
+        /// Post a scheduled-script execution result back to the server. Called
+        /// from <see cref="BugpunchClient.OnPollScripts"/> after the C# runner
+        /// finishes. Native handles the HTTP so C# doesn't touch the network.
+        /// </summary>
+        public static void PostScriptResult(string scheduledScriptId, string output,
+            string errors, bool success, int durationMs)
+        {
+            if (!s_started || string.IsNullOrEmpty(scheduledScriptId)) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPoller");
+                cls.CallStatic("postScriptResult", scheduledScriptId, output ?? "",
+                    errors ?? "", success, durationMs);
+            }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] PostScriptResult failed: {e.Message}"); }
+#elif UNITY_IOS
+            try { Bugpunch_PostScriptResult(scheduledScriptId, output ?? "", errors ?? "", success, durationMs); }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] PostScriptResult failed: {e.Message}"); }
+#endif
+        }
+
         /// <summary>
         /// Start the native performance monitor with server-provided config.
         /// Called after the game config fetch succeeds and performance.enabled
@@ -265,6 +341,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_PushLogEntry(string type, string message, string stackTrace);
         [DllImport("__Internal")] static extern void Bugpunch_StartPerfMonitor(string configJson);
         [DllImport("__Internal")] static extern string Bugpunch_GetInstallerMode();
+        [DllImport("__Internal")] static extern void Bugpunch_StartPoll(string scriptPermission, int pollIntervalSeconds);
+        [DllImport("__Internal")] static extern void Bugpunch_StopPoll();
+        [DllImport("__Internal")] static extern void Bugpunch_PostScriptResult(string scheduledScriptId,
+            string output, string errors, bool success, int durationMs);
 #endif
 
         // ── Build config JSON from BugpunchConfig ScriptableObject ──
