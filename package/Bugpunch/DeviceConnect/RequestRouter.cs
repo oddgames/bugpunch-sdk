@@ -57,6 +57,16 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             try
             {
+                // QA pin gate — all Remote IDE requests are interactive and
+                // require the device to have the `alwaysRemote` pin enabled
+                // (with user consent accepted) on shipped builds. Editor +
+                // debug builds stay unrestricted so the dev workflow doesn't
+                // regress — a developer opening Remote IDE on their own
+                // workstation shouldn't need to pin it.
+                bool isDevContext = Application.isEditor || Debug.isDebugBuild;
+                if (!isDevContext && !PinState.IsAlwaysRemote)
+                    return Response.Error("Device not enrolled for remote debugging", 403);
+
                 // Hierarchy
                 if (path == "/hierarchy" || path.StartsWith("/hierarchy?"))
                     return Response.Json(Hierarchy?.GetHierarchy() ?? "[]");

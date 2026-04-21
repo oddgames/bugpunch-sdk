@@ -164,7 +164,7 @@ namespace ODDGames.Bugpunch
                     {
                         var videoDir = Path.Combine(Application.temporaryCachePath, "gemini_recordings");
                         Directory.CreateDirectory(videoDir);
-                        var videoPath = Path.Combine(videoDir, $"gemini_{DateTime.Now:yyyyMMdd_HHmmss}");
+                        var videoPath = Path.Combine(videoDir, $"gemini_{DateTime.UtcNow:yyyyMMdd_HHmmss}");
 
                         recording = await MediaRecorder.StartAsync(new RecorderSettings
                         {

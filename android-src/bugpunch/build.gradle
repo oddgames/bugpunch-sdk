@@ -53,4 +53,25 @@ android {
     buildFeatures {
         buildConfig false
     }
+
+    // Keep the .symtab section in libbugpunch_crash.so so the server-side
+    // symbolicator can resolve signal-handler frames to function names
+    // without needing full DWARF. By default AGP runs llvm-strip --strip-all
+    // on every packaged .so, which wipes .symtab entirely and makes every
+    // frame in our own signal handler show up as '??' in the dashboard.
+    // ~10 KB extra per ABI in the shipped APK — trivial.
+    packaging {
+        jniLibs {
+            keepDebugSymbols += ['**/libbugpunch_crash.so']
+        }
+    }
+}
+
+dependencies {
+    // WebSocket client for BugpunchTunnel (N1 of the native-tunnel migration).
+    // OkHttp is the de-facto Android WebSocket implementation; works on every
+    // API level our minSdk supports. Unity's Android Gradle resolves this
+    // transitive dependency during the Player build (settings.gradle already
+    // declares google() + mavenCentral() as the project's repositories).
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }

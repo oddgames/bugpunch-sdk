@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using UnityEngine;
@@ -9,6 +10,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// <summary>
     /// Watches variables on GameObjects/Components, samples every FixedUpdate,
     /// and buffers time-series data for the dashboard to poll.
+    ///
+    /// <para>Field names are dotted paths resolved against the component. For example
+    /// <c>attachedRigidbody.velocity</c> on a <c>Collider</c> walks the
+    /// <c>attachedRigidbody</c> property then reads <c>velocity</c>.</para>
     /// </summary>
     public class WatchService : MonoBehaviour
     {
@@ -17,9 +22,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             public string id;           // unique watch ID
             public int instanceId;      // GameObject instance ID
             public int componentId;     // Component instance ID
-            public string fieldName;    // field or property name
-            public string typeName;     // C# type name
-            public bool isProperty;     // true = property, false = field
+            public string fieldName;    // dotted path: "foo" or "foo.bar.baz"
+            public string typeName;     // terminal C# type name
+            public bool isProperty;     // terminal member kind (informational)
             public string gameObjectName;
             public string componentName;
             public string hierarchyPath;
@@ -38,8 +43,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
         int _nextId;
         const int MaxBufferedSamples = 5000; // prevent runaway memory
 
-        // Cache resolved references to avoid reflection every frame
-        readonly Dictionary<string, (Component comp, MemberInfo member)> _resolvedCache = new();
+        // Cache resolved references to avoid reflection every frame.
+        // Chain is the ordered list of MemberInfo walked from the component down.
+        readonly Dictionary<string, (Component comp, MemberInfo[] chain)> _resolvedCache = new();
+
+        const BindingFlags MemberFlags =
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase;
 
         void FixedUpdate()
         {
@@ -81,16 +90,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (resolved.comp == null) return "null";
             }
 
+            if (resolved.chain == null) return "null";
+
             try
             {
-                object value;
-                if (resolved.member is PropertyInfo pi)
-                    value = pi.GetValue(resolved.comp);
-                else if (resolved.member is FieldInfo fi)
-                    value = fi.GetValue(resolved.comp);
-                else
-                    return "null";
-
+                var value = ReadThroughChain(resolved.comp, resolved.chain);
                 return SerializeValue(value);
             }
             catch
@@ -99,7 +103,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
-        (Component comp, MemberInfo member) Resolve(WatchEntry entry)
+        (Component comp, MemberInfo[] chain) Resolve(WatchEntry entry)
         {
             var go = FindByInstanceId(entry.instanceId);
             if (go == null) return (null, null);
@@ -115,40 +119,31 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             if (comp == null) return (null, null);
 
-            var type = comp.GetType();
-            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            var segments = SplitPath(entry.fieldName);
+            if (!TryBuildChain(comp.GetType(), segments, out var chain, out _))
+                return (comp, null);
 
-            if (entry.isProperty)
-            {
-                var pi = type.GetProperty(entry.fieldName, flags);
-                if (pi != null && pi.CanRead) return (comp, pi);
-            }
-            else
-            {
-                var fi = type.GetField(entry.fieldName, flags);
-                if (fi != null) return (comp, fi);
-            }
-
-            // Fallback: try both
-            var prop = type.GetProperty(entry.fieldName, flags);
-            if (prop != null && prop.CanRead) return (comp, prop);
-            var field = type.GetField(entry.fieldName, flags);
-            if (field != null) return (comp, field);
-
-            return (comp, null);
+            return (comp, chain);
         }
 
         // ── Public API ──
 
         /// <summary>
         /// Search all active GameObjects for fields/properties matching a query.
+        /// Supports dotted paths: e.g. "attachedRigidbody.velocity" matches components
+        /// where the head segment exists on the component and the remaining segments
+        /// resolve via the resulting type chain.
         /// Returns JSON array of matching variables.
         /// </summary>
         public string Search(string query, int maxResults = 50)
         {
             if (string.IsNullOrWhiteSpace(query)) return "[]";
 
-            var q = query.ToLowerInvariant();
+            var parts = SplitPath(query);
+            var head = parts[0].ToLowerInvariant();
+            var tail = parts.Length > 1 ? parts.Skip(1).ToArray() : Array.Empty<string>();
+            bool dotted = tail.Length > 0;
+
             var sb = new StringBuilder();
             sb.Append("[");
             int count = 0;
@@ -164,14 +159,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             foreach (var root in rootObjects)
             {
                 if (count >= maxResults) break;
-                SearchRecursive(root, q, sb, ref count, maxResults);
+                SearchRecursive(root, head, tail, dotted, sb, ref count, maxResults);
             }
 
             sb.Append("]");
             return sb.ToString();
         }
 
-        void SearchRecursive(GameObject go, string query, StringBuilder sb, ref int count, int max)
+        void SearchRecursive(GameObject go, string head, string[] tail, bool dotted, StringBuilder sb, ref int count, int max)
         {
             if (count >= max) return;
 
@@ -190,56 +185,88 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (count >= max) break;
                     if (p.GetIndexParameters().Length > 0) continue;
                     if (!p.CanRead) continue;
-                    // Skip noisy base class
-                    if (p.DeclaringType == typeof(UnityEngine.Object) || p.DeclaringType == typeof(Component) || p.DeclaringType == typeof(Behaviour) || p.DeclaringType == typeof(MonoBehaviour))
-                        continue;
+                    if (IsNoisyDeclaringType(p.DeclaringType)) continue;
 
-                    if (MatchesQuery(p.Name, type.Name, go.name, query))
-                    {
-                        if (count > 0) sb.Append(",");
-                        AppendSearchResult(sb, go, comp, p.Name, p.PropertyType.Name, true, p.CanWrite);
-                        count++;
-                    }
+                    if (!HeadMatches(p.Name, type.Name, go.name, head, dotted)) continue;
+
+                    TryEmitResult(sb, ref count, go, comp, p, tail, dotted);
                 }
 
                 // Search fields
                 foreach (var f in type.GetFields(flags))
                 {
                     if (count >= max) break;
-                    if (f.DeclaringType == typeof(UnityEngine.Object) || f.DeclaringType == typeof(Component) || f.DeclaringType == typeof(Behaviour) || f.DeclaringType == typeof(MonoBehaviour))
-                        continue;
+                    if (IsNoisyDeclaringType(f.DeclaringType)) continue;
 
-                    if (MatchesQuery(f.Name, type.Name, go.name, query))
-                    {
-                        if (count > 0) sb.Append(",");
-                        AppendSearchResult(sb, go, comp, f.Name, f.FieldType.Name, false, true);
-                        count++;
-                    }
+                    if (!HeadMatches(f.Name, type.Name, go.name, head, dotted)) continue;
+
+                    TryEmitResult(sb, ref count, go, comp, f, tail, dotted);
                 }
             }
 
             // Recurse children
             for (int i = 0; i < go.transform.childCount && count < max; i++)
-                SearchRecursive(go.transform.GetChild(i).gameObject, query, sb, ref count, max);
+                SearchRecursive(go.transform.GetChild(i).gameObject, head, tail, dotted, sb, ref count, max);
         }
 
-        bool MatchesQuery(string fieldName, string componentName, string goName, string query)
+        void TryEmitResult(StringBuilder sb, ref int count, GameObject go, Component comp, MemberInfo head, string[] tail, bool dotted)
         {
-            return fieldName.ToLowerInvariant().Contains(query)
-                || componentName.ToLowerInvariant().Contains(query)
-                || goName.ToLowerInvariant().Contains(query);
+            MemberInfo[] chain;
+            Type terminalType;
+            string path;
+
+            if (dotted)
+            {
+                var headType = GetMemberType(head);
+                if (headType == null) return;
+                if (!TryBuildChain(headType, tail, out var sub, out terminalType)) return;
+                chain = new MemberInfo[1 + sub.Length];
+                chain[0] = head;
+                sub.CopyTo(chain, 1);
+                path = head.Name + "." + string.Join(".", tail);
+            }
+            else
+            {
+                chain = new[] { head };
+                terminalType = GetMemberType(head);
+                path = head.Name;
+            }
+
+            var terminal = chain[chain.Length - 1];
+            bool isProperty = terminal is PropertyInfo;
+            bool canWrite = terminal is PropertyInfo tp ? tp.CanWrite : terminal is FieldInfo;
+
+            if (count > 0) sb.Append(",");
+            AppendSearchResult(sb, go, comp, path, terminalType?.Name ?? "Unknown", isProperty, canWrite, chain);
+            count++;
         }
 
-        void AppendSearchResult(StringBuilder sb, GameObject go, Component comp, string fieldName, string typeName, bool isProperty, bool canWrite)
+        static bool HeadMatches(string memberName, string componentName, string goName, string head, bool dotted)
+        {
+            var m = memberName.ToLowerInvariant();
+            if (dotted)
+            {
+                // In dotted mode, only match the first segment against member names —
+                // matching on GO/component name doesn't make sense for a drill-down path.
+                return m.Contains(head);
+            }
+            return m.Contains(head)
+                || componentName.ToLowerInvariant().Contains(head)
+                || goName.ToLowerInvariant().Contains(head);
+        }
+
+        static bool IsNoisyDeclaringType(Type t)
+        {
+            return t == typeof(UnityEngine.Object)
+                || t == typeof(Component)
+                || t == typeof(Behaviour)
+                || t == typeof(MonoBehaviour);
+        }
+
+        void AppendSearchResult(StringBuilder sb, GameObject go, Component comp, string fieldPath, string typeName, bool isProperty, bool canWrite, MemberInfo[] chain)
         {
             object value = null;
-            try
-            {
-                if (isProperty)
-                    value = comp.GetType().GetProperty(fieldName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(comp);
-                else
-                    value = comp.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(comp);
-            }
+            try { value = ReadThroughChain(comp, chain); }
             catch { }
 
             sb.Append("{");
@@ -247,7 +274,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append($"\"componentId\":{comp.GetInstanceID()},");
             sb.Append($"\"gameObject\":\"{Esc(go.name)}\",");
             sb.Append($"\"component\":\"{Esc(comp.GetType().Name)}\",");
-            sb.Append($"\"field\":\"{Esc(fieldName)}\",");
+            sb.Append($"\"field\":\"{Esc(fieldPath)}\",");
             sb.Append($"\"type\":\"{Esc(typeName)}\",");
             sb.Append($"\"isProperty\":{(isProperty ? "true" : "false")},");
             sb.Append($"\"canWrite\":{(canWrite ? "true" : "false")},");
@@ -257,7 +284,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
-        /// Add a variable to the watch list. Returns JSON with the watch ID.
+        /// Add a variable to the watch list. <paramref name="fieldName"/> may be a
+        /// dotted path. Returns JSON with the watch ID.
         /// </summary>
         public string AddWatch(string instanceIdStr, string componentIdStr, string fieldName, string isPropertyStr)
         {
@@ -289,6 +317,16 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             if (comp == null) return "{\"ok\":false,\"error\":\"Component not found\"}";
 
+            // Validate path resolves against the component's type.
+            var segments = SplitPath(fieldName);
+            if (!TryBuildChain(comp.GetType(), segments, out var chain, out var terminalType))
+                return $"{{\"ok\":false,\"error\":\"Path not found: {Esc(fieldName)}\"}}";
+
+            var terminal = chain[chain.Length - 1];
+            // Infer isProperty from the terminal member if the caller didn't pin it.
+            if (terminal is PropertyInfo) isProperty = true;
+            else if (terminal is FieldInfo) isProperty = false;
+
             var id = $"w{_nextId++}";
             var entry = new WatchEntry
             {
@@ -296,7 +334,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 instanceId = instanceId,
                 componentId = componentId,
                 fieldName = fieldName,
-                typeName = GetFieldTypeName(comp, fieldName),
+                typeName = terminalType?.Name ?? "Unknown",
                 isProperty = isProperty,
                 gameObjectName = go.name,
                 componentName = comp.GetType().Name,
@@ -304,7 +342,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             };
 
             _watches[id] = entry;
-            _resolvedCache.Remove(id);
+            _resolvedCache[id] = (comp, chain);
 
             return $"{{\"ok\":true,\"id\":\"{id}\"}}";
         }
@@ -389,7 +427,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
-        /// Apply a value to a watched variable.
+        /// Apply a value to a watched variable. <paramref name="fieldName"/> may be a
+        /// dotted path — the chain is walked to the penultimate object, then the
+        /// terminal member is assigned. Intermediate struct (value-type) mutation
+        /// won't propagate back to the component — writes only stick cleanly when
+        /// intermediates are reference types (Rigidbody, Transform, etc.).
         /// </summary>
         public string ApplyValue(string instanceIdStr, string componentIdStr, string fieldName, string valueJson)
         {
@@ -414,47 +456,54 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             try
             {
-                // Use the existing apply mechanism from InspectorService
-                var json = $"{{\"{fieldName}\":{valueJson}}}";
-                var dict = Newtonsoft.Json.JsonConvert.DeserializeObject<
-                    Dictionary<string, object>>(json);
-                if (dict == null)
-                    return "{\"ok\":false,\"error\":\"Failed to parse value\"}";
+                var segments = SplitPath(fieldName);
+                if (!TryBuildChain(comp.GetType(), segments, out var chain, out var terminalType))
+                    return $"{{\"ok\":false,\"error\":\"Path not found: {Esc(fieldName)}\"}}";
 
-                var type = comp.GetType();
-                foreach (var kv in dict)
+                // Walk to penultimate
+                object parent = comp;
+                for (int i = 0; i < chain.Length - 1; i++)
                 {
-                    var prop = type.GetProperty(kv.Key, BindingFlags.Public | BindingFlags.Instance);
-                    if (prop != null && prop.CanWrite)
-                    {
-                        var converted = ConvertJsonValue(kv.Value, prop.PropertyType);
-                        prop.SetValue(comp, converted);
-                        // Invalidate cache so next read gets fresh value
-                        foreach (var w in _watches.Values)
-                        {
-                            if (w.instanceId == instanceId && w.componentId == componentId && w.fieldName == fieldName)
-                                _resolvedCache.Remove(w.id);
-                        }
-                        return "{\"ok\":true}";
-                    }
+                    if (parent == null)
+                        return "{\"ok\":false,\"error\":\"Intermediate value is null\"}";
+                    var m = chain[i];
+                    if (m is PropertyInfo pi) parent = pi.GetValue(parent);
+                    else if (m is FieldInfo fi) parent = fi.GetValue(parent);
+                }
+                if (parent == null)
+                    return "{\"ok\":false,\"error\":\"Parent is null\"}";
 
-                    var field = type.GetField(kv.Key, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (field != null)
-                    {
-                        var converted = ConvertJsonValue(kv.Value, field.FieldType);
-                        field.SetValue(comp, converted);
-                        foreach (var w in _watches.Values)
-                        {
-                            if (w.instanceId == instanceId && w.componentId == componentId && w.fieldName == fieldName)
-                                _resolvedCache.Remove(w.id);
-                        }
-                        return "{\"ok\":true}";
-                    }
+                // Parse the incoming JSON value
+                var wrapper = $"{{\"__v\":{valueJson}}}";
+                var dict = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(wrapper);
+                if (dict == null || !dict.ContainsKey("__v"))
+                    return "{\"ok\":false,\"error\":\"Failed to parse value\"}";
+                var converted = ConvertJsonValue(dict["__v"], terminalType);
 
-                    return $"{{\"ok\":false,\"error\":\"Field '{Esc(kv.Key)}' not found\"}}";
+                var terminal = chain[chain.Length - 1];
+                if (terminal is PropertyInfo pp)
+                {
+                    if (!pp.CanWrite)
+                        return "{\"ok\":false,\"error\":\"Property not writable\"}";
+                    pp.SetValue(parent, converted);
+                }
+                else if (terminal is FieldInfo ff)
+                {
+                    ff.SetValue(parent, converted);
+                }
+                else
+                {
+                    return "{\"ok\":false,\"error\":\"Unsupported terminal member\"}";
                 }
 
-                return "{\"ok\":false,\"error\":\"Empty value\"}";
+                // Invalidate cache so next read gets fresh value
+                foreach (var w in _watches.Values)
+                {
+                    if (w.instanceId == instanceId && w.componentId == componentId && w.fieldName == fieldName)
+                        _resolvedCache.Remove(w.id);
+                }
+
+                return "{\"ok\":true}";
             }
             catch (Exception ex)
             {
@@ -509,6 +558,74 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         // ── Helpers ──
 
+        static string[] SplitPath(string path) =>
+            string.IsNullOrEmpty(path)
+                ? Array.Empty<string>()
+                : path.Split('.').Where(s => s.Length > 0).ToArray();
+
+        /// <summary>
+        /// Walks a dotted-path chain against a type, resolving each segment to a
+        /// property or field. Returns false if any segment can't be resolved.
+        /// </summary>
+        static bool TryBuildChain(Type startType, string[] segments, out MemberInfo[] chain, out Type terminalType)
+        {
+            chain = null;
+            terminalType = null;
+            if (segments == null || segments.Length == 0) return false;
+
+            var members = new List<MemberInfo>(segments.Length);
+            var t = startType;
+            foreach (var seg in segments)
+            {
+                if (t == null) return false;
+
+                MemberInfo m = null;
+                var prop = t.GetProperty(seg, MemberFlags);
+                if (prop != null && prop.CanRead && prop.GetIndexParameters().Length == 0)
+                {
+                    m = prop;
+                    t = prop.PropertyType;
+                }
+                else
+                {
+                    var field = t.GetField(seg, MemberFlags);
+                    if (field != null)
+                    {
+                        m = field;
+                        t = field.FieldType;
+                    }
+                }
+
+                if (m == null) return false;
+                members.Add(m);
+            }
+
+            chain = members.ToArray();
+            terminalType = t;
+            return true;
+        }
+
+        static Type GetMemberType(MemberInfo m) =>
+            m switch
+            {
+                PropertyInfo p => p.PropertyType,
+                FieldInfo f => f.FieldType,
+                _ => null
+            };
+
+        static object ReadThroughChain(object start, MemberInfo[] chain)
+        {
+            object v = start;
+            foreach (var m in chain)
+            {
+                if (v == null) return null;
+                if (m is PropertyInfo p) v = p.GetValue(v);
+                else if (m is FieldInfo f) v = f.GetValue(v);
+                else return null;
+            }
+            return v;
+        }
+
         static string GetHierarchyPath(GameObject go)
         {
             var parts = new List<string>();
@@ -520,17 +637,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             parts.Reverse();
             return string.Join("/", parts);
-        }
-
-        string GetFieldTypeName(Component comp, string fieldName)
-        {
-            var type = comp.GetType();
-            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-            var prop = type.GetProperty(fieldName, flags);
-            if (prop != null) return prop.PropertyType.Name;
-            var field = type.GetField(fieldName, flags);
-            if (field != null) return field.FieldType.Name;
-            return "Unknown";
         }
 
         static GameObject FindByInstanceId(int id)

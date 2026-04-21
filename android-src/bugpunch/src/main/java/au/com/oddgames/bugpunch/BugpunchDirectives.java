@@ -188,7 +188,7 @@ public class BugpunchDirectives {
 
     private static List<JSONObject> getAllowList() {
         List<JSONObject> out = new ArrayList<>();
-        JSONArray arr = BugpunchDebugMode.getAttachmentRules();
+        JSONArray arr = BugpunchRuntime.getAttachmentRules();
         if (arr == null) return out;
         for (int i = 0; i < arr.length(); i++) {
             JSONObject r = arr.optJSONObject(i);
@@ -306,8 +306,8 @@ public class BugpunchDirectives {
                         .setMessage(body)
                         .setPositiveButton(accept, (dlg, which) -> {
                             try {
-                                BugpunchDebugMode.enterDebugMode(activity, true);
-                                BugpunchDebugMode.setCustomData("bugpunch.repro_attempt", "true");
+                                BugpunchDebugMode.enter(activity, true);
+                                BugpunchRuntime.setCustomData("bugpunch.repro_attempt", "true");
                             } catch (Throwable t) { Log.w(TAG, "accept handler failed", t); }
                             postAskResult(activity, resultUrl, directiveId, "accepted");
                         })
@@ -348,20 +348,20 @@ public class BugpunchDirectives {
     // -- URL formatting + upload --------------------------------------------
 
     private static String enrichUrl(String eventId) {
-        String serverUrl = BugpunchDebugMode.getServerUrl();
+        String serverUrl = BugpunchRuntime.getServerUrl();
         if (serverUrl == null || serverUrl.isEmpty() || eventId == null || eventId.isEmpty()) return null;
         return serverUrl.replaceAll("/+$", "") + "/api/crashes/events/" + eventId + "/enrich";
     }
 
     private static String directiveResultUrl(String directiveId) {
-        String serverUrl = BugpunchDebugMode.getServerUrl();
+        String serverUrl = BugpunchRuntime.getServerUrl();
         if (serverUrl == null || serverUrl.isEmpty() || directiveId == null || directiveId.isEmpty()) return null;
         return serverUrl.replaceAll("/+$", "") + "/api/directives/" + directiveId + "/result";
     }
 
     private static void postJson(Context ctx, String url, JSONObject body) {
         if (url == null || url.isEmpty()) return;
-        String apiKey = BugpunchDebugMode.getApiKey();
+        String apiKey = BugpunchRuntime.getApiKey();
         if (apiKey == null || apiKey.isEmpty()) return;
         BugpunchUploader.enqueueJson(ctx, url, apiKey, body.toString());
     }

@@ -91,15 +91,20 @@ public class BugpunchToolsActivity extends Activity {
             == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
         int pad = dp(landscape ? 10 : 16);
 
-        // Transparent root — tap outside the panel to dismiss.
+        // Transparent root — tap outside the panel to dismiss. Takes the full
+        // screen including under the status + gesture bars (so the scrim
+        // covers everything). The panel itself is inset with a WindowInsets
+        // listener below so its content clears the system chrome.
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0x80000000); // 50% black scrim
         root.setOnClickListener(v -> finish());
+        root.setFitsSystemWindows(false);
 
-        // Panel card — smaller than screen, semi-transparent, rounded corners.
-        // In landscape use minimal margins so the tool list has room.
+        // Panel card — fills the usable area between status bar and nav bar,
+        // minus a thin margin so the scrim is visible as a frame.
         LinearLayout main = new LinearLayout(this);
         main.setOrientation(LinearLayout.VERTICAL);
+        main.setGravity(Gravity.TOP);
         main.setPadding(pad, pad, pad, pad);
         main.setOnClickListener(v -> {}); // consume taps so they don't pass through to dismiss
         GradientDrawable panelBg = new GradientDrawable();
@@ -107,25 +112,45 @@ public class BugpunchToolsActivity extends Activity {
         panelBg.setCornerRadius(dp(16));
         main.setBackground(panelBg);
         main.setElevation(dp(12));
-        int hMargin = dp(landscape ? 60 : 24);
-        int vMargin = dp(landscape ? 12 : 40);
+        final int hMargin = dp(landscape ? 12 : 12);
+        final int vMargin = dp(landscape ? 8 : 24);
         FrameLayout.LayoutParams mainLp = new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         mainLp.setMargins(hMargin, vMargin, hMargin, vMargin);
-        main.setLayoutParams(mainLp);
+        // Apply system-bar insets as margins on the panel so it never sits
+        // under the status bar or gesture handle. Without this, the
+        // translucent activity theme extends the content under both and
+        // pushes the visible layout down by the system-bar height — giving
+        // the big "empty space" at the top that looked like a layout bug.
+        // Uses the deprecated getSystemWindowInset* getters (available
+        // since API 20) to stay compatible with minSdk 24 without a
+        // SuppressLint dance.
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int top    = insets.getSystemWindowInsetTop();
+            int bottom = insets.getSystemWindowInsetBottom();
+            int left   = insets.getSystemWindowInsetLeft();
+            int right  = insets.getSystemWindowInsetRight();
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) main.getLayoutParams();
+            lp.setMargins(hMargin + left, vMargin + top, hMargin + right, vMargin + bottom);
+            main.setLayoutParams(lp);
+            return insets;
+        });
 
         // ── Header: title + search + close ──
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(0, 0, 0, dp(landscape ? 4 : 12));
+        header.setPadding(0, 0, 0, dp(landscape ? 6 : 12));
 
         TextView title = new TextView(this);
         title.setText("Debug Tools");
         title.setTextColor(COL_TEXT);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, landscape ? 18 : 22);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0);
+        // WRAP_CONTENT (not width=0) so the label actually renders. The
+        // search field below takes weight 1 and fills the rest.
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         header.addView(title, titleLp);
 
         EditText search = new EditText(this);
@@ -162,28 +187,67 @@ public class BugpunchToolsActivity extends Activity {
         closeBtn.setOnClickListener(v -> finish());
         header.addView(closeBtn);
 
-        main.addView(header);
-
-        // ── Categories (horizontal scroll) ──
-        HorizontalScrollView catScroll = new HorizontalScrollView(this);
-        catScroll.setHorizontalScrollBarEnabled(false);
-        catScroll.setPadding(0, 0, 0, dp(12));
-        categoryLayout = new LinearLayout(this);
-        categoryLayout.setOrientation(LinearLayout.HORIZONTAL);
-        catScroll.addView(categoryLayout);
-        main.addView(catScroll, new LinearLayout.LayoutParams(
+        main.addView(header, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        rebuildCategories();
 
-        // ── Tool list (scrollable) ──
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        toolListLayout = new LinearLayout(this);
-        toolListLayout.setOrientation(LinearLayout.VERTICAL);
-        toolListLayout.setPadding(0, 0, 0, dp(20));
-        scroll.addView(toolListLayout);
-        main.addView(scroll, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        if (landscape) {
+            // ── Landscape: categories as vertical sidebar on the left, tool list on the right ──
+            LinearLayout body = new LinearLayout(this);
+            body.setOrientation(LinearLayout.HORIZONTAL);
+            body.setGravity(Gravity.TOP);
+
+            // Category sidebar (vertical scroll)
+            ScrollView catScroll = new ScrollView(this);
+            catScroll.setVerticalScrollBarEnabled(false);
+            catScroll.setFillViewport(true);
+            categoryLayout = new LinearLayout(this);
+            categoryLayout.setOrientation(LinearLayout.VERTICAL);
+            categoryLayout.setGravity(Gravity.TOP);
+            catScroll.addView(categoryLayout, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams catLp = new LinearLayout.LayoutParams(
+                dp(120), ViewGroup.LayoutParams.MATCH_PARENT);
+            catLp.rightMargin = dp(10);
+            body.addView(catScroll, catLp);
+
+            // Tool list (scrollable, fills remaining width)
+            ScrollView scroll = new ScrollView(this);
+            scroll.setFillViewport(true);
+            toolListLayout = new LinearLayout(this);
+            toolListLayout.setOrientation(LinearLayout.VERTICAL);
+            toolListLayout.setGravity(Gravity.TOP);
+            toolListLayout.setPadding(0, 0, 0, dp(20));
+            scroll.addView(toolListLayout, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            body.addView(scroll, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+
+            main.addView(body, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        } else {
+            // ── Portrait: categories as horizontal chips above the tool list ──
+            HorizontalScrollView catScroll = new HorizontalScrollView(this);
+            catScroll.setHorizontalScrollBarEnabled(false);
+            catScroll.setPadding(0, 0, 0, dp(12));
+            categoryLayout = new LinearLayout(this);
+            categoryLayout.setOrientation(LinearLayout.HORIZONTAL);
+            catScroll.addView(categoryLayout);
+            main.addView(catScroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            // Tool list (scrollable)
+            ScrollView scroll = new ScrollView(this);
+            scroll.setFillViewport(true);
+            toolListLayout = new LinearLayout(this);
+            toolListLayout.setOrientation(LinearLayout.VERTICAL);
+            toolListLayout.setGravity(Gravity.TOP);
+            toolListLayout.setPadding(0, 0, 0, dp(20));
+            scroll.addView(toolListLayout, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            main.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        }
+
+        rebuildCategories();
 
         root.addView(main, mainLp);
         setContentView(root);
@@ -242,6 +306,9 @@ public class BugpunchToolsActivity extends Activity {
         cats.add("All");
         for (ToolItem t : allTools) cats.add(t.category);
 
+        boolean landscape = getResources().getConfiguration().orientation
+            == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+
         for (String cat : cats) {
             TextView chip = new TextView(this);
             chip.setText(cat);
@@ -252,9 +319,16 @@ public class BugpunchToolsActivity extends Activity {
             bg.setColor(cat.equals(activeCategory) ? COL_CAT_SEL : COL_CAT);
             bg.setCornerRadius(dp(16));
             chip.setBackground(bg);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.rightMargin = dp(6);
+            LinearLayout.LayoutParams lp;
+            if (landscape) {
+                lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.bottomMargin = dp(4);
+            } else {
+                lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.rightMargin = dp(6);
+            }
             chip.setOnClickListener(v -> {
                 activeCategory = cat;
                 rebuildCategories();
@@ -357,12 +431,38 @@ public class BugpunchToolsActivity extends Activity {
         btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         btn.setGravity(Gravity.CENTER);
         btn.setPadding(dp(16), dp(6), dp(16), dp(6));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(tool.color);
-        bg.setCornerRadius(dp(8));
+
+        // Pressed + normal states so the tap has instant visual feedback.
+        // Without this the TextView has no press state and feels unresponsive.
+        GradientDrawable normal = new GradientDrawable();
+        normal.setColor(tool.color);
+        normal.setCornerRadius(dp(8));
+        GradientDrawable pressed = new GradientDrawable();
+        pressed.setColor(darken(tool.color, 0.65f));
+        pressed.setCornerRadius(dp(8));
+        android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
+        bg.addState(new int[]{ android.R.attr.state_pressed }, pressed);
+        bg.addState(new int[0], normal);
         btn.setBackground(bg);
-        btn.setOnClickListener(v -> sendCallback(tool.id, "click", ""));
+        btn.setClickable(true);
+
+        btn.setOnClickListener(v -> {
+            // Fire the callback immediately so the game sees the action with
+            // zero delay — then flash "Running…" in the button for user feedback.
+            sendCallback(tool.id, "click", "");
+            btn.setText("Running\u2026");
+            btn.setAlpha(0.75f);
+            btn.animate().alpha(1f).setDuration(350).start();
+            btn.postDelayed(() -> btn.setText("Run"), 600);
+        });
         return btn;
+    }
+
+    private static int darken(int color, float factor) {
+        float[] hsv = new float[3];
+        Color.colorToHSV(color, hsv);
+        hsv[2] = Math.max(0f, Math.min(1f, hsv[2] * factor));
+        return Color.HSVToColor(Color.alpha(color), hsv);
     }
 
     private View makeToggle(ToolItem tool) {

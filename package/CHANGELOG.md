@@ -2,6 +2,75 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.25] - 2026-04-22
+
+### Added
+- **Phase 6c — native log redaction.** `BugpunchConfig.logRedactionRules` is a list of regex patterns (name + pattern). The native tunnel compiles each rule once at startup (`Pattern.compile` on Android, `NSRegularExpression` on iOS) and applies them to every captured log line **before the line enters the batcher** — nothing matching a configured pattern ever leaves the process via the QA log sink. Each match is replaced with `[redacted:NAME]`. Bad patterns are logged and skipped so one typo can't take down the rest of the ruleset.
+- **Phase 6b — `PinAuditPopover`.** Admin-only history icon next to `PinToggles` on the Devices page. On click, fetches the device's pin change log and shows who flipped what, when, and an optional reason. Diffs render as short human-readable flags (`alwaysLog on, alwaysDebug off`) with relative timestamps.
+- **Phase 6d — `PinPolicyPopover`.** Admin-only shield icon on the Devices page header. Toggles the project's `allowAlwaysDebugOnProduction` flag via `PATCH /api/v1/projects/:id/pin-policy`. Together with the type-to-confirm dialog in `PinToggles`, this gives the project owner the full control loop for the production-channel alwaysDebug pin that Phase 6a unlocked.
+
+## [1.7.24] - 2026-04-22
+
+### Changed
+- **Native tunnel N6 — `TunnelClient.IsConnected` and `.DeviceId` now read through to native on device.** `BugpunchNative.TunnelIsConnected()` / `.TunnelDeviceId()` (new JNI + P-Invoke accessors) are the single source of truth; the managed fields back the Editor path only. Every call site that checks `Tunnel.IsConnected` or reads `Tunnel.DeviceId` on a shipped build now sees the real native state instead of the stale managed value that never transitioned out of default (since `TunnelClient.Connect` has been a no-op on device since N3). Full class removal + OnConnected/OnDisconnected re-raising via `UnitySendMessage` is the remaining N6 follow-up.
+
+## [1.7.23] - 2026-04-22
+
+### Added
+- **Native tunnel N3 — request-dispatch bridge.** Incoming Remote IDE `request` frames now arrive on the native WebSocket, are marshaled to C# via `UnityPlayer.UnitySendMessage("[Bugpunch Client]", "OnTunnelRequest", json)`, and the response ships back through `BugpunchNative.TunnelSendResponse`. The existing `RequestRouter` + every Hierarchy / Inspector / Script / SceneCamera / Watch / etc. service stays C# — they need Unity reflection. Only the transport moved.
+- **Native tunnel N4 — native pin state.** Pin config (`{pins,consent,issuedAt,sig}`) is parsed + stored natively on both platforms:
+  - Android — `SharedPreferences` file `bugpunch_pins`, reloaded on cold start.
+  - iOS — Keychain entry `(au.com.oddgames.bugpunch, pin_state_v1)`, survives app reinstall.
+  - C# `PinState` delegates to `BugpunchNative.PinAlwaysLog / Remote / Debug / Consent` on device; Editor keeps its PlayerPrefs-backed mirror for local dev flow.
+  - HMAC verification of the server signature (`sig` field) against a bundled `pin_signing_secret` is deferred to N4.2 — current path trusts the tunnel (API-key + TLS), same guarantee the managed path had.
+- **Native tunnel N5 — native log sink.** When `alwaysLog` is on and consent accepted, the native log readers (`BugpunchLogReader` on Android, `BPLogReader` on iOS) tee every captured line into a per-tunnel batcher (~100 ms / ~32 KB). Batches ship as `{type:"log",sessionId,text}` frames on the same WebSocket. **Zero C# involvement on the log path** — capture + transport are both native. Server-side `logSinkService` appends raw bytes to `data/logs/{sessionId}.log`, inserts the `log_sessions` DB row on first chunk, and finalizes on tunnel disconnect. S3 upload + 50-session-per-device retention are follow-up jobs.
+
+### Changed
+- **C# `TunnelClient.Connect` is a no-op on device.** Native `BugpunchTunnel` owns the WebSocket lifecycle end-to-end on Android + iOS. The managed `TunnelClient` still exists so existing call sites compile and the Editor keeps working with its managed ClientWebSocket for local dev; retired fully in a later phase (N6).
+- **`TunnelClient.SendResponse` / `SendBinaryResponse`** route responses through `BugpunchNative.TunnelSendResponse` on device. Editor path unchanged.
+- **`BugpunchLogReader` (Android)** tees each logcat line into the native sink; the crash-log ring buffer is unchanged.
+- **`BPLogReader` (iOS)** tees each OSLog-derived line into the native sink; ring buffer unchanged.
+
+## [1.7.22] - 2026-04-22
+
+### Added
+- **Native WebSocket tunnel — N1 (Android) + N2 (iOS)** of the native-tunnel migration. Replaces the C# `TunnelClient`'s dependence on a live Mono runtime with an OkHttp-backed socket on Android and a `URLSessionWebSocketTask` on iOS. The native tunnel comes up from the ContentProvider (Android) / `+load` bootstrap (iOS) — before Unity's mono runtime is alive — and survives managed crashes because nothing on the path touches the managed heap.
+  - `sdk/android-src/bugpunch/src/main/java/au/com/oddgames/bugpunch/BugpunchTunnel.java` — connect + register (with stable device id + build channel) + 10-second heartbeat + exponential-backoff reconnect. Captures the signed pin config from the `registered` ack and live `pinUpdate` frames so the pin enforcement path can read it without further round-trips.
+  - `sdk/package/Bugpunch/Plugins/iOS/BugpunchTunnel.mm` — iOS mirror using `NSURLSessionWebSocketDelegate`. Same register payload, same pin-config capture, same backoff. Exposes `Bugpunch_StartTunnel`, `Bugpunch_StopTunnel`, `Bugpunch_TunnelIsConnected`, `Bugpunch_GetLastPinConfig` for the later native pin handler (N4).
+  - `sdk/android-src/bugpunch/build.gradle` picks up `com.squareup.okhttp3:okhttp:4.12.0`; resolved through the project's existing `google()` + `mavenCentral()` repositories.
+- **Pin enforcement gate in `RequestRouter`** — interactive Remote IDE requests refuse with 403 on shipped builds unless `PinState.IsAlwaysRemote` is true. Editor + `Debug.isDebugBuild` keep the existing developer UX (no pin required).
+- **`PinState` singleton** — receives pin config via `TunnelClient.OnPinConfig`, caches to PlayerPrefs for fast cold-start, exposes `IsAlwaysLog` / `IsAlwaysRemote` / `IsAlwaysDebug` to the rest of the SDK. Interim; to be retired when N4 moves pin handling fully native.
+
+### Changed
+- **`BuildChannel` field added to `BugpunchConfig`** (enum: `Internal` / `Beta` / `Production`). Declared per-build in the Inspector; serialised into the bundled config so the server can apply channel-appropriate pin guardrails. Defaults to `Internal`.
+- **Tunnel register payload extended** — now includes `stableDeviceId` (Keychain UUID on iOS, `ANDROID_ID` on Android via the new `BugpunchIdentity` helper) and `buildChannel`. Server persists both on the `devices` row so pins survive app reinstalls.
+- **Server tunnel handshake** returns a signed pin config (HMAC-SHA256 over `{ pins, consent, issuedAt }` keyed to each project's `pin_signing_secret`) in the `registered` ack, and pushes `pinUpdate` frames live when an admin toggles pins in the dashboard.
+
+## [1.7.21] - 2026-04-21
+
+### Added
+- **Pre-Unity native bootstrap (Android + iOS)** — the Bugpunch SDK now installs crash handlers, the log ring, and the upload-queue drain *before* Unity boots. Previously the SDK waited for a C# `BugpunchNative.Start()` call from `[RuntimeInitializeOnLoadMethod]`, which meant crashes during Unity's own startup (mono boot, asset load, first-scene init) went uncaught. Now:
+  - New Unity editor post-processor `BugpunchConfigBundle` serialises the static parts of `BugpunchConfig` into `bugpunch_config.json` and places it in the APK's `assets/` (Android) or the Xcode main bundle (iOS) at build time.
+  - **Android** — new manifest-declared `BugpunchInitProvider` ContentProvider runs before `Application.onCreate()` returns (same pattern Firebase / Sentry use), reads the bundled config, and calls a new `BugpunchRuntime.startEarly(Context, String)` to install signal handlers / log ring / crash paths / upload drain. An `ActivityLifecycleCallbacks` bridge captures the first non-Bugpunch Activity and calls the new `BugpunchRuntime.attachActivity(Activity)` to wire up the Activity-bound pieces (overlay detector, SurfaceView cache, Choreographer frame tick, AEI scan, crash drain, shake detector).
+  - **iOS** — new `BugpunchBootstrap.mm` uses an Obj-C `+load` method to read `bugpunch_config.json` from the main bundle and call `Bugpunch_StartDebugMode` before `main()` fires.
+- **Idempotent config refresh** — both `BugpunchRuntime.start(Activity, String)` and `Bugpunch_StartDebugMode(const char*)` now safely re-run with a richer Unity-runtime config (Application.version, deviceId, persistentDataPath-resolved attachment rules). Config values are merged, crash handler metadata is refreshed, one-time init is skipped. The legacy C# path continues to work unchanged for projects that haven't picked up the new post-processor yet.
+
+## [1.7.20] - 2026-04-21
+
+### Added
+- **ANR — OS-level Android data** — `BugpunchCrashHandler.scanApplicationExitInfo` (API 30+) now pulls `ActivityManager.getHistoricalProcessExitReasons` at next launch, merges new `REASON_ANR` / `REASON_CRASH_NATIVE` / `REASON_LOW_MEMORY` / etc. into matching on-disk `.crash` files by `(type, timestamp ±30s)`, or synthesizes standalone entries for exits we missed. Delivers the authoritative `/data/anr/traces.txt` blob alongside our in-process report — the two sources together give the richest ANR record available.
+- **Main-thread stack sample ring** — `AnrWatchdog` now samples `Thread.getStackTrace()` on the main thread at 10 Hz **only** when the main thread has been missing ticks for ≥1 s (adaptive — zero overhead on healthy frames), and dumps the last 5 s of samples under `---STACK_SAMPLES---` in the ANR report. Shows whether the thread was pinned in one spot the whole hang or progressed through several frames before getting stuck — the #1 question when diagnosing ANRs.
+- **Android `mapping.txt` upload** — new `BugpunchMappingUploader` editor post-build hook. When R8/ProGuard minification is enabled, locates the emitted `mapping.txt` (in `symbols.zip` or `Library/Bee/.../outputs/mapping/release/`), uploads it to the server via `POST /api/v1/mappings` keyed by `(bundleId, version, buildCode)`. Piggybacks on `symbolUploadEnabled`. Server retraces obfuscated Java frames in crash / ANR / AEI / stack-sample text at ingest time.
+- **`app.buildCode` in crash payloads** — native Java now reads Android `versionCode` from `PackageInfo` at startup and includes it in every crash/exception/feedback report so the server can look up the right mapping.
+
+### Changed
+- **`BugpunchDebugMode` split into four focused classes** — the old 1500-line coordinator mixed always-on crash/ANR/exception reporting with opt-in video recording, making it ambiguous whether the SDK was privacy-safe for all users. Now:
+  - `BugpunchRuntime` — always-on lifecycle coordinator (crash init, ANR watchdog, AEI scan, log reader, metadata, analytics, frame tick, public accessors). Entry point renamed `startDebugMode` → `start`.
+  - `BugpunchCrashDrain` — previous-session `.crash` file drain + payload builder + attachment snapshotting.
+  - `BugpunchReportingService` — in-process bug / feedback / exception report building + upload orchestration.
+  - `BugpunchDebugMode` (shrunk to ~240 lines) — opt-in video recording coordinator only. `enterDebugMode` → `enter`, `stopDebugMode` → `stop`.
+- **C# — `BugpunchNative.StartDebugMode` → `BugpunchNative.Start`** to match the Java rename. JNI `AndroidJavaClass` routing updated throughout.
+
 ## [1.7.19] - 2026-04-20
 
 ### Changed

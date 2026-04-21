@@ -9,316 +9,47 @@ import android.graphics.drawable.GradientDrawable;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
-import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.zip.GZIPOutputStream;
-
 /**
- * Master coordinator for Bugpunch debug mode. Unity C# calls startDebugMode()
- * once with the full config JSON and thereafter just fires reportBug() when
- * something happens. Everything else (video buffer, log capture, shake
- * detection, screenshot, upload queue, retry) lives native.
+ * OPT-IN video recording coordinator.
+ *
+ * <p>Activated via {@code Bugpunch.EnterDebugMode()} — the user sees a
+ * consent dialog before MediaProjection starts recording. Has nothing to
+ * do with crash / ANR / exception reporting, which runs for all users on
+ * every launch via {@link BugpunchRuntime#start(Activity, String)}.
+ *
+ * <p>Flow:
+ * <ol>
+ *   <li>Game calls {@link #enter(Activity, boolean)} from a tester-only UI
+ *       (e.g. a menu in a beta build).</li>
+ *   <li>We show an in-app consent sheet (Start Recording / Cancel).</li>
+ *   <li>On Start the MediaProjection system dialog appears; on accept the
+ *       ring buffer and touch recorder start.</li>
+ *   <li>On any subsequent bug / exception / crash the runtime asks us for
+ *       a video dump via {@link #dumpRingIfRunning(Activity)} — cheap
+ *       no-op if recording was never consented to.</li>
+ * </ol>
  */
 public class BugpunchDebugMode {
     private static final String TAG = "BugpunchDebugMode";
 
-    private static boolean sStarted;
-    private static JSONObject sConfig;
-    private static Context sAppContext;
-
-    // Live metadata — seeded from config. scene is pushed by Unity; fps is
-    // measured natively via Choreographer.
-    private static final Map<String, String> sMetadata = new ConcurrentHashMap<>();
-    private static final Map<String, String> sCustomData = new ConcurrentHashMap<>();
-
-    private static long sLastAutoReportMs;
-    // Guards against a second report being filed while the form/consent UI
-    // is already open. Set when reportBug launches the form, cleared when
-    // the BugpunchReportActivity finishes (whether Send or Cancel).
-    private static volatile boolean sReportInProgress;
-    static void clearReportInProgress() { sReportInProgress = false; }
-
-    // FPS tracking via Choreographer (main-thread frame callback).
-    private static final AtomicInteger sFrameCount = new AtomicInteger();
-    private static volatile int sFps;
-    private static long sFpsWindowStartNs;
-
-    /**
-     * Initialize everything. Safe to call multiple times (no-ops after first).
-     * Schema: see JSON comment in source.
-     */
-    public static synchronized boolean startDebugMode(Activity activity, String configJson) {
-        if (sStarted) return true;
-        if (activity == null) { Log.w(TAG, "null activity"); return false; }
-        sAppContext = activity.getApplicationContext();
-
-        try {
-            sConfig = new JSONObject(configJson != null ? configJson : "{}");
-        } catch (JSONException e) {
-            Log.w(TAG, "bad config json, using defaults", e);
-            sConfig = new JSONObject();
-        }
-
-        // Seed metadata from config.
-        JSONObject meta = sConfig.optJSONObject("metadata");
-        if (meta != null) {
-            for (java.util.Iterator<String> it = meta.keys(); it.hasNext(); ) {
-                String k = it.next();
-                sMetadata.put(k, meta.optString(k));
-            }
-        }
-
-        // Detect installer mode (store vs sideload).
-        String installerPkg = null;
-        try { installerPkg = sAppContext.getPackageManager().getInstallerPackageName(sAppContext.getPackageName()); }
-        catch (Exception ignored) {}
-        sMetadata.put("installerMode",
-            "com.android.vending".equals(installerPkg) ? "store" :
-            (installerPkg == null || installerPkg.isEmpty()) ? "sideload" : "unknown");
-
-        // 1) Crash handlers + ANR watchdog (already native; also drains uploader).
-        int anrMs = sConfig.optInt("anrTimeoutMs", 5000);
-        BugpunchCrashHandler.initialize(activity, anrMs);
-        BugpunchCrashHandler.setMetadata(
-            sMetadata.getOrDefault("appVersion", ""),
-            sMetadata.getOrDefault("bundleId", ""),
-            sMetadata.getOrDefault("unityVersion", ""),
-            sMetadata.getOrDefault("deviceModel", ""),
-            sMetadata.getOrDefault("osVersion", ""),
-            sMetadata.getOrDefault("gpu", ""));
-
-        // 2) Log reader — our own logcat ring buffer.
-        int logSize = sConfig.optInt("logBufferSize", 2000);
-        BugpunchLogReader.start(logSize);
-
-        // 3) Cache the SurfaceView for ANR screenshot capture.
-        BugpunchScreenshot.cacheSurfaceView();
-
-        // 3b) Start the rolling screenshot buffer — captures the GPU surface
-        // via PixelCopy ~1/sec and keeps the raw Bitmap in memory. Any code
-        // path (ANR, exception, crash, report) can grab the last frame.
-        // Only activates on high-end devices with enough RAM.
-        BugpunchScreenshot.startRollingBuffer();
-
-        // 4) Shake detector (opt-in).
-        JSONObject shake = sConfig.optJSONObject("shake");
-        if (shake != null && shake.optBoolean("enabled", false)) {
-            float threshold = (float) shake.optDouble("threshold", 2.5);
-            BugpunchShakeDetector.start(activity, threshold, new Runnable() {
-                @Override public void run() { onShake(); }
-            });
-        }
-
-        // 4) Ring buffer: not auto-started here. MediaProjection needs a user
-        //    consent activity; game invokes BugpunchProjectionRequest when it
-        //    wants recording. That stays as-is.
-
-        // 5) Frame tick for native FPS — Choreographer fires once per vsync.
-        activity.runOnUiThread(new Runnable() {
-            @Override public void run() { startFrameTick(); }
-        });
-
-        sStarted = true;
-        Log.i(TAG, "debug mode started");
-
-        // 6) Drain any native crash reports written by the signal handler /
-        //    ANR watchdog on a previous launch. We do this AFTER everything
-        //    else is wired so metadata is available and the uploader has a
-        //    valid URL + API key.
-        try { drainPendingCrashFiles(activity); } catch (Throwable t) {
-            Log.w(TAG, "crash drain failed", t);
-        }
-        return true;
-    }
-
-    /**
-     * Pick up every .crash file the native handler / ANR watchdog wrote on
-     * a previous launch, wrap the raw text as a /api/crashes JSON payload,
-     * enqueue via the durable uploader (so a failed POST resumes on the
-     * next launch), and delete the local file.
-     *
-     * Intentionally sends the **raw** crash text as the `stackTrace` field —
-     * server's crashSymbolicator parses it to find the ---STACK--- and
-     * ---BUILD_IDS--- sections. This means no format divergence between
-     * what we wrote and what we upload.
-     */
-    private static void drainPendingCrashFiles(Activity activity) {
-        String[] paths = BugpunchCrashHandler.getPendingCrashFiles(activity);
-        if (paths == null || paths.length == 0) return;
-
-        String serverUrl = sConfig != null ? sConfig.optString("serverUrl", "") : "";
-        String apiKey    = sConfig != null ? sConfig.optString("apiKey", "") : "";
-        if (serverUrl.isEmpty() || apiKey.isEmpty()) {
-            Log.w(TAG, "native crashes pending but serverUrl/apiKey not configured");
-            return;
-        }
-        String url = serverUrl.replaceAll("/+$", "") + "/api/crashes";
-
-        for (String path : paths) {
-            String raw = BugpunchCrashHandler.readCrashFile(path);
-            if (raw == null || raw.isEmpty()) {
-                BugpunchCrashHandler.deleteCrashFile(path);
-                continue;
-            }
-            try {
-                JSONObject body = buildCrashPayload(raw);
-                // Check for screenshot paths embedded in the crash file.
-                String shotPath = extractField(raw, "screenshot");
-                // Collect ANR screenshot burst (anr_screenshot_0, _1, ...) with timestamps.
-                int shotCount = 0;
-                try {
-                    String countStr = extractField(raw, "screenshot_count");
-                    if (countStr != null) shotCount = Integer.parseInt(countStr);
-                } catch (NumberFormatException ignored) {}
-                String[] anrShotPaths = null;
-                if (shotCount > 0) {
-                    java.util.ArrayList<String> valid = new java.util.ArrayList<>();
-                    JSONArray tsArray = new JSONArray();
-                    for (int i = 0; i < shotCount; i++) {
-                        String p = extractField(raw, "anr_screenshot_" + i);
-                        String ts = extractField(raw, "anr_screenshot_ts_" + i);
-                        if (p != null && new java.io.File(p).exists()) {
-                            valid.add(p);
-                            tsArray.put(ts != null ? Long.parseLong(ts) : 0);
-                        }
-                    }
-                    if (!valid.isEmpty()) {
-                        anrShotPaths = valid.toArray(new String[0]);
-                        body.put("anrScreenshotTimestamps", tsArray);
-                    }
-                }
-                // Build attachment list for the crash upload.
-                List<BugpunchUploader.FileAttachment> files = new ArrayList<>();
-                if (shotPath != null && new java.io.File(shotPath).exists()) {
-                    files.add(BugpunchUploader.FileAttachment.jpeg("screenshot", shotPath));
-                }
-                if (anrShotPaths != null) {
-                    for (int i = 0; i < anrShotPaths.length; i++) {
-                        files.add(BugpunchUploader.FileAttachment.jpeg("anr_screenshot", i, anrShotPaths[i]));
-                    }
-                }
-                if (!files.isEmpty()) {
-                    BugpunchUploader.enqueue(activity, url, apiKey, body.toString(), files);
-                } else {
-                    BugpunchUploader.enqueueJson(activity, url, apiKey, body.toString());
-                }
-                BugpunchCrashHandler.deleteCrashFile(path);
-                Log.i(TAG, "queued pending crash: " + path);
-            } catch (Throwable t) {
-                Log.w(TAG, "failed to queue crash " + path, t);
-                // Leave the file on disk so next launch retries.
-            }
-        }
-    }
-
-    /**
-     * Map the flat <code>key:value</code> header lines bp.c writes into the
-     * JSON fields crashService.ingestCrash expects. Anything unrecognized
-     * still lives inside the full `stackTrace` string for the server to
-     * parse (build-id table, maps, etc.), so this doesn't need to be
-     * exhaustive.
-     */
-    /** Extract a header field from a crash file's key:value lines (before ---STACK---). */
-    private static String extractField(String raw, String key) {
-        for (String line : raw.split("\\r?\\n")) {
-            if (line.startsWith("---")) break;
-            if (line.startsWith(key + ":")) return line.substring(key.length() + 1);
-        }
-        return null;
-    }
-
-    private static JSONObject buildCrashPayload(String raw) throws JSONException {
-        JSONObject body = new JSONObject();
-        body.put("stackTrace", raw);
-        body.put("platform", "android");
-
-        // Pull the header fields bp.c writes before ---STACK---. Each line is
-        // "key:value" — stop at the first section marker.
-        String signal = null, faultAddr = null, type = null;
-        for (String line : raw.split("\\r?\\n")) {
-            if (line.startsWith("---")) break;
-            int c = line.indexOf(':');
-            if (c < 0) continue;
-            String k = line.substring(0, c);
-            String v = line.substring(c + 1);
-            switch (k) {
-                case "signal":       signal = v; break;
-                case "fault_addr":   faultAddr = v; break;
-                case "type":         type = v; break;
-                case "app_version":  body.put("buildVersion", v); break;
-                case "bundle_id":    body.put("bundleId", v); break;
-                case "device_model": body.put("deviceName", v); break;
-                default: /* fall through — preserved in stackTrace */ break;
-            }
-        }
-
-        // errorMessage is what the dashboard lists as the one-line summary.
-        // category controls the Issues page tab (crash / exception / anr).
-        if ("NATIVE_SIGNAL".equals(type)) {
-            body.put("errorMessage",
-                (signal != null ? signal : "NATIVE") +
-                (faultAddr != null ? " at " + faultAddr : ""));
-            body.put("category", "crash");
-        } else if ("ANR".equals(type)) {
-            body.put("errorMessage", "ANR — main thread unresponsive");
-            body.put("category", "anr");
-        } else {
-            body.put("errorMessage", type != null ? type : "Native crash");
-            body.put("category", "crash");
-        }
-        return body;
-    }
-
-    private static void startFrameTick() {
-        sFpsWindowStartNs = System.nanoTime();
-        Choreographer.getInstance().postFrameCallback(new Choreographer.FrameCallback() {
-            @Override public void doFrame(long frameTimeNanos) {
-                if (!sStarted) return;
-                int frames = sFrameCount.incrementAndGet();
-                long elapsed = frameTimeNanos - sFpsWindowStartNs;
-                if (elapsed >= 1_000_000_000L) {
-                    sFps = (int) (frames * 1_000_000_000L / elapsed);
-                    sFrameCount.set(0);
-                    sFpsWindowStartNs = frameTimeNanos;
-                }
-                Choreographer.getInstance().postFrameCallback(this);
-            }
-        });
-    }
-
-    /**
-     * Show a consent dialog for screen recording. On Accept we kick off the
-     * MediaProjection flow (which brings up its own OS-level consent dialog);
-     * on Cancel nothing happens. No-op if debug mode isn't started yet or if
-     * recording is already running.
-     */
     /**
      * Enable debug recording. With {@code skipConsent=false} (default) shows
      * a native consent sheet with Start / Cancel; with {@code true} skips it
      * and goes straight to the OS-level MediaProjection consent dialog.
+     * No-op if the runtime isn't started or recording is already running.
      */
-    public static void enterDebugMode(final Activity activity, final boolean skipConsent) {
-        if (!sStarted || activity == null) return;
+    public static void enter(final Activity activity, final boolean skipConsent) {
+        if (!BugpunchRuntime.isStarted() || activity == null) return;
         if (BugpunchRecorder.getInstance().hasFootage()) return;
         activity.runOnUiThread(new Runnable() {
             @Override public void run() {
@@ -328,6 +59,54 @@ public class BugpunchDebugMode {
         });
     }
 
+    /**
+     * Stop all opt-in recording and tear the runtime's subsystems down.
+     * Mostly here for symmetry / test cleanup — production apps never call
+     * this because the runtime is meant to live for the whole process.
+     */
+    public static synchronized void stop() {
+        BugpunchShakeDetector.stop();
+        BugpunchLogReader.stop();
+        BugpunchTouchRecorder.stop();
+        BugpunchScreenshot.stopRollingBuffer();
+        BugpunchCrashHandler.shutdown();
+    }
+
+    /**
+     * Dump the video ring buffer if recording is running, else return null.
+     * Called from the runtime's silent-report path so a bug/crash report
+     * picks up the last N seconds of footage when — and only when — the
+     * game has previously opted into recording.
+     */
+    static String dumpRingIfRunning(Activity activity) {
+        if (!BugpunchRecorder.getInstance().hasFootage()) {
+            Log.i(TAG, "no video dump — recorder not running or no footage yet");
+            return null;
+        }
+        String path = activity.getCacheDir().getAbsolutePath()
+            + "/bp_vid_" + System.nanoTime() + ".mp4";
+        try {
+            boolean ok = BugpunchRecorder.getInstance().dump(path);
+            java.io.File f = new java.io.File(path);
+            long size = f.length();
+            if (!ok || size <= 0) {
+                Log.w(TAG, "video dump returned " + ok + " size=" + size + " — skipping");
+                if (f.exists()) f.delete();
+                return null;
+            }
+            Log.i(TAG, "video dump ok: " + path + " (" + size + " bytes)");
+            return path;
+        } catch (Throwable t) {
+            Log.w(TAG, "video dump failed", t);
+            return null;
+        }
+    }
+
+    /**
+     * Show a consent dialog for screen recording. On Accept we kick off the
+     * MediaProjection flow (which brings up its own OS-level consent dialog);
+     * on Cancel nothing happens.
+     */
     private static void showConsentDialog(final Activity activity) {
         final Dialog dialog = new Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar);
         Window window = dialog.getWindow();
@@ -436,7 +215,8 @@ public class BugpunchDebugMode {
     }
 
     private static void startRecordingFromConfig(Activity activity) {
-        JSONObject video = sConfig.optJSONObject("video");
+        JSONObject config = BugpunchRuntime.getConfig();
+        JSONObject video = config != null ? config.optJSONObject("video") : null;
         int fps = video != null ? video.optInt("fps", 30) : 30;
         int bitrate = video != null ? video.optInt("bitrate", 2_000_000) : 2_000_000;
         int windowSec = video != null ? video.optInt("bufferSeconds", 30) : 30;
@@ -454,571 +234,5 @@ public class BugpunchDebugMode {
         BugpunchProjectionRequest.request(activity,
             dm.widthPixels, dm.heightPixels, bitrate, fps, windowSec, dm.densityDpi,
             "", "");
-    }
-
-    public static synchronized void stopDebugMode() {
-        if (!sStarted) return;
-        BugpunchShakeDetector.stop();
-        BugpunchLogReader.stop();
-        BugpunchTouchRecorder.stop();
-        BugpunchScreenshot.stopRollingBuffer();
-        BugpunchCrashHandler.shutdown();
-        sStarted = false;
-    }
-
-    // ── Trace events (ring buffer, bundled into next report) ──
-
-    /** A single trace event. */
-    private static final class TraceEvent {
-        final long timestampMs;
-        final String label;
-        final String tagsJson;    // nullable, raw JSON object string
-        volatile String screenshotPath; // nullable, set async after capture
-        TraceEvent(long ts, String label, String tagsJson, String shot) {
-            this.timestampMs = ts;
-            this.label = label;
-            this.tagsJson = tagsJson;
-            this.screenshotPath = shot;
-        }
-    }
-
-    private static final int TRACE_MAX = 50;
-    private static final Object sTraceLock = new Object();
-    private static final ArrayList<TraceEvent> sTraces = new ArrayList<>();
-
-    public static void addTrace(String label, String tagsJson) {
-        if (label == null) return;
-        TraceEvent ev = new TraceEvent(System.currentTimeMillis(), label, tagsJson, null);
-        synchronized (sTraceLock) {
-            sTraces.add(ev);
-            while (sTraces.size() > TRACE_MAX) sTraces.remove(0);
-        }
-    }
-
-    public static void addTraceScreenshot(final String label, final String tagsJson) {
-        if (label == null) return;
-        Activity activity = BugpunchUnity.currentActivity();
-        if (activity == null) { addTrace(label, tagsJson); return; }
-        final String shotPath = activity.getCacheDir().getAbsolutePath()
-            + "/bp_trace_" + System.nanoTime() + ".jpg";
-        // Reserve the slot immediately so ordering is deterministic; fill in
-        // the path once capture succeeds.
-        final TraceEvent ev = new TraceEvent(System.currentTimeMillis(), label, tagsJson, null);
-        synchronized (sTraceLock) {
-            sTraces.add(ev);
-            while (sTraces.size() > TRACE_MAX) sTraces.remove(0);
-        }
-        BugpunchScreenshot.captureThen(shotPath, 80, new Runnable() {
-            @Override public void run() { ev.screenshotPath = shotPath; }
-        });
-    }
-
-    /**
-     * Drain the trace buffer. Returns the drained events (oldest first) and
-     * clears the buffer. Called from submitReport paths so the next report
-     * starts fresh.
-     */
-    private static List<TraceEvent> drainTraces() {
-        synchronized (sTraceLock) {
-            if (sTraces.isEmpty()) return null;
-            ArrayList<TraceEvent> copy = new ArrayList<>(sTraces);
-            sTraces.clear();
-            return copy;
-        }
-    }
-
-    /**
-     * Serialize traces to a temp JSON file and collect screenshot paths.
-     * Returns {tracesJsonPath, screenshotPaths[]} or null if no traces.
-     */
-    private static Object[] prepareTraceAttachments(Activity activity) {
-        List<TraceEvent> evs = drainTraces();
-        if (evs == null || evs.isEmpty()) return null;
-        try {
-            JSONArray arr = new JSONArray();
-            ArrayList<String> shots = new ArrayList<>();
-            for (TraceEvent ev : evs) {
-                JSONObject o = new JSONObject();
-                o.put("ts", ev.timestampMs);
-                o.put("label", ev.label);
-                if (ev.tagsJson != null && !ev.tagsJson.isEmpty()) {
-                    try { o.put("tags", new JSONObject(ev.tagsJson)); }
-                    catch (JSONException ignore) {}
-                }
-                if (ev.screenshotPath != null) {
-                    java.io.File f = new java.io.File(ev.screenshotPath);
-                    if (f.exists() && f.length() > 0) {
-                        o.put("screenshotIndex", shots.size());
-                        shots.add(ev.screenshotPath);
-                    }
-                }
-                arr.put(o);
-            }
-            String path = activity.getCacheDir().getAbsolutePath()
-                + "/bp_traces_" + System.nanoTime() + ".json";
-            java.io.FileOutputStream fos = new java.io.FileOutputStream(path);
-            try { fos.write(arr.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
-            finally { fos.close(); }
-            return new Object[] { path, shots.toArray(new String[0]) };
-        } catch (Throwable t) {
-            Log.w(TAG, "prepareTraceAttachments failed", t);
-            return null;
-        }
-    }
-
-    // ── Metadata + custom data (called from C# as game state changes) ──
-
-    public static void setCustomData(String key, String value) {
-        if (key == null) return;
-        if (value == null) sCustomData.remove(key);
-        else sCustomData.put(key, value);
-    }
-
-    /** Update the current Unity scene name (the one thing we can't derive natively). */
-    public static void updateScene(String scene) {
-        if (scene != null) sMetadata.put("scene", scene);
-        BugpunchPerfMonitor.onSceneChange(scene);
-    }
-
-    // ── Accessors for BugpunchDirectives ─────────────────────────────────
-
-    /** Game-declared attachment allow-list, straight from the startup config. */
-    public static JSONArray getAttachmentRules() {
-        return sConfig != null ? sConfig.optJSONArray("attachmentRules") : null;
-    }
-
-    public static String getServerUrl() {
-        return sConfig != null ? sConfig.optString("serverUrl", "") : "";
-    }
-
-    public static String getApiKey() {
-        return sConfig != null ? sConfig.optString("apiKey", "") : "";
-    }
-
-    /** Application context, stored at startDebugMode time. */
-    public static Context getAppContext() { return sAppContext; }
-
-    /** Current FPS measured by the Choreographer frame callback. */
-    public static int getFps() { return sFps; }
-
-    /** Read a single metadata field (seeded from config, scene pushed by Unity). */
-    public static String getMetadata(String key) {
-        return sMetadata.getOrDefault(key, "");
-    }
-
-    /** Snapshot of the current custom data map (for perf event tags). */
-    public static Map<String, String> getCustomDataSnapshot() {
-        return new ConcurrentHashMap<>(sCustomData);
-    }
-
-    /**
-     * Called from C# via <c>BugpunchNative.PostPaxScriptResult</c> when a
-     * directive-triggered PaxScript run finishes. Hands off to
-     * {@link BugpunchDirectives} which POSTs to the /enrich endpoint.
-     */
-    public static void postPaxScriptResult(String directiveId, String resultJson) {
-        if (!sStarted) return;
-        BugpunchDirectives.onPaxScriptResult(directiveId, resultJson);
-    }
-
-    // ── Trigger (from shake, from C# exception handler, from game code) ──
-
-    /**
-     * Fire a bug report. Captures screenshot + dumps video + builds payload +
-     * enqueues upload. Returns immediately.
-     *
-     * @param type        "bug" | "feedback" | "exception" | "crash"
-     * @param title       short title
-     * @param description long-form description (may include stack trace)
-     * @param extraJson   extra key/values (e.g. exception-specific fields) merged into customData
-     */
-    public static void reportBug(final String type, final String title,
-                                 final String description, final String extraJson) {
-        if (!sStarted) { Log.w(TAG, "reportBug before startDebugMode"); return; }
-        final Activity activity = BugpunchUnity.currentActivity();
-        if (activity == null) return;
-
-        // Cooldown for auto exception reports.
-        if ("exception".equals(type)) {
-            long cooldownMs = (long)(sConfig.optDouble("autoReportCooldownSeconds", 30.0) * 1000);
-            long now = System.currentTimeMillis();
-            if (now - sLastAutoReportMs < cooldownMs) return;
-            sLastAutoReportMs = now;
-        }
-
-        // User-initiated bug reports show the form; silent reports
-        // (exceptions, crashes, feedback) skip it and enqueue directly.
-        final boolean showForm = "bug".equals(type);
-        final String shotPath = activity.getCacheDir().getAbsolutePath()
-            + "/bp_shot_" + System.nanoTime() + ".jpg";
-
-        if (showForm) {
-            // Guard: if a report form is already open, ignore the second trigger.
-            if (sReportInProgress) { Log.i(TAG, "report already in progress, ignoring"); return; }
-            sReportInProgress = true;
-            // Capture the GAME state first, THEN launch the form. If we fired
-            // capture and launch in the same instant the form would already be
-            // covering Unity by the time PixelCopy ran, and the screenshot
-            // would show the form (or a transitional black frame).
-            BugpunchScreenshot.captureThen(shotPath, 85, new Runnable() {
-                @Override public void run() {
-                    BugpunchReportActivity.launch(shotPath, title, description);
-                }
-            });
-            return;
-        }
-
-        // Silent path — assemble manifest directly.
-        final DumpResult dump = dumpRingAndTouches(activity);
-
-        // Context screenshot — last frame from the rolling buffer (~1s before
-        // the event). Additional to the event screenshot taken below.
-        String contextShotPath = null;
-        long contextShotTs = 0;
-        if (BugpunchScreenshot.hasLastFrame()) {
-            contextShotPath = activity.getCacheDir().getAbsolutePath()
-                + "/bp_ctx_" + System.nanoTime() + ".jpg";
-            contextShotTs = BugpunchScreenshot.getLastFrameTimestamp();
-            if (!BugpunchScreenshot.writeLastFrame(contextShotPath, 85)) {
-                contextShotPath = null;
-            }
-        }
-
-        // Event screenshot — captured right now at the moment of the event.
-        BugpunchScreenshot.capture("rb_" + System.nanoTime(), shotPath, 85, "", "");
-
-        JSONObject extra = parseOr(extraJson);
-        long eventShotTs = System.currentTimeMillis();
-
-        // Build screenshots manifest — every screenshot gets a timestamp.
-        JSONArray screenshotsMeta = new JSONArray();
-        try {
-            if (contextShotPath != null && contextShotTs > 0) {
-                JSONObject ctx = new JSONObject();
-                ctx.put("type", "context");
-                ctx.put("timestampMs", contextShotTs);
-                ctx.put("field", "context_screenshot");
-                screenshotsMeta.put(ctx);
-            }
-            JSONObject evt = new JSONObject();
-            evt.put("type", "event");
-            evt.put("timestampMs", eventShotTs);
-            evt.put("field", "screenshot");
-            screenshotsMeta.put(evt);
-        } catch (JSONException ignored) {}
-        try { extra.put("screenshots", screenshotsMeta); }
-        catch (JSONException ignored) {}
-
-        String logsJson = BugpunchLogReader.snapshotJson();
-        String logsGzPath = writeGzipLogs(activity, logsJson);
-        String metadataJson = buildMetadataJson(type, title, description,
-            extra, /* reporterEmail */ null, /* severity */ null, dump);
-        Object[] traceAttach = prepareTraceAttachments(activity);
-        String tracesJsonPath = traceAttach != null ? (String) traceAttach[0] : null;
-        String[] traceShots = traceAttach != null ? (String[]) traceAttach[1] : null;
-        enqueueManifest(activity, endpointFor(type), metadataJson, shotPath, dump.videoPath, null,
-            tracesJsonPath, traceShots, logsGzPath, contextShotPath);
-    }
-
-    /**
-     * Called from {@link BugpunchReportActivity} when the user taps Send.
-     * Builds the manifest including the annotations layer (if any) and hands
-     * to the uploader.
-     */
-    public static void submitReport(String title, String description, String email,
-                                    String severity, String screenshotPath,
-                                    String annotationsPath) {
-        submitReport(title, description, email, severity, screenshotPath, annotationsPath, null);
-    }
-
-    public static void submitReport(String title, String description, String email,
-                                    String severity, String screenshotPath,
-                                    String annotationsPath, String[] extraScreenshots) {
-        if (!sStarted) return;
-        Activity activity = BugpunchUnity.currentActivity();
-        if (activity == null) return;
-
-        DumpResult dump = dumpRingAndTouches(activity);
-
-        // Build screenshots metadata with timestamps
-        JSONObject extra = new JSONObject();
-        JSONArray screenshotsMeta = new JSONArray();
-        try {
-            // Context screenshot from rolling buffer
-            String contextPath = null;
-            long contextTs = 0;
-            if (BugpunchScreenshot.hasLastFrame()) {
-                contextPath = activity.getCacheDir().getAbsolutePath()
-                    + "/bp_ctx_" + System.nanoTime() + ".jpg";
-                contextTs = BugpunchScreenshot.getLastFrameTimestamp();
-                if (!BugpunchScreenshot.writeLastFrame(contextPath, 85)) contextPath = null;
-            }
-            if (contextPath != null) {
-                JSONObject ctx = new JSONObject();
-                ctx.put("type", "context");
-                ctx.put("timestampMs", contextTs);
-                ctx.put("field", "context_screenshot");
-                screenshotsMeta.put(ctx);
-            }
-            // Event screenshot
-            JSONObject evt = new JSONObject();
-            evt.put("type", "event");
-            evt.put("timestampMs", System.currentTimeMillis());
-            evt.put("field", "screenshot");
-            screenshotsMeta.put(evt);
-            // Extra manual screenshots
-            if (extraScreenshots != null) {
-                for (int i = 0; i < extraScreenshots.length; i++) {
-                    JSONObject es = new JSONObject();
-                    es.put("type", "manual");
-                    es.put("timestampMs", 0);
-                    es.put("field", "extra_screenshot_" + i);
-                    screenshotsMeta.put(es);
-                }
-            }
-            extra.put("screenshots", screenshotsMeta);
-        } catch (JSONException ignored) {}
-
-        String logsJson = BugpunchLogReader.snapshotJson();
-        String logsGzPath = writeGzipLogs(activity, logsJson);
-        String metadataJson = buildMetadataJson("bug", title, description,
-            extra, email, severity, dump);
-        Object[] traceAttach = prepareTraceAttachments(activity);
-        String tracesJsonPath = traceAttach != null ? (String) traceAttach[0] : null;
-        String[] traceShots = traceAttach != null ? (String[]) traceAttach[1] : null;
-
-        // Build file attachment list
-        String serverUrl = sConfig.optString("serverUrl", "");
-        String apiKey = sConfig.optString("apiKey", "");
-        if (serverUrl.isEmpty() || apiKey.isEmpty()) return;
-        String url = serverUrl.replaceAll("/+$", "") + "/api/reports/bug";
-        List<BugpunchUploader.FileAttachment> files = new ArrayList<>();
-        if (screenshotPath != null && !screenshotPath.isEmpty())
-            files.add(BugpunchUploader.FileAttachment.jpeg("screenshot", screenshotPath));
-        if (dump.videoPath != null && !dump.videoPath.isEmpty())
-            files.add(new BugpunchUploader.FileAttachment("video", "video.mp4", "video/mp4", dump.videoPath));
-        if (annotationsPath != null && !annotationsPath.isEmpty())
-            files.add(new BugpunchUploader.FileAttachment("annotations", "annotations.png", "image/png", annotationsPath));
-        if (tracesJsonPath != null && !tracesJsonPath.isEmpty())
-            files.add(new BugpunchUploader.FileAttachment("traces", "traces.json", "application/json", tracesJsonPath));
-        if (logsGzPath != null && !logsGzPath.isEmpty())
-            files.add(new BugpunchUploader.FileAttachment("logs", "logs.json.gz", "application/gzip", logsGzPath));
-        if (traceShots != null) {
-            for (int i = 0; i < traceShots.length; i++) {
-                if (traceShots[i] != null && !traceShots[i].isEmpty())
-                    files.add(BugpunchUploader.FileAttachment.jpeg("trace", i, traceShots[i]));
-            }
-        }
-        if (extraScreenshots != null) {
-            for (int i = 0; i < extraScreenshots.length; i++) {
-                if (extraScreenshots[i] != null && !extraScreenshots[i].isEmpty())
-                    files.add(BugpunchUploader.FileAttachment.jpeg("extra_screenshot", i, extraScreenshots[i]));
-            }
-        }
-        BugpunchUploader.enqueue(activity, url, apiKey, metadataJson, files);
-    }
-
-    /**
-     * Holds the result of dumping the video ring: the MP4 path (or null) and,
-     * if any touches landed in the video's PTS window, a JSON array of touch
-     * records (rebased to video t=0) and a video descriptor for the report
-     * metadata. Mirrors iOS BPDumpRingAndTouches.
-     */
-    private static final class DumpResult {
-        String videoPath;
-        JSONArray touches;
-        JSONObject videoMeta;
-    }
-
-    private static DumpResult dumpRingAndTouches(Activity activity) {
-        DumpResult r = new DumpResult();
-        r.videoPath = dumpRingIfRunning(activity);
-        if (r.videoPath == null) return r;
-
-        BugpunchRecorder rec = BugpunchRecorder.getInstance();
-        long startNs = rec.getLastDumpStartNanos();
-        long endNs   = rec.getLastDumpEndNanos();
-        if (endNs <= startNs) return r;
-
-        try {
-            JSONObject v = new JSONObject();
-            v.put("durationMs", (int) ((endNs - startNs) / 1_000_000L));
-            int w = rec.getWidth(), h = rec.getHeight();
-            if (w > 0 && h > 0) {
-                v.put("width", w);
-                v.put("height", h);
-            }
-            r.videoMeta = v;
-        } catch (JSONException ignored) {}
-
-        String touchesJson = BugpunchTouchRecorder.snapshotJson(startNs, endNs);
-        if (touchesJson != null) {
-            try { r.touches = new JSONArray(touchesJson); }
-            catch (JSONException ignored) {}
-        }
-        return r;
-    }
-
-    private static String dumpRingIfRunning(Activity activity) {
-        if (!BugpunchRecorder.getInstance().hasFootage()) {
-            Log.i(TAG, "no video dump — recorder not running or no footage yet");
-            return null;
-        }
-        String path = activity.getCacheDir().getAbsolutePath()
-            + "/bp_vid_" + System.nanoTime() + ".mp4";
-        try {
-            boolean ok = BugpunchRecorder.getInstance().dump(path);
-            java.io.File f = new java.io.File(path);
-            long size = f.length();
-            if (!ok || size <= 0) {
-                Log.w(TAG, "video dump returned " + ok + " size=" + size + " — skipping");
-                if (f.exists()) f.delete();
-                return null;
-            }
-            Log.i(TAG, "video dump ok: " + path + " (" + size + " bytes)");
-            return path;
-        } catch (Throwable t) {
-            Log.w(TAG, "video dump failed", t);
-            return null;
-        }
-    }
-
-    /**
-     * Build the file attachment list and enqueue via the uploader.
-     * All screenshot/video/trace/log paths are assembled into a single
-     * {@link BugpunchUploader.FileAttachment} list — no parameter explosion.
-     */
-    private static void enqueueManifest(Activity activity, String endpointPath,
-                                        String metadataJson, String shotPath,
-                                        String videoPath, String annotationsPath,
-                                        String tracesJsonPath, String[] traceScreenshotPaths,
-                                        String logsGzPath) {
-        enqueueManifest(activity, endpointPath, metadataJson, shotPath, videoPath,
-            annotationsPath, tracesJsonPath, traceScreenshotPaths, logsGzPath, null);
-    }
-
-    private static void enqueueManifest(Activity activity, String endpointPath,
-                                        String metadataJson, String shotPath,
-                                        String videoPath, String annotationsPath,
-                                        String tracesJsonPath, String[] traceScreenshotPaths,
-                                        String logsGzPath, String contextShotPath) {
-        String serverUrl = sConfig.optString("serverUrl", "");
-        String apiKey = sConfig.optString("apiKey", "");
-        if (serverUrl.isEmpty() || apiKey.isEmpty()) {
-            Log.w(TAG, "serverUrl/apiKey not configured — skipping");
-            return;
-        }
-        String url = serverUrl.replaceAll("/+$", "") + endpointPath;
-
-        List<BugpunchUploader.FileAttachment> files = new ArrayList<>();
-        if (contextShotPath != null && !contextShotPath.isEmpty())
-            files.add(BugpunchUploader.FileAttachment.jpeg("context_screenshot", contextShotPath));
-        if (shotPath != null && !shotPath.isEmpty())
-            files.add(BugpunchUploader.FileAttachment.jpeg("screenshot", shotPath));
-        if (videoPath != null && !videoPath.isEmpty())
-            files.add(new BugpunchUploader.FileAttachment("video", "video.mp4", "video/mp4", videoPath));
-        if (annotationsPath != null && !annotationsPath.isEmpty())
-            files.add(new BugpunchUploader.FileAttachment("annotations", "annotations.png", "image/png", annotationsPath));
-        if (tracesJsonPath != null && !tracesJsonPath.isEmpty())
-            files.add(new BugpunchUploader.FileAttachment("traces", "traces.json", "application/json", tracesJsonPath));
-        if (logsGzPath != null && !logsGzPath.isEmpty())
-            files.add(new BugpunchUploader.FileAttachment("logs", "logs.json.gz", "application/gzip", logsGzPath));
-        if (traceScreenshotPaths != null) {
-            for (int i = 0; i < traceScreenshotPaths.length; i++) {
-                String p = traceScreenshotPaths[i];
-                if (p != null && !p.isEmpty())
-                    files.add(BugpunchUploader.FileAttachment.jpeg("trace", i, p));
-            }
-        }
-        BugpunchUploader.enqueue(activity, url, apiKey, metadataJson, files);
-    }
-
-    private static String endpointFor(String type) {
-        if ("feedback".equals(type)) return "/api/reports/feedback";
-        if ("crash".equals(type))    return "/api/crashes";
-        return "/api/reports/bug";
-    }
-
-    // ── Internals ──
-
-    private static void onShake() {
-        reportBug("bug", "Shake report", "Triggered by shake gesture", null);
-    }
-
-    private static JSONObject parseOr(String json) {
-        if (json == null || json.isEmpty()) return new JSONObject();
-        try { return new JSONObject(json); } catch (JSONException e) { return new JSONObject(); }
-    }
-
-    /** Gzip a JSON string to a temp file. Returns the path, or null on error. */
-    private static String writeGzipLogs(Activity activity, String logsJson) {
-        if (logsJson == null || logsJson.isEmpty() || logsJson.equals("[]")) return null;
-        try {
-            File f = new File(activity.getCacheDir(), "bp_logs_" + System.nanoTime() + ".json.gz");
-            FileOutputStream fos = new FileOutputStream(f);
-            GZIPOutputStream gz = new GZIPOutputStream(fos);
-            gz.write(logsJson.getBytes("UTF-8"));
-            gz.close();
-            return f.getAbsolutePath();
-        } catch (IOException e) {
-            Log.w(TAG, "writeGzipLogs failed", e);
-            return null;
-        }
-    }
-
-    private static String buildMetadataJson(String type, String title, String description,
-                                            JSONObject extra,
-                                            String reporterEmail, String severity,
-                                            DumpResult dump) {
-        try {
-            JSONObject m = new JSONObject();
-            m.put("type", type != null ? type : "bug");
-            if (title != null) m.put("title", title);
-            if (description != null) m.put("description", description);
-            if (reporterEmail != null && !reporterEmail.isEmpty())
-                m.put("reporterEmail", reporterEmail);
-            if (severity != null && !severity.isEmpty())
-                m.put("severity", severity);
-            m.put("timestamp", java.text.DateFormat.getDateTimeInstance().format(new java.util.Date()));
-
-            JSONObject device = new JSONObject();
-            device.put("model", sMetadata.getOrDefault("deviceModel", ""));
-            device.put("os", sMetadata.getOrDefault("osVersion", ""));
-            device.put("platform", "Android");
-            device.put("gpu", sMetadata.getOrDefault("gpu", ""));
-            m.put("device", device);
-
-            JSONObject app = new JSONObject();
-            app.put("version", sMetadata.getOrDefault("appVersion", ""));
-            app.put("bundleId", sMetadata.getOrDefault("bundleId", ""));
-            app.put("unityVersion", sMetadata.getOrDefault("unityVersion", ""));
-            app.put("scene", sMetadata.getOrDefault("scene", ""));
-            app.put("fps", sFps);
-            app.put("installerMode", sMetadata.getOrDefault("installerMode", "unknown"));
-            m.put("app", app);
-
-            JSONObject custom = new JSONObject(sCustomData);
-            if (extra != null) {
-                for (java.util.Iterator<String> it = extra.keys(); it.hasNext(); ) {
-                    String k = it.next();
-                    custom.put(k, extra.get(k));
-                }
-            }
-            m.put("customData", custom);
-
-            // Top-level `touches` + `videoMeta` matching iOS. Dashboard uses
-            // these to overlay animated finger indicators on the video clip.
-            // Key is `videoMeta` (not `video`) — the multipart uploader uses
-            // `video` for the MP4 binary; the server middleware would clobber
-            // this object.
-            if (dump != null) {
-                if (dump.videoMeta != null) m.put("videoMeta", dump.videoMeta);
-                if (dump.touches != null)   m.put("touches", dump.touches);
-            }
-            return m.toString();
-        } catch (JSONException e) {
-            Log.w(TAG, "buildMetadataJson failed", e);
-            return "{}";
-        }
     }
 }

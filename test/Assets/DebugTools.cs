@@ -23,6 +23,14 @@ public static class GameDebugTools
     [DebugButton("Bugpunch", "Send Feedback", "Submit user feedback", icon: "flag")]
     static void SendFeedback() => Bugpunch.Feedback("Test feedback from debug tools panel");
 
+    // ── Storyboard Demo ──
+
+    [DebugButton("Storyboard Demo", "Open Demo Menus", "Fake menu tree — click through to generate a storyboard", icon: "layout")]
+    static void OpenDemoMenus() => StoryboardDemo.Open();
+
+    [DebugButton("Storyboard Demo", "Close Demo Menus", "Close the demo overlay", icon: "x")]
+    static void CloseDemoMenus() => StoryboardDemo.Close();
+
     // ── Crash Testing ──
 
     [DebugButton("Crash Testing", "Throw Exception", "Unhandled C# exception", icon: "alert-triangle")]

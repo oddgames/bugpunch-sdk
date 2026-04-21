@@ -24,7 +24,7 @@ namespace ODDGames.Recorder.Internal
                 return settings.OutputPath;
 
             string dir = EnsureRecordingsDirectory();
-            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
             return Path.Combine(dir, $"recording_{timestamp}.{extension}");
         }
 

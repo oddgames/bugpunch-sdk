@@ -34,7 +34,7 @@ namespace ODDGames.Recorder.Editor
             if (!System.IO.Directory.Exists(dir))
                 System.IO.Directory.CreateDirectory(dir);
 
-            string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string timestamp = System.DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
             _outputPath = System.IO.Path.Combine(dir, $"recording_{timestamp}");
 
             if (!string.IsNullOrEmpty(settings.OutputPath))

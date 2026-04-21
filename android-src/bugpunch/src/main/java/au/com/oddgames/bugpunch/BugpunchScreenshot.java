@@ -14,6 +14,8 @@ import android.view.ViewGroup;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -38,20 +40,74 @@ public class BugpunchScreenshot {
     private static volatile SurfaceView sCachedSurface;
 
     // ── Shared rolling screenshot buffer ──
-    // Periodically captures the GPU surface via PixelCopy (~1/sec) and keeps
-    // the last frame as a raw Bitmap in memory. No compression — just the raw
-    // pixels. JPEG compression only happens when writing to disk at report time.
-    // Any code path (ANR, exception, crash, user report) can call
-    // writeLastFrame() to get the most recent screenshot.
+    // PixelCopies the GPU surface every ROLLING_INTERVAL_MS into one of two
+    // native-memory slots. No disk I/O during normal operation — the only
+    // reason we'd touch disk is the signal handler for a SIGSEGV/SIGABRT,
+    // which dumps the native bytes so the next process launch can upload them.
+    //
+    // Keeping the pixels in native memory (direct ByteBuffer) rather than a
+    // Java Bitmap means they survive Mono/IL2CPP meltdowns: when managed code
+    // explodes we can still read the pre-crash frame out of native memory and
+    // attach it to the crash report.
+    //
+    // Two slots rotate so we always have:
+    //   - "at crash"  = the most recent completed slot (≤ROLLING_INTERVAL_MS old)
+    //   - "before"    = the other slot (1-2× interval old)
     // Only active on devices with enough RAM.
     private static volatile Bitmap sLastFrame;
     private static volatile long sLastFrameTs;
     private static volatile boolean sRollingActive;
     private static final long ROLLING_INTERVAL_MS = 1000;
+    /** Fast retry until the first successful PixelCopy lands, so a crash in
+     *  the first second of play still has a frame to attach. */
+    private static final long STARTUP_RETRY_MS = 150;
+    /** True after the first successful capture — flips the scheduler out of
+     *  fast-retry mode and gates failure logging so we don't spam the console. */
+    private static volatile boolean sHadFirstCapture;
+
+    /** Longest-side target for the downscaled capture — GPU scales on PixelCopy
+     *  so there's no CPU cost to going smaller. 960 balances detail with the
+     *  16-bit-wide native ring (~3.6MB total) on commodity phones. */
+    private static final int CAPTURE_LONG_SIDE = 960;
+
+    /** Native-memory ring slots. DirectByteBuffer addresses are handed to bp.c
+     *  so the signal handler can copy bytes out even after Mono is dead. */
+    private static volatile ByteBuffer sSlotA;
+    private static volatile ByteBuffer sSlotB;
+    private static volatile int sCaptureW;
+    private static volatile int sCaptureH;
+    /** Reused target bitmap so we don't churn the heap each second. */
+    private static volatile Bitmap sCaptureBitmap;
+
+    /** Index of the most-recently-written slot: 0 = A, 1 = B. */
+    private static volatile int sNewestSlot = -1;
+    /** Next slot to write into. Alternates after each capture. */
+    private static int sNextSlot = 0;
+    /** Minimum gap between captures to throttle touch-triggered kicks
+     *  without starving normal 1 Hz. */
+    private static final long MIN_CAPTURE_GAP_MS = 200;
+    private static volatile long sLastCaptureAttemptMs;
+
+    /** Legacy no-op retained for existing callers — disk flush has moved into
+     *  the native signal handler, so Java-side paths are no longer used. */
+    public static void setRollingDiskPaths(String pathA, String pathB) { /* no-op */ }
+    public static void setRollingDiskPath(String path) { /* no-op */ }
+    public static String getFramePathA() { return null; }
+    public static String getFramePathB() { return null; }
+    public static int getNewestSlot() { return sNewestSlot; }
+    public static String getRollingDiskPath() { return null; }
 
     /**
      * Start the rolling screenshot buffer. Call once at startup.
      * Only activates on high-end devices (>= 256MB heap).
+     *
+     * Capture is fully asynchronous (no latch.await). Each capture step
+     * issues PixelCopy.request and returns; the callback writes the slot
+     * AND schedules the next step — fast retry (STARTUP_RETRY_MS) while
+     * anything is still failing, normal cadence (ROLLING_INTERVAL_MS)
+     * after the first successful capture. Blocking here deadlocks with
+     * the callback handler, which is exactly what `rc=-1 (latch timeout)`
+     * used to mean.
      */
     public static void startRollingBuffer() {
         long maxMb = Runtime.getRuntime().maxMemory() / (1024 * 1024);
@@ -61,15 +117,32 @@ public class BugpunchScreenshot {
         }
         if (sRollingActive) return;
         sRollingActive = true;
-        Handler h = getHandler();
-        h.post(new Runnable() {
-            @Override public void run() {
-                if (!sRollingActive) return;
-                captureToBuffer();
-                getHandler().postDelayed(this, ROLLING_INTERVAL_MS);
-            }
-        });
+        getHandler().post(sCaptureStep);
         Log.i(TAG, "rolling buffer started (" + maxMb + "MB heap)");
+    }
+
+    /** The one and only entry to kick off a capture step. All scheduling
+     *  goes through this Runnable — both the periodic tick and the kick()
+     *  path post or remove it from the handler queue. */
+    private static final Runnable sCaptureStep = new Runnable() {
+        @Override public void run() {
+            if (!sRollingActive) return;
+            captureStep();
+        }
+    };
+
+    private static void rescheduleFast() {
+        if (!sRollingActive) return;
+        Handler h = getHandler();
+        h.removeCallbacks(sCaptureStep);
+        h.postDelayed(sCaptureStep, STARTUP_RETRY_MS);
+    }
+
+    private static void rescheduleSlow() {
+        if (!sRollingActive) return;
+        Handler h = getHandler();
+        h.removeCallbacks(sCaptureStep);
+        h.postDelayed(sCaptureStep, ROLLING_INTERVAL_MS);
     }
 
     /** Stop the rolling buffer. */
@@ -78,34 +151,148 @@ public class BugpunchScreenshot {
         sLastFrame = null;
     }
 
-    /** Capture one frame into the rolling buffer via PixelCopy (sync, background thread). */
-    private static void captureToBuffer() {
+    /**
+     * Allocate the downscaled capture bitmap + native slot buffers once we
+     * know the SurfaceView dimensions. Slots live for the life of the
+     * process; bp.c holds their native addresses via GetDirectBufferAddress.
+     */
+    private static void ensureSlots(SurfaceView sv) {
+        if (sSlotA != null && sSlotB != null && sCaptureBitmap != null) return;
+        int sw = sv.getWidth(), sh = sv.getHeight();
+        if (sw <= 0 || sh <= 0) return;
+        int w, h;
+        if (sw >= sh) {
+            w = Math.min(sw, CAPTURE_LONG_SIDE);
+            h = (int) ((long) sh * w / sw);
+        } else {
+            h = Math.min(sh, CAPTURE_LONG_SIDE);
+            w = (int) ((long) sw * h / sh);
+        }
+        // Round to even so stride is well-behaved for downstream encoders.
+        w = (w + 1) & ~1;
+        h = (h + 1) & ~1;
+        int bytes = w * h * 4;
+        sCaptureW = w;
+        sCaptureH = h;
+        sSlotA = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+        sSlotB = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+        sCaptureBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        // Hand the native addresses + dimensions to the signal handler so it
+        // can dump the ring contents when SIGSEGV fires.
+        try { BugpunchCrashHandler.setScreenshotBuffers(sSlotA, sSlotB, w, h); }
+        catch (Throwable ignored) {}
+    }
+
+    /**
+     * Request a rolling-buffer capture now, bypassing the normal 1 Hz tick.
+     * Called from touch / scene-change hooks so the ring is fresh at the
+     * moments most correlated with crashes. Throttled to avoid starving
+     * the capture thread during rapid tapping.
+     */
+    public static void kickCapture() {
+        if (!sRollingActive) return;
+        long now = System.currentTimeMillis();
+        if (now - sLastCaptureAttemptMs < MIN_CAPTURE_GAP_MS) return;
+        sLastCaptureAttemptMs = now;
+        Handler h = getHandler();
+        h.removeCallbacks(sCaptureStep);
+        h.post(sCaptureStep);
+    }
+
+    /**
+     * One asynchronous capture step. Returns immediately after issuing
+     * PixelCopy.request; the callback handles the memcpy and schedules
+     * the next step via rescheduleSlow()/rescheduleFast(). Never blocks.
+     *
+     * The callback handler is the same BugpunchScreenshot HandlerThread
+     * we're running on — but because we've already returned by the time
+     * PixelCopy fires the callback, the handler is free and there's no
+     * deadlock. (The previous version used latch.await() on this thread,
+     * which starved the callback and caused every capture to time out.)
+     */
+    private static void captureStep() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            rescheduleSlow();
+            return;
+        }
         SurfaceView sv = sCachedSurface;
-        if (sv == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
+        if (sv == null) {
+            // Re-drive the cache lookup — Unity's SurfaceView may not have
+            // been attached to the window yet on the first couple of ticks.
+            cacheSurfaceView();
+            if (!sHadFirstCapture) {
+                Log.d(TAG, "capture skipped: SurfaceView not yet cached");
+            }
+            rescheduleFast();
+            return;
+        }
+        ensureSlots(sv);
+        final Bitmap bmp = sCaptureBitmap;
+        if (bmp == null) {
+            if (!sHadFirstCapture) {
+                Log.d(TAG, "capture skipped: surface dims not ready (w="
+                    + sv.getWidth() + " h=" + sv.getHeight() + ")");
+            }
+            rescheduleFast();
+            return;
+        }
         try {
-            int w = sv.getWidth(), h = sv.getHeight();
-            if (w <= 0 || h <= 0) return;
-            final Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-            final CountDownLatch latch = new CountDownLatch(1);
-            final AtomicReference<Boolean> success = new AtomicReference<>(false);
-            PixelCopy.request(sv, bitmap, new PixelCopy.OnPixelCopyFinishedListener() {
-                @Override public void onPixelCopyFinished(int result) {
-                    success.set(result == PixelCopy.SUCCESS);
-                    latch.countDown();
+            // GPU downscales source → bmp dimensions on its own, so there's
+            // no CPU cost to capturing smaller than the actual display.
+            PixelCopy.request(sv, bmp, new PixelCopy.OnPixelCopyFinishedListener() {
+                @Override public void onPixelCopyFinished(int rc) {
+                    onCaptureComplete(bmp, rc);
                 }
             }, getHandler());
-            if (latch.await(2, TimeUnit.SECONDS) && success.get()) {
-                // Keep raw bitmap — no JPEG compression until write time.
-                Bitmap old = sLastFrame;
-                sLastFrame = bitmap;
-                sLastFrameTs = System.currentTimeMillis();
-                if (old != null && old != bitmap) old.recycle();
-            } else {
-                bitmap.recycle();
-            }
         } catch (Throwable t) {
-            // Silent — don't crash the app for a background screenshot.
+            if (!sHadFirstCapture) Log.d(TAG, "capture request threw: " + t.getMessage());
+            rescheduleFast();
         }
+    }
+
+    /**
+     * PixelCopy callback. Runs on the same HandlerThread we scheduled on,
+     * but captureStep has already returned so the handler is free.
+     */
+    private static void onCaptureComplete(Bitmap bmp, int rc) {
+        if (rc != PixelCopy.SUCCESS) {
+            if (!sHadFirstCapture) {
+                // PixelCopy codes: 0=SUCCESS, 1=UNKNOWN, 2=TIMEOUT,
+                // 3=SOURCE_NO_DATA, 4=SOURCE_INVALID, 5=DESTINATION_INVALID.
+                Log.d(TAG, "capture failed: PixelCopy rc=" + rc);
+            }
+            rescheduleFast();
+            return;
+        }
+        try {
+            // Memcpy pixels from the Java Bitmap into the next native slot.
+            // Update sNewestSlot only AFTER the copy completes so a crash
+            // mid-copy still leaves the previous slot pointing at a valid
+            // frame (this slot becomes garbage, other slot stays intact).
+            int slot = sNextSlot;
+            ByteBuffer dst = (slot == 0) ? sSlotA : sSlotB;
+            if (dst == null) { rescheduleFast(); return; }
+            dst.clear();
+            bmp.copyPixelsToBuffer(dst);
+            sNewestSlot = slot;
+            sNextSlot = 1 - slot;
+            sLastFrameTs = System.currentTimeMillis();
+            // Preserve the Java-side reference so the ANR / exception / bug
+            // report paths can still encode JPEG at report time from Java
+            // heap — those paths run while Mono is alive and don't need the
+            // native-memory rescue.
+            sLastFrame = bmp;
+            // Tell the native signal handler which slot is "at crash" now.
+            try { BugpunchCrashHandler.setScreenshotNewestSlot(slot); }
+            catch (Throwable ignored) {}
+            if (!sHadFirstCapture) {
+                sHadFirstCapture = true;
+                Log.i(TAG, "first capture OK (" + sCaptureW + "x" + sCaptureH + ")");
+            }
+        } catch (Throwable ignored) {
+            // Never crash the app for a background screenshot.
+        }
+        rescheduleSlow();
     }
 
     /** Epoch ms timestamp of the last captured frame, or 0 if none. */

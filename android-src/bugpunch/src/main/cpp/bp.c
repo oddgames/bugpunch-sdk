@@ -29,10 +29,14 @@
 #define MAX_PATH 512
 #define MAX_FRAMES 64
 #define MAX_METADATA 256
-/* Build-ID table — populated at init, read at crash. Sized for a typical
- * Unity IL2CPP process (libunity, libil2cpp, libmain, libc, libart, a
- * handful of AAR-side .so, and game native plugins) with headroom. */
-#define MAX_MODULES 64
+/* Build-ID table — populated at init and re-snapshotted at crash time.
+ * Real Unity processes on Android 14/15 load 150+ native libs before any
+ * app code runs (system AIDL shims, a/v codecs, vendor HALs, Vulkan
+ * loaders, etc.) plus Unity's own libunity/libil2cpp/libmain + AAR-side
+ * .so + game native plugins. dl_iterate_phdr visits in load order, so a
+ * small cap silently truncates the APP libs — exactly the ones we need
+ * for symbolication. Bump generously; each entry is ~MAX_PATH+41 bytes. */
+#define MAX_MODULES 512
 #define MAX_BUILDID_HEX 41  /* 20-byte GNU build-id → 40 hex + null */
 
 /* ── Static state (pre-allocated, no malloc in handler) ── */
@@ -46,6 +50,56 @@ static char s_unity_version[MAX_METADATA] = {0};
 static char s_device_model[MAX_METADATA] = {0};
 static char s_os_version[MAX_METADATA] = {0};
 static char s_gpu_name[MAX_METADATA] = {0};
+
+/* Screenshot rescue path — the rolling capture keeps raw ARGB pixels in two
+ * native-memory slots (direct ByteBuffers owned by Java). On SIGSEGV we
+ * can't JPEG-encode (not async-signal-safe, needs malloc), so the handler
+ * dumps the raw bytes from the slot pointers into `.raw` files at these
+ * target paths. Drain on next launch encodes raw→JPEG before uploading.
+ *
+ * Newest-slot convention: 0 = slot A is the "at crash" frame; 1 = slot B.
+ * The stale slot becomes the "before" frame.
+ */
+static void* s_frame_slot_a = NULL;
+static void* s_frame_slot_b = NULL;
+static int   s_frame_w = 0;
+static int   s_frame_h = 0;
+static char s_frame_at_path[MAX_PATH] = {0};
+static char s_frame_before_path[MAX_PATH] = {0};
+static volatile int s_newest_slot = -1;
+
+/* Log snapshot rescue — same native-memory pattern as the screenshot ring.
+ * Java's logcat reader serializes the current ring into `s_logs_buf` each
+ * flush, then sets `s_logs_len` to the valid-byte count. At crash time we
+ * write [0..s_logs_len) to `s_logs_path`. No disk I/O during gameplay. */
+static void* s_logs_buf = NULL;
+static volatile int s_logs_len = 0;
+static char s_logs_path[MAX_PATH] = {0};
+
+/* Input breadcrumb ring — captures what the user was pressing in the seconds
+ * before the crash. Each entry is a fixed-size record so the signal handler
+ * can dump the whole slab without parsing. Java owns allocation (direct
+ * ByteBuffer) and writes entries in the C# Update() pipeline; bp.c reads
+ * them via GetDirectBufferAddress.
+ *
+ * Wire format per entry (must match InputEvent struct in BugpunchInput.java):
+ *   int64  timestampMs     // epoch millis
+ *   int32  type            // 0=touchDown,1=touchUp,2=touchMove,3=keyDown,4=keyUp,5=sceneChange
+ *   float  x, y            // screen coords (ignored for key/scene)
+ *   int32  keyCode         // key events
+ *   char   path[192]       // UI hierarchy "Canvas/Shop/Row[3]/BuyButton"
+ *   char   scene[32]       // active Unity scene
+ *   = 248 bytes per entry.
+ *
+ * Ring capacity set by Java (typically 128 entries → ~31 KB). We track the
+ * write head in `s_input_head` and total valid entries in `s_input_count`
+ * (capped at capacity — signals "ring has wrapped"). */
+static void* s_input_buf = NULL;
+static volatile int s_input_head = 0;
+static volatile int s_input_count = 0;
+static volatile int s_input_capacity = 0;
+static volatile int s_input_entry_size = 0;
+static char s_input_path[MAX_PATH] = {0};
 
 /* Previous signal handlers (for chaining) */
 static struct sigaction s_old_handlers[32]; /* indexed by signal number */
@@ -308,6 +362,132 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* ucontext) {
     safe_write_str(fd, "os_version:"); safe_write_str(fd, s_os_version); safe_write_str(fd, "\n");
     safe_write_str(fd, "gpu:"); safe_write_str(fd, s_gpu_name); safe_write_str(fd, "\n");
 
+    /* Screenshot rescue. The rolling capture keeps the most recent pixels
+     * alive in native memory (outside the Java heap, so unaffected by a
+     * Mono/IL2CPP meltdown). We dump them to disk here — write() is
+     * async-signal-safe, memcpy is implicit via the kernel, no Java/ART
+     * involvement. Drain code on next launch reads `.raw` + `frame_w/h` and
+     * encodes to JPEG for upload. */
+    if (s_frame_w > 0 && s_frame_h > 0) {
+        int newest = s_newest_slot;
+        void* at     = NULL;
+        void* before = NULL;
+        if (newest == 0) {
+            at     = s_frame_slot_a;
+            before = s_frame_slot_b;
+        } else if (newest == 1) {
+            at     = s_frame_slot_b;
+            before = s_frame_slot_a;
+        }
+        size_t bytes = (size_t)s_frame_w * (size_t)s_frame_h * 4u;
+        /* Dump the "at crash" slot first — it's the most valuable byte for
+         * byte, and a partial write on the older slot is still useful. */
+        if (at && s_frame_at_path[0]) {
+            int ffd = open(s_frame_at_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (ffd >= 0) {
+                /* write() may return short — loop until done or error. */
+                const char* p = (const char*)at;
+                size_t left = bytes;
+                while (left > 0) {
+                    ssize_t n = write(ffd, p, left);
+                    if (n <= 0) break;
+                    p += n;
+                    left -= (size_t)n;
+                }
+                close(ffd);
+                safe_write_str(fd, "screenshot:"); safe_write_str(fd, s_frame_at_path); safe_write_str(fd, "\n");
+            }
+        }
+        if (before && s_frame_before_path[0]) {
+            int ffd = open(s_frame_before_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (ffd >= 0) {
+                const char* p = (const char*)before;
+                size_t left = bytes;
+                while (left > 0) {
+                    ssize_t n = write(ffd, p, left);
+                    if (n <= 0) break;
+                    p += n;
+                    left -= (size_t)n;
+                }
+                close(ffd);
+                safe_write_str(fd, "context_screenshot:"); safe_write_str(fd, s_frame_before_path); safe_write_str(fd, "\n");
+            }
+        }
+        /* Dimensions + format — needed by drain to reconstruct a Bitmap. */
+        safe_write_str(fd, "frame_w:"); safe_write_u64(fd, (unsigned long long)s_frame_w); safe_write_str(fd, "\n");
+        safe_write_str(fd, "frame_h:"); safe_write_u64(fd, (unsigned long long)s_frame_h); safe_write_str(fd, "\n");
+        safe_write_str(fd, "frame_format:rgba8888\n");
+    }
+    /* Log snapshot: Java keeps the ring serialized into a native ByteBuffer.
+     * Dump [0..s_logs_len) to the configured path now. If either is unset or
+     * length is zero, the file simply doesn't exist and drain skips it. */
+    if (s_logs_buf && s_logs_len > 0 && s_logs_path[0]) {
+        int lfd = open(s_logs_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (lfd >= 0) {
+            const char* p = (const char*)s_logs_buf;
+            size_t left = (size_t)s_logs_len;
+            while (left > 0) {
+                ssize_t n = write(lfd, p, left);
+                if (n <= 0) break;
+                p += n;
+                left -= (size_t)n;
+            }
+            close(lfd);
+            safe_write_str(fd, "logs:"); safe_write_str(fd, s_logs_path); safe_write_str(fd, "\n");
+        }
+    }
+
+    /* Input breadcrumb ring: dump the valid entries only, in chronological
+     * order. The ring is circular; entries [head-count..head) mod capacity
+     * are valid (oldest to newest). Emit them into a single raw file and
+     * record the entry stride + count so drain can parse without guessing.
+     *
+     * Drain on next launch walks this file as `count` fixed-size records
+     * and converts to the JSON `breadcrumbs` metadata field. */
+    if (s_input_buf && s_input_count > 0 && s_input_path[0]
+        && s_input_capacity > 0 && s_input_entry_size > 0) {
+        int count = s_input_count;
+        int capacity = s_input_capacity;
+        int entrySize = s_input_entry_size;
+        int head = s_input_head;   /* next-write index; oldest = (head - count + cap) % cap */
+        if (count > capacity) count = capacity;
+        int start = (head - count + capacity) % capacity;
+        int bfd = open(s_input_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (bfd >= 0) {
+            /* Write the tail segment first (start..end-of-ring) then the
+             * head wrap (0..start) so output is chronological regardless
+             * of ring position. */
+            const char* base = (const char*)s_input_buf;
+            int tail = capacity - start;
+            if (tail > count) tail = count;
+            if (tail > 0) {
+                const char* p = base + (size_t)start * entrySize;
+                size_t left = (size_t)tail * entrySize;
+                while (left > 0) {
+                    ssize_t n = write(bfd, p, left);
+                    if (n <= 0) break;
+                    p += n;
+                    left -= (size_t)n;
+                }
+            }
+            int head_chunk = count - tail;
+            if (head_chunk > 0) {
+                const char* p = base;
+                size_t left = (size_t)head_chunk * entrySize;
+                while (left > 0) {
+                    ssize_t n = write(bfd, p, left);
+                    if (n <= 0) break;
+                    p += n;
+                    left -= (size_t)n;
+                }
+            }
+            close(bfd);
+            safe_write_str(fd, "breadcrumbs:");   safe_write_str(fd, s_input_path); safe_write_str(fd, "\n");
+            safe_write_str(fd, "breadcrumbs_count:"); safe_write_u64(fd, (unsigned long long)count); safe_write_str(fd, "\n");
+            safe_write_str(fd, "breadcrumbs_stride:"); safe_write_u64(fd, (unsigned long long)entrySize); safe_write_str(fd, "\n");
+        }
+    }
+
     /* Stack trace */
     safe_write_str(fd, "---STACK---\n");
     s_frame_count = capture_backtrace(s_frames, MAX_FRAMES);
@@ -319,6 +499,19 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* ucontext) {
         }
     }
     safe_write_str(fd, "---END---\n");
+
+    /* Re-snapshot the module table so libs loaded AFTER Bugpunch init
+     * (libil2cpp/libunity/libgame/AAR-bundled .so's) show up with proper
+     * load_addr + build-id. The init-time snapshot only catches what's
+     * loaded during JNI_OnLoad, which on Unity is just the system libs.
+     *
+     * dl_iterate_phdr isn't formally async-signal-safe — it takes the
+     * bionic loader lock — but the lock is only held during dlopen/dlclose,
+     * and crashing inside those is rare enough that Crashlytics/Breakpad
+     * historically accept the same tradeoff. If this ever deadlocks in the
+     * wild we'll switch to parsing /proc/self/maps + reading ELF NOTE
+     * sections from mapped memory, both of which are truly signal-safe. */
+    capture_modules();
 
     /* Loaded modules (name | load_addr | GNU build-id). Paired with the
      * server-side symbol store: server matches the build-id to the
@@ -474,4 +667,103 @@ Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetMetadata(
     COPY_FIELD(s_gpu_name, gpuName)
 
     #undef COPY_FIELD
+}
+
+/* Copy a jstring into a fixed-size char buffer; tolerates NULL jstring
+ * (clears the buffer). Used by the attachment-path setters below. */
+static void copy_jstring_to(JNIEnv* env, jstring src, char* dst, int max) {
+    if (!src) { dst[0] = '\0'; return; }
+    const char* s = (*env)->GetStringUTFChars(env, src, NULL);
+    if (!s) { dst[0] = '\0'; return; }
+    int i;
+    for (i = 0; s[i] && i < max - 1; i++) dst[i] = s[i];
+    dst[i] = '\0';
+    (*env)->ReleaseStringUTFChars(env, src, s);
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetScreenshotBuffers(
+    JNIEnv* env, jclass cls, jobject slotA, jobject slotB, jint width, jint height)
+{
+    (void)cls;
+    s_frame_slot_a = slotA ? (*env)->GetDirectBufferAddress(env, slotA) : NULL;
+    s_frame_slot_b = slotB ? (*env)->GetDirectBufferAddress(env, slotB) : NULL;
+    s_frame_w = (int)width;
+    s_frame_h = (int)height;
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetScreenshotAttachmentPaths(
+    JNIEnv* env, jclass cls, jstring atCrashPath, jstring beforePath)
+{
+    (void)cls;
+    copy_jstring_to(env, atCrashPath, s_frame_at_path,     MAX_PATH);
+    copy_jstring_to(env, beforePath,  s_frame_before_path, MAX_PATH);
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetScreenshotNewestSlot(
+    JNIEnv* env, jclass cls, jint slot)
+{
+    (void)env; (void)cls;
+    s_newest_slot = (int)slot;
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetLogsPath(
+    JNIEnv* env, jclass cls, jstring path)
+{
+    (void)cls;
+    copy_jstring_to(env, path, s_logs_path, MAX_PATH);
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetLogsBuffer(
+    JNIEnv* env, jclass cls, jobject buf)
+{
+    (void)cls;
+    s_logs_buf = buf ? (*env)->GetDirectBufferAddress(env, buf) : NULL;
+    if (!buf) s_logs_len = 0;
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetLogsLength(
+    JNIEnv* env, jclass cls, jint length)
+{
+    (void)env; (void)cls;
+    s_logs_len = (int)length;
+}
+
+/* Input breadcrumb ring — set once at startup. `buf` is a direct ByteBuffer
+ * owned by Java (allocated by BugpunchInput); we cache its native address
+ * so the signal handler can read entries without any JNI call. */
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetInputBuffer(
+    JNIEnv* env, jclass cls, jobject buf, jint capacity, jint entrySize)
+{
+    (void)cls;
+    s_input_buf = buf ? (*env)->GetDirectBufferAddress(env, buf) : NULL;
+    s_input_capacity = (int)capacity;
+    s_input_entry_size = (int)entrySize;
+    if (!buf) {
+        s_input_head = 0;
+        s_input_count = 0;
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetInputHead(
+    JNIEnv* env, jclass cls, jint head, jint count)
+{
+    (void)env; (void)cls;
+    s_input_head = (int)head;
+    s_input_count = (int)count;
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetInputPath(
+    JNIEnv* env, jclass cls, jstring path)
+{
+    (void)cls;
+    copy_jstring_to(env, path, s_input_path, MAX_PATH);
 }

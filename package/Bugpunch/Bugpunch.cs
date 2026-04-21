@@ -46,6 +46,85 @@ namespace ODDGames.Bugpunch
         }
 
         /// <summary>
+        /// Drop a custom marker into the breadcrumb ring. Surfaces in the
+        /// crash Storyboard alongside tap / scene / log events so you can
+        /// see the game's own narrative ("User entered checkout", "IAP.
+        /// begin", "Analytics: purchase_click") leading up to a crash.
+        ///
+        /// Lives in native memory (same ring as SDK-captured input events),
+        /// so it survives a Mono/IL2CPP meltdown and lands in the next
+        /// crash report even when the managed runtime is dead.
+        ///
+        /// <paramref name="category"/> is a short free-form tag the
+        /// dashboard shows in brackets — e.g. "flow", "iap", "net".
+        /// <paramref name="message"/> is the body the user will read.
+        /// Either may be null.
+        /// </summary>
+        public static void Breadcrumb(string category, string message)
+        {
+            if (!EnsureStarted()) return;
+            BugpunchNative.PushInputCustom(category, message);
+        }
+
+        // ── Analytics events ──
+
+        /// <summary>
+        /// Record a custom product-analytics event. Cheap, fire-and-forget:
+        /// native holds an in-memory ring and flushes in batches to the
+        /// server. Event name is required; properties are optional flat
+        /// key→value pairs (strings, numbers, bools — complex types are
+        /// ToString'd).
+        /// </summary>
+        public static void TrackEvent(string name, System.Collections.IDictionary properties = null)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(name)) return;
+            BugpunchNative.TrackEvent(name, SerializeDict(properties));
+        }
+
+        /// <summary>
+        /// Convenience: record an in-app purchase. Thin wrapper over
+        /// <see cref="TrackEvent"/> with a standard event name + property
+        /// shape so the dashboard can build revenue charts without each
+        /// game needing to pick its own conventions. Call from your
+        /// purchase callback — e.g. Unity IAP's ProcessPurchase, Google
+        /// Play Billing's onPurchasesUpdated, StoreKit's paymentQueue
+        /// transaction observer.
+        /// </summary>
+        public static void LogPurchase(string sku, double price, string currency = "USD",
+            string transactionId = null)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(sku)) return;
+            var props = new System.Collections.Generic.Dictionary<string, object> {
+                ["sku"] = sku,
+                ["price"] = price,
+                ["currency"] = currency ?? "USD",
+            };
+            if (!string.IsNullOrEmpty(transactionId)) props["transactionId"] = transactionId;
+            BugpunchNative.TrackEvent("purchase", SerializeDict(props));
+        }
+
+        /// <summary>
+        /// Convenience: record an ad impression. Call from your ad-SDK's
+        /// onAdShown/onImpression callback — e.g. AdMob's OnAdImpression,
+        /// AppLovin MAX's onAdDisplayed, ironSource's onImpressionSuccess.
+        /// <paramref name="revenue"/> is the eCPM / reported impression
+        /// revenue in USD (nullable — pass null if the network doesn't
+        /// expose it).
+        /// </summary>
+        public static void LogAdImpression(string placement, string format,
+            string network = null, double? revenue = null)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(placement)) return;
+            var props = new System.Collections.Generic.Dictionary<string, object> {
+                ["placement"] = placement,
+                ["format"] = format ?? "unknown",
+            };
+            if (!string.IsNullOrEmpty(network)) props["network"] = network;
+            if (revenue.HasValue) props["value"] = revenue.Value;
+            BugpunchNative.TrackEvent("ad_impression", SerializeDict(props));
+        }
+
+        /// <summary>
         /// Attach a custom key/value to subsequent reports. Lives in the native
         /// side's custom-data map; persists for the session.
         /// </summary>
@@ -249,6 +328,22 @@ namespace ODDGames.Bugpunch
             return v != null && float.TryParse(v, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : defaultValue;
         }
+
+        /// <summary>
+        /// Override the release branch for this process. Takes precedence over
+        /// the BugpunchConfig asset's `branch` field. Call before SDK init — e.g.
+        /// from a CI-generated partial class that bakes the current git branch
+        /// into the build.
+        /// </summary>
+        public static void SetBranch(string branch) => BugpunchClient.SetBranchOverride(branch);
+
+        /// <summary>
+        /// Override the changeset (commit SHA, CI build number, etc) for this
+        /// process. Takes precedence over the BugpunchConfig asset's `changeset`
+        /// field. Call before SDK init — typically from a CI-generated partial
+        /// class populated at build time.
+        /// </summary>
+        public static void SetChangeset(string changeset) => BugpunchClient.SetChangesetOverride(changeset);
 
         static bool EnsureStarted()
         {

@@ -167,11 +167,10 @@ static UIColor* BPParseColor(NSString* c) {
 
     BOOL landscape = self.view.bounds.size.width > self.view.bounds.size.height;
     CGFloat pad = landscape ? 10 : 16;
-    CGFloat hMargin = landscape ? 60 : 24;
+    CGFloat hMargin = landscape ? 40 : 24;
     CGFloat vMargin = landscape ? 8 : 24;
 
     // Panel card — semi-transparent, rounded, smaller than screen.
-    // In landscape, minimize vertical margins so the tool list has room.
     UIView* panel = [[UIView alloc] init];
     panel.backgroundColor = [UIColor colorWithRed:0.08 green:0.09 blue:0.11 alpha:0.92];
     panel.layer.cornerRadius = 16;
@@ -193,13 +192,13 @@ static UIColor* BPParseColor(NSString* c) {
         [header.topAnchor constraintEqualToAnchor:panel.topAnchor],
         [header.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:pad],
         [header.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-pad],
-        [header.heightAnchor constraintEqualToConstant:50],
+        [header.heightAnchor constraintEqualToConstant:landscape ? 40 : 50],
     ]];
 
     UILabel* title = [[UILabel alloc] init];
     title.text = @"Debug Tools";
     title.textColor = COL_TEXT;
-    title.font = [UIFont boldSystemFontOfSize:22];
+    title.font = [UIFont boldSystemFontOfSize:landscape ? 18 : 22];
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [header addSubview:title];
     [NSLayoutConstraint activateConstraints:@[
@@ -238,52 +237,112 @@ static UIColor* BPParseColor(NSString* c) {
         [search.heightAnchor constraintEqualToConstant:36],
     ]];
 
-    // ── Category chips ──
-    _catScroll = [[UIScrollView alloc] init];
-    _catScroll.showsHorizontalScrollIndicator = NO;
-    _catScroll.translatesAutoresizingMaskIntoConstraints = NO;
-    [panel addSubview:_catScroll];
-    [NSLayoutConstraint activateConstraints:@[
-        [_catScroll.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:8],
-        [_catScroll.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:pad],
-        [_catScroll.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-pad],
-        [_catScroll.heightAnchor constraintEqualToConstant:40],
-    ]];
-    _catStack = [[UIStackView alloc] init];
-    _catStack.axis = UILayoutConstraintAxisHorizontal;
-    _catStack.spacing = 6;
-    _catStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [_catScroll addSubview:_catStack];
-    [NSLayoutConstraint activateConstraints:@[
-        [_catStack.topAnchor constraintEqualToAnchor:_catScroll.topAnchor],
-        [_catStack.leadingAnchor constraintEqualToAnchor:_catScroll.leadingAnchor],
-        [_catStack.trailingAnchor constraintEqualToAnchor:_catScroll.trailingAnchor],
-        [_catStack.heightAnchor constraintEqualToAnchor:_catScroll.heightAnchor],
-    ]];
+    if (landscape) {
+        // ── Landscape: categories as vertical sidebar on the left, tool list on the right ──
+        UIView* body = [[UIView alloc] init];
+        body.translatesAutoresizingMaskIntoConstraints = NO;
+        [panel addSubview:body];
+        [NSLayoutConstraint activateConstraints:@[
+            [body.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:4],
+            [body.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:pad],
+            [body.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-pad],
+            [body.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor],
+        ]];
 
-    // ── Tool list ──
-    _toolScroll = [[UIScrollView alloc] init];
-    _toolScroll.translatesAutoresizingMaskIntoConstraints = NO;
-    _toolScroll.alwaysBounceVertical = YES;
-    [panel addSubview:_toolScroll];
-    [NSLayoutConstraint activateConstraints:@[
-        [_toolScroll.topAnchor constraintEqualToAnchor:_catScroll.bottomAnchor constant:8],
-        [_toolScroll.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:pad],
-        [_toolScroll.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-pad],
-        [_toolScroll.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor],
-    ]];
-    _toolStack = [[UIStackView alloc] init];
-    _toolStack.axis = UILayoutConstraintAxisVertical;
-    _toolStack.spacing = 4;
-    _toolStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [_toolScroll addSubview:_toolStack];
-    [NSLayoutConstraint activateConstraints:@[
-        [_toolStack.topAnchor constraintEqualToAnchor:_toolScroll.topAnchor],
-        [_toolStack.leadingAnchor constraintEqualToAnchor:_toolScroll.leadingAnchor],
-        [_toolStack.trailingAnchor constraintEqualToAnchor:_toolScroll.trailingAnchor],
-        [_toolStack.bottomAnchor constraintEqualToAnchor:_toolScroll.bottomAnchor],
-        [_toolStack.widthAnchor constraintEqualToAnchor:_toolScroll.widthAnchor],
-    ]];
+        // Category sidebar (vertical scroll)
+        _catScroll = [[UIScrollView alloc] init];
+        _catScroll.showsVerticalScrollIndicator = NO;
+        _catScroll.translatesAutoresizingMaskIntoConstraints = NO;
+        [body addSubview:_catScroll];
+        [NSLayoutConstraint activateConstraints:@[
+            [_catScroll.topAnchor constraintEqualToAnchor:body.topAnchor],
+            [_catScroll.leadingAnchor constraintEqualToAnchor:body.leadingAnchor],
+            [_catScroll.bottomAnchor constraintEqualToAnchor:body.bottomAnchor],
+            [_catScroll.widthAnchor constraintEqualToConstant:120],
+        ]];
+        _catStack = [[UIStackView alloc] init];
+        _catStack.axis = UILayoutConstraintAxisVertical;
+        _catStack.spacing = 4;
+        _catStack.translatesAutoresizingMaskIntoConstraints = NO;
+        [_catScroll addSubview:_catStack];
+        [NSLayoutConstraint activateConstraints:@[
+            [_catStack.topAnchor constraintEqualToAnchor:_catScroll.topAnchor],
+            [_catStack.leadingAnchor constraintEqualToAnchor:_catScroll.leadingAnchor],
+            [_catStack.trailingAnchor constraintEqualToAnchor:_catScroll.trailingAnchor],
+            [_catStack.widthAnchor constraintEqualToAnchor:_catScroll.widthAnchor],
+        ]];
+
+        // Tool list (fills remaining width)
+        _toolScroll = [[UIScrollView alloc] init];
+        _toolScroll.translatesAutoresizingMaskIntoConstraints = NO;
+        _toolScroll.alwaysBounceVertical = YES;
+        [body addSubview:_toolScroll];
+        [NSLayoutConstraint activateConstraints:@[
+            [_toolScroll.topAnchor constraintEqualToAnchor:body.topAnchor],
+            [_toolScroll.leadingAnchor constraintEqualToAnchor:_catScroll.trailingAnchor constant:10],
+            [_toolScroll.trailingAnchor constraintEqualToAnchor:body.trailingAnchor],
+            [_toolScroll.bottomAnchor constraintEqualToAnchor:body.bottomAnchor],
+        ]];
+        _toolStack = [[UIStackView alloc] init];
+        _toolStack.axis = UILayoutConstraintAxisVertical;
+        _toolStack.spacing = 4;
+        _toolStack.translatesAutoresizingMaskIntoConstraints = NO;
+        [_toolScroll addSubview:_toolStack];
+        [NSLayoutConstraint activateConstraints:@[
+            [_toolStack.topAnchor constraintEqualToAnchor:_toolScroll.topAnchor],
+            [_toolStack.leadingAnchor constraintEqualToAnchor:_toolScroll.leadingAnchor],
+            [_toolStack.trailingAnchor constraintEqualToAnchor:_toolScroll.trailingAnchor],
+            [_toolStack.bottomAnchor constraintEqualToAnchor:_toolScroll.bottomAnchor],
+            [_toolStack.widthAnchor constraintEqualToAnchor:_toolScroll.widthAnchor],
+        ]];
+    } else {
+        // ── Portrait: categories as horizontal chips above the tool list ──
+        _catScroll = [[UIScrollView alloc] init];
+        _catScroll.showsHorizontalScrollIndicator = NO;
+        _catScroll.translatesAutoresizingMaskIntoConstraints = NO;
+        [panel addSubview:_catScroll];
+        [NSLayoutConstraint activateConstraints:@[
+            [_catScroll.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:8],
+            [_catScroll.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:pad],
+            [_catScroll.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-pad],
+            [_catScroll.heightAnchor constraintEqualToConstant:40],
+        ]];
+        _catStack = [[UIStackView alloc] init];
+        _catStack.axis = UILayoutConstraintAxisHorizontal;
+        _catStack.spacing = 6;
+        _catStack.translatesAutoresizingMaskIntoConstraints = NO;
+        [_catScroll addSubview:_catStack];
+        [NSLayoutConstraint activateConstraints:@[
+            [_catStack.topAnchor constraintEqualToAnchor:_catScroll.topAnchor],
+            [_catStack.leadingAnchor constraintEqualToAnchor:_catScroll.leadingAnchor],
+            [_catStack.trailingAnchor constraintEqualToAnchor:_catScroll.trailingAnchor],
+            [_catStack.heightAnchor constraintEqualToAnchor:_catScroll.heightAnchor],
+        ]];
+
+        // Tool list
+        _toolScroll = [[UIScrollView alloc] init];
+        _toolScroll.translatesAutoresizingMaskIntoConstraints = NO;
+        _toolScroll.alwaysBounceVertical = YES;
+        [panel addSubview:_toolScroll];
+        [NSLayoutConstraint activateConstraints:@[
+            [_toolScroll.topAnchor constraintEqualToAnchor:_catScroll.bottomAnchor constant:8],
+            [_toolScroll.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:pad],
+            [_toolScroll.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-pad],
+            [_toolScroll.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor],
+        ]];
+        _toolStack = [[UIStackView alloc] init];
+        _toolStack.axis = UILayoutConstraintAxisVertical;
+        _toolStack.spacing = 4;
+        _toolStack.translatesAutoresizingMaskIntoConstraints = NO;
+        [_toolScroll addSubview:_toolStack];
+        [NSLayoutConstraint activateConstraints:@[
+            [_toolStack.topAnchor constraintEqualToAnchor:_toolScroll.topAnchor],
+            [_toolStack.leadingAnchor constraintEqualToAnchor:_toolScroll.leadingAnchor],
+            [_toolStack.trailingAnchor constraintEqualToAnchor:_toolScroll.trailingAnchor],
+            [_toolStack.bottomAnchor constraintEqualToAnchor:_toolScroll.bottomAnchor],
+            [_toolStack.widthAnchor constraintEqualToAnchor:_toolScroll.widthAnchor],
+        ]];
+    }
 
     [self rebuildCategories];
     [self rebuildToolList];
@@ -425,6 +484,9 @@ static UIColor* BPParseColor(NSString* c) {
         btn.layer.cornerRadius = 8;
         btn.contentEdgeInsets = UIEdgeInsetsMake(6, 16, 6, 16);
         btn.translatesAutoresizingMaskIntoConstraints = NO;
+        // Scale + darken on press for immediate tap feedback.
+        [btn addTarget:self action:@selector(buttonTouchDown:) forControlEvents:UIControlEventTouchDown];
+        [btn addTarget:self action:@selector(buttonTouchUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
         [btn addTarget:self action:@selector(buttonTapped:) forControlEvents:UIControlEventTouchUpInside];
         btn.accessibilityIdentifier = tool.toolId;
         [row addSubview:btn];
@@ -479,8 +541,31 @@ static UIColor* BPParseColor(NSString* c) {
 
 // ── Callbacks ──
 
+- (void)buttonTouchDown:(UIButton*)sender {
+    // Instant visual dim + shrink so the tap feels responsive before the
+    // script actually runs on the managed side.
+    [UIView animateWithDuration:0.08 animations:^{
+        sender.alpha = 0.7;
+        sender.transform = CGAffineTransformMakeScale(0.94, 0.94);
+    }];
+}
+
+- (void)buttonTouchUp:(UIButton*)sender {
+    [UIView animateWithDuration:0.18 animations:^{
+        sender.alpha = 1.0;
+        sender.transform = CGAffineTransformIdentity;
+    }];
+}
+
 - (void)buttonTapped:(UIButton*)sender {
+    // Fire the callback immediately so the game runs the action with zero delay.
     [self sendCallback:sender.accessibilityIdentifier action:@"click" value:@""];
+    // Flash "Running…" in the button title so the user sees the press registered.
+    NSString* original = [sender titleForState:UIControlStateNormal];
+    [sender setTitle:@"Running\u2026" forState:UIControlStateNormal];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [sender setTitle:original forState:UIControlStateNormal];
+    });
 }
 
 - (void)toggleChanged:(UISwitch*)sender {

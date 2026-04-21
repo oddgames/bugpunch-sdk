@@ -15,6 +15,20 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application>
+        <!--
+          Manifest-declared ContentProvider that runs before Application.onCreate()
+          returns. Reads bugpunch_config.json from APK assets (written at Unity
+          build time by BugpunchConfigBundle) and triggers native early init
+          (signal handlers, log ring, crash drain) before Unity boots. Same
+          pattern Firebase / Sentry / Crashlytics use for their early hooks.
+          initOrder="200" runs us ahead of common third-party init providers.
+        -->
+        <provider
+            android:name="au.com.oddgames.bugpunch.BugpunchInitProvider"
+            android:authorities="${applicationId}.bugpunchinit"
+            android:exported="false"
+            android:initOrder="200" />
+
         <activity
             android:name="au.com.oddgames.bugpunch.BugpunchProjectionRequest"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
@@ -23,24 +37,27 @@
 
         <activity
             android:name="au.com.oddgames.bugpunch.BugpunchCrashActivity"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <activity
             android:name="au.com.oddgames.bugpunch.BugpunchReportActivity"
-            android:theme="@android:style/Theme.NoTitleBar"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name="au.com.oddgames.bugpunch.BugpunchAnnotateActivity"
-            android:theme="@android:style/Theme.NoTitleBar"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <activity
@@ -48,6 +65,7 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <service

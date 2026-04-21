@@ -117,6 +117,62 @@ static NSData* BPBuildMultipart(NSDictionary* manifest, NSString* boundary) {
     return body;
 }
 
+/**
+ * After a successful phase-1 preflight, parse {@code responseBody} for
+ * {@code eventId} + {@code collect[]} and rewrite {@code manifest} in place
+ * to the phase-2 enrich shape (url with {id} substituted, rawJsonBody
+ * removed, files filtered by {@code requires} ∈ collect, attempts reset).
+ * Returns YES if the manifest was written back; NO when nothing needs to be
+ * sent (empty collect, no matching files, or invalid response).
+ */
+static BOOL BPTransitionToEnrich(NSMutableDictionary* manifest, NSString* manifestPath,
+                                 NSData* responseData) {
+    if (!responseData || responseData.length == 0) return NO;
+    NSError* err = nil;
+    id parsed = [NSJSONSerialization JSONObjectWithData:responseData options:0 error:&err];
+    if (err || ![parsed isKindOfClass:[NSDictionary class]]) return NO;
+    NSDictionary* res = (NSDictionary*)parsed;
+    NSString* eventId = res[@"eventId"];
+    NSArray* collectArr = res[@"collect"];
+    if (![eventId isKindOfClass:[NSString class]] || eventId.length == 0) return NO;
+    if (![collectArr isKindOfClass:[NSArray class]] || collectArr.count == 0) return NO;
+
+    NSString* enrichTemplate = manifest[@"enrichUrlTemplate"];
+    if (![enrichTemplate isKindOfClass:[NSString class]] || enrichTemplate.length == 0) return NO;
+
+    NSMutableSet* collect = [NSMutableSet set];
+    for (id v in collectArr) if ([v isKindOfClass:[NSString class]]) [collect addObject:v];
+
+    NSArray* inFiles = manifest[@"files"];
+    NSMutableArray* outFiles = [NSMutableArray array];
+    if ([inFiles isKindOfClass:[NSArray class]]) {
+        for (NSDictionary* f in inFiles) {
+            if (![f isKindOfClass:[NSDictionary class]]) continue;
+            NSString* req = f[@"requires"];
+            if (![req isKindOfClass:[NSString class]] || req.length == 0
+                || [collect containsObject:req]) {
+                [outFiles addObject:f];
+            }
+        }
+    }
+    if (outFiles.count == 0) return NO;
+
+    manifest[@"stage"] = @"enrich";
+    manifest[@"url"] = [enrichTemplate stringByReplacingOccurrencesOfString:@"{id}" withString:eventId];
+    [manifest removeObjectForKey:@"enrichUrlTemplate"];
+    [manifest removeObjectForKey:@"rawJsonBody"];
+    NSMutableDictionary* headers = [manifest[@"headers"] mutableCopy];
+    [headers removeObjectForKey:@"Content-Type"];
+    manifest[@"headers"] = headers ?: @{};
+    manifest[@"files"] = outFiles;
+    manifest[@"attempts"] = @0;
+
+    NSData* out = [NSJSONSerialization dataWithJSONObject:manifest options:0 error:nil];
+    if (!out) return NO;
+    [out writeToFile:manifestPath atomically:YES];
+    return YES;
+}
+
 static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
     NSError* err = nil;
     NSData* raw = [NSData dataWithContentsOfFile:manifestPath];
@@ -135,6 +191,8 @@ static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
         return;
     }
 
+    NSString* stage = manifest[@"stage"];
+    BOOL isPreflight = [stage isKindOfClass:[NSString class]] && [stage isEqualToString:@"preflight"];
     NSString* rawJsonBody = manifest[@"rawJsonBody"];
     BOOL isJson = [rawJsonBody isKindOfClass:[NSString class]];
 
@@ -176,12 +234,27 @@ static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
 
             if (ok) {
                 NSLog(@"[BugpunchUploader] uploaded %@", urlStr);
-                BPCleanup(manifest);
-                [[NSFileManager defaultManager] removeItemAtPath:manifestPath error:nil];
-                // /api/crashes responses carry matchedDirectives[] \u2014 apply them.
-                if ([urlStr hasSuffix:@"/api/crashes"] && d.length > 0) {
-                    NSString* respBody = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-                    if (respBody) BPDirectives_OnUploadResponse([urlStr UTF8String], [respBody UTF8String]);
+                if (isPreflight) {
+                    // Phase-1 /api/crashes response carries matchedDirectives[]
+                    // + eventId + collect[]. Dispatch directives now, then
+                    // transition the manifest to phase 2.
+                    if (d.length > 0) {
+                        NSString* respBody = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+                        if (respBody) BPDirectives_OnUploadResponse([urlStr UTF8String], [respBody UTF8String]);
+                    }
+                    BOOL advanced = BPTransitionToEnrich(manifest, manifestPath, d);
+                    if (!advanced) {
+                        // collect=[] (budget spent) or nothing to send —
+                        // clean up all attachments and drop the manifest.
+                        BPCleanup(manifest);
+                        [[NSFileManager defaultManager] removeItemAtPath:manifestPath error:nil];
+                    } else {
+                        // Kick another drain so phase 2 runs immediately.
+                        dispatch_async(BPUploaderQueue(), ^{ BPDrainQueueSync(); });
+                    }
+                } else {
+                    BPCleanup(manifest);
+                    [[NSFileManager defaultManager] removeItemAtPath:manifestPath error:nil];
                 }
             } else {
                 NSInteger attempts = [manifest[@"attempts"] integerValue] + 1;
@@ -330,7 +403,7 @@ void Bugpunch_EnqueueReportWithContext(const char* url, const char* apiKey,
             }
         }
         if (nsLogsGz) {
-            [files addObject:@{ @"field": @"logs", @"filename": @"logs.json.gz",
+            [files addObject:@{ @"field": @"logs", @"filename": @"logs.log.gz",
                                 @"contentType": @"application/gzip", @"path": nsLogsGz }];
             [cleanup addObject:nsLogsGz];
         }
@@ -423,7 +496,7 @@ void Bugpunch_EnqueueReportFull(const char* url, const char* apiKey,
             }
         }
         if (nsLogsGz) {
-            [files addObject:@{ @"field": @"logs", @"filename": @"logs.json.gz",
+            [files addObject:@{ @"field": @"logs", @"filename": @"logs.log.gz",
                                 @"contentType": @"application/gzip", @"path": nsLogsGz }];
             [cleanup addObject:nsLogsGz];
         }
@@ -451,6 +524,82 @@ void Bugpunch_EnqueueReportFull(const char* url, const char* apiKey,
 /// Kick the worker to scan and drain the queue.
 void Bugpunch_DrainUploadQueue(void) {
     dispatch_async(BPUploaderQueue(), ^{
+        BPDrainQueueSync();
+    });
+}
+
+/**
+ * Two-phase preflight + enrich. Phase 1 posts `jsonBody` to `preflightUrl`
+ * (/api/crashes); server response returns `eventId` + `collect[]`. On
+ * success the uploader rewrites the manifest to phase 2: multipart POST to
+ * `enrichUrlTemplate` (with {id} substituted) carrying only the attachments
+ * whose `requires` key appears in `collect`. Empty collect = skip phase 2
+ * and clean up. Both phases persist across app kill via the disk queue.
+ *
+ * `attachmentsJson` is a JSON array: [{field,filename,contentType,path,requires}, ...]
+ * (same shape as the on-disk manifest files[]). Passed as a string so the
+ * C# / callsite doesn't need to know iOS-specific collection types.
+ */
+void Bugpunch_EnqueuePreflight(const char* preflightUrlC, const char* enrichUrlTemplateC,
+                               const char* apiKeyC, const char* jsonBodyC,
+                               const char* attachmentsJsonC) {
+    if (!preflightUrlC || !*preflightUrlC) return;
+    NSString* preflightUrl = [NSString stringWithUTF8String:preflightUrlC];
+    NSString* enrichTemplate = (enrichUrlTemplateC && *enrichUrlTemplateC)
+        ? [NSString stringWithUTF8String:enrichUrlTemplateC] : @"";
+    NSString* apiKey = apiKeyC ? [NSString stringWithUTF8String:apiKeyC] : @"";
+    NSString* jsonBody = (jsonBodyC && *jsonBodyC)
+        ? [NSString stringWithUTF8String:jsonBodyC] : @"{}";
+    NSString* attachmentsJson = (attachmentsJsonC && *attachmentsJsonC)
+        ? [NSString stringWithUTF8String:attachmentsJsonC] : @"[]";
+
+    dispatch_async(BPUploaderQueue(), ^{
+        NSArray* parsedAttach = nil;
+        NSError* parseErr = nil;
+        id parsed = [NSJSONSerialization JSONObjectWithData:
+            [attachmentsJson dataUsingEncoding:NSUTF8StringEncoding]
+            options:0 error:&parseErr];
+        if ([parsed isKindOfClass:[NSArray class]]) parsedAttach = (NSArray*)parsed;
+
+        NSMutableArray* files = [NSMutableArray array];
+        NSMutableArray* cleanup = [NSMutableArray array];
+        if (parsedAttach) {
+            for (NSDictionary* a in parsedAttach) {
+                if (![a isKindOfClass:[NSDictionary class]]) continue;
+                NSString* path = a[@"path"];
+                if (![path isKindOfClass:[NSString class]] || path.length == 0) continue;
+                NSMutableDictionary* f = [NSMutableDictionary dictionary];
+                f[@"field"] = a[@"field"] ?: @"file";
+                f[@"filename"] = a[@"filename"] ?: path.lastPathComponent;
+                f[@"contentType"] = a[@"contentType"] ?: @"application/octet-stream";
+                f[@"path"] = path;
+                NSString* req = a[@"requires"];
+                if ([req isKindOfClass:[NSString class]] && req.length > 0) f[@"requires"] = req;
+                [files addObject:f];
+                [cleanup addObject:path];
+            }
+        }
+
+        NSMutableDictionary* m = [NSMutableDictionary dictionary];
+        m[@"stage"] = @"preflight";
+        m[@"url"] = preflightUrl;
+        m[@"enrichUrlTemplate"] = enrichTemplate;
+        m[@"headers"] = @{ @"X-Api-Key": apiKey, @"Content-Type": @"application/json" };
+        m[@"rawJsonBody"] = jsonBody;
+        m[@"files"] = files;
+        m[@"cleanupPaths"] = cleanup;
+        m[@"attempts"] = @0;
+
+        NSError* err = nil;
+        NSData* data = [NSJSONSerialization dataWithJSONObject:m options:0 error:&err];
+        if (!data) { NSLog(@"[BugpunchUploader] preflight serialize failed: %@", err); return; }
+        NSString* dir = BPQueueDirPath();
+        NSString* path = [dir stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"%@.upload.json", [[NSUUID UUID] UUIDString]]];
+        if (![data writeToFile:path atomically:YES]) {
+            NSLog(@"[BugpunchUploader] preflight manifest write failed: %@", path);
+            return;
+        }
         BPDrainQueueSync();
     });
 }

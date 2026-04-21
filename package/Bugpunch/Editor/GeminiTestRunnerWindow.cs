@@ -237,7 +237,7 @@ namespace ODDGames.Bugpunch.Editor
 
         private void AppendLog(string message)
         {
-            _log.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+            _log.Add($"[{DateTime.UtcNow:HH:mm:ss}] {message}");
             // Auto-scroll
             _logScroll.y = float.MaxValue;
             Repaint();

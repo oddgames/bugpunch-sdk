@@ -66,10 +66,14 @@ extern "C" {
 }
 
 // Log reader (same file for now — compact enough to inline).
+//
+// Zero device-side parsing: each OSLog entry becomes one raw text line
+// (logcat-ish format so the server's parser handles it the same way as
+// Android). The SDK never builds structured JSON — the server owns that.
 @interface BPLogReader : NSObject
 + (void)startWithMaxEntries:(NSInteger)n;
 + (void)stop;
-+ (NSString*)snapshotJson;
++ (NSString*)snapshotText;
 + (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace;
 @end
 
@@ -216,8 +220,9 @@ static NSArray* BPPrepareTraceAttachments(void) {
 }
 
 static NSString* BPEndpointFor(NSString* type) {
+    // exception/crash/anr go through the two-phase preflight path and never
+    // hit this function. Only user-initiated bug reports and feedback do.
     if ([type isEqualToString:@"feedback"]) return @"/api/reports/feedback";
-    if ([type isEqualToString:@"crash"])    return @"/api/crashes";
     return @"/api/reports/bug";
 }
 
@@ -248,11 +253,14 @@ static NSString* BPBuildMetadataJson(NSString* type, NSString* title,
         @"os":       d.metadata[@"osVersion"] ?: @"",
         @"platform": @"iOS",
         @"gpu":      d.metadata[@"gpu"] ?: @"",
+        @"deviceId": d.metadata[@"deviceId"] ?: @"",
     };
     m[@"app"] = @{
         @"version":       d.metadata[@"appVersion"] ?: @"",
         @"bundleId":      d.metadata[@"bundleId"] ?: @"",
         @"unityVersion":  d.metadata[@"unityVersion"] ?: @"",
+        @"branch":        d.metadata[@"branch"] ?: @"",
+        @"changeset":     d.metadata[@"changeset"] ?: @"",
         @"scene":         d.metadata[@"scene"] ?: @"",
         @"fps":           @(d.fps),
         @"installerMode": d.metadata[@"installerMode"] ?: @"unknown",
@@ -320,16 +328,19 @@ static void BPDumpRingAndTouches(NSString** outVideoPath, NSMutableDictionary* e
     }
 }
 
-/** Gzip the logs JSON snapshot to a temp file. Returns the path, or nil. */
+/** Gzip the raw log ring snapshot to a temp file. Returns the path, or nil
+ *  on I/O failure. Empty snapshots still round-trip — the server synthesizes
+ *  a stack-trace fallback when the parsed entry list is empty so the Logs
+ *  tab is never blank when there's something useful to show. */
 static NSString* BPWriteGzipLogs(void) {
-    NSString* logsJson = [BPLogReader snapshotJson];
-    if (!logsJson || logsJson.length < 3) return nil;  // "[]" = empty
-    NSData* raw = [logsJson dataUsingEncoding:NSUTF8StringEncoding];
+    NSString* text = [BPLogReader snapshotText];
+    if (!text) text = @"";
+    NSData* raw = [text dataUsingEncoding:NSUTF8StringEncoding];
     if (!raw) return nil;
     NSString* caches = NSSearchPathForDirectoriesInDomains(
         NSCachesDirectory, NSUserDomainMask, YES).firstObject;
     NSString* path = [caches stringByAppendingPathComponent:
-        [NSString stringWithFormat:@"bp_logs_%f.json.gz",
+        [NSString stringWithFormat:@"bp_logs_%f.log.gz",
             [NSDate timeIntervalSinceReferenceDate]]];
     gzFile gz = gzopen([path fileSystemRepresentation], "wb");
     if (!gz) return nil;
@@ -395,7 +406,6 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
     }
     while ([serverUrl hasSuffix:@"/"])
         serverUrl = [serverUrl substringToIndex:serverUrl.length - 1];
-    NSString* url = [serverUrl stringByAppendingString:BPEndpointFor(type)];
     NSString* videoPath = nil;
     NSMutableDictionary* mergedExtra = extra ? [extra mutableCopy] : [NSMutableDictionary dictionary];
     BPDumpRingAndTouches(&videoPath, mergedExtra);
@@ -419,8 +429,71 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
     NSArray* traceAttach = BPPrepareTraceAttachments();
     NSString* tracesPath = traceAttach ? (NSString*)traceAttach[0] : nil;
     NSArray<NSString*>* traceShots = traceAttach ? (NSArray*)traceAttach[1] : nil;
-    NSString* traceShotsCsv = traceShots.count ? [traceShots componentsJoinedByString:@","] : nil;
 
+    // Exception / crash / ANR go through the two-phase preflight path. Phase
+    // 1 POSTs the lightweight metadata JSON to /api/crashes; server replies
+    // with eventId + collect[] naming which heavy attachments it wants.
+    // Phase 2 multipart-POSTs those attachments to .../events/:id/enrich.
+    // bug / feedback keep the existing single-phase multipart since they're
+    // user-initiated and rare.
+    BOOL useTwoPhase = [type isEqualToString:@"exception"]
+        || [type isEqualToString:@"crash"]
+        || [type isEqualToString:@"anr"];
+
+    if (useTwoPhase) {
+        NSString* preflightUrl = [serverUrl stringByAppendingString:@"/api/crashes"];
+        NSString* enrichTemplate = [serverUrl
+            stringByAppendingString:@"/api/crashes/events/{id}/enrich"];
+        NSMutableArray* attach = [NSMutableArray array];
+        if (ctxShotPath) {
+            [attach addObject:@{ @"field": @"context_screenshot",
+                @"filename": @"context_screenshot.jpg", @"contentType": @"image/jpeg",
+                @"path": ctxShotPath, @"requires": @"context_screenshot" }];
+        }
+        if (shotPath) {
+            [attach addObject:@{ @"field": @"screenshot",
+                @"filename": @"screenshot.jpg", @"contentType": @"image/jpeg",
+                @"path": shotPath, @"requires": @"screenshot" }];
+        }
+        if (videoPath) {
+            [attach addObject:@{ @"field": @"video",
+                @"filename": @"video.mp4", @"contentType": @"video/mp4",
+                @"path": videoPath, @"requires": @"video" }];
+        }
+        if (logsGzPath) {
+            [attach addObject:@{ @"field": @"logs",
+                @"filename": @"logs.log.gz", @"contentType": @"application/gzip",
+                @"path": logsGzPath, @"requires": @"logs" }];
+        }
+        if (tracesPath) {
+            [attach addObject:@{ @"field": @"traces",
+                @"filename": @"traces.json", @"contentType": @"application/json",
+                @"path": tracesPath, @"requires": @"traces" }];
+        }
+        if (traceShots) {
+            for (NSUInteger i = 0; i < traceShots.count; i++) {
+                NSString* p = traceShots[i];
+                if (p.length == 0) continue;
+                [attach addObject:@{
+                    @"field": [NSString stringWithFormat:@"trace_%lu", (unsigned long)i],
+                    @"filename": [NSString stringWithFormat:@"trace_%lu.jpg", (unsigned long)i],
+                    @"contentType": @"image/jpeg",
+                    @"path": p,
+                    @"requires": @"traces" }];
+            }
+        }
+        NSData* attachJsonData = [NSJSONSerialization dataWithJSONObject:attach options:0 error:nil];
+        NSString* attachJson = attachJsonData
+            ? [[NSString alloc] initWithData:attachJsonData encoding:NSUTF8StringEncoding]
+            : @"[]";
+        extern void Bugpunch_EnqueuePreflight(const char*, const char*, const char*, const char*, const char*);
+        Bugpunch_EnqueuePreflight([preflightUrl UTF8String], [enrichTemplate UTF8String],
+            [apiKey UTF8String], [metadataJson UTF8String], [attachJson UTF8String]);
+        return;
+    }
+
+    NSString* url = [serverUrl stringByAppendingString:BPEndpointFor(type)];
+    NSString* traceShotsCsv = traceShots.count ? [traceShots componentsJoinedByString:@","] : nil;
     Bugpunch_EnqueueReportWithContext([url UTF8String], [apiKey UTF8String],
         [metadataJson UTF8String], [shotPath UTF8String],
         ctxShotPath ? [ctxShotPath UTF8String] : "",
@@ -436,8 +509,11 @@ extern "C" {
 
 bool Bugpunch_StartDebugMode(const char* configJson) {
     BPDebugMode* d = [BPDebugMode shared];
-    if (d.started) return true;
 
+    // Always re-parse and merge config + metadata so a second call from C#
+    // after the early +load bootstrap refreshes Unity-runtime values
+    // (Application.version, deviceId, persistentDataPath-resolved attachment
+    // rules, etc.) over what was seeded from the bundled JSON.
     NSDictionary* cfg = @{};
     if (configJson && *configJson) {
         NSData* data = [[NSString stringWithUTF8String:configJson]
@@ -445,7 +521,7 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
         if ([parsed isKindOfClass:[NSDictionary class]]) cfg = parsed;
     }
-    d.config = cfg;
+    if (cfg.count > 0 || !d.config) d.config = cfg;
 
     NSDictionary* metaDict = cfg[@"metadata"];
     if ([metaDict isKindOfClass:[NSDictionary class]]) {
@@ -456,22 +532,19 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         }
     }
 
-    // Detect installer mode (App Store / TestFlight / sideload).
-    NSURL* receiptURL = [[NSBundle mainBundle] appStoreReceiptURL];
-    if (receiptURL) {
-        d.metadata[@"installerMode"] = [[receiptURL lastPathComponent]
-            isEqualToString:@"sandboxReceipt"] ? @"testflight" : @"store";
-    } else {
-        d.metadata[@"installerMode"] = @"sideload";
+    // Installer mode — same result either call, set once.
+    if (!d.metadata[@"installerMode"]) {
+        NSURL* receiptURL = [[NSBundle mainBundle] appStoreReceiptURL];
+        if (receiptURL) {
+            d.metadata[@"installerMode"] = [[receiptURL lastPathComponent]
+                isEqualToString:@"sandboxReceipt"] ? @"testflight" : @"store";
+        } else {
+            d.metadata[@"installerMode"] = @"sideload";
+        }
     }
 
-    // Crash handlers — write crashes to caches dir. Install also drains the uploader.
-    NSString* caches = NSSearchPathForDirectoriesInDomains(
-        NSCachesDirectory, NSUserDomainMask, YES).firstObject;
-    NSString* crashDir = [caches stringByAppendingPathComponent:@"bugpunch_crashes"];
-    [[NSFileManager defaultManager] createDirectoryAtPath:crashDir
-        withIntermediateDirectories:YES attributes:nil error:nil];
-    Bugpunch_InstallCrashHandlers([crashDir UTF8String]);
+    // Refresh crash handler metadata every call so a late refresh from C#
+    // picks up Unity-runtime values for any crash that hits after Unity boots.
     Bugpunch_SetCrashMetadata(
         [d.metadata[@"appVersion"] ?: @"" UTF8String],
         [d.metadata[@"bundleId"] ?: @"" UTF8String],
@@ -479,6 +552,17 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         [d.metadata[@"deviceModel"] ?: @"" UTF8String],
         [d.metadata[@"osVersion"] ?: @"" UTF8String],
         [d.metadata[@"gpu"] ?: @"" UTF8String]);
+
+    // Everything below is one-time init — crash handler install, backbuffer,
+    // watchdog, log reader, shake, display link, crash drain.
+    if (d.started) return true;
+
+    NSString* caches = NSSearchPathForDirectoriesInDomains(
+        NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+    NSString* crashDir = [caches stringByAppendingPathComponent:@"bugpunch_crashes"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:crashDir
+        withIntermediateDirectories:YES attributes:nil error:nil];
+    Bugpunch_InstallCrashHandlers([crashDir UTF8String]);
 
     // Metal backbuffer capture — swizzles presentDrawable to blit each frame
     // to a shared-memory texture. Near-zero CPU cost per frame. Used for:
@@ -527,13 +611,15 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         NSString* srv = d.config[@"serverUrl"] ?: @"";
         NSString* key = d.config[@"apiKey"] ?: @"";
         if (srv.length > 0 && key.length > 0) {
-            NSString* url = [[srv stringByTrimmingCharactersInSet:
-                [NSCharacterSet characterSetWithCharactersInString:@"/"]]
-                stringByAppendingString:@"/api/crashes"];
+            NSString* base = [srv stringByTrimmingCharactersInSet:
+                [NSCharacterSet characterSetWithCharactersInString:@"/"]];
+            NSString* preflightUrl = [base stringByAppendingString:@"/api/crashes"];
+            NSString* enrichTemplate = [base
+                stringByAppendingString:@"/api/crashes/events/{id}/enrich"];
             extern const char* Bugpunch_GetPendingCrashFiles(void);
             extern const char* Bugpunch_ReadCrashFile(const char*);
             extern bool Bugpunch_DeleteCrashFile(const char*);
-            extern void BugpunchUploader_EnqueueJson(const char*, const char*, const char*);
+            extern void Bugpunch_EnqueuePreflight(const char*, const char*, const char*, const char*, const char*);
 
             const char* listC = Bugpunch_GetPendingCrashFiles();
             if (listC && *listC) {
@@ -579,6 +665,14 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                         body[@"errorMessage"] = type ?: @"iOS crash";
                         body[@"category"] = @"crash";
                     }
+                    // branch / changeset aren't written into the crash file —
+                    // pull from current runtime metadata (they don't change
+                    // within a build's lifetime so drain-time == crash-time).
+                    BPDebugMode* cur = [BPDebugMode shared];
+                    NSString* br = cur.metadata[@"branch"];
+                    if (br.length) body[@"branch"] = br;
+                    NSString* cs = cur.metadata[@"changeset"];
+                    if (cs.length) body[@"changeset"] = cs;
                     // Extract screenshot path for ANR reports.
                     NSString* shotPath = nil;
                     for (NSString* line in [rawStr componentsSeparatedByString:@"\n"]) {
@@ -605,17 +699,33 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                     if (bodyData) {
                         NSString* bodyStr = [[NSString alloc] initWithData:bodyData
                             encoding:NSUTF8StringEncoding];
-                        if (hasShot || ctxShotPath) {
-                            // Use multipart upload so the screenshot is attached.
-                            NSString* shot = hasShot ? shotPath : @"";
-                            NSString* ctx = ctxShotPath ?: @"";
-                            Bugpunch_EnqueueReportWithContext([url UTF8String], [key UTF8String],
-                                [bodyStr UTF8String], [shot UTF8String],
-                                [ctx UTF8String], "", "",
-                                NULL, NULL, NULL);
-                        } else {
-                            BugpunchUploader_EnqueueJson([url UTF8String], [key UTF8String], [bodyStr UTF8String]);
+                        // Previous-launch native crashes use the same preflight
+                        // path — server gets device info up-front, decides
+                        // whether the screenshot is worth uploading before the
+                        // SDK ships it.
+                        NSMutableArray* attach = [NSMutableArray array];
+                        if (hasShot) {
+                            [attach addObject:@{ @"field": @"screenshot",
+                                @"filename": @"screenshot.jpg",
+                                @"contentType": @"image/jpeg",
+                                @"path": shotPath,
+                                @"requires": @"screenshot" }];
                         }
+                        if (ctxShotPath) {
+                            [attach addObject:@{ @"field": @"context_screenshot",
+                                @"filename": @"context_screenshot.jpg",
+                                @"contentType": @"image/jpeg",
+                                @"path": ctxShotPath,
+                                @"requires": @"context_screenshot" }];
+                        }
+                        NSData* attachJsonData = [NSJSONSerialization dataWithJSONObject:attach
+                            options:0 error:nil];
+                        NSString* attachJson = attachJsonData
+                            ? [[NSString alloc] initWithData:attachJsonData encoding:NSUTF8StringEncoding]
+                            : @"[]";
+                        Bugpunch_EnqueuePreflight([preflightUrl UTF8String],
+                            [enrichTemplate UTF8String], [key UTF8String],
+                            [bodyStr UTF8String], [attachJson UTF8String]);
                         Bugpunch_DeleteCrashFile([p UTF8String]);
                         NSLog(@"[Bugpunch] queued pending crash: %@ (screenshot=%@, context=%@)",
                             p, hasShot ? @"yes" : @"no", ctxShotPath ? @"yes" : @"no");
@@ -768,6 +878,113 @@ void Bugpunch_Trace(const char* label, const char* tagsJson) {
     BPAddTrace(l, tj, nil);
 }
 
+// ── Custom product-analytics events ──────────────────────────────────
+//
+// In-memory ring; flushed every kBPAnalyticsFlushSeconds or at
+// kBPAnalyticsFlushSize, whichever comes first. Flush goes through
+// BugpunchUploader_EnqueueJson so disk persistence + retry match the
+// other upload paths.
+
+static const NSInteger kBPAnalyticsBufferMax = 500;
+static const NSInteger kBPAnalyticsFlushSize = 50;
+static const NSTimeInterval kBPAnalyticsFlushSeconds = 15.0;
+
+static NSMutableArray<NSDictionary*>* gAnalyticsBuffer;
+static NSObject* gAnalyticsLock;
+static dispatch_source_t gAnalyticsTimer;
+static NSString* gAnalyticsSessionId;
+
+extern "C" void BugpunchUploader_EnqueueJson(const char*, const char*, const char*);
+
+static void BPFlushAnalytics(void);
+
+static void BPEnsureAnalyticsInit(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gAnalyticsBuffer = [NSMutableArray array];
+        gAnalyticsLock = [NSObject new];
+        gAnalyticsSessionId = [[NSUUID UUID] UUIDString];
+        gAnalyticsTimer = dispatch_source_create(
+            DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+            dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+        uint64_t interval = (uint64_t)(kBPAnalyticsFlushSeconds * NSEC_PER_SEC);
+        dispatch_source_set_timer(gAnalyticsTimer,
+            dispatch_time(DISPATCH_TIME_NOW, interval), interval, interval / 10);
+        dispatch_source_set_event_handler(gAnalyticsTimer, ^{ BPFlushAnalytics(); });
+        dispatch_resume(gAnalyticsTimer);
+    });
+}
+
+void Bugpunch_TrackEvent(const char* name, const char* propertiesJson) {
+    if (!name || !*name) return;
+    BPEnsureAnalyticsInit();
+
+    NSString* evName = [NSString stringWithUTF8String:name];
+    NSDictionary* props = nil;
+    if (propertiesJson && *propertiesJson) {
+        NSData* d = [[NSString stringWithUTF8String:propertiesJson]
+            dataUsingEncoding:NSUTF8StringEncoding];
+        id parsed = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+        if ([parsed isKindOfClass:[NSDictionary class]]) props = parsed;
+    }
+
+    BPDebugMode* dbg = [BPDebugMode shared];
+    NSString* buildVersion = dbg.config[@"appVersion"] ?: @"";
+    NSString* deviceId = dbg.config[@"deviceId"] ?: @"";
+    NSString* scene = dbg.config[@"scene"] ?: @"";
+    NSString* userId = dbg.customData[@"userId"];
+
+    NSMutableDictionary* ev = [NSMutableDictionary dictionary];
+    ev[@"name"] = evName;
+    if (props) ev[@"properties"] = props;
+    ev[@"timestamp"] = [[NSISO8601DateFormatter new] stringFromDate:[NSDate date]];
+    ev[@"platform"] = @"ios";
+    ev[@"deviceId"] = deviceId;
+    ev[@"sessionId"] = gAnalyticsSessionId;
+    ev[@"buildVersion"] = buildVersion;
+    ev[@"branch"] = dbg.metadata[@"branch"] ?: @"";
+    ev[@"changeset"] = dbg.metadata[@"changeset"] ?: @"";
+    ev[@"scene"] = scene;
+    if (userId) ev[@"userId"] = userId;
+
+    BOOL shouldFlush = NO;
+    @synchronized (gAnalyticsLock) {
+        if (gAnalyticsBuffer.count >= kBPAnalyticsBufferMax) {
+            [gAnalyticsBuffer removeObjectAtIndex:0];
+        }
+        [gAnalyticsBuffer addObject:ev];
+        shouldFlush = (NSInteger)gAnalyticsBuffer.count >= kBPAnalyticsFlushSize;
+    }
+    if (shouldFlush) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            BPFlushAnalytics();
+        });
+    }
+}
+
+static void BPFlushAnalytics(void) {
+    NSArray* drained;
+    @synchronized (gAnalyticsLock) {
+        if (gAnalyticsBuffer.count == 0) return;
+        drained = [gAnalyticsBuffer copy];
+        [gAnalyticsBuffer removeAllObjects];
+    }
+    BPDebugMode* dbg = [BPDebugMode shared];
+    NSString* serverUrl = dbg.config[@"serverUrl"] ?: @"";
+    NSString* apiKey = dbg.config[@"apiKey"] ?: @"";
+    if (serverUrl.length == 0 || apiKey.length == 0) return;
+    while ([serverUrl hasSuffix:@"/"])
+        serverUrl = [serverUrl substringToIndex:serverUrl.length - 1];
+    NSString* url = [serverUrl stringByAppendingString:@"/api/v1/analytics/events"];
+
+    NSDictionary* body = @{ @"events": drained };
+    NSError* err = nil;
+    NSData* data = [NSJSONSerialization dataWithJSONObject:body options:0 error:&err];
+    if (!data) { NSLog(@"[Bugpunch] analytics serialize failed: %@", err); return; }
+    NSString* bodyStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    BugpunchUploader_EnqueueJson([url UTF8String], [apiKey UTF8String], [bodyStr UTF8String]);
+}
+
 void Bugpunch_TraceScreenshot(const char* label, const char* tagsJson) {
     if (!label || !*label) return;
     NSString* l = [NSString stringWithUTF8String:label];
@@ -826,13 +1043,14 @@ void Bugpunch_PushLogEntry(const char* type, const char* message,
 }
 
 static const NSInteger kStartupSize = 2000;
-static NSMutableArray* gStartupBuffer;
-static NSMutableArray* gLogBuffer;
+static NSMutableArray<NSString*>* gStartupBuffer;
+static NSMutableArray<NSString*>* gLogBuffer;
 static NSInteger gMaxEntries = 2000;
 static NSInteger gSkippedCount = 0;
 static BOOL gStartupFull = NO;
 static dispatch_source_t gLogTimer;
 static NSDate* gLastFetch;
+static NSDateFormatter* gLineFmt;
 
 + (void)startWithMaxEntries:(NSInteger)n {
     gMaxEntries = MAX(50, n);
@@ -842,6 +1060,11 @@ static NSDate* gLastFetch;
     gSkippedCount = 0;
     // Look back 60s on first poll to capture startup logs.
     gLastFetch = [NSDate dateWithTimeIntervalSinceNow:-60];
+    // logcat-ish "MM-dd HH:mm:ss.SSS" so the server parser can match one
+    // format across Android + iOS.
+    gLineFmt = [[NSDateFormatter alloc] init];
+    gLineFmt.dateFormat = @"MM-dd HH:mm:ss.SSS";
+    gLineFmt.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
 
     // Poll OSLogStore every 2s. Too-frequent polling hurts battery; 2s is
     // fine given crash dumps happen on demand and buffer is just "recent
@@ -868,97 +1091,76 @@ static NSDate* gLastFetch;
         if (!en) return;
         for (OSLogEntryLog* e in en) {
             if (![e isKindOfClass:[OSLogEntryLog class]]) continue;
-            NSString* type = [BPLogReader mapLevel:e.level];
+            NSString* lvl = [BPLogReader levelCharFor:e.level];
+            NSString* subsystem = e.subsystem.length > 0 ? e.subsystem : @"iOS";
             NSString* msg = e.composedMessage ?: @"";
-            @synchronized (gLogBuffer) {
-                // Dedup: check tail of ring buffer, then startup buffer.
-                NSMutableDictionary* last = gLogBuffer.lastObject;
-                if (!last && gStartupBuffer.count > 0) last = gStartupBuffer.lastObject;
-                if (last && [last[@"type"] isEqualToString:type]
-                         && [last[@"message"] isEqualToString:msg]) {
-                    last[@"repeat"] = @([last[@"repeat"] integerValue] + 1);
-                } else {
-                    NSMutableDictionary* entry = [@{
-                        @"time": @([e.date timeIntervalSince1970] * 1000),
-                        @"type": type,
-                        @"message": msg,
-                        @"stackTrace": @"",
-                        @"repeat": @1,
-                    } mutableCopy];
-                    // Fill startup buffer first.
-                    if (!gStartupFull) {
-                        [gStartupBuffer addObject:entry];
-                        if ((NSInteger)gStartupBuffer.count >= kStartupSize) gStartupFull = YES;
-                    } else {
-                        [gLogBuffer addObject:entry];
-                        while ((NSInteger)gLogBuffer.count > gMaxEntries) {
-                            [gLogBuffer removeObjectAtIndex:0];
-                            gSkippedCount++;
-                        }
-                    }
-                }
-            }
+            NSString* line = [NSString stringWithFormat:@"%@     0     0 %@ %@: %@",
+                [gLineFmt stringFromDate:e.date], lvl, subsystem, msg];
+            [BPLogReader appendLine:line];
         }
         gLastFetch = [NSDate date];
     }
 }
 
-+ (NSString*)mapLevel:(OSLogEntryLogLevel)level API_AVAILABLE(ios(15.0)) {
-    switch (level) {
-        case OSLogEntryLogLevelFault:
-        case OSLogEntryLogLevelError: return @"Error";
-        case OSLogEntryLogLevelNotice: return @"Warning";
-        default: return @"Log";
-    }
-}
++ (void)appendLine:(NSString*)line {
+    if (!line) return;
+    // N5: tee to the native log sink. Bugpunch_TunnelEnqueueLogLine no-ops
+    // unless alwaysLog + consent.accepted + tunnel connected, so it's free
+    // for non-QA devices.
+    extern void Bugpunch_TunnelEnqueueLogLine(const char*);
+    const char* c = [line UTF8String];
+    if (c) Bugpunch_TunnelEnqueueLogLine(c);
 
-+ (NSString*)snapshotJson {
-    NSMutableArray* combined = [NSMutableArray array];
     @synchronized (gLogBuffer) {
-        [combined addObjectsFromArray:gStartupBuffer];
-        if (gSkippedCount > 0) {
-            [combined addObject:@{
-                @"type": @"Log",
-                @"message": [NSString stringWithFormat:@"--- %ld log entries omitted ---", (long)gSkippedCount],
-                @"stackTrace": @"",
-            }];
-        }
-        [combined addObjectsFromArray:gLogBuffer];
-    }
-    if (combined.count == 0) return @"[]";
-    NSData* d = [NSJSONSerialization dataWithJSONObject:combined options:0 error:nil];
-    return d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"[]";
-}
-
-+ (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace {
-    if (!gLogBuffer) return;  // not started yet
-    @synchronized (gLogBuffer) {
-        // Dedup against tail (same as pullOnce).
-        NSMutableDictionary* last = gLogBuffer.lastObject;
-        if (!last && gStartupBuffer.count > 0) last = gStartupBuffer.lastObject;
-        if (last && [last[@"type"] isEqualToString:type]
-                 && [last[@"message"] isEqualToString:message]) {
-            last[@"repeat"] = @([last[@"repeat"] integerValue] + 1);
-            return;
-        }
-        NSMutableDictionary* entry = [@{
-            @"time": @([[NSDate date] timeIntervalSince1970] * 1000),
-            @"type": type ?: @"Log",
-            @"message": message ?: @"",
-            @"stackTrace": stackTrace ?: @"",
-            @"repeat": @1,
-        } mutableCopy];
         if (!gStartupFull) {
-            [gStartupBuffer addObject:entry];
+            [gStartupBuffer addObject:line];
             if ((NSInteger)gStartupBuffer.count >= kStartupSize) gStartupFull = YES;
         } else {
-            [gLogBuffer addObject:entry];
+            [gLogBuffer addObject:line];
             while ((NSInteger)gLogBuffer.count > gMaxEntries) {
                 [gLogBuffer removeObjectAtIndex:0];
                 gSkippedCount++;
             }
         }
     }
+}
+
++ (NSString*)levelCharFor:(OSLogEntryLogLevel)level API_AVAILABLE(ios(15.0)) {
+    switch (level) {
+        case OSLogEntryLogLevelFault: return @"F";
+        case OSLogEntryLogLevelError: return @"E";
+        case OSLogEntryLogLevelNotice: return @"W";
+        default: return @"I";
+    }
+}
+
++ (NSString*)snapshotText {
+    NSMutableString* out = [NSMutableString stringWithCapacity:8192];
+    @synchronized (gLogBuffer) {
+        for (NSString* s in gStartupBuffer) { [out appendString:s]; [out appendString:@"\n"]; }
+        if (gSkippedCount > 0) {
+            [out appendFormat:@"--- %ld log entries omitted ---\n", (long)gSkippedCount];
+        }
+        for (NSString* s in gLogBuffer) { [out appendString:s]; [out appendString:@"\n"]; }
+    }
+    return out;
+}
+
++ (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace {
+    if (!gLogBuffer) return;  // not started yet
+    NSString* lvl =
+        [type isEqualToString:@"Error"]     ? @"E" :
+        [type isEqualToString:@"Exception"] ? @"E" :
+        [type isEqualToString:@"Warning"]   ? @"W" : @"I";
+    NSString* msg = message ?: @"";
+    if (stackTrace.length > 0) {
+        // Join stack onto the message line; server parser treats everything
+        // after the first newline in a single logical line as stack.
+        msg = [msg stringByAppendingFormat:@"\n%@", stackTrace];
+    }
+    NSString* line = [NSString stringWithFormat:@"%@     0     0 %@ Unity: %@",
+        [gLineFmt stringFromDate:[NSDate date]], lvl, msg];
+    [BPLogReader appendLine:line];
 }
 @end
 

@@ -27,6 +27,8 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import android.widget.ImageView;
+
 import java.io.File;
 
 /**
@@ -106,6 +108,31 @@ public class BugpunchCrashActivity extends Activity {
         root.setPadding(pad, dp(24), pad, pad);
         scrollView.addView(root, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // ── Logo row ──
+        LinearLayout logoRow = new LinearLayout(this);
+        logoRow.setOrientation(LinearLayout.HORIZONTAL);
+        logoRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        int logoResId = getResources().getIdentifier("bugpunch_logo", "drawable", getPackageName());
+        if (logoResId != 0) {
+            ImageView logoImg = new ImageView(this);
+            logoImg.setImageResource(logoResId);
+            logoImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(24), dp(24));
+            logoParams.setMarginEnd(dp(6));
+            logoRow.addView(logoImg, logoParams);
+        }
+
+        TextView logoLabel = new TextView(this);
+        logoLabel.setText("Bugpunch");
+        logoLabel.setTextColor(Color.parseColor("#999999"));
+        logoLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        logoLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        logoRow.addView(logoLabel);
+
+        root.addView(logoRow);
+        addSpacer(root, dp(8));
 
         // ── Header ──
         TextView header = new TextView(this);

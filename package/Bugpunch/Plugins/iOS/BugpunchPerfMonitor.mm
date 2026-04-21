@@ -136,6 +136,8 @@ static NSString* BPBuildEventJson(NSString* trigger) {
     event[@"trigger"] = trigger;
     event[@"scene"] = sCurrentScene ?: @"unknown";
     event[@"buildVersion"] = d.metadata[@"appVersion"] ?: @"";
+    event[@"branch"] = d.metadata[@"branch"] ?: @"";
+    event[@"changeset"] = d.metadata[@"changeset"] ?: @"";
     event[@"platform"] = @"iOS";
     event[@"deviceId"] = [[[UIDevice currentDevice] identifierForVendor] UUIDString] ?: @"";
     event[@"deviceName"] = [UIDevice currentDevice].name ?: @"";

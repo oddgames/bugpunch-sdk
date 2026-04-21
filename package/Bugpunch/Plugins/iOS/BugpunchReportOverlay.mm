@@ -205,6 +205,15 @@ void Bugpunch_ShowReportWelcome(ReportOverlayCallback onConfirm, ReportOverlayCa
         card.translatesAutoresizingMaskIntoConstraints = NO;
         [sWelcomeBackdrop addSubview:card];
 
+        // Bugpunch logo
+        UIImageView *logoView = [[UIImageView alloc] init];
+        NSString *logoPath = [[NSBundle mainBundle] pathForResource:@"bugpunch-logo" ofType:@"png"];
+        if (!logoPath) logoPath = [[NSBundle mainBundle] pathForResource:@"bugpunch-logo@2x" ofType:@"png"];
+        if (logoPath) logoView.image = [UIImage imageWithContentsOfFile:logoPath];
+        logoView.contentMode = UIViewContentModeScaleAspectFit;
+        logoView.translatesAutoresizingMaskIntoConstraints = NO;
+        [card addSubview:logoView];
+
         // Icons row
         UIView *iconsRow = [[UIView alloc] init];
         iconsRow.translatesAutoresizingMaskIntoConstraints = NO;
@@ -265,7 +274,12 @@ void Bugpunch_ShowReportWelcome(ReportOverlayCallback onConfirm, ReportOverlayCa
             [card.centerYAnchor constraintEqualToAnchor:sWelcomeBackdrop.centerYAnchor],
             [card.widthAnchor constraintEqualToConstant:cardW],
 
-            [iconsRow.topAnchor constraintEqualToAnchor:card.topAnchor constant:pad],
+            [logoView.topAnchor constraintEqualToAnchor:card.topAnchor constant:pad],
+            [logoView.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
+            [logoView.widthAnchor constraintEqualToConstant:44],
+            [logoView.heightAnchor constraintEqualToConstant:44],
+
+            [iconsRow.topAnchor constraintEqualToAnchor:logoView.bottomAnchor constant:padSmall],
             [iconsRow.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
             [iconsRow.heightAnchor constraintEqualToConstant:56],
             [iconsRow.widthAnchor constraintEqualToConstant:128],

@@ -13,6 +13,20 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("API key (from project settings on the dashboard)")]
         public string apiKey = "";
 
+        [Header("Release Info")]
+        [Tooltip("Free-form release branch / channel label (e.g. main, staging, beta-ios). " +
+                 "Reported with crash/perf events and usable in Game Config condition rules. " +
+                 "Leave blank if not applicable. Can be overridden at runtime via " +
+                 "Bugpunch.SetBranch(\"...\") before SDK init — handy for CI pipelines " +
+                 "that bake the current git branch into each build.")]
+        public string branch = "";
+
+        [Tooltip("Manual changeset identifier for this build (e.g. short commit SHA, CI build number). " +
+                 "Set by CI before building — either edit this field programmatically in a pre-build " +
+                 "hook, or call Bugpunch.SetChangeset(\"...\") before SDK init. Reported with crash/perf " +
+                 "events and usable in Game Config condition rules.")]
+        public string changeset = "";
+
         [Header("Performance Monitoring")]
         [Tooltip("Enable native performance monitoring (FPS, memory, thermals, ANR detection). " +
                  "Runs on a background thread with minimal overhead. Reports are sent alongside " +
@@ -26,10 +40,44 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Auto-connect on app start (debug builds / editor). When off, the game must call BugpunchClient.StartConnection() explicitly.")]
         public bool autoStart = false;
 
+        [Tooltip("Declares the intended audience for this build. Controls server-side guardrails for QA pins:\n" +
+                 "• internal — all pins available (QA builds, alpha testers)\n" +
+                 "• beta — alwaysLog and alwaysRemote allowed; alwaysDebug warns\n" +
+                 "• production — alwaysDebug is refused (video capture on a shipped build is a privacy disaster). " +
+                 "alwaysLog / alwaysRemote still work but require an extra confirm in the dashboard.")]
+        public BuildChannel buildChannel = BuildChannel.Internal;
+
+        public enum BuildChannel { Internal, Beta, Production }
+
+        [Tooltip("Upload the built APK/IPA to the server after each Player build so testers can pull " +
+                 "it from the dashboard's Builds page. Default is off — a full build is tens-to-hundreds " +
+                 "of MB, and for local/iterative builds you usually don't want to spend the bandwidth. " +
+                 "Turn on for CI / release builds.")]
+        public bool buildUploadEnabled = false;
+
         [Tooltip("Upload Android unstripped symbols (and — via upload-ios-symbols.sh — iOS dSYMs) after each Player build. " +
-                 "Native crash reports still write build-IDs regardless; enabling this changes whether those IDs can be " +
-                 "resolved to source on the dashboard.")]
-        public bool symbolUploadEnabled = true;
+                 "Native crash reports always write build-IDs; enabling this is what makes them resolvable to function " +
+                 "names (and source:line at Debugging level) on the dashboard. " +
+                 "Works with Player Settings → Publishing Settings → Symbols set to either 'Public' (SymbolTable) or " +
+                 "'Debugging' (Full DWARF). Public gives function names via .symtab + IL2CPP method-map. Debugging " +
+                 "gives exact source:line per crash frame but produces 1-2 GB per ABI for libil2cpp. Default is off " +
+                 "since uploads are bandwidth-heavy — turn on for CI / release / pre-release QA builds.")]
+        public bool symbolUploadEnabled = false;
+
+        [Tooltip("How many .so files to upload concurrently. Default 6 covers a typical " +
+                 "build's batch (3 ABIs × 2 libs after dedupe) in one wave. Bump higher only " +
+                 "if you have lots of native plugins; on a residential pipe bumping past your " +
+                 "upstream bandwidth ÷ ~5 Mbps/stream gives diminishing returns. Each in-flight " +
+                 "upload also stages its multipart body to /tmp, so for Debugging-level builds " +
+                 "(1-2 GB libil2cpp per ABI) high concurrency means high temp-disk usage. " +
+                 "Range: 1-16; clamped to that range at runtime.")]
+        [Range(1, 16)]
+        public int symbolUploadConcurrency = 6;
+
+        [Tooltip("Optional override for large uploads (symbols, builds). Leave blank to use serverUrl. " +
+                 "Use this to bypass a CDN (e.g. Cloudflare's 100MB request body cap) by pointing at a DNS-only " +
+                 "subdomain that resolves straight to the origin. Example: https://api.bugpunch.com.")]
+        public string uploadServerUrl = "";
 
         [Header("Crash Attachment Allow-list")]
         [Tooltip("Files Bugpunch is allowed to read and upload with a crash report. " +
@@ -39,7 +87,26 @@ namespace ODDGames.Bugpunch.DeviceConnect
                  "[TemporaryCachePath], [DataPath].")]
         public AttachmentRule[] attachmentRules = Array.Empty<AttachmentRule>();
 
+        [Header("Log Redaction")]
+        [Tooltip("Regex rules applied natively to every captured log line before it leaves the device via " +
+                 "the QA log sink. Each match is replaced with [redacted:NAME]. Use this to strip user " +
+                 "emails, auth tokens, session IDs, or anything else that shouldn't leave the device even " +
+                 "when the admin has enrolled alwaysLog. Matches are evaluated in order; a line can be " +
+                 "touched by multiple rules.")]
+        public LogRedactionRule[] logRedactionRules = Array.Empty<LogRedactionRule>();
+
         public enum ScriptPermission { Ask, Always, Never }
+
+        [Serializable]
+        public class LogRedactionRule
+        {
+            [Tooltip("Label that replaces each match — shown in the redacted log as [redacted:NAME].")]
+            public string name = "pii";
+
+            [Tooltip("Regex pattern. Java / Obj-C syntax (both compile with the same POSIX-ish flavour for common patterns). " +
+                     "Example: \\b\\w+@\\w+\\.\\w+\\b for emails, or Bearer\\s+\\S+ for auth headers.")]
+            public string pattern = "";
+        }
 
         [Serializable]
         public class AttachmentRule

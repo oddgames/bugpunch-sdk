@@ -98,7 +98,7 @@ public class BugpunchDebugWidget {
             reportBg.setCornerRadius(dp(activity, 12));
             reportBtn.setBackground(reportBg);
             reportBtn.setOnClickListener(v -> {
-                BugpunchDebugMode.reportBug("bug", "Bug report", "Triggered from debug widget", null);
+                BugpunchReportingService.reportBug("bug", "Bug report", "Triggered from debug widget", null);
             });
             LinearLayout.LayoutParams reportLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);

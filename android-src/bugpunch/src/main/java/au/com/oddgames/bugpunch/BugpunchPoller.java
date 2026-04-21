@@ -60,8 +60,8 @@ public final class BugpunchPoller {
                                           int pollIntervalSeconds) {
         if (sStarted) return;
         if (activity == null) { Log.w(TAG, "null activity, not starting"); return; }
-        String serverUrl = BugpunchDebugMode.getServerUrl();
-        String apiKey = BugpunchDebugMode.getApiKey();
+        String serverUrl = BugpunchRuntime.getServerUrl();
+        String apiKey = BugpunchRuntime.getApiKey();
         if (serverUrl == null || serverUrl.isEmpty() || apiKey == null || apiKey.isEmpty()) {
             Log.w(TAG, "missing serverUrl or apiKey — poller not started");
             return;
@@ -114,10 +114,10 @@ public final class BugpunchPoller {
         if (sDeviceToken != null && !sDeviceToken.isEmpty()) return;
 
         try {
-            String deviceId = BugpunchDebugMode.getMetadata("deviceId");
-            String appVersion = BugpunchDebugMode.getMetadata("appVersion");
-            String installerMode = BugpunchDebugMode.getMetadata("installerMode");
-            String deviceModel = BugpunchDebugMode.getMetadata("deviceModel");
+            String deviceId = BugpunchRuntime.getMetadata("deviceId");
+            String appVersion = BugpunchRuntime.getMetadata("appVersion");
+            String installerMode = BugpunchRuntime.getMetadata("installerMode");
+            String deviceModel = BugpunchRuntime.getMetadata("deviceModel");
 
             JSONObject body = new JSONObject();
             body.put("deviceId", nullToEmpty(deviceId));
@@ -128,8 +128,8 @@ public final class BugpunchPoller {
             body.put("installerMode", nullToEmpty(installerMode));
 
             HttpResult res = postJson(
-                BugpunchDebugMode.getServerUrl().replaceAll("/+$", "") + "/api/devices/register",
-                "X-Api-Key", BugpunchDebugMode.getApiKey(),
+                BugpunchRuntime.getServerUrl().replaceAll("/+$", "") + "/api/devices/register",
+                "X-Api-Key", BugpunchRuntime.getApiKey(),
                 body.toString());
 
             if (!res.ok) {
@@ -160,7 +160,7 @@ public final class BugpunchPoller {
 
         try {
             HttpResult res = postJson(
-                BugpunchDebugMode.getServerUrl().replaceAll("/+$", "") + "/api/device-poll",
+                BugpunchRuntime.getServerUrl().replaceAll("/+$", "") + "/api/device-poll",
                 "X-Device-Token", sDeviceToken,
                 "{}");
 
@@ -223,7 +223,7 @@ public final class BugpunchPoller {
                 body.put("durationMs", durationMs);
 
                 postJson(
-                    BugpunchDebugMode.getServerUrl().replaceAll("/+$", "") + "/api/device-poll/script-result",
+                    BugpunchRuntime.getServerUrl().replaceAll("/+$", "") + "/api/device-poll/script-result",
                     "X-Device-Token", sDeviceToken,
                     body.toString());
             } catch (Throwable t) {

@@ -3620,7 +3620,7 @@ namespace ODDGames.Bugpunch
             await Task.Yield();
 
             if (string.IsNullOrEmpty(filename))
-                filename = $"screenshot_{System.DateTime.Now:yyyyMMdd_HHmmss}";
+                filename = $"screenshot_{System.DateTime.UtcNow:yyyyMMdd_HHmmss}";
 
             var path = System.IO.Path.Combine(Application.persistentDataPath, $"{filename}.png");
             ScreenCapture.CaptureScreenshot(path);

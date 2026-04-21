@@ -53,6 +53,35 @@ typedef void (*CrashReportDismissCallback)(void);
     CGFloat pad = 16;
     CGFloat y = 0;
 
+    // ── Logo row ──
+    UIView* logoRow = [[UIView alloc] init];
+    logoRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [content addSubview:logoRow];
+
+    UIImageView* logoImg = [[UIImageView alloc] init];
+    NSString* logoPath = [[NSBundle mainBundle] pathForResource:@"bugpunch-logo" ofType:@"png"];
+    if (!logoPath) logoPath = [[NSBundle mainBundle] pathForResource:@"bugpunch-logo@2x" ofType:@"png"];
+    if (logoPath) logoImg.image = [UIImage imageWithContentsOfFile:logoPath];
+    logoImg.contentMode = UIViewContentModeScaleAspectFit;
+    logoImg.translatesAutoresizingMaskIntoConstraints = NO;
+    [logoRow addSubview:logoImg];
+
+    UILabel* logoLabel = [[UILabel alloc] init];
+    logoLabel.text = @"Bugpunch";
+    logoLabel.font = [UIFont boldSystemFontOfSize:14];
+    logoLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1];
+    logoLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [logoRow addSubview:logoLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [logoImg.leadingAnchor constraintEqualToAnchor:logoRow.leadingAnchor],
+        [logoImg.centerYAnchor constraintEqualToAnchor:logoRow.centerYAnchor],
+        [logoImg.widthAnchor constraintEqualToConstant:24],
+        [logoImg.heightAnchor constraintEqualToConstant:24],
+        [logoLabel.leadingAnchor constraintEqualToAnchor:logoImg.trailingAnchor constant:6],
+        [logoLabel.centerYAnchor constraintEqualToAnchor:logoRow.centerYAnchor],
+    ]];
+
     // ── Header ──
     UILabel* header = [[UILabel alloc] init];
     header.text = @"Crash Report";
@@ -201,8 +230,14 @@ typedef void (*CrashReportDismissCallback)(void);
     // ── Auto Layout ──
     CGFloat videoH = hasVideo ? 180 : 0;
     [NSLayoutConstraint activateConstraints:@[
+        // Logo row
+        [logoRow.topAnchor constraintEqualToAnchor:content.topAnchor constant:pad],
+        [logoRow.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:pad],
+        [logoRow.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-pad],
+        [logoRow.heightAnchor constraintEqualToConstant:28],
+
         // Header
-        [header.topAnchor constraintEqualToAnchor:content.topAnchor constant:pad * 1.5],
+        [header.topAnchor constraintEqualToAnchor:logoRow.bottomAnchor constant:8],
         [header.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:pad],
         [header.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-pad],
 

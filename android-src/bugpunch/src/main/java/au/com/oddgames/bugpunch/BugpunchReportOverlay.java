@@ -21,7 +21,9 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 /**
@@ -76,21 +78,39 @@ public class BugpunchReportOverlay {
             backdrop.setBackgroundColor(Color.parseColor("#99000000"));
             backdrop.setClickable(true); // consume touches
 
-            // Card container — centered
+            // Scrollable card wrapper — handles landscape where card may exceed screen height
+            ScrollView cardScroll = new ScrollView(ctx);
+            cardScroll.setFillViewport(false);
+            cardScroll.setClipToPadding(false);
+            int screenMargin = dp(ctx, 24);
+            FrameLayout.LayoutParams scrollLp = new FrameLayout.LayoutParams(
+                    dp(ctx, 320), ViewGroup.LayoutParams.WRAP_CONTENT);
+            scrollLp.gravity = Gravity.CENTER;
+            scrollLp.setMargins(0, screenMargin, 0, screenMargin);
+            backdrop.addView(cardScroll, scrollLp);
+
+            // Card container
             LinearLayout card = new LinearLayout(ctx);
             card.setOrientation(LinearLayout.VERTICAL);
-            card.setBackgroundColor(Color.parseColor("#F0222222"));
             card.setPadding(pad, pad, pad, pad);
-            // Rounded corners via GradientDrawable
             android.graphics.drawable.GradientDrawable cardBg = new android.graphics.drawable.GradientDrawable();
             cardBg.setColor(Color.parseColor("#F0222222"));
             cardBg.setCornerRadius(dp(ctx, 16));
             card.setBackground(cardBg);
+            cardScroll.addView(card, new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-            int cardWidth = dp(ctx, 320);
-            FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
-            cardLp.gravity = Gravity.CENTER;
-            backdrop.addView(card, cardLp);
+            // Bugpunch logo
+            int logoResId = ctx.getResources().getIdentifier("bugpunch_logo", "drawable", ctx.getPackageName());
+            if (logoResId != 0) {
+                ImageView logoImg = new ImageView(ctx);
+                logoImg.setImageResource(logoResId);
+                logoImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(dp(ctx, 44), dp(ctx, 44));
+                logoLp.gravity = Gravity.CENTER_HORIZONTAL;
+                card.addView(logoImg, logoLp);
+                addSpacer(card, padSmall);
+            }
 
             // Icons row
             LinearLayout iconsRow = new LinearLayout(ctx);

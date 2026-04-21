@@ -242,12 +242,12 @@ namespace ODDGames.Bugpunch
                 scene = SceneManager.GetActiveScene().name,
                 screenWidth = Screen.width,
                 screenHeight = Screen.height,
-                startTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                startTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"),
                 metadata = BuildSessionMetadata()
             };
 
             var safeName = SanitizeFileName(_testName);
-            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
             var sessionName = $"{safeName}_{timestamp}";
             var root = DiagnosticsRoot;
             _sessionFolder = Path.Combine(root, sessionName);
@@ -1661,7 +1661,7 @@ namespace ODDGames.Bugpunch
 
         static void LogMessage(string message)
         {
-            var entry = $"[{DateTime.Now:HH:mm:ss.fff}] [frame {Time.frameCount}] {message}";
+            var entry = $"[{DateTime.UtcNow:HH:mm:ss.fff}] [frame {Time.frameCount}] {message}";
             _log.Add(entry);
         }
 

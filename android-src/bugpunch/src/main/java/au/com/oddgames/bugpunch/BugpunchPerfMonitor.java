@@ -20,7 +20,7 @@ import java.util.Map;
 /**
  * Lightweight native performance monitor. Runs on a dedicated background
  * HandlerThread — never touches the main/render thread. Reads FPS from
- * BugpunchDebugMode.sFps (volatile, zero cost), memory from Runtime +
+ * BugpunchRuntime.sFps (volatile, zero cost), memory from Runtime +
  * ActivityManager, thermal from PowerManager.
  *
  * Fires full snapshots (screenshot + metadata) only on:
@@ -76,7 +76,7 @@ public class BugpunchPerfMonitor {
      */
     public static synchronized void start(String configJson) {
         if (sStarted) return;
-        sAppContext = BugpunchDebugMode.getAppContext();
+        sAppContext = BugpunchRuntime.getAppContext();
         if (sAppContext == null) {
             Log.w(TAG, "Cannot start — no app context");
             return;
@@ -129,7 +129,7 @@ public class BugpunchPerfMonitor {
         Log.i(TAG, "Started — fpsThreshold=" + sFpsThreshold + " reportInterval=" + sReportInterval);
     }
 
-    /** Mark a clean exit — call from BugpunchDebugMode.onDestroy or similar. */
+    /** Mark a clean exit — call from BugpunchRuntime.onDestroy or similar. */
     public static void markCleanExit() {
         if (sAppContext == null) return;
         SharedPreferences prefs = sAppContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -159,8 +159,8 @@ public class BugpunchPerfMonitor {
     private static void doSample() {
         if (!sStarted) return;
 
-        // Read FPS (volatile field from BugpunchDebugMode — zero cost)
-        float fps = BugpunchDebugMode.getFps();
+        // Read FPS (volatile field from BugpunchRuntime — zero cost)
+        float fps = BugpunchRuntime.getFps();
         float memMB = getUsedMemoryMB();
 
         // Update rolling window
@@ -280,13 +280,15 @@ public class BugpunchPerfMonitor {
         try {
             event.put("trigger", trigger);
             event.put("scene", sCurrentScene);
-            event.put("buildVersion", BugpunchDebugMode.getMetadata("appVersion"));
+            event.put("buildVersion", BugpunchRuntime.getMetadata("appVersion"));
+            event.put("branch", BugpunchRuntime.getMetadata("branch"));
+            event.put("changeset", BugpunchRuntime.getMetadata("changeset"));
             event.put("platform", "Android");
-            event.put("deviceId", BugpunchDebugMode.getMetadata("deviceId"));
+            event.put("deviceId", BugpunchRuntime.getMetadata("deviceId"));
             event.put("deviceName", Build.MODEL);
             event.put("deviceModel", Build.MANUFACTURER + " " + Build.MODEL);
             event.put("deviceTier", computeDeviceTier());
-            event.put("gpu", BugpunchDebugMode.getMetadata("gpu"));
+            event.put("gpu", BugpunchRuntime.getMetadata("gpu"));
 
             // Screen size
             if (sAppContext != null) {
@@ -331,7 +333,7 @@ public class BugpunchPerfMonitor {
 
             // Tags from custom data
             JSONObject tags = new JSONObject();
-            for (Map.Entry<String, String> entry : BugpunchDebugMode.getCustomDataSnapshot().entrySet()) {
+            for (Map.Entry<String, String> entry : BugpunchRuntime.getCustomDataSnapshot().entrySet()) {
                 tags.put(entry.getKey(), entry.getValue());
             }
             event.put("tags", tags);
@@ -343,8 +345,8 @@ public class BugpunchPerfMonitor {
     }
 
     private static void uploadEvent(JSONObject event) {
-        String serverUrl = BugpunchDebugMode.getServerUrl();
-        String apiKey = BugpunchDebugMode.getApiKey();
+        String serverUrl = BugpunchRuntime.getServerUrl();
+        String apiKey = BugpunchRuntime.getApiKey();
         if (serverUrl == null || apiKey == null) return;
 
         String url = serverUrl + "/api/v1/perf/events";

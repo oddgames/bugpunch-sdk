@@ -67,18 +67,31 @@ public class BugpunchUploader {
     /**
      * A named file to include in a multipart upload.
      * Callers build a list of these and pass to {@link #enqueue}.
+     *
+     * {@code requires} is the two-phase preflight gate: after the server
+     * response lists which heavy fields it wants (e.g. {@code ["logs",
+     * "screenshot"]}), only attachments whose {@code requires} appears in
+     * that list advance to phase 2. null/empty means unconditional (existing
+     * single-phase flow).
      */
     public static class FileAttachment {
         public final String field;       // multipart field name
         public final String filename;    // filename in the multipart part
         public final String contentType; // MIME type
         public final String path;        // absolute path on disk
+        public final String requires;    // preflight-gate key, or null for unconditional
 
         public FileAttachment(String field, String filename, String contentType, String path) {
+            this(field, filename, contentType, path, null);
+        }
+
+        public FileAttachment(String field, String filename, String contentType, String path,
+                              String requires) {
             this.field = field;
             this.filename = filename;
             this.contentType = contentType;
             this.path = path;
+            this.requires = requires;
         }
 
         /** Convenience: JPEG image attachment. */
@@ -86,10 +99,22 @@ public class BugpunchUploader {
             return new FileAttachment(field, field + ".jpg", "image/jpeg", path);
         }
 
+        /** Preflight-gated JPEG. */
+        public static FileAttachment jpegGated(String field, String path, String requires) {
+            return new FileAttachment(field, field + ".jpg", "image/jpeg", path, requires);
+        }
+
         /** Convenience: numbered JPEG (trace_0, anr_screenshot_1, etc.). */
         public static FileAttachment jpeg(String fieldPrefix, int index, String path) {
             String name = fieldPrefix + "_" + index;
             return new FileAttachment(name, name + ".jpg", "image/jpeg", path);
+        }
+
+        /** Preflight-gated numbered JPEG — shares one collect key across the group. */
+        public static FileAttachment jpegGated(String fieldPrefix, int index, String path,
+                                               String requires) {
+            String name = fieldPrefix + "_" + index;
+            return new FileAttachment(name, name + ".jpg", "image/jpeg", path, requires);
         }
     }
 
@@ -123,6 +148,7 @@ public class BugpunchUploader {
                             f.put("filename", a.filename);
                             f.put("contentType", a.contentType);
                             f.put("path", a.path);
+                            if (a.requires != null) f.put("requires", a.requires);
                             files.put(f);
                             cleanup.put(a.path);
                         }
@@ -138,6 +164,66 @@ public class BugpunchUploader {
                     drainInternal();
                 } catch (Throwable t) {
                     Log.w(TAG, "enqueue failed", t);
+                }
+            }
+        });
+    }
+
+    /**
+     * Enqueue a two-phase upload. Phase 1 POSTs {@code jsonBody} to
+     * {@code preflightUrl}; server response carries {@code eventId} +
+     * {@code collect[]}. On success we rewrite the manifest to phase 2:
+     * multipart POST to {@code enrichUrlTemplate} (with {id} substituted)
+     * carrying only files whose {@link FileAttachment#requires} appears in
+     * {@code collect}. An empty {@code collect} skips phase 2 entirely and
+     * cleans up all attachments immediately.
+     *
+     * Either phase can fail + retry independently; the worker pages through
+     * attempts without losing the other phase's state.
+     */
+    public static void enqueuePreflight(Context ctx, final String preflightUrl,
+                                        final String enrichUrlTemplate, final String apiKey,
+                                        final String jsonBody,
+                                        final List<FileAttachment> attachments) {
+        ensureStarted(ctx);
+        sHandler.post(new Runnable() {
+            @Override public void run() {
+                try {
+                    JSONObject m = new JSONObject();
+                    m.put("stage", "preflight");
+                    m.put("url", preflightUrl);
+                    m.put("enrichUrlTemplate", enrichUrlTemplate);
+                    JSONObject headers = new JSONObject();
+                    headers.put("X-Api-Key", apiKey);
+                    headers.put("Content-Type", "application/json");
+                    m.put("headers", headers);
+                    m.put("rawJsonBody", jsonBody != null ? jsonBody : "{}");
+                    JSONArray files = new JSONArray();
+                    JSONArray cleanup = new JSONArray();
+                    if (attachments != null) {
+                        for (FileAttachment a : attachments) {
+                            if (a.path == null || a.path.isEmpty()) continue;
+                            JSONObject f = new JSONObject();
+                            f.put("field", a.field);
+                            f.put("filename", a.filename);
+                            f.put("contentType", a.contentType);
+                            f.put("path", a.path);
+                            if (a.requires != null) f.put("requires", a.requires);
+                            files.put(f);
+                            cleanup.put(a.path);
+                        }
+                    }
+                    m.put("files", files);
+                    m.put("cleanupPaths", cleanup);
+                    m.put("attempts", 0);
+
+                    File out = new File(sQueueDir, UUID.randomUUID().toString() + ".upload.json");
+                    FileOutputStream fos = new FileOutputStream(out);
+                    fos.write(m.toString().getBytes(StandardCharsets.UTF_8));
+                    fos.close();
+                    drainInternal();
+                } catch (Throwable t) {
+                    Log.w(TAG, "enqueuePreflight failed", t);
                 }
             }
         });
@@ -190,6 +276,8 @@ public class BugpunchUploader {
         String body = readText(manifestFile);
         JSONObject manifest = new JSONObject(body);
         int attempts = manifest.optInt("attempts", 0);
+        String stage = manifest.optString("stage", "");
+        boolean isPreflight = "preflight".equals(stage);
         boolean isJson = manifest.has("rawJsonBody");
 
         boolean ok;
@@ -209,18 +297,31 @@ public class BugpunchUploader {
 
         if (ok) {
             Log.i(TAG, "uploaded " + manifest.optString("url"));
+
+            if (isPreflight) {
+                // Phase 1 succeeded. Decide whether phase 2 runs at all, and
+                // if so, rewrite this manifest so the next drain picks up the
+                // enrich request. Phase 1 is the ONLY place a crash ingest
+                // response carries matchedDirectives[] / eventId — dispatch
+                // directives now, while the response body is in hand.
+                if (responseBody != null) {
+                    try { BugpunchDirectives.onUploadResponse(manifest, responseBody); }
+                    catch (Throwable t) { Log.w(TAG, "directive dispatch failed", t); }
+                }
+                boolean advanced = transitionToEnrich(manifest, manifestFile, responseBody);
+                if (!advanced) {
+                    // Either collect=[] (budget spent) or nothing to send —
+                    // clean up attachments, drop manifest.
+                    cleanup(manifest);
+                    if (!manifestFile.delete())
+                        Log.w(TAG, "could not delete manifest " + manifestFile.getName());
+                }
+                return;
+            }
+
             cleanup(manifest);
             if (!manifestFile.delete()) {
                 Log.w(TAG, "could not delete manifest " + manifestFile.getName());
-            }
-            // Crash ingest responses carry matchedDirectives[] \u2014 apply them.
-            if (responseBody != null
-                && manifest.optString("url").endsWith("/api/crashes")) {
-                try {
-                    BugpunchDirectives.onUploadResponse(manifest, responseBody);
-                } catch (Throwable t) {
-                    Log.w(TAG, "directive dispatch failed", t);
-                }
             }
             return;
         }
@@ -240,6 +341,71 @@ public class BugpunchUploader {
         Log.w(TAG, "retry " + attempts + "/" + MAX_ATTEMPTS + " (" + err + "): "
             + manifest.optString("url"));
         // No in-process backoff timer — next drain() (app launch / enqueue) retries.
+    }
+
+    /**
+     * After a successful phase-1 preflight, parse {@code responseBody} for
+     * {@code eventId} + {@code collect[]} and rewrite {@code manifest} in
+     * place to the phase-2 enrich shape:
+     *   - url set from {@code enrichUrlTemplate} with {id} substituted
+     *   - headers stripped of Content-Type (multipart sets its own)
+     *   - rawJsonBody removed
+     *   - files filtered to those whose {@code requires} is in collect
+     *   - attempts reset so phase 2 gets its own retry budget
+     *
+     * Returns true if the manifest was written back and should run as phase
+     * 2; false when nothing needs to be sent (empty collect, or no matching
+     * files even after filtering).
+     */
+    private static boolean transitionToEnrich(JSONObject manifest, File manifestFile,
+                                              String responseBody)
+            throws IOException, JSONException {
+        if (responseBody == null || responseBody.isEmpty()) return false;
+        JSONObject res;
+        try { res = new JSONObject(responseBody); }
+        catch (JSONException e) {
+            Log.w(TAG, "preflight response not JSON — skipping phase 2");
+            return false;
+        }
+        String eventId = res.optString("eventId", "");
+        JSONArray collectArr = res.optJSONArray("collect");
+        if (eventId.isEmpty() || collectArr == null || collectArr.length() == 0) {
+            return false;
+        }
+        String enrichTemplate = manifest.optString("enrichUrlTemplate", "");
+        if (enrichTemplate.isEmpty()) return false;
+
+        java.util.HashSet<String> collect = new java.util.HashSet<>();
+        for (int i = 0; i < collectArr.length(); i++) collect.add(collectArr.optString(i));
+
+        JSONArray inFiles = manifest.optJSONArray("files");
+        JSONArray outFiles = new JSONArray();
+        if (inFiles != null) {
+            for (int i = 0; i < inFiles.length(); i++) {
+                JSONObject f = inFiles.getJSONObject(i);
+                String req = f.optString("requires", "");
+                if (req.isEmpty() || collect.contains(req)) outFiles.put(f);
+            }
+        }
+        if (outFiles.length() == 0) return false;
+
+        // Strip the JSON-only bits and rewrite headers (drop Content-Type so
+        // sendMultipart controls it). Keep cleanupPaths as-is — they cover
+        // every attachment, including those filtered out, so orphaned files
+        // get cleaned up after phase 2 succeeds.
+        manifest.put("stage", "enrich");
+        manifest.put("url", enrichTemplate.replace("{id}", eventId));
+        manifest.remove("enrichUrlTemplate");
+        manifest.remove("rawJsonBody");
+        JSONObject headers = manifest.optJSONObject("headers");
+        if (headers != null) headers.remove("Content-Type");
+        manifest.put("files", outFiles);
+        manifest.put("attempts", 0);
+        writeText(manifestFile, manifest.toString());
+        // Kick the worker so phase 2 runs right away — same-tick re-entry is
+        // safe, drainInternal just walks the dir again.
+        sHandler.post(new Runnable() { @Override public void run() { drainInternal(); } });
+        return true;
     }
 
     /**

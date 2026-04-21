@@ -33,7 +33,7 @@ import android.widget.Toast;
 /**
  * Bug report form. Shows a screenshot preview (tap to annotate), email +
  * description + severity inputs, Send/Cancel. On Send, calls
- * {@link BugpunchDebugMode#submitReport} which builds the manifest and hands
+ * {@link BugpunchReportingService#submitReport} which builds the manifest and hands
  * to the uploader.
  *
  * Launched via {@link #launch(String, String)} with the pre-captured
@@ -123,7 +123,7 @@ public class BugpunchReportActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         // Release the "report in progress" guard so the next Send Report works.
-        BugpunchDebugMode.clearReportInProgress();
+        BugpunchRuntime.clearReportInProgress();
     }
 
     @Override
@@ -249,16 +249,23 @@ public class BugpunchReportActivity extends Activity {
         mSeverity.setBackground(surface(COLOR_SURFACE, dp(10), COLOR_BORDER));
         mSeverity.setSelection(1);
 
+        // Sticky footer — sits outside the ScrollView so Cancel/Send stay
+        // visible no matter how tall the form grows or whether the IME is up
+        // (Theme.Translucent disables adjustResize, so we can't rely on it).
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
-        buttons.setGravity(Gravity.END);
-        buttons.setPadding(0, dp(24), 0, 0);
+        buttons.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        buttons.setPadding(pad, dp(12), pad, dp(12));
+        buttons.setBackgroundColor(COLOR_BG);
+        // Top hairline so the footer reads as a separate band from the form.
+        View footerDivider = new View(this);
+        footerDivider.setBackgroundColor(COLOR_BORDER);
         Button cancel = secondaryButton("Cancel");
         cancel.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { finish(); }
         });
         LinearLayout.LayoutParams lpBtn = new LinearLayout.LayoutParams(
-            LayoutParams.WRAP_CONTENT, dp(46));
+            0, dp(46), 1f);
         lpBtn.rightMargin = dp(12);
         buttons.addView(cancel, lpBtn);
         Button send = primaryButton("Send report");
@@ -266,11 +273,18 @@ public class BugpunchReportActivity extends Activity {
             @Override public void onClick(View v) { onSend(); }
         });
         LinearLayout.LayoutParams lpSend = new LinearLayout.LayoutParams(
-            LayoutParams.WRAP_CONTENT, dp(46));
+            0, dp(46), 1f);
         buttons.addView(send, lpSend);
 
-        final View content;
-        final View insetsTarget;
+        // Outer container: scrolling form on top, sticky button footer on
+        // bottom. The footer is a sibling of the scroll view so it never
+        // scrolls off-screen and stays visible with the IME up.
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setBackgroundColor(COLOR_BG);
+
+        final View content = shell;
+        final View insetsTarget = shell;
 
         if (landscape) {
             // Two columns: screenshot preview on the left, scrollable form on
@@ -279,7 +293,7 @@ public class BugpunchReportActivity extends Activity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setBackgroundColor(COLOR_BG);
-            row.setPadding(pad, pad, pad, pad);
+            row.setPadding(pad, pad, pad, 0);
 
             LinearLayout left = new LinearLayout(this);
             left.setOrientation(LinearLayout.VERTICAL);
@@ -303,21 +317,20 @@ public class BugpunchReportActivity extends Activity {
             form.addView(mDescription);
             form.addView(sevLabel);
             form.addView(mSeverity);
-            form.addView(buttons);
             formScroll.addView(form);
             LinearLayout.LayoutParams lpRight = new LinearLayout.LayoutParams(
                 0, LayoutParams.MATCH_PARENT, 1f);
             row.addView(formScroll, lpRight);
 
-            content = row;
-            insetsTarget = row;
+            shell.addView(row, new LinearLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, 0, 1f));
         } else {
             final ScrollView scroll = new ScrollView(this);
             scroll.setBackgroundColor(COLOR_BG);
             scroll.setClipToPadding(false);
             LinearLayout root = new LinearLayout(this);
             root.setOrientation(LinearLayout.VERTICAL);
-            root.setPadding(pad, pad, pad, pad);
+            root.setPadding(pad, pad, pad, dp(12));
             root.setBackgroundColor(COLOR_BG);
             root.addView(headerBlock);
             LinearLayout.LayoutParams lpShot = new LinearLayout.LayoutParams(
@@ -331,15 +344,19 @@ public class BugpunchReportActivity extends Activity {
             root.addView(mDescription);
             root.addView(sevLabel);
             root.addView(mSeverity);
-            root.addView(buttons);
             scroll.addView(root);
-            content = scroll;
-            insetsTarget = root;
+            shell.addView(scroll, new LinearLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, 0, 1f));
         }
 
-        // Pad around the system status + nav bars so header / Send button are
-        // reachable in both orientations (display cutouts include the side
-        // insets that matter in landscape).
+        shell.addView(footerDivider, new LinearLayout.LayoutParams(
+            LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
+        shell.addView(buttons, new LinearLayout.LayoutParams(
+            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        // Absorb status/nav bar insets on the shell so content and the sticky
+        // footer both clear the system bars. Inner views supply their own
+        // content padding, so we only add the inset amount here.
         insetsTarget.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override public WindowInsets onApplyWindowInsets(View v, WindowInsets ins) {
                 int top = 0, bottom = 0, left = 0, right = 0;
@@ -352,7 +369,7 @@ public class BugpunchReportActivity extends Activity {
                     left = ins.getSystemWindowInsetLeft();
                     right = ins.getSystemWindowInsetRight();
                 }
-                v.setPadding(pad + left, pad + top, pad + right, pad + bottom);
+                v.setPadding(left, top, right, bottom);
                 return ins;
             }
         });
@@ -405,7 +422,7 @@ public class BugpunchReportActivity extends Activity {
         }
         try {
             String[] extras = mExtraShots.isEmpty() ? null : mExtraShots.toArray(new String[0]);
-            BugpunchDebugMode.submitReport(
+            BugpunchReportingService.submitReport(
                 mInitialTitle != null ? mInitialTitle : "Bug report",
                 desc, email, severity, mShotPath, mAnnotationsPath, extras);
             Toast.makeText(this, "Report sent", Toast.LENGTH_SHORT).show();

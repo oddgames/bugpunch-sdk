@@ -42,12 +42,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_state == SnapshotState.InProgress)
                 return "{\"ok\":false,\"error\":\"Snapshot already in progress\",\"state\":\"in_progress\"}";
 
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
             _currentPath = Path.Combine(SnapshotDir, $"memory_{timestamp}.snap");
             _state = SnapshotState.InProgress;
             _error = null;
             _fileSize = 0;
-            _startTime = DateTime.Now;
+            _startTime = DateTime.UtcNow;
 
             try
             {
@@ -86,7 +86,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public string GetStatus()
         {
             var elapsed = _state == SnapshotState.InProgress
-                ? (DateTime.Now - _startTime).TotalSeconds
+                ? (DateTime.UtcNow - _startTime).TotalSeconds
                 : 0;
 
             switch (_state)
