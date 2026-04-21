@@ -29,8 +29,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public IStreamer Streamer { get; private set; }
 
         public SceneCameraService SceneCamera { get; private set; }
-        public DeviceRegistration Registration { get; private set; }
-        public bool IsConnected => (Tunnel != null && Tunnel.IsConnected) || (Registration != null && Registration.IsRegistered);
+
+        /// <summary>
+        /// True once the native poll loop is running (or the WebSocket tunnel
+        /// is live). Registration/polling happens entirely in native now —
+        /// this flag flips when we've asked native to start.
+        /// </summary>
+        public bool PollActive { get; private set; }
+        public bool IsConnected => (Tunnel != null && Tunnel.IsConnected) || PollActive;
 
         /// <summary>
         /// When true, incoming debug session requests from the server are
@@ -311,11 +317,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             else
             {
-                Debug.Log("[Bugpunch] Release build — starting in poll mode");
-                Registration = new DeviceRegistration(Config);
-                Registration.OnUpgradeRequested += HandleUpgradeToWebSocket;
-                Registration.OnScriptsReceived += HandlePollScripts;
-                StartCoroutine(Registration.RegisterAndPoll());
+                Debug.Log("[Bugpunch] Release build — starting native poll mode");
+                BugpunchNative.StartPoll(Config.scriptPermission.ToString().ToLower(), Mathf.Max(5, (int)Config.pollInterval));
+                PollActive = true;
             }
         }
 
@@ -834,6 +838,69 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Tunnel.SendResponse(requestId, r.status, r.body, r.contentType);
         }
 
+        /// <summary>
+        /// UnitySendMessage receiver. Fired by the native poller when the
+        /// server flips the upgradeToWebSocket flag on a poll response.
+        /// Parameter is unused (UnitySendMessage always delivers a string).
+        /// </summary>
+        public void OnPollUpgradeRequested(string _)
+        {
+            HandleUpgradeToWebSocket();
+        }
+
+        /// <summary>
+        /// UnitySendMessage receiver. Fires when the poll response contains
+        /// scheduled scripts to run against managed code. Payload is the raw
+        /// JSON array: <c>[{"Id":"...","Name":"...","Code":"..."}]</c>. Runs
+        /// each via the PaxScript runner and POSTs the result back through
+        /// <see cref="BugpunchNative.PostScriptResult"/>.
+        /// </summary>
+        public void OnPollScripts(string scriptsJson)
+        {
+            if (string.IsNullOrEmpty(scriptsJson)) return;
+            try
+            {
+                // Lightweight parse using a tiny wrapper struct — scripts are
+                // a flat shape so JsonUtility handles it.
+                var wrapped = "{\"items\":" + scriptsJson + "}";
+                var payload = JsonUtility.FromJson<PollScriptsPayload>(wrapped);
+                if (payload?.items == null) return;
+                foreach (var s in payload.items)
+                {
+                    if (string.IsNullOrEmpty(s.Id) || string.IsNullOrEmpty(s.Code)) continue;
+                    RunScheduledScript(s);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Bugpunch] OnPollScripts parse failed: {ex.Message}");
+            }
+        }
+
+        [Serializable] struct PollScript { public string Id, Name, Code; }
+        [Serializable] class PollScriptsPayload { public PollScript[] items; }
+
+        void RunScheduledScript(PollScript script)
+        {
+            Debug.Log($"[Bugpunch] Running scheduled script: {script.Name}");
+            var started = DateTime.UtcNow;
+            string envelope = "";
+            string errorsOut = "";
+            bool ok = false;
+            try
+            {
+                // PaxScriptRunner returns a JSON envelope: {"ok":bool,"output":"...","errors":[...]}
+                envelope = new PaxScriptRunner().Execute(script.Code) ?? "";
+                ok = envelope.Contains("\"ok\":true");
+            }
+            catch (Exception ex)
+            {
+                errorsOut = ex.Message + "\n" + (ex.StackTrace ?? "");
+            }
+            int durationMs = (int)(DateTime.UtcNow - started).TotalMilliseconds;
+            BugpunchNative.PostScriptResult(script.Id, envelope, errorsOut, ok, durationMs);
+        }
+
         void HandleUpgradeToWebSocket()
         {
             if (SuppressDebugRequests)
@@ -845,8 +912,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             Debug.Log("[Bugpunch] Upgrading from poll to WebSocket debug mode");
             _debugSessionActive = true;
-            Registration?.Stop();
-            Registration = null;
+            BugpunchNative.StopPoll();
+            PollActive = false;
 
             // Create WebSocket tunnel
             Tunnel = new TunnelClient(Config);
@@ -937,20 +1004,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Tunnel?.Disconnect();
             Tunnel = null;
 
-            // Resume polling
-            Registration = new DeviceRegistration(Config);
-            Registration.OnUpgradeRequested += HandleUpgradeToWebSocket;
-            Registration.OnScriptsReceived += HandlePollScripts;
-            StartCoroutine(Registration.RegisterAndPoll());
-        }
-
-        void HandlePollScripts(DeviceRegistration.PendingScript[] scripts)
-        {
-            foreach (var script in scripts)
-            {
-                Debug.Log($"[Bugpunch] Received script via poll: {script.Name}");
-                // TODO: permission check via NativeDialogFactory, then execute via ScriptRunner
-            }
+            // Resume native polling
+            BugpunchNative.StartPoll(Config.scriptPermission.ToString().ToLower(), Mathf.Max(5, (int)Config.pollInterval));
+            PollActive = true;
         }
 
         /// <summary>
@@ -996,7 +1052,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             Streamer?.StopStreaming();
             Tunnel?.Disconnect();
-            Registration?.Stop();
+            BugpunchNative.StopPoll();
+            PollActive = false;
             Instance = null;
         }
     }

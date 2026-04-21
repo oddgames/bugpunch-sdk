@@ -20,21 +20,20 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Android handler for server-sent "Request More Info" directives.
  *
- * Flow: {@link BugpunchUploader} POSTs a crash to /api/crashes. The server
- * response carries {@code eventId} + {@code matchedDirectives[]}. This class
- * iterates the directives and applies each action:
- * <ul>
- *   <li>{@code attach_files}  - native glob inside the game-declared
- *       attachment allow-list (from BugpunchConfig). Posts matched file
- *       bytes (base64) to {@code /api/crashes/events/:id/enrich}.</li>
- *   <li>{@code run_paxscript} - UnitySendMessage into managed code; result
- *       comes back via {@link BugpunchDebugMode#postPaxScriptResult}.</li>
- *   <li>{@code ask_user_for_help} - native AlertDialog. On accept, silently
- *       enters debug mode and tags the session. On decline, persists
- *       "never ask again for this fingerprint" in SharedPreferences.</li>
- * </ul>
+ * Two entry points:
+ * <ol>
+ *   <li>{@link #onUploadResponse} - fires after a successful /api/crashes
+ *       POST. Server response carries {@code eventId} + {@code matchedDirectives[]}.
+ *       Action results are POSTed to {@code /api/crashes/events/{eventId}/enrich}.</li>
+ *   <li>{@link #onPollDirectives} - fires from the native poll loop when
+ *       /api/device-poll returns {@code pendingDirectives[]}. No crash
+ *       context. Action results are POSTed to
+ *       {@code /api/directives/{directiveId}/result}.</li>
+ * </ol>
  *
- * All HTTP posting reuses {@link BugpunchUploader}'s multipart queue so
+ * Both paths run through the same handlers (attach_files / run_paxscript /
+ * ask_user_for_help). The dispatcher builds the result URL once and passes it
+ * down. All HTTP posting reuses {@link BugpunchUploader}'s multipart queue so
  * retries and app-kill survival come for free.
  */
 public class BugpunchDirectives {
@@ -42,15 +41,10 @@ public class BugpunchDirectives {
     private static final String PREFS = "bugpunch_directives";
     private static final String DENIED_PREFIX = "denied:";
 
-    // Pending paxscript callbacks, keyed by directiveId.
-    // Populated when we dispatch to Unity; drained by postPaxScriptResult.
-    private static final Map<String, Pending> sPendingPaxScript = new ConcurrentHashMap<>();
-
-    static class Pending {
-        final String eventId;
-        final String fingerprint;
-        Pending(String eId, String fp) { eventId = eId; fingerprint = fp; }
-    }
+    // Pending paxscript callbacks, keyed by directiveId -> resultUrl. The URL
+    // encodes both the POST target and the eventId/directiveId, so
+    // onPaxScriptResult doesn't need to know which flow spawned it.
+    private static final Map<String, String> sPendingPaxScript = new ConcurrentHashMap<>();
 
     /**
      * Called from {@link BugpunchUploader} after a successful /api/crashes
@@ -70,6 +64,9 @@ public class BugpunchDirectives {
         JSONArray directives = resp.optJSONArray("matchedDirectives");
         if (eventId.isEmpty() || directives == null || directives.length() == 0) return;
 
+        final String resultUrl = enrichUrl(eventId);
+        if (resultUrl == null) return;
+
         for (int i = 0; i < directives.length(); i++) {
             JSONObject d = directives.optJSONObject(i);
             if (d == null) continue;
@@ -80,31 +77,67 @@ public class BugpunchDirectives {
             for (int j = 0; j < actions.length(); j++) {
                 JSONObject a = actions.optJSONObject(j);
                 if (a == null) continue;
-                try {
-                    applyAction(activity, eventId, fingerprint, directiveId, a);
-                } catch (Throwable t) {
-                    Log.w(TAG, "apply action failed", t);
-                }
+                applyAction(activity, resultUrl, fingerprint, directiveId, a);
             }
         }
     }
 
-    private static void applyAction(final Activity activity, final String eventId,
-                                    final String fingerprint, final String directiveId,
-                                    JSONObject action) throws JSONException {
-        String type = action.optString("type", "");
-        if ("attach_files".equals(type)) {
-            handleAttachFiles(activity, eventId, directiveId, action);
-        } else if ("run_paxscript".equals(type)) {
-            handleRunPaxScript(eventId, fingerprint, directiveId, action);
-        } else if ("ask_user_for_help".equals(type)) {
-            handleAskUser(activity, eventId, fingerprint, directiveId, action);
+    /**
+     * Invoked from the native poller ({@link BugpunchPoller}) when a
+     * /api/device-poll response returns pendingDirectives. Input is the
+     * raw JSON array: {@code [{"id":"...","actions":[...]}, ...]}.
+     */
+    public static void onPollDirectives(String pendingDirectivesJson) {
+        if (pendingDirectivesJson == null || pendingDirectivesJson.isEmpty()) return;
+        final Activity activity = BugpunchUnity.currentActivity();
+        if (activity == null) return;
+
+        JSONArray directives;
+        try { directives = new JSONArray(pendingDirectivesJson); }
+        catch (JSONException e) { Log.w(TAG, "bad poll directives json", e); return; }
+
+        for (int i = 0; i < directives.length(); i++) {
+            JSONObject d = directives.optJSONObject(i);
+            if (d == null) continue;
+            String directiveId = d.optString("id", "");
+            JSONArray actions = d.optJSONArray("actions");
+            if (directiveId.isEmpty() || actions == null) continue;
+
+            String resultUrl = directiveResultUrl(directiveId);
+            if (resultUrl == null) continue;
+
+            for (int j = 0; j < actions.length(); j++) {
+                JSONObject a = actions.optJSONObject(j);
+                if (a == null) continue;
+                // Device-targeted directives carry no fingerprint; the denial
+                // gate is a no-op in that case.
+                applyAction(activity, resultUrl, "", directiveId, a);
+            }
         }
     }
 
-    // ── attach_files ──────────────────────────────────────────────────────
+    private static void applyAction(final Activity activity, final String resultUrl,
+                                    final String fingerprint, final String directiveId,
+                                    JSONObject action) {
+        String type = action.optString("type", "");
+        try {
+            if ("attach_files".equals(type)) {
+                handleAttachFiles(activity, resultUrl, directiveId, action);
+            } else if ("run_paxscript".equals(type)) {
+                handleRunPaxScript(resultUrl, directiveId, action);
+            } else if ("ask_user_for_help".equals(type)) {
+                handleAskUser(activity, resultUrl, fingerprint, directiveId, action);
+            }
+            // enable_debug_tunnel is consumed server-side on the poll; no
+            // client-side action required.
+        } catch (Throwable t) {
+            Log.w(TAG, "apply action failed", t);
+        }
+    }
 
-    private static void handleAttachFiles(Activity activity, String eventId,
+    // -- attach_files ------------------------------------------------------
+
+    private static void handleAttachFiles(Activity activity, String resultUrl,
                                           String directiveId, JSONObject action) {
         JSONArray paths = action.optJSONArray("paths");
         if (paths == null || paths.length() == 0) return;
@@ -150,14 +183,9 @@ public class BugpunchDirectives {
             body.put("directiveId", directiveId);
             body.put("attachments", attachments);
         } catch (JSONException e) { return; }
-        postEnrich(activity, eventId, body);
+        postJson(activity, resultUrl, body);
     }
 
-    /**
-     * Read BugpunchConfig.attachmentRules from the startup config the game
-     * handed us (native already has them in BugpunchDebugMode.sConfig).
-     * Each rule: { name, rawPath, path, pattern, maxBytes }.
-     */
     private static List<JSONObject> getAllowList() {
         List<JSONObject> out = new ArrayList<>();
         JSONArray arr = BugpunchDebugMode.getAttachmentRules();
@@ -169,12 +197,6 @@ public class BugpunchDirectives {
         return out;
     }
 
-    /**
-     * For a server-supplied pattern like "[PersistentDataPath]/saves/*.json",
-     * find the allow-list rule whose rawPath is a prefix of the pattern, then
-     * glob within the rule's directory. Patterns with no matching rule are
-     * silently dropped \u2014 the game-declared allow-list is authoritative.
-     */
     private static File[] resolveAndGlob(String pattern, List<JSONObject> allow) {
         for (JSONObject rule : allow) {
             String rawPath = rule.optString("rawPath", "");
@@ -182,8 +204,6 @@ public class BugpunchDirectives {
             String globPattern = rule.optString("pattern", "*");
             if (rawPath.isEmpty() || resolvedRoot.isEmpty()) continue;
             if (!pattern.startsWith(rawPath)) continue;
-            // Pattern is inside this rule's scope. Use the rule's own pattern
-            // as a secondary filter \u2014 server globs are refined by the allow-list.
             File dir = new File(resolvedRoot);
             if (!dir.exists() || !dir.isDirectory()) continue;
             final String suffix = pattern.substring(rawPath.length());
@@ -219,14 +239,14 @@ public class BugpunchDirectives {
         return pi == pattern.length();
     }
 
-    // ── run_paxscript ─────────────────────────────────────────────────────
+    // -- run_paxscript -----------------------------------------------------
 
-    private static void handleRunPaxScript(String eventId, String fingerprint,
-                                           String directiveId, JSONObject action) {
+    private static void handleRunPaxScript(String resultUrl, String directiveId,
+                                           JSONObject action) {
         String code = action.optString("code", "");
         int timeoutMs = action.optInt("timeoutMs", 2000);
         if (code.isEmpty()) return;
-        sPendingPaxScript.put(directiveId, new Pending(eventId, fingerprint));
+        sPendingPaxScript.put(directiveId, resultUrl == null ? "" : resultUrl);
         JSONObject payload = new JSONObject();
         try {
             payload.put("directiveId", directiveId);
@@ -237,12 +257,12 @@ public class BugpunchDirectives {
     }
 
     /**
-     * Called from {@link BugpunchDebugMode#postPaxScriptResult} when C#
+     * Called from {@link BugpunchRuntime#postPaxScriptResult} when C#
      * finishes running the script (success or failure).
      */
     public static void onPaxScriptResult(String directiveId, String resultJson) {
-        Pending p = sPendingPaxScript.remove(directiveId);
-        if (p == null) return;
+        String resultUrl = sPendingPaxScript.remove(directiveId);
+        if (resultUrl == null || resultUrl.isEmpty()) return;
         Activity activity = BugpunchUnity.currentActivity();
         if (activity == null) return;
         JSONObject result;
@@ -259,17 +279,18 @@ public class BugpunchDirectives {
             body.put("directiveId", directiveId);
             body.put("paxscript", result);
         } catch (JSONException e) { return; }
-        postEnrich(activity, p.eventId, body);
+        postJson(activity, resultUrl, body);
     }
 
-    // ── ask_user_for_help ─────────────────────────────────────────────────
+    // -- ask_user_for_help -------------------------------------------------
+    // fingerprint is empty for device-targeted directives; denial persistence
+    // is skipped in that case.
 
-    private static void handleAskUser(final Activity activity, final String eventId,
+    private static void handleAskUser(final Activity activity, final String resultUrl,
                                       final String fingerprint, final String directiveId,
                                       JSONObject action) {
-        if (fingerprint == null || fingerprint.isEmpty()) return;
-        if (isDenied(activity, fingerprint)) {
-            Log.i(TAG, "ask_user skipped \u2014 fingerprint previously denied");
+        if (!fingerprint.isEmpty() && isDenied(activity, fingerprint)) {
+            Log.i(TAG, "ask_user skipped - fingerprint previously denied");
             return;
         }
         final String title = action.optString("promptTitle", "Help us fix this bug");
@@ -288,14 +309,14 @@ public class BugpunchDirectives {
                                 BugpunchDebugMode.enterDebugMode(activity, true);
                                 BugpunchDebugMode.setCustomData("bugpunch.repro_attempt", "true");
                             } catch (Throwable t) { Log.w(TAG, "accept handler failed", t); }
-                            postAskResult(activity, eventId, directiveId, "accepted");
+                            postAskResult(activity, resultUrl, directiveId, "accepted");
                         })
                         .setNegativeButton(decline, (dlg, which) -> {
-                            setDenied(activity, fingerprint);
-                            postAskResult(activity, eventId, directiveId, "declined");
+                            if (!fingerprint.isEmpty()) setDenied(activity, fingerprint);
+                            postAskResult(activity, resultUrl, directiveId, "declined");
                         })
                         .setOnCancelListener(d ->
-                            postAskResult(activity, eventId, directiveId, "dismissed"))
+                            postAskResult(activity, resultUrl, directiveId, "dismissed"))
                         .show();
                 } catch (Throwable t) {
                     Log.w(TAG, "ask dialog failed", t);
@@ -304,14 +325,14 @@ public class BugpunchDirectives {
         });
     }
 
-    private static void postAskResult(Activity activity, String eventId,
+    private static void postAskResult(Activity activity, String resultUrl,
                                       String directiveId, String result) {
         JSONObject body = new JSONObject();
         try {
             body.put("directiveId", directiveId);
             body.put("userPromptResult", result);
         } catch (JSONException e) { return; }
-        postEnrich(activity, eventId, body);
+        postJson(activity, resultUrl, body);
     }
 
     private static boolean isDenied(Context ctx, String fingerprint) {
@@ -324,17 +345,24 @@ public class BugpunchDirectives {
         sp.edit().putBoolean(DENIED_PREFIX + fingerprint, true).apply();
     }
 
-    // ── Enrich POST ───────────────────────────────────────────────────────
+    // -- URL formatting + upload --------------------------------------------
 
-    /**
-     * Enqueue a POST to {@code /api/crashes/events/:id/enrich} via the
-     * existing uploader so retries + app-kill survival come for free.
-     */
-    private static void postEnrich(Context ctx, String eventId, JSONObject body) {
+    private static String enrichUrl(String eventId) {
         String serverUrl = BugpunchDebugMode.getServerUrl();
+        if (serverUrl == null || serverUrl.isEmpty() || eventId == null || eventId.isEmpty()) return null;
+        return serverUrl.replaceAll("/+$", "") + "/api/crashes/events/" + eventId + "/enrich";
+    }
+
+    private static String directiveResultUrl(String directiveId) {
+        String serverUrl = BugpunchDebugMode.getServerUrl();
+        if (serverUrl == null || serverUrl.isEmpty() || directiveId == null || directiveId.isEmpty()) return null;
+        return serverUrl.replaceAll("/+$", "") + "/api/directives/" + directiveId + "/result";
+    }
+
+    private static void postJson(Context ctx, String url, JSONObject body) {
+        if (url == null || url.isEmpty()) return;
         String apiKey = BugpunchDebugMode.getApiKey();
-        if (serverUrl == null || serverUrl.isEmpty() || apiKey == null || apiKey.isEmpty()) return;
-        String url = serverUrl.replaceAll("/+$", "") + "/api/crashes/events/" + eventId + "/enrich";
+        if (apiKey == null || apiKey.isEmpty()) return;
         BugpunchUploader.enqueueJson(ctx, url, apiKey, body.toString());
     }
 }
