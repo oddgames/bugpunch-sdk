@@ -26,11 +26,29 @@ namespace ODDGames.Bugpunch.Editor
         // in place for the Gradle / Xcode build, and the cleanup happens after.
         public int callbackOrder => -100;
 
-        const string AndroidAssetsDir = "Assets/Plugins/Android/assets";
-        const string AndroidAssetPath = AndroidAssetsDir + "/bugpunch_config.json";
-        const string AndroidAssetMeta = AndroidAssetPath + ".meta";
+        // Unity 6+ rejects loose resources in Assets/Plugins/Android/assets —
+        // we stage the bundle inside a `.androidlib` directory instead, which
+        // Unity treats as an Android Library project and packages its assets/
+        // into the final APK's assets/ at the root.
+        const string AndroidLibDir     = "Assets/Plugins/Android/bugpunch_config.androidlib";
+        const string AndroidLibManifest = AndroidLibDir + "/AndroidManifest.xml";
+        const string AndroidLibProjectProps = AndroidLibDir + "/project.properties";
+        const string AndroidLibAssetsDir = AndroidLibDir + "/assets";
+        const string AndroidLibAssetPath = AndroidLibAssetsDir + "/bugpunch_config.json";
         const string IosStagingDir = "Temp/Bugpunch";
         const string IosStagingFile = IosStagingDir + "/bugpunch_config.json";
+
+        // Minimal AndroidManifest required by a .androidlib directory. No
+        // permissions, no activities — we only use this lib to carry the
+        // bundled config JSON as an asset.
+        const string AndroidLibManifestXml =
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
+            "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n" +
+            "          package=\"au.com.oddgames.bugpunch.config\">\n" +
+            "    <application />\n" +
+            "</manifest>\n";
+
+        const string AndroidLibProjectPropsText = "android.library=true\n";
 
         public void OnPreprocessBuild(BuildReport report)
         {
@@ -49,10 +67,14 @@ namespace ODDGames.Bugpunch.Editor
 
             if (target == BuildTarget.Android)
             {
-                if (!Directory.Exists(AndroidAssetsDir))
-                    Directory.CreateDirectory(AndroidAssetsDir);
-                File.WriteAllText(AndroidAssetPath, json, new UTF8Encoding(false));
-                Debug.Log($"[Bugpunch] Bundled config → {AndroidAssetPath}");
+                Directory.CreateDirectory(AndroidLibAssetsDir);
+                var utf8 = new UTF8Encoding(false);
+                if (!File.Exists(AndroidLibManifest))
+                    File.WriteAllText(AndroidLibManifest, AndroidLibManifestXml, utf8);
+                if (!File.Exists(AndroidLibProjectProps))
+                    File.WriteAllText(AndroidLibProjectProps, AndroidLibProjectPropsText, utf8);
+                File.WriteAllText(AndroidLibAssetPath, json, utf8);
+                Debug.Log($"[Bugpunch] Bundled config → {AndroidLibAssetPath}");
             }
             else if (target == BuildTarget.iOS)
             {
@@ -69,17 +91,10 @@ namespace ODDGames.Bugpunch.Editor
 
             if (target == BuildTarget.Android)
             {
-                // Don't leave the bundled file sitting in the project — it's
-                // regenerated on every build and a stale copy is confusing.
-                TryDelete(AndroidAssetPath);
-                TryDelete(AndroidAssetMeta);
-                if (Directory.Exists(AndroidAssetsDir) &&
-                    Directory.GetFiles(AndroidAssetsDir).Length == 0 &&
-                    Directory.GetDirectories(AndroidAssetsDir).Length == 0)
-                {
-                    try { Directory.Delete(AndroidAssetsDir); } catch { /* best-effort */ }
-                    TryDelete(AndroidAssetsDir + ".meta");
-                }
+                // Clean the whole androidlib directory — it only exists during
+                // the build. Next build regenerates with fresh secret + config.
+                TryDeleteDirRecursive(AndroidLibDir);
+                TryDelete(AndroidLibDir + ".meta");
             }
             else if (target == BuildTarget.iOS)
             {
@@ -88,6 +103,16 @@ namespace ODDGames.Bugpunch.Editor
 #endif
                 TryDelete(IosStagingFile);
             }
+        }
+
+        static void TryDeleteDirRecursive(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, recursive: true);
+            }
+            catch { /* best-effort cleanup */ }
         }
 
 #if UNITY_IOS
