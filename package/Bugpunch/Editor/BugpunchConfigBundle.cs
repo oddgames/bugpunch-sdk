@@ -176,6 +176,17 @@ namespace ODDGames.Bugpunch.Editor
                 .Append(c.videoBufferSeconds).Append(",\"fps\":")
                 .Append(c.bugReportVideoFps).Append("},");
 
+            // metadata.{appVersion,bundleId,unityVersion} are required by the
+            // server's register handshake (empty appVersion → close 4000). Bake
+            // them in at build time so the native tunnel (which starts from the
+            // ContentProvider before Unity boots) has them on its first connect.
+            // deviceModel / osVersion are runtime-only — native fills those in.
+            sb.Append("\"metadata\":{");
+            Field(sb, "appVersion",   Application.version);        sb.Append(',');
+            Field(sb, "bundleId",     Application.identifier);     sb.Append(',');
+            Field(sb, "unityVersion", Application.unityVersion);
+            sb.Append("},");
+
             sb.Append("\"attachmentRules\":[");
             bool first = true;
             if (c.attachmentRules != null)

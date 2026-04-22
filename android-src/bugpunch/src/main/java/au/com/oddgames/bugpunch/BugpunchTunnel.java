@@ -519,6 +519,16 @@ public final class BugpunchTunnel {
             int code = serverFrame != null ? serverFrame.getCloseCode()
                      : clientFrame != null ? clientFrame.getCloseCode() : 0;
             Log.i(TAG, "disconnected (code=" + code + " byServer=" + closedByServer + ")");
+            // 4000 / 4001 are permanent server-side rejections (missing register
+            // fields / invalid token). Retrying just tight-loops the same
+            // rejection forever. Stop and let the next app launch (with hopefully
+            // fresher config) try again.
+            if (code == 4000 || code == 4001) {
+                Log.w(TAG, "permanent rejection (code=" + code + ") — not reconnecting. " +
+                           "Check your API key + that BugpunchConfigBundle baked metadata.appVersion.");
+                mStopRequested = true;
+                return;
+            }
             scheduleReconnect();
         }
 
