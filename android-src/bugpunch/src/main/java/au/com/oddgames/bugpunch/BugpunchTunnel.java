@@ -4,16 +4,13 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
-import okio.ByteString;
+import com.neovisionaries.ws.client.WebSocket;
+import com.neovisionaries.ws.client.WebSocketAdapter;
+import com.neovisionaries.ws.client.WebSocketException;
+import com.neovisionaries.ws.client.WebSocketFactory;
+import com.neovisionaries.ws.client.WebSocketFrame;
 
 import org.json.JSONObject;
-
-import java.util.concurrent.TimeUnit;
 
 /**
  * Native WebSocket tunnel — N1 of the migration plan in
@@ -106,11 +103,11 @@ public final class BugpunchTunnel {
     public static synchronized void sendResponse(String json) {
         if (sInstance == null || json == null) return;
         WebSocket s = sInstance.mSocket;
-        if (s == null) {
+        if (s == null || !s.isOpen()) {
             Log.w(TAG, "sendResponse dropped — tunnel not connected");
             return;
         }
-        s.send(json);
+        s.sendText(json);
     }
 
     // ── N4: native pin state accessors ──
@@ -197,7 +194,7 @@ public final class BugpunchTunnel {
             }
         }
         out.append("\"}");
-        s.send(out.toString());
+        s.sendText(out.toString());
         mLastLogFlushMs = System.currentTimeMillis();
     }
 
@@ -258,7 +255,7 @@ public final class BugpunchTunnel {
     private final String mServerUrl;
     private final String mApiKey;
     private final String mBuildChannel;
-    private final OkHttpClient mClient;
+    private final WebSocketFactory mFactory;
     private final Handler mWorker;
     private WebSocket mSocket;
     private volatile boolean mConnected;
@@ -315,11 +312,8 @@ public final class BugpunchTunnel {
         mPinSigningSecret = config.optString("pinSigningSecret", "");
         mDeviceId = loadOrMintDeviceId();
 
-        mClient = new OkHttpClient.Builder()
-            .connectTimeout(HANDSHAKE_BUDGET_MS, TimeUnit.MILLISECONDS)
-            .readTimeout(0, TimeUnit.MILLISECONDS)       // 0 = no timeout on WS read
-            .pingInterval(HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS)
-            .build();
+        mFactory = new WebSocketFactory()
+            .setConnectionTimeout((int) HANDSHAKE_BUDGET_MS);
 
         HandlerThread t = new HandlerThread("bugpunch-tunnel");
         t.start();
@@ -395,9 +389,20 @@ public final class BugpunchTunnel {
             return;
         }
         String wsUrl = toWsUrl(mServerUrl) + "/api/devices/tunnel";
-        Request req = new Request.Builder().url(wsUrl).build();
-        mSocket = mClient.newWebSocket(req, new Listener());
-        Log.i(TAG, "connecting to " + wsUrl);
+        try {
+            WebSocket ws = mFactory.createSocket(wsUrl);
+            // Library-level ping every 10 s keeps the socket alive through
+            // carrier-grade NAT and idle proxies. Our application-layer
+            // {"type":"heartbeat"} still rides over this.
+            ws.setPingInterval(HEARTBEAT_INTERVAL_MS);
+            ws.addListener(new Listener());
+            mSocket = ws;
+            ws.connectAsynchronously();
+            Log.i(TAG, "connecting to " + wsUrl);
+        } catch (java.io.IOException e) {
+            Log.w(TAG, "connect failed: " + e.getMessage());
+            scheduleReconnect();
+        }
     }
 
     private static String toWsUrl(String base) {
@@ -429,7 +434,7 @@ public final class BugpunchTunnel {
             return;
         }
         WebSocket s = mSocket;
-        if (s != null) s.send(reg.toString());
+        if (s != null) s.sendText(reg.toString());
     }
 
     private void scheduleReconnect() {
@@ -444,23 +449,23 @@ public final class BugpunchTunnel {
         mStopRequested = true;
         WebSocket s = mSocket;
         if (s != null) {
-            try { s.close(1000, "shutdown"); } catch (Throwable ignore) {}
+            try { s.disconnect(1000, "shutdown"); } catch (Throwable ignore) {}
         }
         mSocket = null;
         mConnected = false;
     }
 
-    // ── Listener ──
+    // ── Listener (nv-websocket-client WebSocketAdapter) ──
 
-    private final class Listener extends WebSocketListener {
-        @Override public void onOpen(WebSocket ws, Response response) {
+    private final class Listener extends WebSocketAdapter {
+        @Override public void onConnected(WebSocket ws, java.util.Map<String, java.util.List<String>> headers) {
             mConnected = true;
             mBackoffMs = BACKOFF_INITIAL_MS;
             Log.i(TAG, "connected");
             sendRegister();
         }
 
-        @Override public void onMessage(WebSocket ws, String text) {
+        @Override public void onTextMessage(WebSocket ws, String text) {
             try {
                 JSONObject msg = new JSONObject(text);
                 String type = msg.optString("type", "");
@@ -508,27 +513,19 @@ public final class BugpunchTunnel {
             }
         }
 
-        @Override public void onMessage(WebSocket ws, ByteString bytes) {
-            // N5 (native log sink) will use binary frames for log chunks.
-            // Ignored for now.
-        }
-
-        @Override public void onFailure(WebSocket ws, Throwable t, Response response) {
+        @Override public void onDisconnected(WebSocket ws, WebSocketFrame serverFrame,
+                                             WebSocketFrame clientFrame, boolean closedByServer) {
             mConnected = false;
-            Log.w(TAG, "tunnel failure: " + t.getMessage());
+            int code = serverFrame != null ? serverFrame.getCloseCode()
+                     : clientFrame != null ? clientFrame.getCloseCode() : 0;
+            Log.i(TAG, "disconnected (code=" + code + " byServer=" + closedByServer + ")");
             scheduleReconnect();
         }
 
-        @Override public void onClosing(WebSocket ws, int code, String reason) {
-            mConnected = false;
-            Log.i(TAG, "closing code=" + code + " reason=" + reason);
-            try { ws.close(1000, null); } catch (Throwable ignore) {}
-        }
-
-        @Override public void onClosed(WebSocket ws, int code, String reason) {
-            mConnected = false;
-            Log.i(TAG, "closed code=" + code);
-            scheduleReconnect();
+        @Override public void onError(WebSocket ws, WebSocketException cause) {
+            Log.w(TAG, "tunnel error: " + cause.getMessage());
+            // nv-websocket-client fires onDisconnected for connection failures;
+            // we avoid double-scheduling reconnect here.
         }
     }
 }

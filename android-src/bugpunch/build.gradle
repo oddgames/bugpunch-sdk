@@ -68,10 +68,15 @@ android {
 }
 
 dependencies {
-    // WebSocket client for BugpunchTunnel (N1 of the native-tunnel migration).
-    // OkHttp is the de-facto Android WebSocket implementation; works on every
-    // API level our minSdk supports. Unity's Android Gradle resolves this
-    // transitive dependency during the Player build (settings.gradle already
-    // declares google() + mavenCentral() as the project's repositories).
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    // WebSocket client for BugpunchTunnel. Using nv-websocket-client (Apache 2,
+    // ~125 KB) because:
+    //   - Zero transitive runtime dependencies — pure Java, no Kotlin, no Okio.
+    //   - JAR is vendored in libs/ so the AAR ships self-contained. No Gradle
+    //     template tweaks or EDM4U required in the host Unity project.
+    //   - OkHttp was the first attempt; Unity's Android Gradle integration
+    //     doesn't reliably resolve AAR transitive deps and the host APK ends up
+    //     without okhttp3.* classes (ClassNotFoundException at SDK startup).
+    // `api files(...)` inlines the JAR into the AAR's own classes path so
+    // consumers get the classes without naming the dep themselves.
+    api files('libs/nv-websocket-client-2.14.jar')
 }
