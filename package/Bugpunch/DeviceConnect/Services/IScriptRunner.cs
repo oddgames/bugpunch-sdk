@@ -4,8 +4,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// Interface for runtime C# script execution.
     /// Implementations must handle compilation and execution without JIT (IL2CPP compatible).
     ///
-    /// Default implementation uses PaxScripter (must be present in the project).
-    /// If no implementation is registered, script execution is disabled.
+    /// Default implementation is <see cref="ScriptRunner"/>, backed by ODDGames.Scripting.
     /// </summary>
     public interface IScriptRunner
     {

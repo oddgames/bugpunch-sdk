@@ -10,7 +10,7 @@
 //      /api/device-poll returns pendingDirectives[]. No crash context.
 //      Action results are POSTed to /api/directives/{directiveId}/result.
 //
-// Both paths run through the same handlers (attach_files / run_paxscript /
+// Both paths run through the same handlers (attach_files / run_script /
 // ask_user_for_help). The dispatcher builds the result URL once and passes it
 // down. enable_debug_tunnel is consumed server-side (flips the upgrade flag
 // on poll); no client-side action.
@@ -39,16 +39,16 @@ extern "C" void UnitySendMessage(const char* obj, const char* method, const char
 
 static NSString* const kBPDirectiveDeniedKey = @"bugpunch.directive.denied.";
 
-// Pending paxscript callbacks, keyed by directiveId -> resultUrl. The URL
+// Pending script callbacks, keyed by directiveId -> resultUrl. The URL
 // encodes both the post target AND the event/directive id, so
-// postPaxScriptResult doesn't need to know which flow spawned it.
-static NSMutableDictionary<NSString*, NSString*>* gPendingPaxScript;
+// Bugpunch_PostDirectiveResult doesn't need to know which flow spawned it.
+static NSMutableDictionary<NSString*, NSString*>* gPendingScripts;
 static dispatch_queue_t gPendingLock;
 
 static void BPEnsurePending(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        gPendingPaxScript = [NSMutableDictionary dictionary];
+        gPendingScripts = [NSMutableDictionary dictionary];
         gPendingLock = dispatch_queue_create("au.com.oddgames.bugpunch.directives", DISPATCH_QUEUE_SERIAL);
     });
 }
@@ -189,17 +189,17 @@ static void BPHandleAttachFiles(NSString* resultUrl, NSString* directiveId,
     });
 }
 
-// -- run_paxscript: UnitySendMessage + pending callback --
+// -- run_script: UnitySendMessage + pending callback --
 
-static void BPHandleRunPaxScript(NSString* resultUrl, NSString* directiveId,
-                                 NSDictionary* action) {
+static void BPHandleRunScript(NSString* resultUrl, NSString* directiveId,
+                              NSDictionary* action) {
     NSString* code = action[@"code"];
     if (![code isKindOfClass:[NSString class]] || code.length == 0) return;
     NSInteger timeoutMs = [action[@"timeoutMs"] integerValue];
     if (timeoutMs <= 0) timeoutMs = 2000;
 
     BPEnsurePending();
-    dispatch_sync(gPendingLock, ^{ gPendingPaxScript[directiveId] = resultUrl ?: @""; });
+    dispatch_sync(gPendingLock, ^{ gPendingScripts[directiveId] = resultUrl ?: @""; });
 
     NSDictionary* payload = @{
         @"directiveId": directiveId,
@@ -208,7 +208,7 @@ static void BPHandleRunPaxScript(NSString* resultUrl, NSString* directiveId,
     };
     NSData* data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
     NSString* jsonStr = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
-    UnitySendMessage("BugpunchClient", "DirectiveRunPaxScript", [jsonStr UTF8String]);
+    UnitySendMessage("BugpunchClient", "DirectiveRunScript", [jsonStr UTF8String]);
 }
 
 // -- ask_user_for_help: UIAlertController + persistent denial --
@@ -259,8 +259,8 @@ static void BPApplyAction(NSString* resultUrl, NSString* fingerprint,
     @try {
         if ([type isEqualToString:@"attach_files"]) {
             BPHandleAttachFiles(resultUrl, directiveId, action);
-        } else if ([type isEqualToString:@"run_paxscript"]) {
-            BPHandleRunPaxScript(resultUrl, directiveId, action);
+        } else if ([type isEqualToString:@"run_script"]) {
+            BPHandleRunScript(resultUrl, directiveId, action);
         } else if ([type isEqualToString:@"ask_user_for_help"]) {
             BPHandleAskUser(resultUrl, fingerprint, directiveId, action);
         }
@@ -338,7 +338,7 @@ extern "C" void BPDirectives_OnPollDirectives(const char* jsonC) {
     }
 }
 
-extern "C" void Bugpunch_PostPaxScriptResult(const char* directiveIdC, const char* resultJsonC) {
+extern "C" void Bugpunch_PostDirectiveResult(const char* directiveIdC, const char* resultJsonC) {
     if (!directiveIdC || !*directiveIdC) return;
     NSString* directiveId = [NSString stringWithUTF8String:directiveIdC];
     NSString* resultJson = resultJsonC ? [NSString stringWithUTF8String:resultJsonC] : @"{}";
@@ -346,18 +346,18 @@ extern "C" void Bugpunch_PostPaxScriptResult(const char* directiveIdC, const cha
     BPEnsurePending();
     __block NSString* resultUrl = nil;
     dispatch_sync(gPendingLock, ^{
-        resultUrl = gPendingPaxScript[directiveId];
-        [gPendingPaxScript removeObjectForKey:directiveId];
+        resultUrl = gPendingScripts[directiveId];
+        [gPendingScripts removeObjectForKey:directiveId];
     });
     if (resultUrl.length == 0) return;
 
     NSData* data = [resultJson dataUsingEncoding:NSUTF8StringEncoding];
     id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     NSDictionary* resultDict = [parsed isKindOfClass:[NSDictionary class]] ? parsed
-        : @{ @"ok": @NO, @"errors": @[@"bad json from paxscript runner"] };
+        : @{ @"ok": @NO, @"errors": @[@"bad json from script runner"] };
 
     BPPostJson(resultUrl, @{
         @"directiveId": directiveId,
-        @"paxscript": resultDict,
+        @"script": resultDict,
     });
 }

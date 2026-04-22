@@ -191,8 +191,8 @@ public final class BugpunchPoller {
                 BugpunchUnity.sendMessage("BugpunchClient", "OnPollUpgradeRequested", "");
             }
 
-            // 3) Scheduled scripts — run in C# (PaxScript executes against
-            //    managed code). Hand the raw array across.
+            // 3) Scheduled scripts — run in C# (script runner executes
+            //    against managed code). Hand the raw array across.
             JSONArray scripts = resp.optJSONArray("scripts");
             if (scripts != null && scripts.length() > 0) {
                 BugpunchUnity.sendMessage("BugpunchClient", "OnPollScripts", scripts.toString());
@@ -204,7 +204,7 @@ public final class BugpunchPoller {
 
     /**
      * Post a scheduled script's execution result back to the server. Called
-     * from C# via {@link BugpunchRuntime#postScriptResult} after the PaxScript
+     * from C# via {@link BugpunchRuntime#postScriptResult} after the script
      * runner finishes.
      */
     public static void postScriptResult(String scheduledScriptId, String output,

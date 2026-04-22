@@ -246,7 +246,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var deviceInfo = new DeviceInfoService();
             var dbPlugins = new DatabasePluginRegistry();
             dbPlugins.ScanIfNeeded();
-            IScriptRunner scriptRunner = new PaxScriptRunner();
+            IScriptRunner scriptRunner = new ScriptRunner();
             var textures = new TextureService();
             var materials = gameObject.AddComponent<MaterialService>();
             var memorySnapshots = new MemorySnapshotService();
@@ -284,7 +284,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // C# just pushes scene/fps and forwards managed exceptions.
             BugpunchNative.Start(Config);
             gameObject.AddComponent<BugpunchSceneTick>();
-            // Managed-side paxscript bridge for server "Request More Info"
+            // Managed-side script bridge for server "Request More Info"
             // directives. Everything else (directive fetching, caching,
             // queue matching, file globs, dialogs, denial prefs) lives
             // natively — this component just exists so native has a
@@ -869,7 +869,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// UnitySendMessage receiver. Fires when the poll response contains
         /// scheduled scripts to run against managed code. Payload is the raw
         /// JSON array: <c>[{"Id":"...","Name":"...","Code":"..."}]</c>. Runs
-        /// each via the PaxScript runner and POSTs the result back through
+        /// each via <see cref="ScriptRunner"/> and POSTs the result back through
         /// <see cref="BugpunchNative.PostScriptResult"/>.
         /// </summary>
         public void OnPollScripts(string scriptsJson)
@@ -906,8 +906,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             bool ok = false;
             try
             {
-                // PaxScriptRunner returns a JSON envelope: {"ok":bool,"output":"...","errors":[...]}
-                envelope = new PaxScriptRunner().Execute(script.Code) ?? "";
+                // ScriptRunner returns a JSON envelope: {"ok":bool,"output":"...","errors":[...]}
+                envelope = new ScriptRunner().Execute(script.Code) ?? "";
                 ok = envelope.Contains("\"ok\":true");
             }
             catch (Exception ex)

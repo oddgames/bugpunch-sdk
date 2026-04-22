@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *       {@code /api/directives/{directiveId}/result}.</li>
  * </ol>
  *
- * Both paths run through the same handlers (attach_files / run_paxscript /
+ * Both paths run through the same handlers (attach_files / run_script /
  * ask_user_for_help). The dispatcher builds the result URL once and passes it
  * down. All HTTP posting reuses {@link BugpunchUploader}'s multipart queue so
  * retries and app-kill survival come for free.
@@ -41,10 +41,10 @@ public class BugpunchDirectives {
     private static final String PREFS = "bugpunch_directives";
     private static final String DENIED_PREFIX = "denied:";
 
-    // Pending paxscript callbacks, keyed by directiveId -> resultUrl. The URL
+    // Pending script callbacks, keyed by directiveId -> resultUrl. The URL
     // encodes both the POST target and the eventId/directiveId, so
-    // onPaxScriptResult doesn't need to know which flow spawned it.
-    private static final Map<String, String> sPendingPaxScript = new ConcurrentHashMap<>();
+    // onScriptResult doesn't need to know which flow spawned it.
+    private static final Map<String, String> sPendingScripts = new ConcurrentHashMap<>();
 
     /**
      * Called from {@link BugpunchUploader} after a successful /api/crashes
@@ -123,8 +123,8 @@ public class BugpunchDirectives {
         try {
             if ("attach_files".equals(type)) {
                 handleAttachFiles(activity, resultUrl, directiveId, action);
-            } else if ("run_paxscript".equals(type)) {
-                handleRunPaxScript(resultUrl, directiveId, action);
+            } else if ("run_script".equals(type)) {
+                handleRunScript(resultUrl, directiveId, action);
             } else if ("ask_user_for_help".equals(type)) {
                 handleAskUser(activity, resultUrl, fingerprint, directiveId, action);
             }
@@ -239,29 +239,29 @@ public class BugpunchDirectives {
         return pi == pattern.length();
     }
 
-    // -- run_paxscript -----------------------------------------------------
+    // -- run_script --------------------------------------------------------
 
-    private static void handleRunPaxScript(String resultUrl, String directiveId,
-                                           JSONObject action) {
+    private static void handleRunScript(String resultUrl, String directiveId,
+                                        JSONObject action) {
         String code = action.optString("code", "");
         int timeoutMs = action.optInt("timeoutMs", 2000);
         if (code.isEmpty()) return;
-        sPendingPaxScript.put(directiveId, resultUrl == null ? "" : resultUrl);
+        sPendingScripts.put(directiveId, resultUrl == null ? "" : resultUrl);
         JSONObject payload = new JSONObject();
         try {
             payload.put("directiveId", directiveId);
             payload.put("code", code);
             payload.put("timeoutMs", timeoutMs);
         } catch (JSONException e) { return; }
-        BugpunchUnity.sendMessage("BugpunchClient", "DirectiveRunPaxScript", payload.toString());
+        BugpunchUnity.sendMessage("BugpunchClient", "DirectiveRunScript", payload.toString());
     }
 
     /**
-     * Called from {@link BugpunchRuntime#postPaxScriptResult} when C#
-     * finishes running the script (success or failure).
+     * Called from {@link BugpunchRuntime#postScriptResult} when C# finishes
+     * running the script (success or failure).
      */
-    public static void onPaxScriptResult(String directiveId, String resultJson) {
-        String resultUrl = sPendingPaxScript.remove(directiveId);
+    public static void onScriptResult(String directiveId, String resultJson) {
+        String resultUrl = sPendingScripts.remove(directiveId);
         if (resultUrl == null || resultUrl.isEmpty()) return;
         Activity activity = BugpunchUnity.currentActivity();
         if (activity == null) return;
@@ -271,13 +271,13 @@ public class BugpunchDirectives {
             result = new JSONObject();
             try {
                 result.put("ok", false);
-                result.put("errors", new JSONArray().put("bad json from paxscript runner"));
+                result.put("errors", new JSONArray().put("bad json from script runner"));
             } catch (JSONException ignored) {}
         }
         JSONObject body = new JSONObject();
         try {
             body.put("directiveId", directiveId);
-            body.put("paxscript", result);
+            body.put("script", result);
         } catch (JSONException e) { return; }
         postJson(activity, resultUrl, body);
     }

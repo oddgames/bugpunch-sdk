@@ -4,7 +4,6 @@
     "references": [
         "Unity.TextMeshPro",
         "Unity.InputSystem",
-        "PaxScript",
         "Unity.WebRTC"
     ],
     "includePlatforms": [],
@@ -13,7 +12,8 @@
     "overrideReferences": true,
     "precompiledReferences": [
         "nunit.framework.dll",
-        "Newtonsoft.Json.dll"
+        "Newtonsoft.Json.dll",
+        "ODDGames.Scripting.dll"
     ],
     "autoReferenced": true,
     "defineConstraints": [],

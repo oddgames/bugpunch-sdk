@@ -186,7 +186,7 @@ static void BPDoPoll(void) {
                 UnitySendMessage("BugpunchClient", "OnPollUpgradeRequested", "");
             }
 
-            // 3) Scheduled scripts -> C# executes PaxScript.
+            // 3) Scheduled scripts -> C# executes via the script runner.
             NSArray* scripts = resp[@"scripts"];
             if ([scripts isKindOfClass:[NSArray class]] && scripts.count > 0) {
                 NSData* sd = [NSJSONSerialization dataWithJSONObject:scripts options:0 error:nil];
@@ -250,7 +250,7 @@ extern "C" void Bugpunch_PollNow(void) {
 
 /**
  * Post a scheduled script's execution result back to the server. Invoked from
- * C# once PaxScript finishes. Fires on the poll queue (same serial queue, so
+ * C# once the script runner finishes. Fires on the poll queue (same serial queue, so
  * no concurrent HTTP from this subsystem).
  */
 extern "C" void Bugpunch_PostScriptResult(const char* scheduledScriptIdC,

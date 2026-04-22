@@ -508,13 +508,13 @@ public class BugpunchRuntime {
     }
 
     /**
-     * Called from C# via <c>BugpunchNative.PostPaxScriptResult</c> when a
-     * directive-triggered PaxScript run finishes. Hands off to
+     * Called from C# via <c>BugpunchNative.PostDirectiveResult</c> when a
+     * directive-triggered script run finishes. Hands off to
      * {@link BugpunchDirectives} which POSTs to the /enrich endpoint.
      */
-    public static void postPaxScriptResult(String directiveId, String resultJson) {
+    public static void postDirectiveResult(String directiveId, String resultJson) {
         if (!sStarted) return;
-        BugpunchDirectives.onPaxScriptResult(directiveId, resultJson);
+        BugpunchDirectives.onScriptResult(directiveId, resultJson);
     }
 
     // ── Shake trigger ────────────────────────────────────────────────────

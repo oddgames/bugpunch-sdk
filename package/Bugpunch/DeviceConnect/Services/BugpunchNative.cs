@@ -488,13 +488,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
-        /// Callback from <see cref="CrashDirectiveHandler"/> back into native
-        /// after PaxScript finishes. Native posts the result to the server's
-        /// <c>POST /api/crashes/events/:id/enrich</c> endpoint via its upload
-        /// queue, keyed by the pending directive + event ids stored when the
-        /// directive match was received.
-        /// </summary>
-        /// <summary>
         /// Push a Unity log entry into the native log buffer. iOS only — on
         /// Android, Unity writes to logcat which the native reader already tails.
         /// </summary>
@@ -507,7 +500,16 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
-        public static void PostPaxScriptResult(string directiveId, string resultJson)
+        /// <summary>
+        /// Callback from <see cref="CrashDirectiveHandler"/> back into native after
+        /// the script finishes. Native posts the result to the server's
+        /// <c>POST /api/crashes/events/:id/enrich</c> endpoint via its upload
+        /// queue, keyed by the pending directive + event ids stored when the
+        /// directive match was received.
+        /// (Distinct from <c>PostScriptResult</c> which serves the poll-scheduled
+        /// scripts flow.)
+        /// </summary>
+        public static void PostDirectiveResult(string directiveId, string resultJson)
         {
             if (!s_started || string.IsNullOrEmpty(directiveId)) return;
 #if UNITY_EDITOR
@@ -515,12 +517,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             try
             {
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                cls.CallStatic("postPaxScriptResult", directiveId, resultJson ?? "");
+                cls.CallStatic("postDirectiveResult", directiveId, resultJson ?? "");
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch] PostPaxScriptResult failed: {e.Message}"); }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] PostDirectiveResult failed: {e.Message}"); }
 #elif UNITY_IOS
-            try { Bugpunch_PostPaxScriptResult(directiveId, resultJson ?? ""); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch] PostPaxScriptResult failed: {e.Message}"); }
+            try { Bugpunch_PostDirectiveResult(directiveId, resultJson ?? ""); }
+            catch (Exception e) { Debug.LogWarning($"[Bugpunch] PostDirectiveResult failed: {e.Message}"); }
 #endif
         }
 
@@ -530,7 +532,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // persistence. C# receives two callbacks via UnitySendMessage:
         //   BugpunchClient.OnPollUpgradeRequested  — server asked for a
         //     live tunnel; C# starts the WebSocket client.
-        //   BugpunchClient.OnPollScripts           — scheduled PaxScript(s)
+        //   BugpunchClient.OnPollScripts           — scheduled script(s)
         //     to execute against managed code; result posted back via
         //     PostScriptResult.
 
@@ -667,7 +669,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_Trace(string label, string tagsJson);
         [DllImport("__Internal")] static extern void Bugpunch_TrackEvent(string name, string propertiesJson);
         [DllImport("__Internal")] static extern void Bugpunch_TraceScreenshot(string label, string tagsJson);
-        [DllImport("__Internal")] static extern void Bugpunch_PostPaxScriptResult(string directiveId, string resultJson);
+        [DllImport("__Internal")] static extern void Bugpunch_PostDirectiveResult(string directiveId, string resultJson);
         [DllImport("__Internal")] static extern void BPDirectives_OnPollDirectives(string pendingDirectivesJson);
         [DllImport("__Internal")] static extern void Bugpunch_PushLogEntry(string type, string message, string stackTrace);
         [DllImport("__Internal")] static extern void Bugpunch_StartPerfMonitor(string configJson);

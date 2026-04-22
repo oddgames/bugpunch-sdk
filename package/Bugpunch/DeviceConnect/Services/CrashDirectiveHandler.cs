@@ -6,18 +6,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
 {
     /// <summary>
     /// Managed-side bridge for crash directive work that genuinely requires
-    /// the Mono/IL2CPP runtime: executing PaxScript against the running
-    /// game's assemblies. Everything else — fetching directives from the
-    /// server, caching them, matching upload-queue entries by fingerprint,
-    /// globbing attachment files, showing the post-upload "help us fix this"
-    /// dialog, and persisting per-fingerprint denial state — lives natively
-    /// (Java on Android, Obj-C++ on iOS) next to the existing crash handler
-    /// and upload queue.
+    /// the Mono/IL2CPP runtime: executing scripts against the running game's
+    /// assemblies. Everything else — fetching directives from the server,
+    /// caching them, matching upload-queue entries by fingerprint, globbing
+    /// attachment files, showing the post-upload "help us fix this" dialog,
+    /// and persisting per-fingerprint denial state — lives natively (Java
+    /// on Android, Obj-C++ on iOS) next to the existing crash handler and
+    /// upload queue.
     ///
-    /// Native invokes <see cref="RunPaxScript"/> via
-    /// <c>UnitySendMessage("BugpunchClient", "DirectiveRunPaxScript", json)</c>
-    /// when a queued crash has a <c>run_paxscript</c> action. The result is
-    /// posted back through <see cref="BugpunchNative.PostPaxScriptResult"/>.
+    /// Native invokes <see cref="RunScript"/> via
+    /// <c>UnitySendMessage("BugpunchClient", "DirectiveRunScript", json)</c>
+    /// when a queued crash has a <c>run_script</c> action. The result is
+    /// posted back through <see cref="BugpunchNative.PostDirectiveResult"/>.
     /// </summary>
     public class CrashDirectiveHandler : MonoBehaviour
     {
@@ -32,14 +32,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// Invoked from native via UnitySendMessage. Payload shape:
         /// <c>{"directiveId":"...","code":"...","timeoutMs":2000}</c>.
         /// </summary>
-        public void RunPaxScript(string payload)
+        public void RunScript(string payload)
         {
             if (string.IsNullOrEmpty(payload)) return;
             string directiveId = ExtractJsonString(payload, "directiveId");
             string code = ExtractJsonString(payload, "code");
             if (string.IsNullOrEmpty(directiveId) || string.IsNullOrEmpty(code))
             {
-                BugpunchNative.PostPaxScriptResult(directiveId ?? "",
+                BugpunchNative.PostDirectiveResult(directiveId ?? "",
                     "{\"ok\":false,\"errors\":[\"missing directiveId or code\"]}");
                 return;
             }
@@ -53,9 +53,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             string result;
             try
             {
-                result = new PaxScriptRunner().Execute(code);
+                result = new ScriptRunner().Execute(code);
                 if (string.IsNullOrEmpty(result))
-                    result = "{\"ok\":false,\"errors\":[\"paxscript runner returned empty\"]}";
+                    result = "{\"ok\":false,\"errors\":[\"script runner returned empty\"]}";
             }
             catch (Exception e)
             {
@@ -65,7 +65,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 sb.Append("\"stackTrace\":\"").Append(Escape(e.StackTrace ?? "")).Append("\"}");
                 result = sb.ToString();
             }
-            BugpunchNative.PostPaxScriptResult(directiveId, result);
+            BugpunchNative.PostDirectiveResult(directiveId, result);
         }
 
         // Minimal JSON string extractor — avoids pulling in a parser just to
