@@ -130,42 +130,81 @@ namespace ODDGames.Bugpunch.Editor
                 return;
             }
 
-            // Interactive mode: return from the post-build hook immediately so
-            // Unity's build progress dialog unfreezes. Extraction runs on a
-            // background Task while the main thread polls a cancelable
-            // EditorUtility progress bar.
-            EditorApplication.delayCall += () =>
+            // Interactive mode: kick off the extract + upload on a background
+            // Task and drive the progress bar via EditorApplication.update.
+            // The delayCall callback returns immediately so Unity's "Hold on"
+            // dialog never fires — the editor stays fully responsive, Cancel
+            // is instant, and the main thread never blocks on I/O.
+            KickOffInteractive(config, outputPath, projectRoot);
+        }
+
+        // ── Interactive flow state (main-thread only) ────────────────────
+        //
+        // One pending operation at a time — Unity serialises post-build hooks
+        // anyway so there's no concurrency here. Fields are reset by Finalize().
+
+        enum Phase { Extracting, Uploading }
+
+        static Task s_pendingTask;
+        static CancellationTokenSource s_pendingCts;
+        static List<SymbolFile> s_pendingFound;
+        static ExtractState s_pendingState;
+        static volatile Phase s_pendingPhase;
+
+        static void KickOffInteractive(
+            ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config,
+            string outputPath,
+            string projectRoot)
+        {
+            if (s_pendingTask != null)
             {
-                var found = new List<SymbolFile>();
-                using var cts = new CancellationTokenSource();
-                try
+                Debug.LogWarning("[Bugpunch] Symbol upload already in progress — skipping second kickoff.");
+                return;
+            }
+            s_pendingCts = new CancellationTokenSource();
+            s_pendingFound = new List<SymbolFile>();
+            s_pendingState = new ExtractState();
+            s_pendingPhase = Phase.Extracting;
+
+            var cts = s_pendingCts;
+            var found = s_pendingFound;
+            var state = s_pendingState;
+
+            s_pendingTask = Task.Run(() =>
+            {
+                FindAndroidSymbols(outputPath, projectRoot, found, cts.Token, state);
+                if (cts.IsCancellationRequested) return;
+                if (found.Count == 0) return;
+                s_pendingPhase = Phase.Uploading;
+                // Non-interactive so UploadSymbols skips EditorUtility calls —
+                // it's running on a background thread and those APIs are main-
+                // thread-only. Main thread draws our own progress bar via Pump.
+                UploadSymbols(config, found, projectRoot, interactive: false, cts);
+            }, s_pendingCts.Token);
+
+            EditorApplication.update += PumpInteractive;
+        }
+
+        static void PumpInteractive()
+        {
+            var task = s_pendingTask;
+            var cts = s_pendingCts;
+            var state = s_pendingState;
+            var found = s_pendingFound;
+            if (task == null)
+            {
+                EditorApplication.update -= PumpInteractive;
+                return;
+            }
+
+            if (task.IsCompleted)
+            {
+                EditorApplication.update -= PumpInteractive;
+                EditorUtility.ClearProgressBar();
+                try { task.GetAwaiter().GetResult(); }
+                catch (OperationCanceledException)
                 {
-                    var state = new ExtractState();
-                    var extractTask = Task.Run(
-                        () => FindAndroidSymbols(outputPath, projectRoot, found, cts.Token, state),
-                        cts.Token);
-
-                    if (!PollForCompletion(extractTask, cts, interactive: true,
-                        () => string.IsNullOrEmpty(state.Current)
-                            ? "Scanning output folder for symbols.zip…"
-                            : $"Extracting {state.Current} — {state.Bytes / 1048576.0:F1} MB",
-                        () => 0f))
-                    {
-                        Debug.LogWarning("[Bugpunch] Symbol extraction cancelled.");
-                        return;
-                    }
-                    // Surface any exception from the extract worker.
-                    try { extractTask.GetAwaiter().GetResult(); }
-                    catch (OperationCanceledException) { return; }
-
-                    if (found.Count == 0)
-                    {
-                        Debug.Log("[Bugpunch] No Android symbol files found. " +
-                            "Enable Player Settings → Publishing Settings → Symbols " +
-                            "(Public/Debugging) to produce symbols.zip alongside builds.");
-                        return;
-                    }
-                    UploadSymbols(config, found, projectRoot, interactive: true, cts);
+                    Debug.LogWarning("[Bugpunch] Symbol upload cancelled.");
                 }
                 catch (Exception ex)
                 {
@@ -174,9 +213,39 @@ namespace ODDGames.Bugpunch.Editor
                 finally
                 {
                     CleanupTempFiles(found);
-                    EditorUtility.ClearProgressBar();
+                    try { cts?.Dispose(); } catch { /* already disposed */ }
+                    if (found.Count == 0 && !cts.IsCancellationRequested)
+                    {
+                        Debug.Log("[Bugpunch] No Android symbol files found. " +
+                            "Enable Player Settings → Publishing Settings → Symbols " +
+                            "(Public/Debugging) to produce symbols.zip alongside builds.");
+                    }
+                    s_pendingTask = null;
+                    s_pendingCts = null;
+                    s_pendingFound = null;
+                    s_pendingState = null;
                 }
-            };
+                return;
+            }
+
+            string msg;
+            float progress;
+            if (s_pendingPhase == Phase.Extracting)
+            {
+                msg = string.IsNullOrEmpty(state.Current)
+                    ? "Scanning output folder for symbols.zip…"
+                    : $"Extracting {state.Current} — {state.Bytes / 1048576.0:F1} MB";
+                progress = 0f;
+            }
+            else
+            {
+                msg = $"Uploading symbols to server ({found.Count} file{(found.Count == 1 ? "" : "s")})…";
+                progress = 0.5f;
+            }
+            if (EditorUtility.DisplayCancelableProgressBar(PROGRESS_TITLE, msg, progress))
+            {
+                try { cts.Cancel(); } catch { /* already cancelled */ }
+            }
         }
 
         static void CleanupTempFiles(List<SymbolFile> found)
