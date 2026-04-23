@@ -18,13 +18,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public static BugpunchClient Instance { get; private set; }
 
         public BugpunchConfig Config { get; private set; }
-#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
-        /// <summary>Managed WebSocket tunnel — Editor / Standalone only.
-        /// On mobile the native <c>BugpunchTunnel</c> owns the wire and this
-        /// property doesn't exist. Cross-platform code should use
-        /// <see cref="TunnelBridge"/> instead.</summary>
-        public TunnelClient Tunnel { get; private set; }
-#endif
+
+        /// <summary>
+        /// Managed WebSocket to the Remote IDE tunnel. Present on every
+        /// platform — Editor, Standalone, Android, iOS. The native
+        /// BugpunchTunnel carries bug reports / pins / logs on its own
+        /// separate WebSocket; Remote IDE RPC is C# end-to-end.
+        /// </summary>
+        public IdeTunnel Tunnel { get; private set; }
+
         public RequestRouter Router { get; private set; }
 
         /// <summary>
@@ -42,7 +44,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// this flag flips when we've asked native to start.
         /// </summary>
         public bool PollActive { get; private set; }
-        public bool IsConnected => TunnelBridge.IsConnected || PollActive;
+        public bool IsConnected => (Tunnel?.IsConnected ?? false) || PollActive;
 
         /// <summary>
         /// When true, incoming debug session requests from the server are
@@ -323,21 +325,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Release builds: lightweight HTTP poll, upgrade to WebSocket on demand.
             if (Debug.isDebugBuild || Application.isEditor)
             {
-#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
-                // Native BugpunchTunnel owns the WebSocket on mobile — it came up
-                // from BugpunchInitProvider before Unity booted and incoming
-                // request frames arrive on OnTunnelRequest via UnitySendMessage.
-                // No managed TunnelClient on the wire here.
-                Debug.Log("[Bugpunch.BugpunchClient] Debug build — native tunnel owns transport");
-                _debugSessionActive = true;
-                OnConnected?.Invoke();
-                OnAnyConnected?.Invoke();
-#else
-                Debug.Log("[Bugpunch.BugpunchClient] Debug build — connecting via WebSocket");
-                Tunnel = new TunnelClient(Config);
+                Debug.Log("[Bugpunch.BugpunchClient] Debug build — connecting Remote IDE via WebSocket");
+                Tunnel = new IdeTunnel(Config);
                 Tunnel.OnConnected += () =>
                 {
-                    Debug.Log("[Bugpunch.BugpunchClient] Connected");
+                    Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel connected");
                     _debugSessionActive = true;
                     // WebRTC is NOT initialized here — only when the dashboard
                     // requests streaming (first webrtc-offer triggers lazy init)
@@ -347,7 +339,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Tunnel.OnDisconnected += () => { OnDisconnected?.Invoke(); };
                 Tunnel.OnRequest += HandleRequest;
                 StartCoroutine(ConnectLoop());
-#endif
             }
             else
             {
@@ -357,7 +348,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
-#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
         IEnumerator ConnectLoop()
         {
             while (true)
@@ -367,7 +357,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield return new WaitForSeconds(Config.reconnectDelay);
             }
         }
-#endif
 
         /// <summary>
         /// Fetch unified game config from the server on startup. Populates
@@ -686,9 +675,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void Update()
         {
-#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
             Tunnel?.ProcessMessages();
-#endif
         }
 
         // Android keeps half-open TCP sockets for 1–2 min after WiFi↔mobile swaps,
@@ -696,48 +683,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // socket on resume forces ConnectLoop to rebuild immediately.
         void OnApplicationPause(bool paused)
         {
-#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
             if (paused || Tunnel == null || !Tunnel.IsConnected) return;
             Tunnel.Disconnect();
-#endif
         }
 
         void HandleRequest(string requestId, string method, string path, string body)
         {
             StartCoroutine(ProcessRequest(requestId, method, path, body));
-        }
-
-        /// <summary>
-        /// N3 bridge entry point. Native <c>BugpunchTunnel</c> calls this via
-        /// <c>UnitySendMessage("[Bugpunch Client]", "OnTunnelRequest", json)</c>
-        /// for every non-/webrtc-* request frame the device receives. The
-        /// payload is the full request envelope from the server
-        /// ({type, requestId, method, path, body, headers}); we unpack it and
-        /// hand off to the same coroutine the managed-tunnel path uses.
-        /// </summary>
-        public void OnTunnelRequest(string json)
-        {
-            if (string.IsNullOrEmpty(json)) return;
-            try
-            {
-                var msg = JsonUtility.FromJson<TunnelRequestEnvelope>(json);
-                if (msg == null || string.IsNullOrEmpty(msg.requestId)) return;
-                HandleRequest(msg.requestId, msg.method ?? "GET", msg.path ?? "", msg.body ?? "");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[Bugpunch.BugpunchClient] OnTunnelRequest parse failed: {ex.Message}");
-            }
-        }
-
-        [Serializable]
-        class TunnelRequestEnvelope
-        {
-            public string type;
-            public string requestId;
-            public string method;
-            public string path;
-            public string body;
         }
 
         IEnumerator ProcessRequest(string requestId, string method, string path, string body)
@@ -752,9 +704,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var captureResponse = Router.HandleCapture(path, Config.captureScale, Config.captureQuality);
 
                 if (captureResponse.isBinary)
-                    TunnelBridge.SendBinaryResponse(requestId, captureResponse.binaryBody, captureResponse.contentType);
+                    Tunnel?.SendBinaryResponse(requestId, captureResponse.binaryBody, captureResponse.contentType);
                 else
-                    TunnelBridge.SendResponse(requestId, captureResponse.status, captureResponse.body, captureResponse.contentType);
+                    Tunnel?.SendResponse(requestId, captureResponse.status, captureResponse.body, captureResponse.contentType);
                 yield break;
             }
 
@@ -764,9 +716,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield return new WaitForEndOfFrame();
                 var matResponse = Router.HandleMaterialThumbnail(path);
                 if (matResponse.isBinary)
-                    TunnelBridge.SendBinaryResponse(requestId, matResponse.binaryBody, matResponse.contentType);
+                    Tunnel?.SendBinaryResponse(requestId, matResponse.binaryBody, matResponse.contentType);
                 else
-                    TunnelBridge.SendResponse(requestId, matResponse.status, matResponse.body, matResponse.contentType);
+                    Tunnel?.SendResponse(requestId, matResponse.status, matResponse.body, matResponse.contentType);
                 yield break;
             }
 
@@ -776,9 +728,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield return new WaitForEndOfFrame();
                 var matTexResponse = Router.HandleMaterialTexture(path);
                 if (matTexResponse.isBinary)
-                    TunnelBridge.SendBinaryResponse(requestId, matTexResponse.binaryBody, matTexResponse.contentType);
+                    Tunnel?.SendBinaryResponse(requestId, matTexResponse.binaryBody, matTexResponse.contentType);
                 else
-                    TunnelBridge.SendResponse(requestId, matTexResponse.status, matTexResponse.body, matTexResponse.contentType);
+                    Tunnel?.SendResponse(requestId, matTexResponse.status, matTexResponse.body, matTexResponse.contentType);
                 yield break;
             }
 
@@ -792,7 +744,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (actionTask.IsFaulted)
                 {
                     var err = actionTask.Exception?.InnerException?.Message ?? "Unknown error";
-                    TunnelBridge.SendResponse(requestId, 500,
+                    Tunnel?.SendResponse(requestId, 500,
                         $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(err)}\",\"elapsedMs\":0}}",
                         "application/json");
                 }
@@ -803,7 +755,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var errStr = result.Error != null
                         ? $",\"error\":\"{RequestRouter.EscapeJson(result.Error)}\""
                         : "";
-                    TunnelBridge.SendResponse(requestId, result.Success ? 200 : 422,
+                    Tunnel?.SendResponse(requestId, result.Success ? 200 : 422,
                         $"{{\"ok\":{okStr}{errStr},\"elapsedMs\":{result.ElapsedMs:F0}}}",
                         "application/json");
                 }
@@ -828,23 +780,23 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     Streamer.HandleOfferAsync(body,
                         answer => {
                             Debug.Log($"[Bugpunch.BugpunchClient] webrtc answer ready id={rid} len={answer?.Length ?? 0}");
-                            TunnelBridge.SendResponse(rid, 200, answer, "application/json");
+                            Tunnel?.SendResponse(rid, 200, answer, "application/json");
                         },
                         err => {
                             Debug.LogError($"[Bugpunch.BugpunchClient] webrtc offer failed id={rid}: {err}");
-                            TunnelBridge.SendResponse(rid, 500, $"{{\"error\":\"{err}\"}}", "application/json");
+                            Tunnel?.SendResponse(rid, 500, $"{{\"error\":\"{err}\"}}", "application/json");
                         });
                 }
                 else if (Streamer != null)
                 {
                     Debug.Log($"[Bugpunch.BugpunchClient] webrtc signal: {type} id={requestId}");
                     Streamer.HandleSignalingMessage(type, requestId, body);
-                    TunnelBridge.SendResponse(requestId, 200, "{\"ok\":true}", "application/json");
+                    Tunnel?.SendResponse(requestId, 200, "{\"ok\":true}", "application/json");
                 }
                 else
                 {
                     Debug.LogWarning($"[Bugpunch.BugpunchClient] webrtc-{type} but Streamer unavailable — returning 501 id={requestId}");
-                    TunnelBridge.SendResponse(requestId, 501, "{\"error\":\"Streaming unavailable — WebRTC not initialized\"}", "application/json");
+                    Tunnel?.SendResponse(requestId, 501, "{\"error\":\"Streaming unavailable — WebRTC not initialized\"}", "application/json");
                 }
                 yield break;
             }
@@ -867,9 +819,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var tapTask = InputInjector.InjectPointerTap(screenPos);
                     while (!tapTask.IsCompleted) yield return null;
                     if (tapTask.IsFaulted)
-                        TunnelBridge.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(tapTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
+                        Tunnel?.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(tapTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
                     else
-                        TunnelBridge.SendResponse(requestId, 200, $"{{\"ok\":true,\"screen\":[{screenPos.x:F0},{screenPos.y:F0}]}}", "application/json");
+                        Tunnel?.SendResponse(requestId, 200, $"{{\"ok\":true,\"screen\":[{screenPos.x:F0},{screenPos.y:F0}]}}", "application/json");
                     yield break;
                 }
 
@@ -885,9 +837,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var swipeTask = InputInjector.InjectPointerDrag(from, to, durationMs / 1000f);
                     while (!swipeTask.IsCompleted) yield return null;
                     if (swipeTask.IsFaulted)
-                        TunnelBridge.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(swipeTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
+                        Tunnel?.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(swipeTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
                     else
-                        TunnelBridge.SendResponse(requestId, 200, "{\"ok\":true}", "application/json");
+                        Tunnel?.SendResponse(requestId, 200, "{\"ok\":true}", "application/json");
                     yield break;
                 }
 
@@ -906,25 +858,25 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         _        => Task.CompletedTask,
                     };
                     while (!t.IsCompleted) yield return null;
-                    TunnelBridge.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\"}}", "application/json");
+                    Tunnel?.SendResponse(requestId, 200, $"{{\"ok\":true,\"action\":\"{action}\"}}", "application/json");
                     yield break;
                 }
 
-                TunnelBridge.SendResponse(requestId, 404, $"{{\"error\":\"Unknown input: {subPath}\"}}", "application/json");
+                Tunnel?.SendResponse(requestId, 404, $"{{\"error\":\"Unknown input: {subPath}\"}}", "application/json");
                 yield break;
             }
 
             if (response == null)
             {
-                TunnelBridge.SendResponse(requestId, 404, "{\"error\":\"Not found\"}", "application/json");
+                Tunnel?.SendResponse(requestId, 404, "{\"error\":\"Not found\"}", "application/json");
                 yield break;
             }
 
             var r = response.Value;
             if (r.isBinary)
-                TunnelBridge.SendBinaryResponse(requestId, r.binaryBody, r.contentType);
+                Tunnel?.SendBinaryResponse(requestId, r.binaryBody, r.contentType);
             else
-                TunnelBridge.SendResponse(requestId, r.status, r.body, r.contentType);
+                Tunnel?.SendResponse(requestId, r.status, r.body, r.contentType);
         }
 
         /// <summary>
@@ -1004,36 +956,34 @@ namespace ODDGames.Bugpunch.DeviceConnect
             BugpunchNative.StopPoll();
             PollActive = false;
 
-#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
-            // Native BugpunchTunnel is already alive from app startup; "upgrading"
-            // here just means lazily booting WebRTC. No managed socket to spin.
-            InitializeStreamerLazy();
-            OnConnected?.Invoke();
-            OnAnyConnected?.Invoke();
-#else
-            // Create WebSocket tunnel
-            Tunnel = new TunnelClient(Config);
-            Tunnel.OnConnected += () =>
+            // Spin up the managed IDE tunnel if it's not already alive from
+            // the Debug-build boot path. WebRTC initializes lazily on the
+            // first webrtc-offer that arrives.
+            if (Tunnel == null)
             {
-                Debug.Log("[Bugpunch.BugpunchClient] Connected (debug session)");
-
-                // Lazily initialize WebRTC now that the tunnel is up.
-                // This is the first time Unity.WebRTC types are touched —
-                // the native lib loads here, not at app startup.
+                Tunnel = new IdeTunnel(Config);
+                Tunnel.OnConnected += () =>
+                {
+                    Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel connected (debug session)");
+                    InitializeStreamerLazy();
+                    OnConnected?.Invoke();
+                    OnAnyConnected?.Invoke();
+                };
+                Tunnel.OnDisconnected += () =>
+                {
+                    Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel disconnected");
+                    OnDisconnected?.Invoke();
+                };
+                Tunnel.OnError += e => { Debug.LogError($"[Bugpunch.BugpunchClient] {e}"); OnError?.Invoke(e); };
+                Tunnel.OnRequest += HandleRequest;
+                StartCoroutine(ConnectLoop());
+            }
+            else
+            {
                 InitializeStreamerLazy();
-
                 OnConnected?.Invoke();
                 OnAnyConnected?.Invoke();
-            };
-            Tunnel.OnDisconnected += () =>
-            {
-                Debug.Log("[Bugpunch.BugpunchClient] Disconnected");
-                OnDisconnected?.Invoke();
-            };
-            Tunnel.OnError += e => { Debug.LogError($"[Bugpunch.BugpunchClient] {e}"); OnError?.Invoke(e); };
-            Tunnel.OnRequest += HandleRequest;
-            StartCoroutine(ConnectLoop());
-#endif
+            }
         }
 
         /// <summary>
@@ -1099,12 +1049,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 SceneCamera.SetStreamer(null);
             }
 
-            // Tear down WebSocket (managed-tunnel platforms only — on mobile
-            // the native tunnel stays up across debug session boundaries).
-#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
+            // Tear down the IDE WebSocket. Native report tunnel stays up
+            // across debug-session boundaries — it's a separate pipe.
             Tunnel?.Disconnect();
             Tunnel = null;
-#endif
 
             // Resume native polling
             BugpunchNative.StartPoll(Config.scriptPermission.ToString().ToLower(), Mathf.Max(5, (int)Config.pollInterval));
@@ -1157,9 +1105,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         void OnDestroy()
         {
             Streamer?.StopStreaming();
-#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
             Tunnel?.Disconnect();
-#endif
             BugpunchNative.StopPoll();
             PollActive = false;
             Instance = null;

@@ -7,13 +7,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// Read-through accessor for the QA pin flags. On device, all state lives
     /// natively (<c>BugpunchTunnel.java</c> SharedPreferences cache on Android,
     /// <c>BugpunchTunnel.mm</c> Keychain cache on iOS). Pin config arrives on
-    /// the native WebSocket in the <c>registered</c> ack or a live
+    /// the native report tunnel in the <c>registered</c> ack or a live
     /// <c>pinUpdate</c> frame, is parsed + stored natively, and C# simply
     /// queries via the P/Invoke + JNI surface on <c>BugpunchNative</c>.
     ///
-    /// <para>In the Editor there's no native tunnel, so we fall back to the
-    /// PlayerPrefs cache + <see cref="ApplyFromJson"/> path fed by the managed
-    /// <c>TunnelClient</c>. Keeps local dev flow working identically.</para>
+    /// <para>In the Editor there's no native tunnel, so pin state stays at the
+    /// local PlayerPrefs cache (set manually or via <see cref="ApplyFromJson"/>
+    /// from test fixtures). The managed <see cref="IdeTunnel"/> is a Remote
+    /// IDE RPC channel only — it does not carry pinConfig.</para>
     ///
     /// <para>Consent is the final gate on both paths. Pins read false unless
     /// <see cref="Consent"/> is <c>accepted</c>.</para>

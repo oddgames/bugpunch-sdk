@@ -99,11 +99,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
-        // ── N6: native tunnel state accessors ──
-        // The WebSocket lifecycle lives natively. These accessors let the
-        // managed side query connection state + the persistent deviceId
-        // without maintaining its own tunnel. Editor returns sensible
-        // defaults since the managed TunnelClient still runs there.
+        // ── Native report-tunnel accessors ──
+        // The bug-report WebSocket (pin config, log sink, device actions)
+        // lives natively. These accessors let the managed side read its
+        // registered deviceId so the managed IdeTunnel can reuse it and
+        // both tunnels appear as the same device on the server.
 
         public static bool TunnelIsConnected()
         {
@@ -226,12 +226,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
-        /// Ship a tunnel response frame through the native WebSocket (N3
-        /// dispatch bridge). C# routes incoming Remote IDE requests through
-        /// the existing <c>RequestRouter</c> and then hands the pre-built
-        /// response envelope to native via this method, so every transport
-        /// hop after here is native-owned. No-op in the Editor — the C#
-        /// <c>TunnelClient</c> still carries local-dev traffic there.
+        /// Ship a response frame through the native report tunnel. Kept for
+        /// native-originated flows (e.g. PostScriptResult dispatches an
+        /// envelope back to server) — Remote IDE RPC responses now use the
+        /// managed <see cref="IdeTunnel"/> directly. No-op in Editor.
         /// </summary>
         public static void TunnelSendResponse(string responseJson)
         {

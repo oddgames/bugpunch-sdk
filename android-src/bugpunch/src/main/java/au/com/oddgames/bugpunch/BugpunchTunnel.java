@@ -511,7 +511,10 @@ public final class BugpunchTunnel {
             Log.w(TAG, "no serverUrl in config — aborting");
             return;
         }
-        String wsUrl = toWsUrl(mServerUrl) + "/api/devices/tunnel";
+        // Native tunnel is report-only (crashes / bugs / pin config / log sink /
+        // device actions). Remote IDE RPC rides a separate managed WebSocket
+        // that C# opens against /api/devices/ide-tunnel.
+        String wsUrl = toWsUrl(mServerUrl) + "/api/devices/report-tunnel";
         try {
             WebSocket ws = mFactory.createSocket(wsUrl);
             // Library-level ping every 10 s keeps the socket alive through
@@ -613,51 +616,6 @@ public final class BugpunchTunnel {
                             applyPinConfig(pin);
                         }
                         Log.i(TAG, "pinUpdate received");
-                        break;
-                    }
-                    case "request": {
-                        String path = msg.optString("path", "");
-                        String requestId = msg.optString("requestId", "");
-                        String method    = msg.optString("method", "GET");
-                        String body      = msg.optString("body", "");
-
-                        // /files/* (except /files/prefs/*) — native FileService. PlayerPrefs
-                        // paths still need Unity reflection so they fall through to C#.
-                        if (BugpunchFileService.handles(path)) {
-                            try {
-                                if (BugpunchFileService.dispatch(requestId, method, path, body)) {
-                                    break;
-                                }
-                            } catch (Throwable t) {
-                                Log.w(TAG, "BugpunchFileService dispatch failed", t);
-                                sendResponse(buildErrorResponse(requestId, 500, "Native file service error: " + (t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName())));
-                                break;
-                            }
-                        }
-
-                        // /capture (without ?id=…) — full-screen JPEG via PixelCopy. Per-Camera
-                        // capture (?id=N) needs a managed Unity Camera, so it falls through.
-                        if ((path.equals("/capture") || path.startsWith("/capture?"))
-                                && !path.contains("id=")) {
-                            try {
-                                float scale = parseFloat(queryParam(path, "scale"), 0.5f);
-                                int quality = parseInt(queryParam(path, "quality"), 75);
-                                BugpunchScreenshot.captureForTunnel(requestId, scale, quality);
-                            } catch (Throwable t) {
-                                Log.w(TAG, "BugpunchScreenshot dispatch failed", t);
-                                sendResponse(buildErrorResponse(requestId, 500, "Native screenshot error: " + (t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName())));
-                            }
-                            break;
-                        }
-
-                        // Everything else → C# RequestRouter via UnitySendMessage.
-                        try {
-                            Class<?> up = Class.forName("com.unity3d.player.UnityPlayer");
-                            up.getMethod("UnitySendMessage", String.class, String.class, String.class)
-                                .invoke(null, "[Bugpunch Client]", "OnTunnelRequest", text);
-                        } catch (Throwable t) {
-                            Log.w(TAG, "UnitySendMessage dispatch failed", t);
-                        }
                         break;
                     }
                     case "pong":

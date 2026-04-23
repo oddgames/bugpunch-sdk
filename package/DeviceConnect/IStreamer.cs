@@ -15,8 +15,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
     {
         /// <summary>
         /// Initialize the streamer at the given resolution and frame rate.
-        /// Signaling responses ship through <see cref="TunnelBridge"/>; the
-        /// streamer does not need a tunnel reference.
+        /// Signaling responses ship through <see cref="BugpunchClient.Tunnel"/>
+        /// (the managed IDE tunnel); the streamer does not need a tunnel reference.
         /// </summary>
         void Initialize(int width, int height, int fps);
 

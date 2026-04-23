@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.28] - 2026-04-24
+
+### Changed
+- **Remote IDE and bug reporting now ride separate tunnels.** The single `/api/devices/tunnel` WebSocket is split into two: native SDK connects to `/api/devices/report-tunnel` (crashes / bugs / pin config / log sink / device actions), managed C# connects to `/api/devices/ide-tunnel` (hierarchy / inspector / script / webrtc-* / capture / scene-camera). Server-side: `tunnelService.ts` → `reportTunnelService.ts` + new `ideTunnelService.ts`; 10 callers updated. SDK-side: `TunnelClient.cs` → `IdeTunnel.cs` and loses the `#if UNITY_ANDROID || UNITY_IOS` platform splits — managed IDE tunnel runs on every platform. `TunnelBridge.cs` deleted (no abstraction needed once the split is clean). Native `BugpunchTunnel.java` / `BugpunchTunnel.mm` drop the `case "request":` request-routing block plus the `UnitySendMessage("OnTunnelRequest")` bridge — the report tunnel no longer carries Remote IDE traffic. Narrow native→C# bridge for queued `run_script` actions stays (`OnScriptAction` + `PostScriptResult`).
+- **"Ask user for help" + "Enable debug tunnel on next boot" merged in the dashboard for device-targeted requests.** Single checkbox labelled "Request debug access" — accepting the in-app prompt opens the IDE tunnel on next boot. Crash-group-targeted requests keep the standalone "Ask user for help" semantics.
+
 ## [1.7.27] - 2026-04-24
 
 ### Fixed

@@ -207,7 +207,10 @@ static void BPLoadPinsKeychain(void) {
         NSLog(@"[BugpunchTunnel] useNativeTunnel is false — tunnel disabled");
         return;
     }
-    NSString* url = [[self toWsUrl:self.serverUrl] stringByAppendingString:@"/api/devices/tunnel"];
+    // Native tunnel is report-only (crashes / bugs / pin config / log sink /
+    // device actions). Remote IDE RPC rides a separate managed WebSocket
+    // that C# opens against /api/devices/ide-tunnel.
+    NSString* url = [[self toWsUrl:self.serverUrl] stringByAppendingString:@"/api/devices/report-tunnel"];
     NSURLSessionConfiguration* cfg = [NSURLSessionConfiguration defaultSessionConfiguration];
     cfg.waitsForConnectivity = YES;
     self.session = [NSURLSession sessionWithConfiguration:cfg delegate:self delegateQueue:nil];
@@ -275,15 +278,6 @@ static void BPLoadPinsKeychain(void) {
         id pin = msg[@"config"];
         if ([pin isKindOfClass:[NSDictionary class]]) [self cachePinConfig:pin];
         NSLog(@"[BugpunchTunnel] pinUpdate received");
-    } else if ([type isEqualToString:@"request"]) {
-        // N3: marshal to C# via UnitySendMessage so the existing RequestRouter
-        // answers. Response comes back through Bugpunch_TunnelSendResponse.
-        extern void UnitySendMessage(const char*, const char*, const char*);
-        const char* c = [text UTF8String];
-        if (c) {
-            @try { UnitySendMessage("[Bugpunch Client]", "OnTunnelRequest", c); }
-            @catch (NSException* e) { NSLog(@"[BugpunchTunnel] UnitySendMessage failed: %@", e); }
-        }
     } else if ([type isEqualToString:@"pong"] || [type isEqualToString:@"heartbeat"]) {
         // no-op
     }

@@ -159,7 +159,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         public string EffectiveDeviceName => SystemInfo.deviceName;
 
-        public string TunnelUrl
+        /// <summary>
+        /// wss:// URL for the managed C# IDE tunnel — Remote IDE RPC only.
+        /// The native report tunnel uses a separate endpoint
+        /// (/api/devices/report-tunnel).
+        /// </summary>
+        public string IdeTunnelUrl
         {
             get
             {
@@ -168,7 +173,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     baseUrl = "wss://" + baseUrl.Substring(8);
                 else if (baseUrl.StartsWith("http://"))
                     baseUrl = "ws://" + baseUrl.Substring(7);
-                return baseUrl + "/api/devices/tunnel";
+                return baseUrl + "/api/devices/ide-tunnel";
             }
         }
 
