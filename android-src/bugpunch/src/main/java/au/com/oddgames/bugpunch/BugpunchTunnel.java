@@ -117,13 +117,22 @@ public final class BugpunchTunnel {
      * Thread-safe.
      */
     public static synchronized void sendResponse(String json) {
-        if (sInstance == null || json == null) return;
-        WebSocket s = sInstance.mSocket;
-        if (s == null || !s.isOpen()) {
-            Log.w(TAG, "sendResponse dropped — tunnel not connected");
+        if (sInstance == null || json == null) {
+            Log.w(TAG, "sendResponse DROP null instance or json");
             return;
         }
-        s.sendText(json);
+        WebSocket s = sInstance.mSocket;
+        if (s == null || !s.isOpen()) {
+            Log.w(TAG, "sendResponse DROP tunnel not connected isOpen=" + (s != null ? s.isOpen() : false));
+            return;
+        }
+        Log.i(TAG, "sendResponse ENQUEUE jsonLen=" + json.length() + " preview=" + json.substring(0, Math.min(200, json.length())));
+        try {
+            s.sendText(json);
+            Log.i(TAG, "sendResponse SENT jsonLen=" + json.length());
+        } catch (Exception e) {
+            Log.e(TAG, "sendResponse EXCEPTION: " + e.getMessage());
+        }
     }
 
     // ── N4: native pin state accessors ──

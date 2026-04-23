@@ -1,0 +1,21 @@
+{
+    "name": "ODDGames.Bugpunch.Editor",
+    "rootNamespace": "ODDGames.Bugpunch.Editor",
+    "references": [
+        "ODDGames.Bugpunch",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "Unity.Recorder.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

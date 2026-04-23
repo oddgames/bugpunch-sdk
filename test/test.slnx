@@ -13,7 +13,6 @@
   <Project Path="Unity.InputSystem.csproj" />
   <Project Path="Unity.Searcher.Editor.csproj" />
   <Project Path="Unity.VisualScripting.Core.csproj" />
-  <Project Path="ODDGames.Bugpunch.csproj" />
   <Project Path="Unity.AI.Navigation.Editor.ConversionSystem.csproj" />
   <Project Path="Unity.VisualScripting.State.Editor.csproj" />
   <Project Path="Unity.Burst.CodeGen.csproj" />
@@ -23,12 +22,12 @@
   <Project Path="Unity.Burst.Editor.csproj" />
   <Project Path="Unity.VisualScripting.State.csproj" />
   <Project Path="Unity.AI.Navigation.Updater.csproj" />
+  <Project Path="ODDGames.Bugpunch.Editor.csproj" />
+  <Project Path="ODDGames.Bugpunch.csproj" />
   <Project Path="Unity.AI.Navigation.Editor.csproj" />
   <Project Path="Unity.Recorder.csproj" />
   <Project Path="Unity.WebRTC.Editor.csproj" />
-  <Project Path="ODDGames.Bugpunch.Editor.csproj" />
   <Project Path="Unity.InputSystem.ForUI.csproj" />
-  <Project Path="ODDGames.Bugpunch.Samples.csproj" />
   <Project Path="Unity.AI.Navigation.csproj" />
   <Project Path="Unity.Collections.CodeGen.csproj" />
   <Project Path="Unity.Mathematics.Editor.csproj" />
@@ -39,13 +38,14 @@
   <Project Path="Unity.Recorder.Base.csproj" />
   <Project Path="ODDGames.Bugpunch.Tests.PlayMode.csproj" />
   <Project Path="Unity.EditorCoroutines.Editor.csproj" />
-  <Project Path="ODDGames.Bugpunch.Bridge.csproj" />
+  <Project Path="ODDGames.Bugpunch.Samples.csproj" />
   <Project Path="Unity.CollabProxy.Editor.csproj" />
+  <Project Path="ODDGames.Bugpunch.Bridge.csproj" />
   <Project Path="Unity.Bindings.OpenImageIO.Editor.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="Unity.InputSystem.DocCodeSamples.csproj" />
   <Project Path="Unity.VisualScripting.DocCodeExamples.csproj" />
   <Project Path="Unity.PlasticSCM.Editor.Entities.csproj" />
-  <Project Path="ODDGames.Bugpunch.Samples.Editor.csproj" />
   <Project Path="Unity.Collections.Editor.csproj" />
+  <Project Path="ODDGames.Bugpunch.Samples.Editor.csproj" />
 </Solution>

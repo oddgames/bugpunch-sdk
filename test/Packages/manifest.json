@@ -1,8 +1,7 @@
 {
   "dependencies": {
-    "au.com.oddgames.clibridge4unity": "https://github.com/oddgames/clibridge4unity.git?path=Package",
     "au.com.oddgames.bugpunch": "file:../../package",
-    "au.com.oddgames.paxscript": "https://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@github.com/oddgames/paxscript.git?path=Package",
+    "au.com.oddgames.clibridge4unity": "https://github.com/oddgames/clibridge4unity.git?path=Package",
     "com.unity.ai.navigation": "2.0.10",
     "com.unity.collab-proxy": "2.11.3",
     "com.unity.ide.visualstudio": "2.0.27",

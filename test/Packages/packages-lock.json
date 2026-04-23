@@ -23,13 +23,6 @@
       },
       "hash": "654afaaac52c8996d99f1002922fb63e19f6e86d"
     },
-    "au.com.oddgames.paxscript": {
-      "version": "https://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@github.com/oddgames/paxscript.git?path=Package",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "06aa7e876db0ad2936e9d9ba09af2b217931c6c3"
-    },
     "com.unity.ai.navigation": {
       "version": "2.0.10",
       "depth": 0,

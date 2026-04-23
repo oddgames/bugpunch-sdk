@@ -1,5 +1,0 @@
-<linker>
-  <!-- Preserve WebRTC assembly — loaded via reflection, IL2CPP would strip it -->
-  <assembly fullname="ODDGames.Bugpunch.WebRTC" preserve="all" ignoreIfMissing="1"/>
-  <assembly fullname="Unity.WebRTC" preserve="all" ignoreIfMissing="1"/>
-</linker>
