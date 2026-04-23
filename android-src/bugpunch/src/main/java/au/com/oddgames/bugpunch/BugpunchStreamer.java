@@ -120,18 +120,23 @@ public class BugpunchStreamer {
                 break;
             case "/webrtc-ice-candidates":
                 BugpunchTunnel.sendResponse(
-                    buildResponse(requestId, 200, drainCandidatesJson(), "application/json"));
+                    BugpunchTunnel.buildResponse(requestId, 200, drainCandidatesJson(), "application/json"));
                 break;
             case "/webrtc-ice":
                 handleIce(requestId, body);
                 break;
             case "/webrtc-quality":
                 if ("POST".equalsIgnoreCase(method)) handleQuality(requestId, body);
-                else BugpunchTunnel.sendResponse(buildResponse(requestId, 200, getQualityJson(), "application/json"));
+                else BugpunchTunnel.sendResponse(BugpunchTunnel.buildResponse(requestId, 200, getQualityJson(), "application/json"));
+                break;
+            case "/webrtc-stop":
+                // No-op — stream lifecycle is managed by new offers (which clean up
+                // the old peer connection) and component destruction. Matches C#.
+                BugpunchTunnel.sendResponse(BugpunchTunnel.buildResponse(requestId, 200, "{\"ok\":true}", "application/json"));
                 break;
             default:
                 BugpunchTunnel.sendResponse(
-                    buildResponse(requestId, 404, "{\"error\":\"not found\"}", "application/json"));
+                    BugpunchTunnel.buildErrorResponse(requestId, 404, "not found"));
         }
     }
 
@@ -165,12 +170,12 @@ public class BugpunchStreamer {
             }
         } catch (JSONException e) {
             Log.w(TAG, "offer rejected — bad JSON: " + e.getMessage());
-            BugpunchTunnel.sendResponse(buildResponse(requestId, 400, "{\"error\":\"bad offer JSON\"}", "application/json"));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 400, "bad offer JSON"));
             return;
         }
         if (sdp.isEmpty()) {
             Log.w(TAG, "offer rejected — empty SDP (iceServers=" + iceServers.size() + ")");
-            BugpunchTunnel.sendResponse(buildResponse(requestId, 400, "{\"error\":\"empty SDP\"}", "application/json"));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 400, "empty SDP"));
             return;
         }
         Log.i(TAG, "offer received — sdpLen=" + sdp.length() + " iceServers=" + iceServers.size());
@@ -182,7 +187,7 @@ public class BugpunchStreamer {
 
             if (sFactory == null) {
                 Log.w(TAG, "offer aborted — PeerConnectionFactory not initialized (no app context?)");
-                BugpunchTunnel.sendResponse(buildResponse(requestId, 503, "{\"error\":\"factory not ready\"}", "application/json"));
+                BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 503, "factory not ready"));
                 return;
             }
 
@@ -194,16 +199,18 @@ public class BugpunchStreamer {
             mPc = sFactory.createPeerConnection(cfg, new PcObserver());
             if (mPc == null) {
                 Log.w(TAG, "offer aborted — createPeerConnection returned null");
-                BugpunchTunnel.sendResponse(buildResponse(requestId, 500, "{\"error\":\"createPeerConnection failed\"}", "application/json"));
+                BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 500, "createPeerConnection failed"));
                 return;
             }
 
             mPc.addTrack(mVideoTrack, Collections.singletonList("stream"));
+            Log.i(TAG, "createPeerConnection SUCCESS, starting setRemoteDescription requestId=" + requestId);
 
             // Apply bitrate ceiling
             setVideoMaxBitrate(2_500_000L);
         }
 
+        Log.i(TAG, "setRemoteDescription call about to execute requestId=" + requestId);
         // Set remote description (the offer), then create answer
         SessionDescription offer = new SessionDescription(SessionDescription.Type.OFFER, sdp);
         final CountDownLatch answerReady = new CountDownLatch(1);
@@ -212,54 +219,64 @@ public class BugpunchStreamer {
 
         synchronized (mPcLock) {
             if (mPc == null) return;
+            long tid = android.os.Process.myTid();
+            Log.i(TAG, "calling mPc.setRemoteDescription requestId=" + requestId + " callerTid=" + tid);
             mPc.setRemoteDescription(new SdpObserver() {
                 @Override public void onSetSuccess() {
+                    long cbTid = android.os.Process.myTid();
                     synchronized (mPcLock) {
-                        Log.i(TAG, "setRemoteDescription SUCCESS requestId=" + requestId);
+                        Log.i(TAG, "setRemoteDescription SUCCESS callback tid=" + cbTid + " requestId=" + requestId);
                         if (mPc == null) { errorHolder[0] = "pc gone after setRemote"; answerReady.countDown(); return; }
                         Log.i(TAG, "createAnswer START requestId=" + requestId);
                         mPc.createAnswer(new SdpObserver() {
                             @Override public void onCreateSuccess(SessionDescription answer) {
+                                long cb2Tid = android.os.Process.myTid();
                                 synchronized (mPcLock) {
-                                    Log.i(TAG, "createAnswer SUCCESS sdpLen=" + answer.description.length() + " requestId=" + requestId);
+                                    Log.i(TAG, "createAnswer SUCCESS sdpLen=" + answer.description.length() + " tid=" + cb2Tid + " requestId=" + requestId);
                                     if (mPc == null) { errorHolder[0] = "pc gone after create"; answerReady.countDown(); return; }
                                     Log.i(TAG, "setLocalDescription START requestId=" + requestId);
                                     mPc.setLocalDescription(new SdpObserver() {
                                         @Override public void onSetSuccess() {
+                                            long cb3Tid = android.os.Process.myTid();
                                             answerHolder[0] = answer.description;
-                                            Log.i(TAG, "setLocalDescription SUCCESS sdpLen=" + answer.description.length() + " requestId=" + requestId);
+                                            Log.i(TAG, "setLocalDescription SUCCESS sdpLen=" + answer.description.length() + " tid=" + cb3Tid + " requestId=" + requestId);
                                             answerReady.countDown();
                                         }
-                                        @Override public void onSetFailure(String s) { Log.e(TAG, "setLocalDescription FAILED: " + s + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
+                                        @Override public void onSetFailure(String s) { Log.e(TAG, "setLocalDescription FAILED: " + s + " tid=" + android.os.Process.myTid() + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
                                         @Override public void onCreateSuccess(SessionDescription sd) {}
                                         @Override public void onCreateFailure(String s) {}
                                     }, answer);
                                 }
                             }
-                            @Override public void onCreateFailure(String s) { Log.e(TAG, "createAnswer FAILED: " + s + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
+                            @Override public void onCreateFailure(String s) { Log.e(TAG, "createAnswer FAILED: " + s + " tid=" + android.os.Process.myTid() + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
                             @Override public void onSetSuccess() {}
                             @Override public void onSetFailure(String s) {}
                         }, new MediaConstraints());
                     }
                 }
-                @Override public void onSetFailure(String s) { Log.e(TAG, "setRemoteDescription FAILED: " + s + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
+                @Override public void onSetFailure(String s) { Log.e(TAG, "setRemoteDescription FAILED callback tid=" + android.os.Process.myTid() + " err=" + s + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
                 @Override public void onCreateSuccess(SessionDescription sd) {}
                 @Override public void onCreateFailure(String s) {}
             }, offer);
         }
 
+        long awaitTid = android.os.Process.myTid();
+        Log.i(TAG, "answerReady.await entered callerTid=" + awaitTid + " requestId=" + requestId);
         try {
             answerReady.await(15, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        Log.i(TAG, "answerReady.await exited callerTid=" + awaitTid + " requestId=" + requestId);
 
         if (errorHolder[0] != null || answerHolder[0] == null) {
             String err = errorHolder[0] != null ? errorHolder[0] : "timeout";
             Log.i(TAG, "offer handling failed: " + err + " requestId=" + requestId);
-            BugpunchTunnel.sendResponse(buildResponse(requestId, 500, "{\"error\":\"" + err + "\"}", "application/json"));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 500, err));
             return;
         }
+
+        Log.i(TAG, "answer ready, building response envelope requestId=" + requestId);
 
         mStreaming = true;
         mVideoSource.getCapturerObserver().onCapturerStarted(true);
@@ -272,11 +289,11 @@ public class BugpunchStreamer {
             resp.put("sdp", answerHolder[0]);
             String respJson = resp.toString();
             Log.i(TAG, "WebRTC answer sdpLen=" + answerHolder[0].length() + " requestId=" + requestId);
-            BugpunchTunnel.sendResponse(buildResponse(requestId, 200, respJson, "application/json"));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildResponse(requestId, 200, respJson, "application/json"));
             Log.i(TAG, "WebRTC answer sent to tunnel requestId=" + requestId);
         } catch (JSONException e) {
             Log.e(TAG, "answer serialize failed: " + e.getMessage() + " requestId=" + requestId);
-            BugpunchTunnel.sendResponse(buildResponse(requestId, 500, "{\"error\":\"answer serialize\"}", "application/json"));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 500, "answer serialize"));
         }
     }
 
@@ -301,7 +318,7 @@ public class BugpunchStreamer {
         } catch (JSONException e) {
             Log.w(TAG, "remote ICE rejected — bad JSON: " + e.getMessage());
         }
-        BugpunchTunnel.sendResponse(buildResponse(requestId, 200, "{\"ok\":true}", "application/json"));
+        BugpunchTunnel.sendResponse(BugpunchTunnel.buildResponse(requestId, 200, "{\"ok\":true}", "application/json"));
     }
 
     private void handleQuality(String requestId, String body) {
@@ -315,7 +332,7 @@ public class BugpunchStreamer {
             mFps    = Math.max(1, Math.min(f, 60));
             if (mStreaming) { stopStreaming(); Log.i(TAG, "quality changed — reconnect required"); }
         } catch (JSONException ignore) {}
-        BugpunchTunnel.sendResponse(buildResponse(requestId, 200, getQualityJson(), "application/json"));
+        BugpunchTunnel.sendResponse(BugpunchTunnel.buildResponse(requestId, 200, getQualityJson(), "application/json"));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -647,24 +664,6 @@ public class BugpunchStreamer {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Response envelope helpers
-    // ──────────────────────────────────────────────────────────────────────────
-
-    private static String buildResponse(String requestId, int status, String body, String contentType) {
-        try {
-            JSONObject r = new JSONObject();
-            r.put("type", "response");
-            r.put("requestId", requestId);
-            r.put("status", status);
-            r.put("body", body);
-            r.put("contentType", contentType);
-            return r.toString();
-        } catch (JSONException e) {
-            return "{\"type\":\"response\",\"requestId\":\"" + requestId + "\",\"status\":500}";
-        }
-    }
-
-    // ──────────────────────────────────────────────────────────────────────────
     // PeerConnection observer — verbose logging for debugging connection issues
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -676,9 +675,9 @@ public class BugpunchStreamer {
                 j.put("candidate", candidate.sdp);
                 j.put("sdpMid", candidate.sdpMid);
                 j.put("sdpMLineIndex", candidate.sdpMLineIndex);
-                int queued;
-                synchronized (mIceLock) { mIceCandidates.add(j.toString()); queued = mIceCandidates.size(); }
-                Log.i(TAG, ">>> ICE candidate: mid=" + candidate.sdpMid + " idx=" + candidate.sdpMLineIndex + " sdpLen=" + (candidate.sdp != null ? candidate.sdp.length() : 0) + " queued=" + queued);
+                // Push ICE candidate immediately over the tunnel instead of polling
+                BugpunchTunnel.sendEvent("webrtc-ice", j.toString());
+                Log.i(TAG, ">>> ICE candidate (sent): mid=" + candidate.sdpMid + " idx=" + candidate.sdpMLineIndex + " sdpLen=" + (candidate.sdp != null ? candidate.sdp.length() : 0));
             } catch (JSONException e) {
                 Log.w(TAG, "local ICE serialize failed: " + e.getMessage());
             }
