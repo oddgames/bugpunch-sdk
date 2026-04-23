@@ -140,7 +140,11 @@ public class BugpunchStreamer {
     // ──────────────────────────────────────────────────────────────────────────
 
     private void handleOffer(final String requestId, final String body) {
-        if (mStreaming) stopStreaming();
+        Log.i(TAG, "handleOffer START requestId=" + requestId + " bodyLen=" + (body != null ? body.length() : 0));
+        if (mStreaming) {
+            Log.i(TAG, "handleOffer: was streaming, stopping first requestId=" + requestId);
+            stopStreaming();
+        }
 
         String sdp;
         List<PeerConnection.IceServer> iceServers = new ArrayList<>();
@@ -211,29 +215,34 @@ public class BugpunchStreamer {
             mPc.setRemoteDescription(new SdpObserver() {
                 @Override public void onSetSuccess() {
                     synchronized (mPcLock) {
-                        if (mPc == null) { errorHolder[0] = "pc gone"; answerReady.countDown(); return; }
+                        Log.i(TAG, "setRemoteDescription SUCCESS requestId=" + requestId);
+                        if (mPc == null) { errorHolder[0] = "pc gone after setRemote"; answerReady.countDown(); return; }
+                        Log.i(TAG, "createAnswer START requestId=" + requestId);
                         mPc.createAnswer(new SdpObserver() {
                             @Override public void onCreateSuccess(SessionDescription answer) {
                                 synchronized (mPcLock) {
-                                    if (mPc == null) { errorHolder[0] = "pc gone"; answerReady.countDown(); return; }
+                                    Log.i(TAG, "createAnswer SUCCESS sdpLen=" + answer.description.length() + " requestId=" + requestId);
+                                    if (mPc == null) { errorHolder[0] = "pc gone after create"; answerReady.countDown(); return; }
+                                    Log.i(TAG, "setLocalDescription START requestId=" + requestId);
                                     mPc.setLocalDescription(new SdpObserver() {
                                         @Override public void onSetSuccess() {
                                             answerHolder[0] = answer.description;
+                                            Log.i(TAG, "setLocalDescription SUCCESS sdpLen=" + answer.description.length() + " requestId=" + requestId);
                                             answerReady.countDown();
                                         }
-                                        @Override public void onSetFailure(String s) { errorHolder[0] = s; answerReady.countDown(); }
+                                        @Override public void onSetFailure(String s) { Log.e(TAG, "setLocalDescription FAILED: " + s + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
                                         @Override public void onCreateSuccess(SessionDescription sd) {}
                                         @Override public void onCreateFailure(String s) {}
                                     }, answer);
                                 }
                             }
-                            @Override public void onCreateFailure(String s) { errorHolder[0] = s; answerReady.countDown(); }
+                            @Override public void onCreateFailure(String s) { Log.e(TAG, "createAnswer FAILED: " + s + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
                             @Override public void onSetSuccess() {}
                             @Override public void onSetFailure(String s) {}
                         }, new MediaConstraints());
                     }
                 }
-                @Override public void onSetFailure(String s) { errorHolder[0] = s; answerReady.countDown(); }
+                @Override public void onSetFailure(String s) { Log.e(TAG, "setRemoteDescription FAILED: " + s + " requestId=" + requestId); errorHolder[0] = s; answerReady.countDown(); }
                 @Override public void onCreateSuccess(SessionDescription sd) {}
                 @Override public void onCreateFailure(String s) {}
             }, offer);
@@ -247,7 +256,7 @@ public class BugpunchStreamer {
 
         if (errorHolder[0] != null || answerHolder[0] == null) {
             String err = errorHolder[0] != null ? errorHolder[0] : "timeout";
-            Log.w(TAG, "offer handling failed: " + err);
+            Log.i(TAG, "offer handling failed: " + err + " requestId=" + requestId);
             BugpunchTunnel.sendResponse(buildResponse(requestId, 500, "{\"error\":\"" + err + "\"}", "application/json"));
             return;
         }
@@ -255,14 +264,18 @@ public class BugpunchStreamer {
         mStreaming = true;
         mVideoSource.getCapturerObserver().onCapturerStarted(true);
         startCaptureLoop();
-        Log.i(TAG, "WebRTC streaming started (" + mWidth + "x" + mHeight + "@" + mFps + "fps)");
+        Log.i(TAG, "WebRTC streaming started (" + mWidth + "x" + mHeight + "@" + mFps + "fps) requestId=" + requestId);
 
         try {
             JSONObject resp = new JSONObject();
             resp.put("type", "answer");
             resp.put("sdp", answerHolder[0]);
-            BugpunchTunnel.sendResponse(buildResponse(requestId, 200, resp.toString(), "application/json"));
+            String respJson = resp.toString();
+            Log.i(TAG, "WebRTC answer sdpLen=" + answerHolder[0].length() + " requestId=" + requestId);
+            BugpunchTunnel.sendResponse(buildResponse(requestId, 200, respJson, "application/json"));
+            Log.i(TAG, "WebRTC answer sent to tunnel requestId=" + requestId);
         } catch (JSONException e) {
+            Log.e(TAG, "answer serialize failed: " + e.getMessage() + " requestId=" + requestId);
             BugpunchTunnel.sendResponse(buildResponse(requestId, 500, "{\"error\":\"answer serialize\"}", "application/json"));
         }
     }
