@@ -79,8 +79,4 @@ dependencies {
     // `api files(...)` inlines the JAR into the AAR's own classes path so
     // consumers get the classes without naming the dep themselves.
     api files('libs/nv-websocket-client-2.14.jar')
-    // WebRTC Java classes for BugpunchStreamer (N7). Classes are provided at
-    // runtime by the com.unity.webrtc package in the host Unity project; this
-    // is compile-only so they are NOT bundled into BugpunchPlugin.aar.
-    compileOnly files('libs/webrtc-classes.jar')
 }

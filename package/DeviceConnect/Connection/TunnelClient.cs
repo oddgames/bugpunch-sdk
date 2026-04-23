@@ -1,4 +1,4 @@
-#if !(UNITY_ANDROID || UNITY_IOS)
+#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
 using System;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
@@ -92,60 +92,73 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _config = config;
         }
 
-        public async void Connect()
+        public void Connect()
         {
             if (IsConnected || IsConnecting) return;
-            IsConnecting = true;
+            _ = RunReconnectLoop();
+        }
 
-            try
+        async Task RunReconnectLoop()
+        {
+            int attempt = 0;
+            while (true)
             {
-                _ws = new ClientWebSocket();
-                _cts = new CancellationTokenSource();
+                if (IsConnected) return;
 
-                var uri = new Uri(_config.TunnelUrl);
-                Debug.Log($"[Bugpunch.TunnelClient] Connecting to {uri}...");
-
-                await _ws.ConnectAsync(uri, _cts.Token);
-
-                IsConnected = true;
-                IsConnecting = false;
-
-                if (string.IsNullOrEmpty(DeviceId))
-                    DeviceId = DeviceIdentity.GetDeviceId();
-
-                // Send registration. stableDeviceId + buildChannel feed the
-                // server's pin system — stableDeviceId survives reinstalls so
-                // pins stick to the physical device, buildChannel lets the
-                // server refuse alwaysDebug on production builds.
-                var registerMsg = JsonUtility.ToJson(new RegisterMessage
+                IsConnecting = true;
+                try
                 {
-                    type = "register",
-                    name = _config.EffectiveDeviceName,
-                    platform = Application.platform.ToString(),
-                    appVersion = Application.version,
-                    remoteIdePort = 0, // not using local port, everything through tunnel
-                    token = _config.apiKey,
-                    projectId = "", // derived from API key server-side
-                    deviceId = DeviceId,
-                    stableDeviceId = BugpunchNative.GetStableDeviceId(),
-                    buildChannel = _config.buildChannel.ToString().ToLowerInvariant(),
-                });
-                await SendAsync(registerMsg);
+                    _ws = new ClientWebSocket();
+                    _cts = new CancellationTokenSource();
 
-                _mainThreadQueue.Enqueue(() => OnConnected?.Invoke());
+                    var uri = new Uri(_config.TunnelUrl);
+                    Debug.Log($"[Bugpunch.TunnelClient] Connecting to {uri}...");
 
-                // Start receive loop and heartbeat
-                _ = ReceiveLoop();
-                _ = HeartbeatLoop();
-            }
-            catch (Exception ex)
-            {
-                IsConnecting = false;
+                    await _ws.ConnectAsync(uri, _cts.Token);
+
+                    IsConnected = true;
+                    IsConnecting = false;
+                    attempt = 0; // reset backoff
+
+                    if (string.IsNullOrEmpty(DeviceId))
+                        DeviceId = DeviceIdentity.GetDeviceId();
+
+                    var registerMsg = JsonUtility.ToJson(new RegisterMessage
+                    {
+                        type = "register",
+                        name = _config.EffectiveDeviceName,
+                        platform = Application.platform.ToString(),
+                        appVersion = Application.version,
+                        remoteIdePort = 0,
+                        token = _config.apiKey,
+                        projectId = "",
+                        deviceId = DeviceId,
+                        stableDeviceId = BugpunchNative.GetStableDeviceId(),
+                        buildChannel = _config.buildChannel.ToString().ToLowerInvariant(),
+                    });
+                    await SendAsync(registerMsg);
+
+                    _mainThreadQueue.Enqueue(() => OnConnected?.Invoke());
+
+                    await Task.WhenAny(ReceiveLoop(), HeartbeatLoop());
+                }
+                catch (Exception ex)
+                {
+                    var inner = ex.InnerException;
+                    var innerStr = inner != null ? $" — inner {inner.GetType().Name}: {inner.Message}" : "";
+                    Debug.LogWarning($"[Bugpunch.TunnelClient] Connect/reconnect failed: {ex.GetType().Name}: {ex.Message}{innerStr}");
+                    _mainThreadQueue.Enqueue(() => OnError?.Invoke(ex.Message));
+                }
+
+                // connection dropped
                 IsConnected = false;
-                var inner = ex.InnerException;
-                var innerStr = inner != null ? $" — inner {inner.GetType().Name}: {inner.Message}" : "";
-                Debug.LogWarning($"[Bugpunch.TunnelClient] Connect failed: {ex.GetType().Name}: {ex.Message}{innerStr}");
-                _mainThreadQueue.Enqueue(() => OnError?.Invoke(ex.Message));
+                IsConnecting = false;
+                _mainThreadQueue.Enqueue(() => OnDisconnected?.Invoke());
+
+                // exponential backoff (max 10s)
+                attempt++;
+                int delayMs = Math.Min(1000 * (int)Math.Pow(2, attempt - 1), 10000);
+                await Task.Delay(delayMs);
             }
         }
 

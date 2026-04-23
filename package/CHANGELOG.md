@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.7.25] - 2026-04-22
+## [1.7.27] - 2026-04-24
+
+### Fixed
+- **Unity Editor no longer mis-detects itself as a mobile-native build.** When the Editor's build target was set to Android or iOS, the `#if UNITY_ANDROID || UNITY_IOS` preprocessor branches across `BugpunchClient` / `TunnelBridge` / `TunnelClient` / `DeviceIdentity` assumed a native `BugpunchTunnel` was running (it only runs on the real device player, never in the Editor). Result: the Editor never created a managed `TunnelClient`, never opened a WebSocket, never registered — it simply didn't appear on the server's Devices page. All 14 affected conditionals now read `(UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR` (or the complementary `|| UNITY_EDITOR` form) so the Editor always uses the managed C# tunnel path regardless of build target.
+
+## [1.7.26] - 2026-04-24
+
+### Changed
+- **WebRTC streaming reverted to C# / `com.unity.webrtc` on Android.** N7's native `BugpunchStreamer.java` (PixelCopy / MediaProjection → ByteBuffer I420 → `libwebrtc`) is deleted. `/webrtc-*` requests now fall through `BugpunchTunnel` to `BugpunchClient`'s existing `WebRTCStreamer` path (same code used on iOS + Editor). The C# path is 100% GPU (`RenderTexture` → `VideoStreamTrack` → native encoder via Unity's graphics interop), supports camera switching (`SetCamera(Camera)`), a scene-camera mode driven by `SceneCameraService`, and a full game-view capture (including Screen-Space-Overlay UI) via `ScreenCapture.CaptureScreenshotIntoRenderTexture` when no target camera is set. Removed `libs/webrtc-classes.jar` (compile-only dep for the native streamer) and the `InitializeStreamerLazy` Android early-return.
 
 ### Added
 - **Phase 6c — native log redaction.** `BugpunchConfig.logRedactionRules` is a list of regex patterns (name + pattern). The native tunnel compiles each rule once at startup (`Pattern.compile` on Android, `NSRegularExpression` on iOS) and applies them to every captured log line **before the line enters the batcher** — nothing matching a configured pattern ever leaves the process via the QA log sink. Each match is replaced with `[redacted:NAME]`. Bad patterns are logged and skipped so one typo can't take down the rest of the ruleset.

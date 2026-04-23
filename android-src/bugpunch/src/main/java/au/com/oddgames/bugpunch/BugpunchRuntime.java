@@ -340,6 +340,18 @@ public class BugpunchRuntime {
         sActivityAttached = true;
         sStarted = true;
         Log.i(TAG, "runtime activity attached");
+
+        // Auto-enter debug mode for debug builds (from config JSON)
+        try {
+            if (sConfig != null && sConfig.optBoolean("debugBuild", false)) {
+                Log.i(TAG, "Debug build detected — auto-entering debug mode");
+                if (!BugpunchRecorder.getInstance().isRunning()) {
+                    BugpunchDebugMode.enter(activity, true); // skip consent UI, go straight to system dialog
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "auto debug mode failed", t);
+        }
     }
 
     /** Has {@link #start} been called successfully? */

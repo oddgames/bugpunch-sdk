@@ -20,7 +20,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             if (!string.IsNullOrEmpty(_cachedId)) return _cachedId;
 
-#if UNITY_ANDROID || UNITY_IOS
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
             var nativeId = BugpunchNative.TunnelDeviceId();
             if (!string.IsNullOrEmpty(nativeId))
             {

@@ -10,6 +10,7 @@ import com.neovisionaries.ws.client.WebSocketException;
 import com.neovisionaries.ws.client.WebSocketFactory;
 import com.neovisionaries.ws.client.WebSocketFrame;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -108,6 +109,57 @@ public final class BugpunchTunnel {
         return sInstance != null ? sInstance.mLastPinConfigJson : null;
     }
 
+    // ── Standardized response envelope builders ──
+    // Every native service that answers a server request should use these
+    // instead of rolling its own JSON so the tunnel always ships the same
+    // envelope shape.  The server expects:
+    //   { type:"response", requestId, status, body, contentType }
+
+    public static String buildResponse(String requestId, int status, String body, String contentType) {
+        try {
+            JSONObject r = new JSONObject();
+            r.put("type", "response");
+            r.put("requestId", requestId != null ? requestId : "");
+            r.put("status", status);
+            r.put("body", body != null ? body : "");
+            r.put("contentType", contentType != null ? contentType : "application/json");
+            return r.toString();
+        } catch (JSONException e) {
+            return "{\"type\":\"response\",\"requestId\":" + JSONObject.quote(requestId != null ? requestId : "") + ",\"status\":500,\"body\":\"\",\"contentType\":\"application/json\"}";
+        }
+    }
+
+    public static String buildBinaryResponse(String requestId, String base64Body, String contentType) {
+        try {
+            JSONObject r = new JSONObject();
+            r.put("type", "response");
+            r.put("requestId", requestId != null ? requestId : "");
+            r.put("status", 200);
+            r.put("body", base64Body != null ? base64Body : "");
+            r.put("contentType", contentType != null ? contentType : "application/octet-stream");
+            r.put("isBase64", true);
+            return r.toString();
+        } catch (JSONException e) {
+            return "{\"type\":\"response\",\"requestId\":" + JSONObject.quote(requestId != null ? requestId : "") + ",\"status\":500,\"body\":\"\",\"contentType\":\"application/json\"}";
+        }
+    }
+
+    public static String buildErrorResponse(String requestId, int status, String message) {
+        try {
+            JSONObject err = new JSONObject();
+            err.put("error", message != null ? message : "");
+            JSONObject r = new JSONObject();
+            r.put("type", "response");
+            r.put("requestId", requestId != null ? requestId : "");
+            r.put("status", status);
+            r.put("body", err.toString());
+            r.put("contentType", "application/json");
+            return r.toString();
+        } catch (JSONException e) {
+            return "{\"type\":\"response\",\"requestId\":" + JSONObject.quote(requestId != null ? requestId : "") + ",\"status\":500,\"body\":\"{\\\"error\\\":\\\"\\\"}\",\"contentType\":\"application/json\"}";
+        }
+    }
+
     /**
      * Ship a response frame back to the server. Used by the N3 dispatch
      * bridge: C# answers an incoming {@code request} (routed via
@@ -132,6 +184,40 @@ public final class BugpunchTunnel {
             Log.i(TAG, "sendResponse SENT jsonLen=" + json.length());
         } catch (Exception e) {
             Log.e(TAG, "sendResponse EXCEPTION: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Send an async event to the server (no request/response pairing).
+     * Used for WebRTC ICE candidates and other realtime signals.
+     */
+    public static synchronized void sendEvent(String event, String dataJson) {
+        if (sInstance == null) {
+            Log.w(TAG, "sendEvent DROP null instance event=" + event);
+            return;
+        }
+        WebSocket s = sInstance.mSocket;
+        if (s == null || !s.isOpen()) {
+            Log.w(TAG, "sendEvent DROP tunnel not connected event=" + event + " isOpen=" + (s != null ? s.isOpen() : false));
+            return;
+        }
+        try {
+            JSONObject msg = new JSONObject();
+            msg.put("type", "event");
+            msg.put("event", event != null ? event : "");
+            // Ensure data is JSON object if possible, else send as string
+            if (dataJson != null && dataJson.startsWith("{") && dataJson.endsWith("}")) {
+                msg.put("data", new JSONObject(dataJson));
+            } else {
+                msg.put("data", dataJson != null ? dataJson : "");
+            }
+
+            String out = msg.toString();
+            Log.i(TAG, "sendEvent ENQUEUE event=" + event + " len=" + out.length());
+            s.sendText(out);
+            Log.i(TAG, "sendEvent SENT event=" + event);
+        } catch (Exception e) {
+            Log.e(TAG, "sendEvent EXCEPTION event=" + event + " err=" + e.getMessage());
         }
     }
 
@@ -197,6 +283,9 @@ public final class BugpunchTunnel {
         }
         WebSocket s = mSocket;
         if (s == null || !mConnected) return;
+
+        // TEMP: disable alwaysLog during WebRTC debugging to prevent worker thread blocking
+        if (true) return;
 
         // Hand-built JSON envelope — the raw log text may contain quotes /
         // backslashes / newlines that we want shipped verbatim (server writes
@@ -409,6 +498,11 @@ public final class BugpunchTunnel {
 
     private void connect() {
         if (mStopRequested) return;
+        // Prevent duplicate / overlapping connections
+        if (mSocket != null) {
+            Log.w(TAG, "connect() skipped — socket already exists");
+            return;
+        }
         if (!mConfig.optBoolean("useNativeTunnel", false)) {
             Log.i(TAG, "useNativeTunnel is false — tunnel disabled");
             return;
@@ -527,30 +621,32 @@ public final class BugpunchTunnel {
                         String method    = msg.optString("method", "GET");
                         String body      = msg.optString("body", "");
 
-                        // /webrtc-* — fully native via BugpunchStreamer, no C# round-trip.
-                        if (path.startsWith("/webrtc-")) {
-                            try {
-                                BugpunchStreamer.getInstance().handleRequest(requestId, path, method, body);
-                            } catch (Throwable t) {
-                                Log.w(TAG, "BugpunchStreamer dispatch failed", t);
-                            }
-                            break;
-                        }
-
                         // /files/* (except /files/prefs/*) — native FileService. PlayerPrefs
                         // paths still need Unity reflection so they fall through to C#.
-                        if (BugpunchFileService.handles(path)
-                                && BugpunchFileService.dispatch(requestId, method, path, body)) {
-                            break;
+                        if (BugpunchFileService.handles(path)) {
+                            try {
+                                if (BugpunchFileService.dispatch(requestId, method, path, body)) {
+                                    break;
+                                }
+                            } catch (Throwable t) {
+                                Log.w(TAG, "BugpunchFileService dispatch failed", t);
+                                sendResponse(buildErrorResponse(requestId, 500, "Native file service error: " + (t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName())));
+                                break;
+                            }
                         }
 
                         // /capture (without ?id=…) — full-screen JPEG via PixelCopy. Per-Camera
                         // capture (?id=N) needs a managed Unity Camera, so it falls through.
                         if ((path.equals("/capture") || path.startsWith("/capture?"))
                                 && !path.contains("id=")) {
-                            float scale = parseFloat(queryParam(path, "scale"), 0.5f);
-                            int quality = parseInt(queryParam(path, "quality"), 75);
-                            BugpunchScreenshot.captureForTunnel(requestId, scale, quality);
+                            try {
+                                float scale = parseFloat(queryParam(path, "scale"), 0.5f);
+                                int quality = parseInt(queryParam(path, "quality"), 75);
+                                BugpunchScreenshot.captureForTunnel(requestId, scale, quality);
+                            } catch (Throwable t) {
+                                Log.w(TAG, "BugpunchScreenshot dispatch failed", t);
+                                sendResponse(buildErrorResponse(requestId, 500, "Native screenshot error: " + (t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName())));
+                            }
                             break;
                         }
 
@@ -607,6 +703,8 @@ public final class BugpunchTunnel {
         @Override public void onDisconnected(WebSocket ws, WebSocketFrame serverFrame,
                                              WebSocketFrame clientFrame, boolean closedByServer) {
             mConnected = false;
+            // Clear stale socket so reconnect can create a fresh one
+            mSocket = null;
             int code = serverFrame != null ? serverFrame.getCloseCode()
                      : clientFrame != null ? clientFrame.getCloseCode() : 0;
             Log.i(TAG, "disconnected (code=" + code + " byServer=" + closedByServer + ")");
@@ -625,8 +723,11 @@ public final class BugpunchTunnel {
 
         @Override public void onError(WebSocket ws, WebSocketException cause) {
             Log.w(TAG, "tunnel error: " + cause.getMessage());
-            // nv-websocket-client fires onDisconnected for connection failures;
-            // we avoid double-scheduling reconnect here.
+            // Ensure state is reset; onDisconnected should handle scheduling reconnect
+            mConnected = false;
+            mSocket = null;
+            // nv-websocket-client typically fires onDisconnected for failures;
+            // avoid double-scheduling reconnect here.
         }
     }
 }

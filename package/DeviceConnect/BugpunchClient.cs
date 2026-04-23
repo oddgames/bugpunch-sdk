@@ -18,7 +18,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public static BugpunchClient Instance { get; private set; }
 
         public BugpunchConfig Config { get; private set; }
-#if !(UNITY_ANDROID || UNITY_IOS)
+#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
         /// <summary>Managed WebSocket tunnel — Editor / Standalone only.
         /// On mobile the native <c>BugpunchTunnel</c> owns the wire and this
         /// property doesn't exist. Cross-platform code should use
@@ -323,7 +323,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Release builds: lightweight HTTP poll, upgrade to WebSocket on demand.
             if (Debug.isDebugBuild || Application.isEditor)
             {
-#if UNITY_ANDROID || UNITY_IOS
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
                 // Native BugpunchTunnel owns the WebSocket on mobile — it came up
                 // from BugpunchInitProvider before Unity booted and incoming
                 // request frames arrive on OnTunnelRequest via UnitySendMessage.
@@ -357,7 +357,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
-#if !(UNITY_ANDROID || UNITY_IOS)
+#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
         IEnumerator ConnectLoop()
         {
             while (true)
@@ -686,7 +686,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void Update()
         {
-#if !(UNITY_ANDROID || UNITY_IOS)
+#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
             Tunnel?.ProcessMessages();
 #endif
         }
@@ -696,7 +696,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // socket on resume forces ConnectLoop to rebuild immediately.
         void OnApplicationPause(bool paused)
         {
-#if !(UNITY_ANDROID || UNITY_IOS)
+#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
             if (paused || Tunnel == null || !Tunnel.IsConnected) return;
             Tunnel.Disconnect();
 #endif
@@ -1004,7 +1004,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             BugpunchNative.StopPoll();
             PollActive = false;
 
-#if UNITY_ANDROID || UNITY_IOS
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
             // Native BugpunchTunnel is already alive from app startup; "upgrading"
             // here just means lazily booting WebRTC. No managed socket to spin.
             InitializeStreamerLazy();
@@ -1049,13 +1049,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             if (Streamer != null) return;
             Debug.Log("[Bugpunch.BugpunchClient] InitializeStreamerLazy: starting");
-#if UNITY_ANDROID && !UNITY_EDITOR
-            // Android streaming is handled natively by BugpunchStreamer.java (N7).
-            // The native tunnel routes /webrtc-* requests there directly without
-            // coming through C#, so there is nothing to initialize here.
-            Debug.Log("[Bugpunch.BugpunchClient] InitializeStreamerLazy: Android — native streamer handles this, skipping C# init");
-            return;
-#endif
             try
             {
                 Debug.Log("[Bugpunch.BugpunchClient] InitializeStreamerLazy: adding WebRTCStreamer component");
@@ -1108,7 +1101,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             // Tear down WebSocket (managed-tunnel platforms only — on mobile
             // the native tunnel stays up across debug session boundaries).
-#if !(UNITY_ANDROID || UNITY_IOS)
+#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
             Tunnel?.Disconnect();
             Tunnel = null;
 #endif
@@ -1164,7 +1157,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         void OnDestroy()
         {
             Streamer?.StopStreaming();
-#if !(UNITY_ANDROID || UNITY_IOS)
+#if !(UNITY_ANDROID || UNITY_IOS) || UNITY_EDITOR
             Tunnel?.Disconnect();
 #endif
             BugpunchNative.StopPoll();

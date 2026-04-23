@@ -23,7 +23,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             get
             {
-#if UNITY_ANDROID || UNITY_IOS
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
                 return BugpunchNative.TunnelIsConnected();
 #else
                 return BugpunchClient.Instance?.Tunnel?.IsConnected ?? false;
@@ -38,7 +38,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             get
             {
-#if UNITY_ANDROID || UNITY_IOS
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
                 return BugpunchNative.TunnelDeviceId();
 #else
                 return BugpunchClient.Instance?.Tunnel?.DeviceId ?? "";
@@ -53,7 +53,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         public static void SendResponse(string requestId, int status, string body, string contentType = "application/json")
         {
-#if UNITY_ANDROID || UNITY_IOS
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
             var msg = JsonUtility.ToJson(new ResponseEnvelope
             {
                 type = "response",
@@ -75,7 +75,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         public static void SendBinaryResponse(string requestId, byte[] binary, string contentType)
         {
-#if UNITY_ANDROID || UNITY_IOS
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
             var base64 = binary != null ? Convert.ToBase64String(binary) : "";
             var msg = JsonUtility.ToJson(new ResponseEnvelope
             {

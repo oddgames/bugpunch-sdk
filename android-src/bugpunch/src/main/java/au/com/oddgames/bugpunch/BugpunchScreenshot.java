@@ -395,7 +395,7 @@ public class BugpunchScreenshot {
     public static void captureForTunnel(final String requestId, final float scale, final int quality) {
         final Activity activity = BugpunchUnity.currentActivity();
         if (activity == null) {
-            BugpunchTunnel.sendResponse(buildErrorResponse(requestId, 503, "no activity"));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 503, "no activity"));
             return;
         }
         activity.runOnUiThread(new Runnable() {
@@ -413,7 +413,7 @@ public class BugpunchScreenshot {
                             @Override public void onPixelCopyFinished(int copyResult) {
                                 if (copyResult != PixelCopy.SUCCESS) {
                                     bitmap.recycle();
-                                    BugpunchTunnel.sendResponse(buildErrorResponse(
+                                    BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(
                                         requestId, 500, "PixelCopy failed: " + copyResult));
                                     return;
                                 }
@@ -426,7 +426,7 @@ public class BugpunchScreenshot {
                     // Fallback: View-hierarchy draw (Unity GPU surface will be
                     // black, but native UI overlays are captured).
                     if (root.getWidth() <= 0 || root.getHeight() <= 0) {
-                        BugpunchTunnel.sendResponse(buildErrorResponse(requestId, 500, "zero-size view"));
+                        BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 500, "zero-size view"));
                         return;
                     }
                     Bitmap bitmap = Bitmap.createBitmap(
@@ -436,7 +436,7 @@ public class BugpunchScreenshot {
                     deliverBitmap(requestId, bitmap, scale, quality);
                 } catch (Throwable t) {
                     Log.w(TAG, "captureForTunnel failed", t);
-                    BugpunchTunnel.sendResponse(buildErrorResponse(
+                    BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(
                         requestId, 500, t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()));
                 }
             }
@@ -458,41 +458,11 @@ public class BugpunchScreenshot {
             toEncode.recycle();
             byte[] jpeg = baos.toByteArray();
             String base64 = Base64.encodeToString(jpeg, Base64.NO_WRAP);
-            BugpunchTunnel.sendResponse(buildBinaryResponse(requestId, base64, "image/jpeg"));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildBinaryResponse(requestId, base64, "image/jpeg"));
         } catch (Throwable t) {
             Log.w(TAG, "deliverBitmap failed", t);
-            BugpunchTunnel.sendResponse(buildErrorResponse(
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(
                 requestId, 500, t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()));
-        }
-    }
-
-    private static String buildBinaryResponse(String requestId, String base64Body, String contentType) {
-        try {
-            org.json.JSONObject o = new org.json.JSONObject();
-            o.put("type", "response");
-            o.put("requestId", requestId);
-            o.put("status", 200);
-            o.put("body", base64Body);
-            o.put("contentType", contentType);
-            o.put("isBase64", true);
-            return o.toString();
-        } catch (org.json.JSONException e) {
-            return "{\"type\":\"response\",\"requestId\":\"" + requestId + "\",\"status\":500}";
-        }
-    }
-
-    private static String buildErrorResponse(String requestId, int status, String message) {
-        try {
-            org.json.JSONObject o = new org.json.JSONObject();
-            o.put("type", "response");
-            o.put("requestId", requestId);
-            o.put("status", status);
-            o.put("body", "{\"error\":\"" + (message == null ? "" : message
-                .replace("\\", "\\\\").replace("\"", "\\\"")) + "\"}");
-            o.put("contentType", "application/json");
-            return o.toString();
-        } catch (org.json.JSONException e) {
-            return "{\"type\":\"response\",\"requestId\":\"" + requestId + "\",\"status\":500}";
         }
     }
 

@@ -102,15 +102,15 @@ public final class BugpunchFileService {
                 case "/files/zip":    result = zipDirectory(query(path, "path")); break;
                 case "/files/unzip":  result = unzipToDirectory(query(path, "path"), body, !"false".equals(query(path, "clear"))); break;
                 default:
-                    BugpunchTunnel.sendResponse(buildResponse(requestId, 404,
-                        "{\"error\":\"" + esc("Unknown files endpoint: " + basePath) + "\"}"));
+                    BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 404,
+                        "Unknown files endpoint: " + basePath));
                     return true;
             }
-            BugpunchTunnel.sendResponse(buildResponse(requestId, 200, result));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildResponse(requestId, 200, result, "application/json"));
         } catch (Throwable t) {
             Log.w(TAG, "dispatch failed for " + path, t);
-            BugpunchTunnel.sendResponse(buildResponse(requestId, 500,
-                "{\"ok\":false,\"error\":\"" + esc(t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()) + "\"}"));
+            BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 500,
+                t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()));
         }
         return true;
     }
@@ -451,20 +451,6 @@ public final class BugpunchFileService {
 
     private static String errorJson(String message) {
         return "{\"ok\":false,\"error\":\"" + esc(message) + "\"}";
-    }
-
-    private static String buildResponse(String requestId, int status, String body) {
-        try {
-            JSONObject o = new JSONObject();
-            o.put("type", "response");
-            o.put("requestId", requestId);
-            o.put("status", status);
-            o.put("body", body);
-            o.put("contentType", "application/json");
-            return o.toString();
-        } catch (JSONException e) {
-            return "{\"type\":\"response\",\"requestId\":\"" + esc(requestId) + "\",\"status\":500}";
-        }
     }
 
     private static final class Root {
