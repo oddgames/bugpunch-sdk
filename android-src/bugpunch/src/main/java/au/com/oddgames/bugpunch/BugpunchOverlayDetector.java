@@ -20,7 +20,7 @@ import android.util.Log;
  * resuming while the game is still considered foreground.
  */
 public class BugpunchOverlayDetector {
-    private static final String TAG = "BugpunchOverlay";
+    private static final String TAG = "[Bugpunch.OverlayDetector]";
 
     private static volatile boolean sStarted;
     private static String sGameActivityClass;

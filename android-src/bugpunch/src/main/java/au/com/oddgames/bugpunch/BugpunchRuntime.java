@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * dump the ring buffer only if one happens to be running.
  */
 public class BugpunchRuntime {
-    private static final String TAG = "BugpunchRuntime";
+    private static final String TAG = "[Bugpunch.Runtime]";
 
     private static boolean sStarted;            // full init including Activity pieces
     private static boolean sEarlyStarted;       // Context-only init ran (from ContentProvider)
@@ -145,6 +145,13 @@ public class BugpunchRuntime {
                 sMetadata.getOrDefault("deviceModel", ""),
                 sMetadata.getOrDefault("osVersion", ""),
                 sMetadata.getOrDefault("gpu", ""));
+
+            // C# just gave us the Unity-resolved storage paths — re-seed the
+            // FileService roots so /files/* requests can resolve real paths.
+            BugpunchFileService.configure(sConfig);
+
+            // Re-eval native tunnel state with the richer config (may have flipped useNativeTunnel)
+            BugpunchTunnel.start(sConfig, BugpunchIdentity.getStableDeviceId(sAppContext));
         } catch (JSONException e) {
             Log.w(TAG, "augmentConfig failed", e);
         }
@@ -246,18 +253,21 @@ public class BugpunchRuntime {
         int logSize = sConfig.optInt("logBufferSize", 2000);
         BugpunchLogReader.start(logSize);
 
-        // 3) Native tunnel — N1 of the native-tunnel migration. Opt-in via
-        //    `useNativeTunnel` in the bundled config; defaults to off so the
-        //    existing C# TunnelClient keeps owning the WebSocket until N3
-        //    lands the request-dispatch bridge. When enabled, the tunnel
-        //    comes up here — before Unity boots — and stays alive across
-        //    managed crashes.
+        // 3) Native tunnel — comes up here, before Unity boots, and stays
+        //    alive across managed crashes. The C# TunnelClient is excluded
+        //    on Android/iOS now, so this is the only WebSocket on the wire.
         try {
             String stableId = BugpunchIdentity.getStableDeviceId(sAppContext);
             BugpunchTunnel.start(sConfig, stableId);
         } catch (Throwable t) {
             Log.w(TAG, "native tunnel start failed", t);
         }
+
+        // 4) Seed the native FileService roots from the startup config. The
+        //    bundled config may not have Unity-resolved paths yet — augmentConfig
+        //    re-seeds when C# hands us the richer blob.
+        try { BugpunchFileService.configure(sConfig); }
+        catch (Throwable t) { Log.w(TAG, "FileService configure failed", t); }
 
         sEarlyStarted = true;
         Log.i(TAG, "runtime early init complete");

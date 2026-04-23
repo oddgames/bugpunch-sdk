@@ -33,7 +33,7 @@ import org.json.JSONObject;
  * controls whether this class actually opens a socket.
  */
 public final class BugpunchTunnel {
-    private static final String TAG = "BugpunchTunnel";
+    private static final String TAG = "[Bugpunch.Tunnel]";
 
     // Exponential backoff: 1s, 2s, 4s, 8s, 16s, then capped.
     private static final long BACKOFF_INITIAL_MS = 1_000L;
@@ -50,19 +50,35 @@ public final class BugpunchTunnel {
     /**
      * Start the native tunnel with the given startup config. Called from
      * {@link BugpunchRuntime#startEarly} — fires before Unity boots.
-     * Idempotent; subsequent calls no-op.
      */
     public static synchronized void start(JSONObject config, String stableDeviceId) {
-        if (sInstance != null) return;
         if (config == null) return;
-        String serverUrl = config.optString("serverUrl", "");
-        String apiKey = config.optString("apiKey", "");
-        if (serverUrl.isEmpty() || apiKey.isEmpty()) {
-            Log.w(TAG, "missing serverUrl or apiKey — tunnel not started");
+        if (sInstance != null) {
+            sInstance.updateConfig(config);
             return;
         }
         sInstance = new BugpunchTunnel(config, stableDeviceId);
         sInstance.connect();
+    }
+
+    /**
+     * Merge richer config values into the tunnel (e.g. after Unity boots and
+     * provides appVersion/useNativeTunnel). If the tunnel was previously
+     * disabled or permanently rejected due to missing metadata, this triggers
+     * a fresh connection attempt.
+     */
+    public void updateConfig(JSONObject config) {
+        if (config == null) return;
+        mConfig = config;
+        mServerUrl = config.optString("serverUrl", mServerUrl);
+        mApiKey = config.optString("apiKey", mApiKey);
+
+        if (mConfig.optBoolean("useNativeTunnel", false) && !mConnected && mSocket == null) {
+            Log.i(TAG, "config updated — re-evaluating tunnel connection");
+            mStopRequested = false;
+            mBackoffMs = BACKOFF_INITIAL_MS;
+            connect();
+        }
     }
 
     /** Graceful shutdown — used by tests and process teardown. */
@@ -250,10 +266,10 @@ public final class BugpunchTunnel {
 
     // ── Instance state ──
 
-    private final JSONObject mConfig;
+    private JSONObject mConfig;
     private final String mStableDeviceId;
-    private final String mServerUrl;
-    private final String mApiKey;
+    private String mServerUrl;
+    private String mApiKey;
     private final String mBuildChannel;
     private final WebSocketFactory mFactory;
     private final Handler mWorker;
@@ -384,6 +400,10 @@ public final class BugpunchTunnel {
 
     private void connect() {
         if (mStopRequested) return;
+        if (!mConfig.optBoolean("useNativeTunnel", false)) {
+            Log.i(TAG, "useNativeTunnel is false — tunnel disabled");
+            return;
+        }
         if (mServerUrl.isEmpty()) {
             Log.w(TAG, "no serverUrl in config — aborting");
             return;
@@ -417,9 +437,13 @@ public final class BugpunchTunnel {
         JSONObject reg = new JSONObject();
         try {
             reg.put("type", "register");
-            reg.put("name", mConfig.optJSONObject("metadata") != null
-                ? mConfig.optJSONObject("metadata").optString("deviceModel", "Android")
-                : "Android");
+            String metaModel = mConfig.optJSONObject("metadata") != null
+                ? mConfig.optJSONObject("metadata").optString("deviceModel", "")
+                : "";
+            if (metaModel.isEmpty()) {
+                metaModel = (android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL).trim();
+            }
+            reg.put("name", metaModel);
             reg.put("platform", "Android");
             reg.put("appVersion", mConfig.optJSONObject("metadata") != null
                 ? mConfig.optJSONObject("metadata").optString("appVersion", "")
@@ -489,10 +513,39 @@ public final class BugpunchTunnel {
                         break;
                     }
                     case "request": {
-                        // N3: marshal to C# so the existing RequestRouter
-                        // (HierarchyService / InspectorService / ScriptRunner
-                        // / SceneCameraService / etc.) answers. Response
-                        // comes back via BugpunchTunnel.sendResponse.
+                        String path = msg.optString("path", "");
+                        String requestId = msg.optString("requestId", "");
+                        String method    = msg.optString("method", "GET");
+                        String body      = msg.optString("body", "");
+
+                        // /webrtc-* — fully native via BugpunchStreamer, no C# round-trip.
+                        if (path.startsWith("/webrtc-")) {
+                            try {
+                                BugpunchStreamer.getInstance().handleRequest(requestId, path, method, body);
+                            } catch (Throwable t) {
+                                Log.w(TAG, "BugpunchStreamer dispatch failed", t);
+                            }
+                            break;
+                        }
+
+                        // /files/* (except /files/prefs/*) — native FileService. PlayerPrefs
+                        // paths still need Unity reflection so they fall through to C#.
+                        if (BugpunchFileService.handles(path)
+                                && BugpunchFileService.dispatch(requestId, method, path, body)) {
+                            break;
+                        }
+
+                        // /capture (without ?id=…) — full-screen JPEG via PixelCopy. Per-Camera
+                        // capture (?id=N) needs a managed Unity Camera, so it falls through.
+                        if ((path.equals("/capture") || path.startsWith("/capture?"))
+                                && !path.contains("id=")) {
+                            float scale = parseFloat(queryParam(path, "scale"), 0.5f);
+                            int quality = parseInt(queryParam(path, "quality"), 75);
+                            BugpunchScreenshot.captureForTunnel(requestId, scale, quality);
+                            break;
+                        }
+
+                        // Everything else → C# RequestRouter via UnitySendMessage.
                         try {
                             Class<?> up = Class.forName("com.unity3d.player.UnityPlayer");
                             up.getMethod("UnitySendMessage", String.class, String.class, String.class)
@@ -511,6 +564,35 @@ public final class BugpunchTunnel {
             } catch (org.json.JSONException e) {
                 Log.w(TAG, "malformed frame: " + text, e);
             }
+        }
+
+        // Tiny query-string + parsing helpers used by the dispatch path. We
+        // only need a handful of fields out of incoming /capture / /files
+        // URLs and pulling in a real URL parser feels like overkill.
+
+        private String queryParam(String path, String key) {
+            int q = path.indexOf('?');
+            if (q < 0) return "";
+            String qs = path.substring(q + 1);
+            for (String pair : qs.split("&")) {
+                int eq = pair.indexOf('=');
+                if (eq < 0) continue;
+                if (pair.substring(0, eq).equals(key)) {
+                    try { return java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8"); }
+                    catch (Exception e) { return pair.substring(eq + 1); }
+                }
+            }
+            return "";
+        }
+
+        private int parseInt(String s, int fallback) {
+            if (s == null || s.isEmpty()) return fallback;
+            try { return Integer.parseInt(s); } catch (NumberFormatException e) { return fallback; }
+        }
+
+        private float parseFloat(String s, float fallback) {
+            if (s == null || s.isEmpty()) return fallback;
+            try { return Float.parseFloat(s); } catch (NumberFormatException e) { return fallback; }
         }
 
         @Override public void onDisconnected(WebSocket ws, WebSocketFrame serverFrame,

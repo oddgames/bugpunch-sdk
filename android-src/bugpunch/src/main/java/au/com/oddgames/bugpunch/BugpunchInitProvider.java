@@ -39,7 +39,7 @@ import java.io.InputStream;
  * {@link BugpunchRuntime#start(Activity, String)} after Unity boots.
  */
 public class BugpunchInitProvider extends ContentProvider {
-    private static final String TAG = "BugpunchInit";
+    private static final String TAG = "[Bugpunch.InitProvider]";
     private static final String CONFIG_ASSET_NAME = "bugpunch_config.json";
 
     @Override

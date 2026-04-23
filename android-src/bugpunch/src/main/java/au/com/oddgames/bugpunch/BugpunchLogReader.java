@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * a rolling ring of the most recent {@code RECENT_CAPTURE} lines.</p>
  */
 public class BugpunchLogReader {
-    private static final String TAG = "BugpunchLogReader";
+    private static final String TAG = "[Bugpunch.LogReader]";
     /** First N log lines — captured once at startup and never dropped. */
     private static final int STARTUP_CAPTURE = 2000;
     /** Rolling ring size — last N lines before the current moment. */

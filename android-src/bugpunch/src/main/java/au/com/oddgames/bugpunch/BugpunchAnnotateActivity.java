@@ -35,7 +35,7 @@ import java.util.List;
  * the dashboard can overlay it as a toggleable layer.
  */
 public class BugpunchAnnotateActivity extends Activity {
-    private static final String TAG = "BugpunchAnnotate";
+    private static final String TAG = "[Bugpunch.AnnotateActivity]";
     public static final String EX_SHOT = "bp_shot";
 
     private AnnotateView mView;

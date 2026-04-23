@@ -34,7 +34,7 @@ import java.util.List;
  * provides the bridge that Unity C# calls via AndroidJavaClass.
  */
 public class BugpunchCrashHandler {
-    private static final String TAG = "BugpunchCrash";
+    private static final String TAG = "[Bugpunch.CrashHandler]";
     private static final String CRASH_DIR_NAME = "bugpunch_crashes";
 
     private static boolean sNativeLoaded = false;

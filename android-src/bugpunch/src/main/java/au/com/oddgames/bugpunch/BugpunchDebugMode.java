@@ -40,7 +40,7 @@ import org.json.JSONObject;
  * </ol>
  */
 public class BugpunchDebugMode {
-    private static final String TAG = "BugpunchDebugMode";
+    private static final String TAG = "[Bugpunch.DebugMode]";
 
     /**
      * Enable debug recording. With {@code skipConsent=false} (default) shows

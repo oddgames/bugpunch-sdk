@@ -36,7 +36,7 @@ import java.util.Deque;
  * window, and (touchNs - dumpStartNs) / 1e6 is the ms offset into the MP4.
  */
 public final class BugpunchTouchRecorder {
-    private static final String TAG = "BugpunchTouch";
+    private static final String TAG = "[Bugpunch.TouchRecorder]";
 
     private static final int PHASE_BEGAN     = 0;
     private static final int PHASE_MOVED     = 1;

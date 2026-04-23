@@ -44,7 +44,7 @@ import java.io.File;
  * (not a separate process) because it needs to communicate with Unity.
  */
 public class BugpunchCrashActivity extends Activity {
-    private static final String TAG = "BugpunchCrash";
+    private static final String TAG = "[Bugpunch.CrashActivity]";
 
     private static final String EXTRA_EXCEPTION = "exception";
     private static final String EXTRA_STACK_TRACE = "stackTrace";
@@ -319,7 +319,31 @@ public class BugpunchCrashActivity extends Activity {
         root.addView(btnRow, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        addSpacer(root, dp(12));
+        root.addView(buildDeviceIdFooter());
+
         return scrollView;
+    }
+
+    /** Compact tap-to-copy device ID label. Identical shape used across
+     *  BugpunchReportActivity so QA can read the ID out of any SDK dialog. */
+    private TextView buildDeviceIdFooter() {
+        final String id = BugpunchIdentity.getStableDeviceId(this);
+        TextView tv = new TextView(this);
+        tv.setTextColor(Color.parseColor("#7A7A7A"));
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setGravity(Gravity.CENTER);
+        tv.setText("ID: " + id);
+        tv.setOnClickListener(v -> {
+            android.content.ClipboardManager cm =
+                (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("Bugpunch device ID", id));
+                android.widget.Toast.makeText(this, "Device ID copied", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
+        return tv;
     }
 
     // ─── Video playback ─────────────────────────────────────────────

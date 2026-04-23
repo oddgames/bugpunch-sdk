@@ -27,7 +27,7 @@ import android.util.Log;
  *    the MediaProjection and removes the notification.
  */
 public class BugpunchProjectionService extends Service {
-    private static final String TAG = "BugpunchProjSvc";
+    private static final String TAG = "[Bugpunch.ProjectionService]";
     private static final String CHANNEL_ID = "bugpunch_recorder";
     private static final int NOTIFICATION_ID = 0xB06C;
 

@@ -36,7 +36,7 @@ import android.widget.TextView;
  *      after report is sent the button reappears.
  */
 public class BugpunchReportOverlay {
-    private static final String TAG = "BugpunchReport";
+    private static final String TAG = "[Bugpunch.ReportOverlay]";
     private static final String CALLBACK_OBJECT = "BugpunchReportCallback";
 
     private static View sWelcomeView;

@@ -13,7 +13,7 @@ import java.lang.reflect.Method;
  * and {@code UnityPlayer.UnitySendMessage(...)} via reflection at runtime.
  */
 final class BugpunchUnity {
-    private static final String TAG = "BugpunchUnity";
+    private static final String TAG = "[Bugpunch.Unity]";
     private BugpunchUnity() {}
 
     /** The Unity player activity, or null if not available. */

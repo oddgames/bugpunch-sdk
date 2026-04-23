@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit;
  * and the metadata that was seeded from the startup config.
  */
 public final class BugpunchPoller {
-    private static final String TAG = "BugpunchPoller";
+    private static final String TAG = "[Bugpunch.Poller]";
     private static final String PREFS = "bugpunch_poll";
     private static final String TOKEN_KEY = "device_token";
     private static final int CONNECT_TIMEOUT_MS = 10_000;

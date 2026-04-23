@@ -33,7 +33,7 @@ import java.util.zip.GZIPOutputStream;
  * from Runtime.
  */
 public final class BugpunchReportingService {
-    private static final String TAG = "BugpunchReporting";
+    private static final String TAG = "[Bugpunch.ReportingService]";
 
     private BugpunchReportingService() {}
 

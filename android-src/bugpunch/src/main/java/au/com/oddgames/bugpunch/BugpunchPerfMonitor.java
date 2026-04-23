@@ -34,7 +34,7 @@ import java.util.Map;
  * If not, and memory was high, posts a post-mortem OOM event.
  */
 public class BugpunchPerfMonitor {
-    private static final String TAG = "BugpunchPerf";
+    private static final String TAG = "[Bugpunch.PerfMonitor]";
     private static final String PREFS_NAME = "bugpunch_perf";
 
     private static boolean sStarted;

@@ -18,7 +18,7 @@ import android.util.Log;
  * dialog — we can't ask for it from a background service or JNI context.
  */
 public class BugpunchProjectionRequest extends Activity {
-    private static final String TAG = "BugpunchProjReq";
+    private static final String TAG = "[Bugpunch.ProjectionRequest]";
     private static final int REQ_CODE = 0xB06C; // "bugc"
 
     /** Callback from Unity — use UnitySendMessage to deliver results. */

@@ -42,7 +42,7 @@ import java.util.UUID;
  *   }
  */
 public class BugpunchUploader {
-    private static final String TAG = "BugpunchUploader";
+    private static final String TAG = "[Bugpunch.Uploader]";
     private static final String QUEUE_DIR = "bugpunch_uploads";
     private static final int MAX_ATTEMPTS = 10;
     private static final int CONNECT_TIMEOUT_MS = 15_000;

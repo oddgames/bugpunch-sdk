@@ -283,7 +283,7 @@ public class BugpunchToolsActivity extends Activity {
                 allTools.add(t);
             }
         } catch (Exception e) {
-            android.util.Log.w("BugpunchTools", "parse failed", e);
+            android.util.Log.w("[Bugpunch.Tools]", "parse failed", e);
         }
     }
 

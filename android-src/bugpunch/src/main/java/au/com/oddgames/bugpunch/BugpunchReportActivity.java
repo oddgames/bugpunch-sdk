@@ -40,7 +40,7 @@ import android.widget.Toast;
  * screenshot path; lives entirely native (no Unity involvement).
  */
 public class BugpunchReportActivity extends Activity {
-    private static final String TAG = "BugpunchReport";
+    private static final String TAG = "[Bugpunch.ReportActivity]";
     private static final int REQ_ANNOTATE = 4201;
 
     // ── Palette (kept in sync with the iOS form). ──
@@ -353,6 +353,8 @@ public class BugpunchReportActivity extends Activity {
             LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
         shell.addView(buttons, new LinearLayout.LayoutParams(
             LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        shell.addView(buildDeviceIdFooter(), new LinearLayout.LayoutParams(
+            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         // Absorb status/nav bar insets on the shell so content and the sticky
         // footer both clear the system bars. Inner views supply their own
@@ -523,6 +525,32 @@ public class BugpunchReportActivity extends Activity {
     }
 
     // ── Small builders to keep this file terse ──
+
+    /** Compact tap-to-copy device ID row shown below the sticky button bar
+     *  so QA can read the ID without diving into settings. Same shape as the
+     *  footer on BugpunchCrashActivity. */
+    private TextView buildDeviceIdFooter() {
+        final String id = BugpunchIdentity.getStableDeviceId(this);
+        TextView tv = new TextView(this);
+        tv.setText("ID: " + id);
+        tv.setTextColor(COLOR_TEXT_LABEL);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setGravity(Gravity.CENTER);
+        tv.setPadding(dp(12), dp(8), dp(12), dp(10));
+        tv.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Bugpunch device ID", id));
+                    android.widget.Toast.makeText(BugpunchReportActivity.this,
+                        "Device ID copied", android.widget.Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        return tv;
+    }
 
     private TextView label(String text) {
         TextView t = new TextView(this);

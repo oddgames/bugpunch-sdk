@@ -28,7 +28,7 @@ import android.widget.TextView;
  * permissions needed (it's inside our own Activity, not a system overlay).
  */
 public class BugpunchDebugWidget {
-    private static final String TAG = "BugpunchWidget";
+    private static final String TAG = "[Bugpunch.DebugWidget]";
     private static final int COL_BG = 0xE0141820;
     private static final int COL_REC = 0xFFE03030;
     private static final int COL_TEXT = 0xFFE6E8EE;

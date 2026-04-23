@@ -44,7 +44,7 @@ import java.nio.charset.StandardCharsets;
  * handler is the only reader — no locks needed.
  */
 public class BugpunchInput {
-    private static final String TAG = "BugpunchInput";
+    private static final String TAG = "[Bugpunch.Input]";
 
     /** Entry field sizes. Must match bp.c and the server parser exactly. */
     public static final int PATH_LEN = 192;

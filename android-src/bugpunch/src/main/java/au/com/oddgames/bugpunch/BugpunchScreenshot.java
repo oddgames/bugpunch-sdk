@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.util.Base64;
 import android.util.Log;
 import android.view.PixelCopy;
 import android.view.SurfaceView;
@@ -30,7 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * UnitySendMessage so Unity doesn't block waiting for PixelCopy.
  */
 public class BugpunchScreenshot {
-    private static final String TAG = "BugpunchScreenshot";
+    private static final String TAG = "[Bugpunch.Screenshot]";
 
     private static HandlerThread sThread;
     private static Handler sHandler;
@@ -236,6 +237,11 @@ public class BugpunchScreenshot {
             rescheduleFast();
             return;
         }
+        if (!sv.getHolder().getSurface().isValid()) {
+            if (!sHadFirstCapture) Log.d(TAG, "capture skipped: surface not yet valid");
+            rescheduleFast();
+            return;
+        }
         try {
             // GPU downscales source → bmp dimensions on its own, so there's
             // no CPU cost to capturing smaller than the actual display.
@@ -341,6 +347,7 @@ public class BugpunchScreenshot {
     public static void captureSync(String outputPath, int quality) {
         SurfaceView sv = sCachedSurface;
         if (sv == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
+        if (!sv.getHolder().getSurface().isValid()) return;
         try {
             int w = sv.getWidth(), h = sv.getHeight();
             if (w <= 0 || h <= 0) return;
@@ -369,6 +376,124 @@ public class BugpunchScreenshot {
             sHandler = new Handler(sThread.getLooper());
         }
         return sHandler;
+    }
+
+    /**
+     * Tunnel-side /capture handler. Captures the Unity window via PixelCopy
+     * (or a View-hierarchy fallback), optionally scales the bitmap, encodes
+     * to JPEG in memory, base64-wraps it, and ships it through
+     * {@link BugpunchTunnel#sendResponse(String)}. No disk hop, no
+     * UnitySendMessage round-trip — the full /capture request stays native.
+     *
+     * <p>Camera-specific capture (<c>/capture?id=N</c>) still bounces to C#
+     * because per-Unity-Camera readback needs a managed Camera reference.
+     *
+     * @param requestId tunnel request id to echo back in the response envelope
+     * @param scale     1.0 = full screen size, 0.5 = half each axis, etc.
+     * @param quality   JPEG quality 1..100
+     */
+    public static void captureForTunnel(final String requestId, final float scale, final int quality) {
+        final Activity activity = BugpunchUnity.currentActivity();
+        if (activity == null) {
+            BugpunchTunnel.sendResponse(buildErrorResponse(requestId, 503, "no activity"));
+            return;
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override public void run() {
+                try {
+                    final View root = activity.getWindow().getDecorView();
+                    final SurfaceView sv = findSurfaceView(root);
+
+                    if (sv != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                            && sv.getWidth() > 0 && sv.getHeight() > 0
+                            && sv.getHolder().getSurface().isValid()) {
+                        final Bitmap bitmap = Bitmap.createBitmap(
+                            sv.getWidth(), sv.getHeight(), Bitmap.Config.ARGB_8888);
+                        PixelCopy.request(sv, bitmap, new PixelCopy.OnPixelCopyFinishedListener() {
+                            @Override public void onPixelCopyFinished(int copyResult) {
+                                if (copyResult != PixelCopy.SUCCESS) {
+                                    bitmap.recycle();
+                                    BugpunchTunnel.sendResponse(buildErrorResponse(
+                                        requestId, 500, "PixelCopy failed: " + copyResult));
+                                    return;
+                                }
+                                deliverBitmap(requestId, bitmap, scale, quality);
+                            }
+                        }, getHandler());
+                        return;
+                    }
+
+                    // Fallback: View-hierarchy draw (Unity GPU surface will be
+                    // black, but native UI overlays are captured).
+                    if (root.getWidth() <= 0 || root.getHeight() <= 0) {
+                        BugpunchTunnel.sendResponse(buildErrorResponse(requestId, 500, "zero-size view"));
+                        return;
+                    }
+                    Bitmap bitmap = Bitmap.createBitmap(
+                        root.getWidth(), root.getHeight(), Bitmap.Config.ARGB_8888);
+                    Canvas c = new Canvas(bitmap);
+                    root.draw(c);
+                    deliverBitmap(requestId, bitmap, scale, quality);
+                } catch (Throwable t) {
+                    Log.w(TAG, "captureForTunnel failed", t);
+                    BugpunchTunnel.sendResponse(buildErrorResponse(
+                        requestId, 500, t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()));
+                }
+            }
+        });
+    }
+
+    private static void deliverBitmap(String requestId, Bitmap bitmap, float scale, int quality) {
+        try {
+            Bitmap toEncode = bitmap;
+            if (scale > 0f && scale < 1f) {
+                int targetW = Math.max(1, Math.round(bitmap.getWidth() * scale));
+                int targetH = Math.max(1, Math.round(bitmap.getHeight() * scale));
+                toEncode = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true);
+                if (toEncode != bitmap) bitmap.recycle();
+            }
+            int q = Math.max(1, Math.min(100, quality));
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            toEncode.compress(Bitmap.CompressFormat.JPEG, q, baos);
+            toEncode.recycle();
+            byte[] jpeg = baos.toByteArray();
+            String base64 = Base64.encodeToString(jpeg, Base64.NO_WRAP);
+            BugpunchTunnel.sendResponse(buildBinaryResponse(requestId, base64, "image/jpeg"));
+        } catch (Throwable t) {
+            Log.w(TAG, "deliverBitmap failed", t);
+            BugpunchTunnel.sendResponse(buildErrorResponse(
+                requestId, 500, t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()));
+        }
+    }
+
+    private static String buildBinaryResponse(String requestId, String base64Body, String contentType) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("type", "response");
+            o.put("requestId", requestId);
+            o.put("status", 200);
+            o.put("body", base64Body);
+            o.put("contentType", contentType);
+            o.put("isBase64", true);
+            return o.toString();
+        } catch (org.json.JSONException e) {
+            return "{\"type\":\"response\",\"requestId\":\"" + requestId + "\",\"status\":500}";
+        }
+    }
+
+    private static String buildErrorResponse(String requestId, int status, String message) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("type", "response");
+            o.put("requestId", requestId);
+            o.put("status", status);
+            o.put("body", "{\"error\":\"" + (message == null ? "" : message
+                .replace("\\", "\\\\").replace("\"", "\\\"")) + "\"}");
+            o.put("contentType", "application/json");
+            return o.toString();
+        } catch (org.json.JSONException e) {
+            return "{\"type\":\"response\",\"requestId\":\"" + requestId + "\",\"status\":500}";
+        }
     }
 
     /**
@@ -415,7 +540,8 @@ public class BugpunchScreenshot {
                     SurfaceView sv = findSurfaceView(root);
 
                     if (sv != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
-                            && sv.getWidth() > 0 && sv.getHeight() > 0) {
+                            && sv.getWidth() > 0 && sv.getHeight() > 0
+                            && sv.getHolder().getSurface().isValid()) {
                         final Bitmap bitmap = Bitmap.createBitmap(
                             sv.getWidth(), sv.getHeight(), Bitmap.Config.ARGB_8888);
                         PixelCopy.request(sv, bitmap, new PixelCopy.OnPixelCopyFinishedListener() {

@@ -37,7 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * retries and app-kill survival come for free.
  */
 public class BugpunchDirectives {
-    private static final String TAG = "BugpunchDirectives";
+    private static final String TAG = "[Bugpunch.Directives]";
     private static final String PREFS = "bugpunch_directives";
     private static final String DENIED_PREFIX = "denied:";
 

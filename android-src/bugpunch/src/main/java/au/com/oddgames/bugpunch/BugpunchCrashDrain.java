@@ -28,7 +28,7 @@ import java.util.List;
  * divergence between what we wrote and what we upload.
  */
 final class BugpunchCrashDrain {
-    private static final String TAG = "BugpunchCrashDrain";
+    private static final String TAG = "[Bugpunch.CrashDrain]";
 
     private BugpunchCrashDrain() {}
 

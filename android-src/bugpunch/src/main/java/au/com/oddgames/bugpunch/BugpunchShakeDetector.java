@@ -13,7 +13,7 @@ import android.util.Log;
  * (with a 2-second cooldown to prevent repeats).
  */
 public class BugpunchShakeDetector {
-    private static final String TAG = "BugpunchShake";
+    private static final String TAG = "[Bugpunch.ShakeDetector]";
 
     private static SensorManager sManager;
     private static Sensor sSensor;

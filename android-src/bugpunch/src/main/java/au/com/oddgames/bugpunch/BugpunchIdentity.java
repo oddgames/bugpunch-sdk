@@ -17,6 +17,7 @@ import android.provider.Settings;
  * persistent storage (which would be wiped on uninstall).
  */
 public final class BugpunchIdentity {
+    private static final String TAG = "[Bugpunch.Identity]";
     private BugpunchIdentity() {}
 
     /**

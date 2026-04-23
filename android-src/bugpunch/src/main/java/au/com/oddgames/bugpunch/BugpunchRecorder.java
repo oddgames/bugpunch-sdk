@@ -32,7 +32,7 @@ import java.util.Deque;
  * result back to {@link #start(Activity, int, Intent, int)}.
  */
 public class BugpunchRecorder {
-    private static final String TAG = "BugpunchRecorder";
+    private static final String TAG = "[Bugpunch.Recorder]";
     private static final String MIME_TYPE = "video/avc";
     private static final int I_FRAME_INTERVAL = 1; // seconds — must be small so we can trim cleanly
 
@@ -71,6 +71,14 @@ public class BugpunchRecorder {
     public long getLastDumpEndNanos()   { return mLastDumpEndNanos; }
     public int  getWidth()  { return mWidth;  }
     public int  getHeight() { return mHeight; }
+
+    /** Returns the encoder's input Surface if recording is active, else null. Used by BugpunchStreamer to grab frames for WebRTC. */
+    public Surface getInputSurface() {
+        return mRunning ? mInputSurface : null;
+    }
+
+    /** Returns true if MediaProjection recording is currently active. */
+    public boolean isRunning() { return mRunning; }
 
     // Ring buffer of encoded samples
     private final Deque<Sample> mBuffer = new ArrayDeque<>();
