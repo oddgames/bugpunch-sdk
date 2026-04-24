@@ -1,0 +1,25 @@
+{
+    "name": "ODDGames.Bugpunch.Purchasing",
+    "rootNamespace": "ODDGames.Bugpunch",
+    "references": [
+        "ODDGames.Bugpunch",
+        "Unity.Purchasing"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "BUGPUNCH_HAS_UNITY_IAP"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.purchasing",
+            "expression": "4.0.0",
+            "define": "BUGPUNCH_HAS_UNITY_IAP"
+        }
+    ],
+    "noEngineReferences": false
+}

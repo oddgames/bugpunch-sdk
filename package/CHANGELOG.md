@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.38] - 2026-04-24
+
+### Fixed
+- **Unity IAP integration moved to its own sub-asmdef.** The IAP file at `Purchasing/BugpunchPurchasing.cs` ships under `ODDGames.Bugpunch.Purchasing.asmdef`, gated by `defineConstraints: ["BUGPUNCH_HAS_UNITY_IAP"]` + `versionDefines` on `com.unity.purchasing >= 4.0`. Previously the file lived in the main asmdef and referenced `UnityEngine.Purchasing.*` types with only a `#if` guard — but the main asmdef had `overrideReferences: true` and no reference to `Unity.Purchasing`, so consumers that actually had IAP installed hit `CS0234: The type or namespace name 'Purchasing' does not exist in the namespace 'UnityEngine'` (and 16 similar). The sub-asmdef only compiles when IAP is present and declares the `Unity.Purchasing` reference locally — resolves cleanly when IAP is installed, silently inert otherwise.
+
 ## [1.7.37] - 2026-04-24
 
 ### Fixed
