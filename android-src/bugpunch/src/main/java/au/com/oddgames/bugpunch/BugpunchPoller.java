@@ -48,6 +48,7 @@ public final class BugpunchPoller {
     private static volatile boolean sStopped;
     private static ScheduledExecutorService sExecutor;
     private static String sDeviceToken;
+    private static boolean sRegistrationRefreshed;
     private static int sPollIntervalSeconds = 30;
     private static String sScriptPermission = "ask";
 
@@ -70,6 +71,7 @@ public final class BugpunchPoller {
         sScriptPermission = scriptPermission == null || scriptPermission.isEmpty() ? "ask" : scriptPermission;
         sPollIntervalSeconds = Math.max(5, pollIntervalSeconds);
         sDeviceToken = loadToken(activity);
+        sRegistrationRefreshed = false;
 
         sExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "bugpunch-poller");
@@ -111,13 +113,17 @@ public final class BugpunchPoller {
     // -- Register -----------------------------------------------------------
 
     private static void ensureRegistered(Activity activity) {
-        if (sDeviceToken != null && !sDeviceToken.isEmpty()) return;
+        if (sRegistrationRefreshed && sDeviceToken != null && !sDeviceToken.isEmpty()) return;
 
         try {
             String deviceId = BugpunchRuntime.getMetadata("deviceId");
+            String tunnelDeviceId = BugpunchTunnel.getDeviceId();
+            if (tunnelDeviceId != null && !tunnelDeviceId.isEmpty()) deviceId = tunnelDeviceId;
             String appVersion = BugpunchRuntime.getMetadata("appVersion");
             String installerMode = BugpunchRuntime.getMetadata("installerMode");
             String deviceModel = BugpunchRuntime.getMetadata("deviceModel");
+            JSONObject cfg = BugpunchRuntime.getConfig();
+            String buildChannel = cfg != null ? cfg.optString("buildChannel", "unknown") : "unknown";
 
             JSONObject body = new JSONObject();
             body.put("deviceId", nullToEmpty(deviceId));
@@ -126,6 +132,8 @@ public final class BugpunchPoller {
             body.put("appVersion", nullToEmpty(appVersion));
             body.put("scriptPermission", sScriptPermission);
             body.put("installerMode", nullToEmpty(installerMode));
+            body.put("stableDeviceId", nullToEmpty(BugpunchIdentity.getStableDeviceId(activity)));
+            body.put("buildChannel", nullToEmpty(buildChannel));
 
             HttpResult res = postJson(
                 BugpunchRuntime.getServerUrl().replaceAll("/+$", "") + "/api/devices/register",
@@ -142,6 +150,7 @@ public final class BugpunchPoller {
             if (!token.isEmpty()) {
                 sDeviceToken = token;
                 saveToken(activity, token);
+                sRegistrationRefreshed = true;
                 Log.i(TAG, "registered");
             }
         } catch (Throwable t) {
@@ -169,6 +178,7 @@ public final class BugpunchPoller {
                 // re-register on the next tick.
                 Log.w(TAG, "poll 401 — clearing token");
                 sDeviceToken = "";
+                sRegistrationRefreshed = false;
                 saveToken(activity, "");
                 return;
             }
@@ -178,6 +188,14 @@ public final class BugpunchPoller {
             }
 
             JSONObject resp = new JSONObject(res.body);
+
+            // Pin config now also travels over the poll path so release/internal
+            // devices can pick up QA enrollment before the report tunnel is live.
+            JSONObject pinConfig = resp.optJSONObject("pinConfig");
+            if (pinConfig != null) {
+                BugpunchTunnel.applyPinConfig(pinConfig);
+                ensureReportTunnelIfPinned(activity, pinConfig);
+            }
 
             // 1) Device-targeted directives — fire into the existing handler.
             JSONArray pendingDirectives = resp.optJSONArray("pendingDirectives");
@@ -199,6 +217,27 @@ public final class BugpunchPoller {
             }
         } catch (Throwable t) {
             Log.w(TAG, "poll error", t);
+        }
+    }
+
+    private static void ensureReportTunnelIfPinned(Activity activity, JSONObject pinConfig) {
+        if (activity == null || pinConfig == null) return;
+        String consent = pinConfig.optString("consent", "unknown");
+        JSONObject pins = pinConfig.optJSONObject("pins");
+        if (!"accepted".equals(consent) || pins == null) return;
+        boolean shouldConnect =
+            pins.optBoolean("alwaysLog", false) ||
+            pins.optBoolean("alwaysRemote", false) ||
+            pins.optBoolean("alwaysDebug", false);
+        if (!shouldConnect || BugpunchTunnel.isConnected()) return;
+
+        try {
+            JSONObject cfg = BugpunchRuntime.getConfig();
+            if (cfg == null) return;
+            cfg.put("useNativeTunnel", true);
+            BugpunchTunnel.start(cfg, BugpunchIdentity.getStableDeviceId(activity));
+        } catch (Throwable t) {
+            Log.w(TAG, "failed to start report tunnel for pinned device", t);
         }
     }
 

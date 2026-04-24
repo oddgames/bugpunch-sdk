@@ -50,7 +50,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
             catch (Exception e) { Debug.LogError($"[Bugpunch.BugpunchNative] Android start failed: {e.Message}"); }
             return s_started;
 #elif UNITY_IOS
-            try { s_started = Bugpunch_StartDebugMode(json); }
+            try
+            {
+                s_started = Bugpunch_StartDebugMode(json);
+                if (s_started) Bugpunch_StartTunnel(json);
+            }
             catch (Exception e) { Debug.LogError($"[Bugpunch.BugpunchNative] iOS start failed: {e.Message}"); }
             return s_started;
 #else
@@ -658,6 +662,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern int Bugpunch_PinAlwaysDebug();
         [DllImport("__Internal")] static extern string Bugpunch_PinConsent();
         [DllImport("__Internal")] static extern bool Bugpunch_StartDebugMode(string configJson);
+        [DllImport("__Internal")] static extern void Bugpunch_StartTunnel(string configJson);
         [DllImport("__Internal")] static extern void Bugpunch_StopDebugMode();
         [DllImport("__Internal")] static extern void Bugpunch_ReportBug(string type,
             string title, string description, string extraJson);
@@ -711,7 +716,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append('{');
             Field(sb, "serverUrl", HttpBase(c.serverUrl)); sb.Append(',');
             Field(sb, "apiKey",    c.apiKey);              sb.Append(',');
-            sb.Append("\"useNativeTunnel\":").Append(Debug.isDebugBuild ? "true" : "false").Append(',');
+            var useNativeTunnel = Debug.isDebugBuild || c.buildChannel == BugpunchConfig.BuildChannel.Internal;
+            sb.Append("\"useNativeTunnel\":").Append(useNativeTunnel ? "true" : "false").Append(',');
+            Field(sb, "buildChannel", c.buildChannel.ToString().ToLowerInvariant()); sb.Append(',');
             Field(sb, "deviceTier", DeviceTier);           sb.Append(',');
             sb.Append("\"anrTimeoutMs\":").Append(c.anrTimeoutMs).Append(',');
             sb.Append("\"logBufferSize\":").Append(logBuffer).Append(',');

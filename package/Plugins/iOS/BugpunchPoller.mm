@@ -18,6 +18,11 @@
 
 // Bridge into the directive dispatcher (poll path).
 extern "C" void BPDirectives_OnPollDirectives(const char* jsonC);
+extern "C" void Bugpunch_StartTunnel(const char* configJson);
+extern "C" void Bugpunch_TunnelApplyPinConfig(const char* pinJson);
+extern "C" bool Bugpunch_TunnelIsConnected(void);
+extern "C" const char* Bugpunch_TunnelDeviceId(void);
+extern "C" const char* Bugpunch_GetStableDeviceId(void);
 
 // UnitySendMessage lives in libiPhone-lib.a.
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg);
@@ -36,6 +41,7 @@ static BOOL gPollerStopped = NO;
 static dispatch_source_t gPollTimer = nil;
 static dispatch_queue_t gPollQueue = nil;
 static NSString* gDeviceToken = nil;
+static BOOL gRegistrationRefreshed = NO;
 static NSInteger gPollIntervalSeconds = 30;
 static NSString* gScriptPermission = @"ask";
 static NSURLSession* gSession = nil;
@@ -57,6 +63,10 @@ static NSString* BPApiKey(void) {
 static NSString* BPMeta(NSString* key) {
     NSString* v = [BPDebugMode shared].metadata[key];
     return v ? v : @"";
+}
+
+static NSString* BPCString(const char* c) {
+    return c && *c ? [NSString stringWithUTF8String:c] : @"";
 }
 
 static void BPSaveToken(NSString* token) {
@@ -107,19 +117,27 @@ static void BPPostJsonSync(NSString* url, NSString* headerName, NSString* header
 // -- Register -----------------------------------------------------------------
 
 static void BPEnsureRegistered(void) {
-    if (gDeviceToken.length > 0) return;
+    if (gRegistrationRefreshed && gDeviceToken.length > 0) return;
 
     NSString* serverUrl = BPServerUrl();
     NSString* apiKey = BPApiKey();
     if (serverUrl.length == 0 || apiKey.length == 0) return;
 
+    NSString* tunnelDeviceId = BPCString(Bugpunch_TunnelDeviceId());
+    NSString* deviceId = tunnelDeviceId.length > 0 ? tunnelDeviceId : BPMeta(@"deviceId");
+    NSString* stableDeviceId = BPCString(Bugpunch_GetStableDeviceId());
+    NSString* buildChannel = [BPDebugMode shared].config[@"buildChannel"];
+    if (![buildChannel isKindOfClass:[NSString class]]) buildChannel = @"unknown";
+
     NSDictionary* body = @{
-        @"deviceId":         BPMeta(@"deviceId"),
+        @"deviceId":         deviceId ?: @"",
         @"name":             BPMeta(@"deviceModel"),
         @"platform":         @"iOS",
         @"appVersion":       BPMeta(@"appVersion"),
         @"scriptPermission": gScriptPermission ?: @"ask",
         @"installerMode":    BPMeta(@"installerMode"),
+        @"stableDeviceId":   stableDeviceId ?: @"",
+        @"buildChannel":     buildChannel ?: @"unknown",
     };
     NSData* bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
     NSString* bodyJson = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding];
@@ -138,6 +156,7 @@ static void BPEnsureRegistered(void) {
             if ([token isKindOfClass:[NSString class]] && token.length > 0) {
                 gDeviceToken = token;
                 BPSaveToken(token);
+                gRegistrationRefreshed = YES;
                 NSLog(@"[BugpunchPoller] registered");
             }
         });
@@ -161,6 +180,7 @@ static void BPDoPoll(void) {
             if (status == 401) {
                 NSLog(@"[BugpunchPoller] poll 401 — clearing token");
                 gDeviceToken = @"";
+                gRegistrationRefreshed = NO;
                 BPSaveToken(@"");
                 return;
             }
@@ -172,6 +192,28 @@ static void BPDoPoll(void) {
             id parsed = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
             if (![parsed isKindOfClass:[NSDictionary class]]) return;
             NSDictionary* resp = parsed;
+
+            // Pin config also travels on the poll path so release/internal
+            // devices can pick up QA enrollment before the report tunnel is live.
+            NSDictionary* pinConfig = resp[@"pinConfig"];
+            if ([pinConfig isKindOfClass:[NSDictionary class]]) {
+                NSData* pinData = [NSJSONSerialization dataWithJSONObject:pinConfig options:0 error:nil];
+                NSString* pinJson = pinData ? [[NSString alloc] initWithData:pinData encoding:NSUTF8StringEncoding] : nil;
+                if (pinJson.length > 0) Bugpunch_TunnelApplyPinConfig([pinJson UTF8String]);
+
+                NSDictionary* pins = pinConfig[@"pins"];
+                BOOL accepted = [pinConfig[@"consent"] isKindOfClass:[NSString class]]
+                    && [pinConfig[@"consent"] isEqualToString:@"accepted"];
+                BOOL shouldConnect = accepted && [pins isKindOfClass:[NSDictionary class]]
+                    && ([pins[@"alwaysLog"] boolValue] || [pins[@"alwaysRemote"] boolValue] || [pins[@"alwaysDebug"] boolValue]);
+                if (shouldConnect && !Bugpunch_TunnelIsConnected()) {
+                    NSMutableDictionary* cfg = [[BPDebugMode shared].config mutableCopy] ?: [NSMutableDictionary dictionary];
+                    cfg[@"useNativeTunnel"] = @YES;
+                    NSData* cfgData = [NSJSONSerialization dataWithJSONObject:cfg options:0 error:nil];
+                    NSString* cfgJson = cfgData ? [[NSString alloc] initWithData:cfgData encoding:NSUTF8StringEncoding] : nil;
+                    if (cfgJson.length > 0) Bugpunch_StartTunnel([cfgJson UTF8String]);
+                }
+            }
 
             // 1) Device-targeted directives -> native handler.
             NSArray* pending = resp[@"pendingDirectives"];
@@ -211,6 +253,7 @@ extern "C" void Bugpunch_StartPoll(const char* scriptPermissionC, int pollInterv
         ? [NSString stringWithUTF8String:scriptPermissionC] : @"ask";
     gPollIntervalSeconds = MAX(5, pollIntervalSeconds);
     gDeviceToken = BPLoadToken();
+    gRegistrationRefreshed = NO;
 
     gPollQueue = dispatch_queue_create("au.com.oddgames.bugpunch.poller", DISPATCH_QUEUE_SERIAL);
     gPollerStarted = YES;

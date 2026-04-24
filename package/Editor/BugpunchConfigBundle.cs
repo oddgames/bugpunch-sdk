@@ -167,7 +167,8 @@ namespace ODDGames.Bugpunch.Editor
             Field(sb, "apiKey",            c.apiKey);                                      sb.Append(',');
             Field(sb, "pinSigningSecret",  signingSecret ?? "");                           sb.Append(',');
             Field(sb, "buildChannel",      c.buildChannel.ToString().ToLowerInvariant()); sb.Append(',');
-            sb.Append("\"useNativeTunnel\":").Append(EditorUserBuildSettings.development ? "true" : "false").Append(',');
+            var useNativeTunnel = EditorUserBuildSettings.development || c.buildChannel == BugpunchConfig.BuildChannel.Internal;
+            sb.Append("\"useNativeTunnel\":").Append(useNativeTunnel ? "true" : "false").Append(',');
             sb.Append("\"anrTimeoutMs\":").Append(c.anrTimeoutMs).Append(',');
             sb.Append("\"autoReportCooldownSeconds\":30,");
             sb.Append("\"shake\":{\"enabled\":false,\"threshold\":2.5},");

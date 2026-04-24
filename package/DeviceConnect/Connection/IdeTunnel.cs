@@ -83,6 +83,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         token = _config.apiKey,
                         deviceId = DeviceId,
                         projectId = "",
+                        platform = Application.platform.ToString(),
+                        appVersion = Application.version,
                     });
                     await SendAsync(registerMsg);
 
@@ -272,6 +274,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             public string token;
             public string projectId;
             public string deviceId;
+            public string platform;
+            public string appVersion;
         }
 
         [Serializable]

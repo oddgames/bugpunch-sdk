@@ -118,6 +118,7 @@ static void BPLoadPinsKeychain(void) {
 @property (nonatomic, assign) NSTimeInterval backoffSeconds;
 + (instancetype)shared;
 - (void)startWithConfig:(NSDictionary*)config stableDeviceId:(NSString*)stableId;
+- (void)cachePinConfig:(NSDictionary*)pin;
 - (void)stop;
 @end
 
@@ -368,7 +369,7 @@ static void BPLoadPinsKeychain(void) {
 
 // ── C entry points ──
 
-extern "C" void Bugpunch_StartTunnel(const char* configJson) {
+static void BPEnsureTunnelGlobals(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         gPinConfigLock = [NSLock new];
@@ -376,6 +377,10 @@ extern "C" void Bugpunch_StartTunnel(const char* configJson) {
         // state before the handshake completes.
         BPLoadPinsKeychain();
     });
+}
+
+extern "C" void Bugpunch_StartTunnel(const char* configJson) {
+    BPEnsureTunnelGlobals();
     if (!configJson || *configJson == 0) return;
     @autoreleasepool {
         NSData* d = [[NSString stringWithUTF8String:configJson] dataUsingEncoding:NSUTF8StringEncoding];
@@ -384,6 +389,17 @@ extern "C" void Bugpunch_StartTunnel(const char* configJson) {
         const char* sid = Bugpunch_GetStableDeviceId();
         NSString* stableId = sid ? [NSString stringWithUTF8String:sid] : @"";
         [[BPTunnel shared] startWithConfig:obj stableDeviceId:stableId];
+    }
+}
+
+extern "C" void Bugpunch_TunnelApplyPinConfig(const char* pinJson) {
+    BPEnsureTunnelGlobals();
+    if (!pinJson || *pinJson == 0) return;
+    @autoreleasepool {
+        NSData* d = [[NSString stringWithUTF8String:pinJson] dataUsingEncoding:NSUTF8StringEncoding];
+        id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+        if (![obj isKindOfClass:[NSDictionary class]]) return;
+        [[BPTunnel shared] cachePinConfig:(NSDictionary*)obj];
     }
 }
 

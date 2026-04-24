@@ -1,7 +1,7 @@
 # Build the Android AAR and copy it into the UPM package.
 #
 # Runs a standalone Gradle build of android-src/bugpunch and drops the
-# release AAR at package/Bugpunch/Plugins/Android/BugpunchPlugin.aar where
+# release AAR at package/Plugins/Android/BugpunchPlugin.aar where
 # Unity picks it up as a prebuilt plugin \u2014 no Java/NDK work happens in
 # downstream game builds.
 #
@@ -19,9 +19,16 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $androidSrc = Join-Path $root 'android-src'
 $wrapperJar = Join-Path $androidSrc 'gradle/wrapper/gradle-wrapper.jar'
-$pluginDir = Join-Path $root 'package/Bugpunch/Plugins/Android'
+$pluginDir = Join-Path $root 'package/Plugins/Android'
 $aarOut = Join-Path $pluginDir 'BugpunchPlugin.aar'
 $aarMeta = "$aarOut.meta"
+$androidUserHome = Join-Path $root '.android-user'
+
+# Keep Android Gradle Plugin analytics / prefs out of the OS user profile so
+# sandboxed and CI builds can run with only workspace write access.
+New-Item -ItemType Directory -Force -Path $androidUserHome | Out-Null
+if (-not $env:ANDROID_USER_HOME) { $env:ANDROID_USER_HOME = $androidUserHome }
+if (-not $env:ANDROID_PREFS_ROOT) { $env:ANDROID_PREFS_ROOT = $androidUserHome }
 
 Push-Location $androidSrc
 try {

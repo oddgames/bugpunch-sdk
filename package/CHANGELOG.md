@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.29] - 2026-04-24
+
+### Fixed
+- **Unity Editor reappears in the Devices list after the tunnel split.** 1.7.28 moved the Editor to the managed-only `/api/devices/ide-tunnel`, but the dashboard's `GET /api/devices` was still sourcing its device list from `reportTunnelService.listTunnels()` + DB-poll-registered rows + agent devices — none of which the Editor populates (no native report tunnel, no HTTP register). Result: Editor connected and registered fine server-side but was invisible in the UI. `ideTunnelService` now exposes `listTunnels()`, and the devices route merges ide-tunnel-only connections into the response as `connectionMode: "debug"`. `IdeTunnel`'s register frame picks up `platform` + `appVersion` so Editor rows render with a proper platform badge.
+- **Log flush backlog on hot logcat streams.** `BugpunchTunnel.java` could post thousands of `flushLogs` runnables before the worker thread got CPU — one per line once the buffer crossed the 16 KB threshold. The runnable now coalesces: one immediate + at most one delayed flush are in flight at a time. Re-enables `flushLogs` on the native path (the WebRTC debug `if (true) return;` short-circuit is removed).
+- **iOS report tunnel now starts on `Bugpunch_StartDebugMode`.** Previously only Android auto-started the tunnel; iOS waited for something external to call `Bugpunch_StartTunnel`. BugpunchNative now calls it right after `StartDebugMode` succeeds.
+
+### Changed
+- **Pin config rides the poll path too.** The poll response can now carry a signed `pinConfig`; native applies it to the Keychain / SharedPreferences cache immediately and auto-starts the report tunnel if the device is pinned + consented. Release/internal devices get QA enrollment without waiting for a manual report-tunnel bring-up.
+- **`useNativeTunnel` now true for `BuildChannel.Internal` too.** Previously only `Debug.isDebugBuild` / `EditorUserBuildSettings.development` unlocked the native tunnel; internal QA builds without the `development` flag stayed on poll-only. The two config bundlers (runtime + editor) converge on the same rule.
+- **Register payload carries `stableDeviceId` + `buildChannel`.** Both Android + iOS poll registration send these now, so the server can reconcile reinstalls and apply channel-based pin policy. `ensureRegistered` refreshes once per process (not just once per installed token) so renamed apps / reissued keys refresh cleanly.
+- **build-android.ps1 sets `ANDROID_USER_HOME` + `ANDROID_PREFS_ROOT` into a workspace-local dir.** Sandboxed / CI builds no longer need write access to the OS user profile.
+
 ## [1.7.28] - 2026-04-24
 
 ### Changed

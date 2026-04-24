@@ -242,6 +242,39 @@ public final class BugpunchTunnel {
     }
 
     /**
+     * Apply a signed pin config received outside the WebSocket handshake
+     * (currently the native HTTP poll path). The WebSocket handshake remains
+     * the hot path for live updates once the report tunnel is connected.
+     */
+    public static synchronized void applyPinConfig(JSONObject pin) {
+        if (pin == null) return;
+        if (sInstance != null) {
+            sInstance.mLastPinConfigJson = pin.toString();
+            sInstance.applyPinConfigInternal(pin);
+            return;
+        }
+
+        android.content.Context ctx = BugpunchRuntime.getAppContext();
+        if (ctx == null) return;
+        JSONObject pins = pin.optJSONObject("pins");
+        boolean log    = pins != null && pins.optBoolean("alwaysLog", false);
+        boolean remote = pins != null && pins.optBoolean("alwaysRemote", false);
+        boolean debug  = pins != null && pins.optBoolean("alwaysDebug", false);
+        String consent = pin.optString("consent", "unknown");
+        try {
+            ctx.getSharedPreferences(PREFS_FILE, android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("alwaysLog", log)
+                .putBoolean("alwaysRemote", remote)
+                .putBoolean("alwaysDebug", debug)
+                .putString("consent", consent)
+                .apply();
+        } catch (Throwable t) {
+            Log.w(TAG, "pin cache write failed", t);
+        }
+    }
+
+    /**
      * N5: tee a log line into the native log sink. BugpunchLogReader calls
      * this for every captured logcat line; we buffer and flush as a single
      * WebSocket frame on a 100 ms / 32 KB cadence. Dropped silently when
@@ -262,13 +295,23 @@ public final class BugpunchTunnel {
             t.mLogBuf.append('\n');
             boolean overflow = t.mLogBuf.length() >= LOG_FLUSH_BYTES;
             if (overflow) {
-                // Flush immediately — don't wait for the scheduled tick.
-                t.mWorker.post(t::flushLogs);
+                // Flush immediately, but only queue one immediate task. A
+                // hot logcat stream can otherwise post thousands of runnables
+                // before the worker thread gets CPU.
+                if (!t.mLogFlushImmediateScheduled) {
+                    if (t.mLogFlushScheduled) {
+                        t.mWorker.removeCallbacks(t.mFlushLogsRunnable);
+                    }
+                    t.mLogFlushScheduled = true;
+                    t.mLogFlushImmediateScheduled = true;
+                    t.mWorker.post(t.mFlushLogsRunnable);
+                }
                 return;
             }
             if (!t.mLogFlushScheduled) {
                 t.mLogFlushScheduled = true;
-                t.mWorker.postDelayed(t::flushLogs, LOG_FLUSH_INTERVAL_MS);
+                t.mLogFlushImmediateScheduled = false;
+                t.mWorker.postDelayed(t.mFlushLogsRunnable, LOG_FLUSH_INTERVAL_MS);
             }
         }
     }
@@ -277,15 +320,13 @@ public final class BugpunchTunnel {
         String text;
         synchronized (mLogBufLock) {
             mLogFlushScheduled = false;
+            mLogFlushImmediateScheduled = false;
             if (mLogBuf.length() == 0) return;
             text = mLogBuf.toString();
             mLogBuf.setLength(0);
         }
         WebSocket s = mSocket;
         if (s == null || !mConnected) return;
-
-        // TEMP: disable alwaysLog during WebRTC debugging to prevent worker thread blocking
-        if (true) return;
 
         // Hand-built JSON envelope — the raw log text may contain quotes /
         // backslashes / newlines that we want shipped verbatim (server writes
@@ -335,7 +376,7 @@ public final class BugpunchTunnel {
      * for the follow-up N4.2 task. For now we trust the tunnel (API-key
      * authenticated over TLS) the way Phase 3c did.
      */
-    private void applyPinConfig(JSONObject pin) {
+    private void applyPinConfigInternal(JSONObject pin) {
         JSONObject pins = pin.optJSONObject("pins");
         boolean log    = pins != null && pins.optBoolean("alwaysLog", false);
         boolean remote = pins != null && pins.optBoolean("alwaysRemote", false);
@@ -394,7 +435,11 @@ public final class BugpunchTunnel {
     private static final long LOG_FLUSH_INTERVAL_MS = 100L;
     private final StringBuilder mLogBuf = new StringBuilder(LOG_FLUSH_BYTES);
     private final Object mLogBufLock = new Object();
+    private final Runnable mFlushLogsRunnable = new Runnable() {
+        @Override public void run() { flushLogs(); }
+    };
     private boolean mLogFlushScheduled;
+    private boolean mLogFlushImmediateScheduled;
     private long mLastLogFlushMs;
 
     // Phase 6c: compiled redaction rules. Applied to every log line before
@@ -604,7 +649,7 @@ public final class BugpunchTunnel {
                         JSONObject pin = msg.optJSONObject("pinConfig");
                         if (pin != null) {
                             mLastPinConfigJson = pin.toString();
-                            applyPinConfig(pin);
+                            applyPinConfigInternal(pin);
                         }
                         Log.i(TAG, "registered (pinConfig=" + (pin != null) + ")");
                         break;
@@ -613,7 +658,7 @@ public final class BugpunchTunnel {
                         JSONObject pin = msg.optJSONObject("config");
                         if (pin != null) {
                             mLastPinConfigJson = pin.toString();
-                            applyPinConfig(pin);
+                            applyPinConfigInternal(pin);
                         }
                         Log.i(TAG, "pinUpdate received");
                         break;
