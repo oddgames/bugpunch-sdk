@@ -227,18 +227,6 @@ public class BugpunchDebugMode {
         BugpunchTouchRecorder.start(activity);
         // Show the floating debug widget (recording indicator + tools).
         BugpunchDebugWidget.show();
-        // If the user previously denied MediaProjection, skip the OS dialog
-        // this session too and go straight to Unity-surface buffer mode. The
-        // Unity side (BugpunchSurfaceRecorder) notices isBufferMode() and
-        // starts feeding frames; system UI is excluded but the game surface
-        // is captured without another consent prompt.
-        if (BugpunchProjectionRequest.wasPreviouslyDenied(activity)) {
-            Log.i(TAG, "MediaProjection previously denied — starting buffer-mode fallback");
-            BugpunchRecorder.getInstance().configure(
-                dm.widthPixels, dm.heightPixels, bitrate, fps, windowSec);
-            BugpunchRecorder.getInstance().startBufferMode(activity);
-            return;
-        }
         // Fire BugpunchProjectionRequest which handles the system-level
         // MediaProjection consent dialog and kicks off the recorder service.
         // Empty callback — we don't need Unity to hear about it; state lives

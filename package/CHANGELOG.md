@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.32] - 2026-04-24
+
+### Changed
+- **MediaProjection consent is re-asked every `EnterDebugMode()`.** 1.7.31 remembered a prior denial in SharedPreferences and skipped the OS dialog on subsequent opens. Dropped that short-circuit: each `EnterDebugMode()` call shows the consent dialog again, so a user who tapped Cancel once can still grant full-screen capture later without having to find a "clear denial" setting. The buffer-mode fallback still fires on denial — game surface video only, no further prompts for that session.
+- **`BugpunchSurfaceRecorder` moves the RGBA→NV12 conversion to the GPU.** New compute shader at `Resources/BugpunchRgbaToNv12.compute` emits NV12 bytes into a `RWByteAddressBuffer`; `AsyncGPUReadback` then copies the already-converted bytes straight to JNI. Frees ~5% of one CPU core at 15 fps/720p. Falls back to the managed-thread CPU conversion on devices where `SystemInfo.supportsComputeShaders` is false.
+
 ## [1.7.31] - 2026-04-24
 
 ### Added
