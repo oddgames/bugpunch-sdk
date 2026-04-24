@@ -152,31 +152,57 @@ namespace ODDGames.Bugpunch.DeviceConnect
             regPath = $"Software\\{Application.companyName}\\{Application.productName}";
 #endif
 
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(regPath);
+            // Reflection-based registry read. Direct `Microsoft.Win32.Registry`
+            // usage forces the asmdef to reference `Microsoft.Win32.Registry.dll`,
+            // and that reference doesn't resolve cleanly across every Unity API
+            // compatibility level (.NET Framework bakes these types into mscorlib;
+            // .NET Standard 2.1 ships them in a separate assembly whose location
+            // varies between Editor + target platform). Reflection reaches the
+            // type wherever the loaded BCL exposes it — Windows-only code path,
+            // so the type is always present at runtime here.
+            var registryType =
+                Type.GetType("Microsoft.Win32.Registry, Microsoft.Win32.Registry") ??
+                Type.GetType("Microsoft.Win32.Registry, mscorlib");
+            if (registryType == null) return;
+            var currentUser = registryType
+                .GetProperty("CurrentUser", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?
+                .GetValue(null);
+            if (currentUser == null) return;
+            var openSubKey = currentUser.GetType().GetMethod("OpenSubKey", new[] { typeof(string) });
+            var key = openSubKey?.Invoke(currentUser, new object[] { regPath });
             if (key == null) return;
-
-            foreach (var valueName in key.GetValueNames())
+            try
             {
-                // Unity appends _hXXXXXX hash suffix to registry value names
-                var prefKey = valueName;
-                var lastUnderscore = prefKey.LastIndexOf('_');
-                if (lastUnderscore > 0 && prefKey.Length - lastUnderscore == 9)
+                var getValueNames = key.GetType().GetMethod("GetValueNames");
+                var valueNames = getValueNames?.Invoke(key, null) as string[];
+                if (valueNames == null) return;
+                foreach (var valueName in valueNames)
                 {
-                    // Check if suffix is _hXXXXXXXX (8 hex chars)
-                    bool isHash = true;
-                    for (int i = lastUnderscore + 2; i < prefKey.Length && isHash; i++)
+                    // Unity appends _hXXXXXX hash suffix to registry value names
+                    var prefKey = valueName;
+                    var lastUnderscore = prefKey.LastIndexOf('_');
+                    if (lastUnderscore > 0 && prefKey.Length - lastUnderscore == 9)
                     {
-                        var c = prefKey[i];
-                        isHash = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+                        // Check if suffix is _hXXXXXXXX (8 hex chars)
+                        bool isHash = true;
+                        for (int i = lastUnderscore + 2; i < prefKey.Length && isHash; i++)
+                        {
+                            var c = prefKey[i];
+                            isHash = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+                        }
+                        if (isHash && prefKey[lastUnderscore + 1] == 'h')
+                            prefKey = prefKey.Substring(0, lastUnderscore);
                     }
-                    if (isHash && prefKey[lastUnderscore + 1] == 'h')
-                        prefKey = prefKey.Substring(0, lastUnderscore);
+
+                    if (!PlayerPrefs.HasKey(prefKey)) continue;
+
+                    var entry = ClassifyPref(prefKey);
+                    entries.Add(entry);
                 }
-
-                if (!PlayerPrefs.HasKey(prefKey)) continue;
-
-                var entry = ClassifyPref(prefKey);
-                entries.Add(entry);
+            }
+            finally
+            {
+                (key as IDisposable)?.Dispose();
             }
         }
 #endif

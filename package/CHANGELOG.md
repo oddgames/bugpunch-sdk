@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.39] - 2026-04-24
+
+### Fixed
+- **PlayerPrefs Windows enumeration no longer needs a `Microsoft.Win32.Registry.dll` asmdef reference.** v1.7.37 added the DLL to `precompiledReferences` but Unity's resolution of that DLL varies by API compatibility level (.NET Framework bakes the types into mscorlib; .NET Standard 2.1 ships them separately and the BCL location differs between Editor and target platforms) — consumer projects kept hitting `CS1069`. `PlayerPrefsService.EnumerateWindows` now reaches `Microsoft.Win32.Registry` via reflection (`Type.GetType` with two probe names), so no compile-time type reference is required. Code path stays behind `#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN`, so Windows is still the only place it runs.
+
 ## [1.7.38] - 2026-04-24
 
 ### Fixed
