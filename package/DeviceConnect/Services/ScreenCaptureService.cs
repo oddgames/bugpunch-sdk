@@ -19,24 +19,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var targetWidth = Mathf.Max(1, Mathf.RoundToInt(screenWidth * scale));
                 var targetHeight = Mathf.Max(1, Mathf.RoundToInt(screenHeight * scale));
 
-                // Read screen pixels
-                var screenTex = new Texture2D(screenWidth, screenHeight, TextureFormat.RGB24, false);
-                screenTex.ReadPixels(new Rect(0, 0, screenWidth, screenHeight), 0, 0);
-                screenTex.Apply();
+                // Capture into an explicit RT instead of ReadPixels-on-backbuffer.
+                // The old path raced with the WebRTC render loop: when the
+                // streamer had its 960x540 RT bound as active, a ReadPixels
+                // sized for the full screen spilled outside that RT and Unity
+                // spammed "attempting to ReadPixels outside of RenderTexture
+                // bounds!". Going through Blit is also faster (GPU-only) and
+                // handles the Y-flip from CaptureScreenshotIntoRenderTexture.
+                var screenRT = RenderTexture.GetTemporary(screenWidth, screenHeight, 0);
+                ScreenCapture.CaptureScreenshotIntoRenderTexture(screenRT);
 
-                // Scale down if needed
-                Texture2D outputTex;
-                if (scale < 1f)
-                {
-                    outputTex = ScaleTexture(screenTex, targetWidth, targetHeight);
-                    Destroy(screenTex);
-                }
-                else
-                {
-                    outputTex = screenTex;
-                }
+                var targetRT = RenderTexture.GetTemporary(targetWidth, targetHeight, 0);
+                Graphics.Blit(screenRT, targetRT, new Vector2(1, -1), new Vector2(0, 1));
 
-                // Encode to JPEG
+                var prevActive = RenderTexture.active;
+                RenderTexture.active = targetRT;
+                var outputTex = new Texture2D(targetWidth, targetHeight, TextureFormat.RGB24, false);
+                outputTex.ReadPixels(new Rect(0, 0, targetWidth, targetHeight), 0, 0);
+                outputTex.Apply();
+                RenderTexture.active = prevActive;
+
+                RenderTexture.ReleaseTemporary(screenRT);
+                RenderTexture.ReleaseTemporary(targetRT);
+
                 var bytes = outputTex.EncodeToJPG(quality);
                 Destroy(outputTex);
 

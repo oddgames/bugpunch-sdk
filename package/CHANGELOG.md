@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.30] - 2026-04-24
+
+### Fixed
+- **`CaptureScreen` no longer spams "attempting to ReadPixels outside of RenderTexture bounds!".** The old path called `ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0)` against whatever RT happened to be bound as active. That raced with the WebRTC render loop, which binds its own 960×540 RT during sampling — so a full-screen ReadPixels (e.g. `2254×…`) overflowed the 960×540 RT and Unity complained every frame. Capture now goes: `ScreenCapture.CaptureScreenshotIntoRenderTexture` into an owned full-size RT → GPU blit (with Y-flip) into a pre-scaled target RT → `ReadPixels` from that known target → CPU JPEG encode. Side benefit: the CPU readback is now of the already-downscaled image (960×540 instead of full screen), so one-shot screenshots are faster too.
+
 ## [1.7.29] - 2026-04-24
 
 ### Fixed
