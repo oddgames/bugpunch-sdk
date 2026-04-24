@@ -189,12 +189,12 @@ public final class BugpunchPoller {
 
             JSONObject resp = new JSONObject(res.body);
 
-            // Pin config now also travels over the poll path so release/internal
-            // devices can pick up QA enrollment before the report tunnel is live.
-            JSONObject pinConfig = resp.optJSONObject("pinConfig");
-            if (pinConfig != null) {
-                BugpunchTunnel.applyPinConfig(pinConfig);
-                ensureReportTunnelIfPinned(activity, pinConfig);
+            // Role config also travels over the poll path so internal devices
+            // can pick up role enrollment before the report tunnel is live.
+            JSONObject roleConfig = resp.optJSONObject("roleConfig");
+            if (roleConfig != null) {
+                BugpunchTunnel.applyRoleConfig(roleConfig);
+                ensureReportTunnelIfInternal(activity, roleConfig);
             }
 
             // 1) Device-targeted directives — fire into the existing handler.
@@ -220,16 +220,12 @@ public final class BugpunchPoller {
         }
     }
 
-    private static void ensureReportTunnelIfPinned(Activity activity, JSONObject pinConfig) {
-        if (activity == null || pinConfig == null) return;
-        String consent = pinConfig.optString("consent", "unknown");
-        JSONObject pins = pinConfig.optJSONObject("pins");
-        if (!"accepted".equals(consent) || pins == null) return;
-        boolean shouldConnect =
-            pins.optBoolean("alwaysLog", false) ||
-            pins.optBoolean("alwaysRemote", false) ||
-            pins.optBoolean("alwaysDebug", false);
-        if (!shouldConnect || BugpunchTunnel.isConnected()) return;
+    private static void ensureReportTunnelIfInternal(Activity activity, JSONObject roleConfig) {
+        if (activity == null || roleConfig == null) return;
+        // Only Internal devices bring up the report tunnel from the poll path —
+        // External/Public don't need ambient log streaming or Remote IDE accept.
+        if (!"internal".equals(roleConfig.optString("role", "public"))) return;
+        if (BugpunchTunnel.isConnected()) return;
 
         try {
             JSONObject cfg = BugpunchRuntime.getConfig();

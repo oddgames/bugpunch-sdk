@@ -40,11 +40,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Auto-connect on app start (debug builds / editor). When off, the game must call BugpunchClient.StartConnection() explicitly.")]
         public bool autoStart = false;
 
-        [Tooltip("Declares the intended audience for this build. Controls server-side guardrails for QA pins:\n" +
-                 "• internal — all pins available (QA builds, alpha testers)\n" +
-                 "• beta — alwaysLog and alwaysRemote allowed; alwaysDebug warns\n" +
-                 "• production — alwaysDebug is refused (video capture on a shipped build is a privacy disaster). " +
-                 "alwaysLog / alwaysRemote still work but require an extra confirm in the dashboard.")]
+        [Tooltip("Declares the intended audience for this build. Internal builds force-elevate the device to the Internal role regardless of dashboard tagging, so QA tooling works out of the box on a fresh install. Beta / Production default to the dashboard-assigned tester role (public unless tagged).")]
         public BuildChannel buildChannel = BuildChannel.Internal;
 
         public enum BuildChannel { Internal, Beta, Production }
@@ -91,7 +87,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [Tooltip("Regex rules applied natively to every captured log line before it leaves the device via " +
                  "the QA log sink. Each match is replaced with [redacted:NAME]. Use this to strip user " +
                  "emails, auth tokens, session IDs, or anything else that shouldn't leave the device even " +
-                 "when the admin has enrolled alwaysLog. Matches are evaluated in order; a line can be " +
+                 "on Internal-tagged devices. Matches are evaluated in order; a line can be " +
                  "touched by multiple rules.")]
         public LogRedactionRule[] logRedactionRules = Array.Empty<LogRedactionRule>();
 

@@ -221,56 +221,71 @@ public final class BugpunchTunnel {
         }
     }
 
-    // ── N4: native pin state accessors ──
+    // ── Native tester-role accessors ──
     //
-    // Pins only apply when consent == "accepted". Server-side consent_status
-    // lives on the devices row keyed by stable_device_id so reinstalls pick
-    // up the same decision. Cold-start reads come from SharedPreferences,
-    // the tunnel handshake refreshes with the server's current state.
+    // Role lives on the devices row keyed by stable_device_id (reinstall-safe)
+    // and is delivered at tunnel handshake + poll response time as a signed
+    // roleConfig blob. Cold-start reads come from SharedPreferences; the
+    // handshake refreshes with the server's current state.
 
-    public static boolean isAlwaysLog() {
-        return sInstance != null && "accepted".equals(sInstance.mConsent) && sInstance.mPinAlwaysLog;
+    /** "internal" | "external" | "public". Defaults to "public" if unknown. */
+    public static String getTesterRole() {
+        return sInstance != null ? sInstance.mTesterRole : "public";
     }
-    public static boolean isAlwaysRemote() {
-        return sInstance != null && "accepted".equals(sInstance.mConsent) && sInstance.mPinAlwaysRemote;
+
+    /** Internal = ambient log + Remote IDE + startup debug prompt. */
+    public static boolean isInternal() {
+        return sInstance != null && "internal".equals(sInstance.mTesterRole);
     }
-    public static boolean isAlwaysDebug() {
-        return sInstance != null && "accepted".equals(sInstance.mConsent) && sInstance.mPinAlwaysDebug;
+
+    /** Internal or external — both get the startup debug-mode consent prompt. */
+    public static boolean isTester() {
+        return sInstance != null && !"public".equals(sInstance.mTesterRole);
     }
-    public static String getConsent() {
-        return sInstance != null ? sInstance.mConsent : "unknown";
-    }
+
+    // Back-compat shims retained so existing callers (log reader, debug-mode
+    // gates) read derived state off the role. Ambient alwaysDebug is gone —
+    // the video ring now runs only when the user accepts the startup prompt.
+    public static boolean isAlwaysLog()    { return isInternal(); }
+    public static boolean isAlwaysRemote() { return isInternal(); }
 
     /**
-     * Apply a signed pin config received outside the WebSocket handshake
+     * Apply a signed role config received outside the WebSocket handshake
      * (currently the native HTTP poll path). The WebSocket handshake remains
      * the hot path for live updates once the report tunnel is connected.
      */
-    public static synchronized void applyPinConfig(JSONObject pin) {
-        if (pin == null) return;
+    public static synchronized void applyRoleConfig(JSONObject cfg) {
+        if (cfg == null) return;
         if (sInstance != null) {
-            sInstance.mLastPinConfigJson = pin.toString();
-            sInstance.applyPinConfigInternal(pin);
+            sInstance.mLastPinConfigJson = cfg.toString();
+            sInstance.applyRoleConfigInternal(cfg);
             return;
         }
 
         android.content.Context ctx = BugpunchRuntime.getAppContext();
         if (ctx == null) return;
-        JSONObject pins = pin.optJSONObject("pins");
-        boolean log    = pins != null && pins.optBoolean("alwaysLog", false);
-        boolean remote = pins != null && pins.optBoolean("alwaysRemote", false);
-        boolean debug  = pins != null && pins.optBoolean("alwaysDebug", false);
-        String consent = pin.optString("consent", "unknown");
+        String role = normalizeRole(cfg.optString("role", "public"));
         try {
             ctx.getSharedPreferences(PREFS_FILE, android.content.Context.MODE_PRIVATE)
                 .edit()
-                .putBoolean("alwaysLog", log)
-                .putBoolean("alwaysRemote", remote)
-                .putBoolean("alwaysDebug", debug)
-                .putString("consent", consent)
+                .putString("role", role)
                 .apply();
         } catch (Throwable t) {
-            Log.w(TAG, "pin cache write failed", t);
+            Log.w(TAG, "role cache write failed", t);
+        }
+    }
+
+    private static String normalizeRole(String raw) {
+        if (raw == null) return "public";
+        switch (raw) {
+            case "internal":
+            case "admin":     // legacy
+            case "developer": // legacy
+                return "internal";
+            case "external":
+                return "external";
+            default:
+                return "public";
         }
     }
 
@@ -284,7 +299,7 @@ public final class BugpunchTunnel {
         BugpunchTunnel t = sInstance;
         if (t == null || line == null) return;
         if (!t.mConnected) return;
-        if (!("accepted".equals(t.mConsent) && t.mPinAlwaysLog)) return;
+        if (!"internal".equals(t.mTesterRole)) return;
 
         // Phase 6c: redact before the line enters the batcher so nothing
         // matching a configured pattern ever leaves the process.
@@ -353,53 +368,38 @@ public final class BugpunchTunnel {
         mLastLogFlushMs = System.currentTimeMillis();
     }
 
-    private void loadCachedPins() {
+    private void loadCachedRole() {
         try {
             android.content.Context ctx = BugpunchRuntime.getAppContext();
             if (ctx == null) return;
             android.content.SharedPreferences prefs =
                 ctx.getSharedPreferences(PREFS_FILE, android.content.Context.MODE_PRIVATE);
-            mPinAlwaysLog    = prefs.getBoolean("alwaysLog", false);
-            mPinAlwaysRemote = prefs.getBoolean("alwaysRemote", false);
-            mPinAlwaysDebug  = prefs.getBoolean("alwaysDebug", false);
-            mConsent         = prefs.getString("consent", "unknown");
+            mTesterRole = normalizeRole(prefs.getString("role", "public"));
         } catch (Throwable t) {
-            Log.w(TAG, "loadCachedPins failed", t);
+            Log.w(TAG, "loadCachedRole failed", t);
         }
     }
 
     /**
-     * Parse a server-delivered pin config blob ({ pins: { alwaysLog,
-     * alwaysRemote, alwaysDebug }, consent, issuedAt, sig }) into in-memory
-     * state and mirror to SharedPreferences. HMAC verification of `sig`
-     * against the bundled pin_signing_secret is TODO — captured in memory
-     * for the follow-up N4.2 task. For now we trust the tunnel (API-key
-     * authenticated over TLS) the way Phase 3c did.
+     * Parse a server-delivered role config blob ({ role, issuedAt, sig, payload })
+     * into in-memory state and mirror to SharedPreferences. HMAC verification
+     * of `sig` against the bundled pin_signing_secret is TODO — captured in
+     * memory for a follow-up. For now we trust the tunnel (API-key
+     * authenticated over TLS) the way earlier phases did.
      */
-    private void applyPinConfigInternal(JSONObject pin) {
-        JSONObject pins = pin.optJSONObject("pins");
-        boolean log    = pins != null && pins.optBoolean("alwaysLog", false);
-        boolean remote = pins != null && pins.optBoolean("alwaysRemote", false);
-        boolean debug  = pins != null && pins.optBoolean("alwaysDebug", false);
-        String consent = pin.optString("consent", "unknown");
-
-        mPinAlwaysLog    = log;
-        mPinAlwaysRemote = remote;
-        mPinAlwaysDebug  = debug;
-        mConsent         = consent;
+    private void applyRoleConfigInternal(JSONObject cfg) {
+        String role = normalizeRole(cfg.optString("role", "public"));
+        mTesterRole = role;
 
         try {
             android.content.Context ctx = BugpunchRuntime.getAppContext();
             if (ctx == null) return;
             ctx.getSharedPreferences(PREFS_FILE, android.content.Context.MODE_PRIVATE)
                 .edit()
-                .putBoolean("alwaysLog", log)
-                .putBoolean("alwaysRemote", remote)
-                .putBoolean("alwaysDebug", debug)
-                .putString("consent", consent)
+                .putString("role", role)
                 .apply();
         } catch (Throwable t) {
-            Log.w(TAG, "pin cache write failed", t);
+            Log.w(TAG, "role cache write failed", t);
         }
     }
 
@@ -418,14 +418,12 @@ public final class BugpunchTunnel {
     private long mBackoffMs = BACKOFF_INITIAL_MS;
     private String mLastPinConfigJson;
 
-    // Parsed pin state, mirrored to SharedPreferences so a cold start
-    // applies the last-known pins before the tunnel handshake completes.
-    // Consent is the gate: unknown/declined → pins all read false regardless.
-    private static final String PREFS_FILE = "bugpunch_pins";
-    private volatile boolean mPinAlwaysLog;
-    private volatile boolean mPinAlwaysRemote;
-    private volatile boolean mPinAlwaysDebug;
-    private volatile String mConsent = "unknown";
+    // Parsed role, mirrored to SharedPreferences so a cold start applies
+    // the last-known role before the tunnel handshake completes. Defaults
+    // to "public" → all interactive features off until server tells us
+    // otherwise.
+    private static final String PREFS_FILE = "bugpunch_role";
+    private volatile String mTesterRole = "public";
 
     // N5: log sink batcher. BugpunchLogReader tees every line here when the
     // alwaysLog pin is active; flush every 100 ms or when the buffer hits
@@ -480,7 +478,7 @@ public final class BugpunchTunnel {
 
         // Apply cached pins immediately so a cold start enforces the
         // last-known state before the handshake completes.
-        loadCachedPins();
+        loadCachedRole();
 
         // Compile redaction rules once from the bundled config. Bad patterns
         // are logged and skipped — a typo in one rule can't kill the others.
@@ -646,21 +644,21 @@ public final class BugpunchTunnel {
                 String type = msg.optString("type", "");
                 switch (type) {
                     case "registered": {
-                        JSONObject pin = msg.optJSONObject("pinConfig");
-                        if (pin != null) {
-                            mLastPinConfigJson = pin.toString();
-                            applyPinConfigInternal(pin);
+                        JSONObject cfg = msg.optJSONObject("roleConfig");
+                        if (cfg != null) {
+                            mLastPinConfigJson = cfg.toString();
+                            applyRoleConfigInternal(cfg);
                         }
-                        Log.i(TAG, "registered (pinConfig=" + (pin != null) + ")");
+                        Log.i(TAG, "registered (roleConfig=" + (cfg != null) + ")");
                         break;
                     }
-                    case "pinUpdate": {
-                        JSONObject pin = msg.optJSONObject("config");
-                        if (pin != null) {
-                            mLastPinConfigJson = pin.toString();
-                            applyPinConfigInternal(pin);
+                    case "roleUpdate": {
+                        JSONObject cfg = msg.optJSONObject("config");
+                        if (cfg != null) {
+                            mLastPinConfigJson = cfg.toString();
+                            applyRoleConfigInternal(cfg);
                         }
-                        Log.i(TAG, "pinUpdate received");
+                        Log.i(TAG, "roleUpdate received");
                         break;
                     }
                     case "pong":

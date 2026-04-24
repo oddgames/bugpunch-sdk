@@ -200,7 +200,7 @@ public class BugpunchLogReader {
             while (sRunning.get() && (line = br.readLine()) != null) {
                 if (line.isEmpty()) continue;
                 // N5: tee to the native log sink. BugpunchTunnel.enqueueLogLine
-                // no-ops unless alwaysLog + consent.accepted, so this is
+                // no-ops unless the device is tagged Internal, so this is
                 // effectively free when the device isn't QA-enrolled.
                 BugpunchTunnel.enqueueLogLine(line);
                 synchronized (sLock) {

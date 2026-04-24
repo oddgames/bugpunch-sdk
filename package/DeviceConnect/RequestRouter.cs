@@ -57,14 +57,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             try
             {
-                // QA pin gate — all Remote IDE requests are interactive and
-                // require the device to have the `alwaysRemote` pin enabled
-                // (with user consent accepted) on shipped builds. Editor +
-                // debug builds stay unrestricted so the dev workflow doesn't
-                // regress — a developer opening Remote IDE on their own
-                // workstation shouldn't need to pin it.
+                // Role gate — all Remote IDE requests are interactive and
+                // require the device to be tagged Internal on shipped builds.
+                // Editor + debug builds stay unrestricted so a developer
+                // opening Remote IDE on their own workstation doesn't need
+                // a role tag.
                 bool isDevContext = Application.isEditor || Debug.isDebugBuild;
-                if (!isDevContext && !PinState.IsAlwaysRemote)
+                if (!isDevContext && !RoleState.IsInternal)
                     return Response.Error("Device not enrolled for remote debugging", 403);
 
                 // Hierarchy
@@ -513,6 +512,36 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     {
                         var id = int.TryParse(Q(path, "id"), out var mid) ? mid : 0;
                         return Response.Json(Materials.GetTextureProperties(id));
+                    }
+
+                    if (subPath == "/materials/properties")
+                    {
+                        var id = int.TryParse(Q(path, "id"), out var mid) ? mid : 0;
+                        return Response.Json(Materials.GetProperties(id));
+                    }
+
+                    if (subPath == "/materials/set-property" && method == "POST")
+                    {
+                        var id = int.TryParse(Q(path, "id") ?? JsonVal(body, "id"), out var mid) ? mid : 0;
+                        var name = Q(path, "name") ?? JsonVal(body, "name");
+                        var type = Q(path, "type") ?? JsonVal(body, "type");
+                        return Response.Json(Materials.SetProperty(id, name, type, body));
+                    }
+
+                    if (subPath == "/materials/set-keyword" && method == "POST")
+                    {
+                        var id = int.TryParse(Q(path, "id") ?? JsonVal(body, "id"), out var mid) ? mid : 0;
+                        var keyword = Q(path, "keyword") ?? JsonVal(body, "keyword");
+                        var enabledStr = Q(path, "enabled") ?? JsonVal(body, "enabled");
+                        var enabled = string.Equals(enabledStr, "true", StringComparison.OrdinalIgnoreCase);
+                        return Response.Json(Materials.SetKeyword(id, keyword, enabled));
+                    }
+
+                    if (subPath == "/materials/render-queue" && method == "POST")
+                    {
+                        var id = int.TryParse(Q(path, "id") ?? JsonVal(body, "id"), out var mid) ? mid : 0;
+                        var q = int.TryParse(Q(path, "queue") ?? JsonVal(body, "queue"), out var qv) ? qv : -1;
+                        return Response.Json(Materials.SetRenderQueue(id, q));
                     }
 
                     // Thumbnail + texture need rendering — return null for async handling

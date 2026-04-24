@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.36] - 2026-04-24
+
+### Changed
+- **Role model replaces per-feature pin toggles.** The three independent `alwaysLog` / `alwaysRemote` / `alwaysDebug` pins are gone. Each device now carries a single `tester_role` tag: `internal` (ambient log streaming + ambient Remote IDE tunnel accept + startup debug-mode consent prompt), `external` (startup debug-mode consent prompt only), or `public` (crash reporting only — the default for every new device). The server-signed handshake now ships a `roleConfig { role, issuedAt, payload, sig }` instead of `pinConfig`; `BugpunchTunnel` (Android + iOS) parses the role, SharedPreferences / Keychain caches the string, and existing feature gates fan out from `role == "internal"`. Startup debug-mode prompt wiring is a follow-up — `Bugpunch.EnterDebugMode()` still works as a manual entry point. Old server fields (`pinConfig`, `alwaysLog` etc.) are no longer emitted; shipped SDKs expecting them silently degrade to "no ambient features" which is the safe default.
+- **SDK C# surface**: `PinState` → `RoleState` (`RoleState.Current`, `RoleState.IsInternal`, `RoleState.IsTester`). `BugpunchNative.PinAlwaysLog/Remote/Debug/PinConsent()` removed; `BugpunchNative.GetTesterRole()` added. `RequestRouter` Remote-IDE gate now `role == internal` on shipped builds (Editor + `Debug.isDebugBuild` still unrestricted).
+
+### Fixed
+- **Per-line compile errors in the Remote IDE script panel now render through Monaco's native marker API.** Previously errors only showed a whole-line red tint; they now light up the overview ruler, inline squiggles, hover cards, and the Problems list via `monaco.editor.setModelMarkers`. The script envelope now carries `{line, column, length}` when available so markers underline the exact token; runtime exceptions keep their line info too. Enabled `glyphMargin` so the gutter error-dot actually renders.
+
 ## [1.7.35] - 2026-04-24
 
 ### Added

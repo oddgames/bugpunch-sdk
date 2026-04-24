@@ -147,85 +147,31 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
-        // ── N4: native pin state accessors ──
-        // Pin state lives natively (SharedPreferences on Android, Keychain on
-        // iOS) and only applies when consent == "accepted". These accessors
-        // are the only way C# reads pin state on device; PinState delegates
+        // ── Native tester-role accessor ──
+        // Role lives natively (SharedPreferences on Android, Keychain on iOS)
+        // and is refreshed at handshake time from the signed roleConfig
+        // payload. Returns "internal" | "external" | "public"; defaults to
+        // "public" if native isn't available or hasn't registered yet.
+        //
+        // This is the only way C# reads role on device; RoleState delegates
         // through here.
 
-        public static bool PinAlwaysLog()
+        public static string GetTesterRole()
         {
 #if UNITY_EDITOR
-            return false;
+            return "public";
 #elif UNITY_ANDROID
             try
             {
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
-                return cls.CallStatic<bool>("isAlwaysLog");
+                return cls.CallStatic<string>("getTesterRole") ?? "public";
             }
-            catch { return false; }
+            catch { return "public"; }
 #elif UNITY_IOS
-            try { return Bugpunch_PinAlwaysLog() != 0; }
-            catch { return false; }
+            try { return Bugpunch_GetTesterRole() ?? "public"; }
+            catch { return "public"; }
 #else
-            return false;
-#endif
-        }
-
-        public static bool PinAlwaysRemote()
-        {
-#if UNITY_EDITOR
-            return false;
-#elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
-                return cls.CallStatic<bool>("isAlwaysRemote");
-            }
-            catch { return false; }
-#elif UNITY_IOS
-            try { return Bugpunch_PinAlwaysRemote() != 0; }
-            catch { return false; }
-#else
-            return false;
-#endif
-        }
-
-        public static bool PinAlwaysDebug()
-        {
-#if UNITY_EDITOR
-            return false;
-#elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
-                return cls.CallStatic<bool>("isAlwaysDebug");
-            }
-            catch { return false; }
-#elif UNITY_IOS
-            try { return Bugpunch_PinAlwaysDebug() != 0; }
-            catch { return false; }
-#else
-            return false;
-#endif
-        }
-
-        public static string PinConsent()
-        {
-#if UNITY_EDITOR
-            return "unknown";
-#elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
-                return cls.CallStatic<string>("getConsent") ?? "unknown";
-            }
-            catch { return "unknown"; }
-#elif UNITY_IOS
-            try { return Bugpunch_PinConsent() ?? "unknown"; }
-            catch { return "unknown"; }
-#else
-            return "unknown";
+            return "public";
 #endif
         }
 
@@ -730,10 +676,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_TunnelSendResponse(string responseJson);
         [DllImport("__Internal")] static extern bool Bugpunch_TunnelIsConnected();
         [DllImport("__Internal")] static extern string Bugpunch_TunnelDeviceId();
-        [DllImport("__Internal")] static extern int Bugpunch_PinAlwaysLog();
-        [DllImport("__Internal")] static extern int Bugpunch_PinAlwaysRemote();
-        [DllImport("__Internal")] static extern int Bugpunch_PinAlwaysDebug();
-        [DllImport("__Internal")] static extern string Bugpunch_PinConsent();
+        [DllImport("__Internal")] static extern string Bugpunch_GetTesterRole();
         [DllImport("__Internal")] static extern bool Bugpunch_StartDebugMode(string configJson);
         [DllImport("__Internal")] static extern void Bugpunch_StartTunnel(string configJson);
         [DllImport("__Internal")] static extern void Bugpunch_StopDebugMode();
@@ -895,17 +838,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
     }
 
     /// <summary>
-    /// Pushes the active Unity scene name to native on change, and forwards
-    /// Unity log messages to the native log buffer on iOS (Android's logcat
-    /// reader already captures them). Added by BugpunchClient after
-    /// <see cref="BugpunchNative.Start"/>.
+    /// Pushes the active Unity scene name to native on change, emits a
+    /// <c>scene_change</c> analytics event with duration in the previous
+    /// scene, and forwards Unity log messages to the native log buffer on
+    /// iOS (Android's logcat reader already captures them). Added by
+    /// BugpunchClient after <see cref="BugpunchNative.Start"/>.
     /// </summary>
     public class BugpunchSceneTick : MonoBehaviour
     {
+        // Scene-timing state. The very first scene_change fires with from=null
+        // so "app opened in scene X" is capturable as an entry-point signal.
+        string m_CurrentScene;
+        float m_SceneEnteredAt;
+
         void OnEnable()
         {
             SceneManager.activeSceneChanged += OnSceneChanged;
-            BugpunchNative.UpdateScene(SceneManager.GetActiveScene().name);
+            var initial = SceneManager.GetActiveScene().name;
+            BugpunchNative.UpdateScene(initial);
+            // Entry event — from=null marks "app opened in this scene". Duration
+            // is zero because we don't know when the previous session ended.
+            EmitSceneChange(null, initial, 0);
+            m_CurrentScene = initial;
+            m_SceneEnteredAt = Time.realtimeSinceStartup;
 #if !UNITY_EDITOR && UNITY_IOS
             Application.logMessageReceivedThreaded += OnLog;
 #endif
@@ -918,7 +873,43 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
-        void OnSceneChanged(Scene _, Scene next) => BugpunchNative.UpdateScene(next.name);
+        void OnSceneChanged(Scene prev, Scene next)
+        {
+            var nextName = next.name;
+            BugpunchNative.UpdateScene(nextName);
+
+            // Additive-load activations can fire activeSceneChanged with the
+            // same name (e.g. a preload → promote sequence). Skip the event
+            // but keep the native scene pushed — no-op analytically.
+            if (string.Equals(nextName, m_CurrentScene, StringComparison.Ordinal)) return;
+
+            var now = Time.realtimeSinceStartup;
+            var durationMs = (long)((now - m_SceneEnteredAt) * 1000f);
+            if (durationMs < 0) durationMs = 0;
+            EmitSceneChange(m_CurrentScene, nextName, durationMs);
+
+            m_CurrentScene = nextName;
+            m_SceneEnteredAt = now;
+        }
+
+        static void EmitSceneChange(string from, string to, long durationMs)
+        {
+            // Calls the public TrackEvent facade so sampling / shutdown
+            // guards in Bugpunch.cs apply uniformly.
+            try
+            {
+                var props = new System.Collections.Generic.Dictionary<string, object> {
+                    ["from"] = from,         // null on app-entry event
+                    ["to"] = to,
+                    ["duration_ms"] = durationMs,
+                };
+                Bugpunch.TrackEvent("scene_change", props);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Bugpunch] scene_change emit failed: {ex.Message}");
+            }
+        }
 
 #if !UNITY_EDITOR && UNITY_IOS
         static void OnLog(string condition, string stackTrace, LogType type)

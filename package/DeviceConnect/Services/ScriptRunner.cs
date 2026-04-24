@@ -10,8 +10,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// the rest of Bugpunch uses.
     ///
     /// Envelope:
-    ///   { "ok": true,  "output": "..." }                        — success
-    ///   { "ok": false, "errors": [ { "line": N, "message": "..." } ] }   — compile/runtime errors
+    ///   { "ok": true,  "output": "..." }
+    ///   { "ok": false, "errors": [ { "line": N, "column": M, "length": L, "message": "..." } ] }
+    /// column/length are omitted when unknown (e.g. catch-all exception path).
     /// </summary>
     public class ScriptRunner : IScriptRunner
     {
@@ -32,7 +33,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (ScriptRuntimeException rex)
             {
-                return $"{{\"ok\":false,\"errors\":[{{{LinePart(rex.Location)}\"message\":\"{Esc(rex.Message)}\"}}]}}";
+                var sb = new StringBuilder();
+                sb.Append("{\"ok\":false,\"errors\":[{");
+                AppendLocation(sb, rex.Location);
+                sb.Append($"\"message\":\"{Esc(rex.Message)}\"}}]}}");
+                return sb.ToString();
             }
             catch (Exception ex)
             {
@@ -58,7 +63,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (d.Severity != DiagnosticSeverity.Error) continue;
                     if (!first) sb.Append(',');
                     first = false;
-                    sb.Append($"{{\"line\":{d.Location.Line},\"message\":\"{Esc(d.Message)}\"}}");
+                    sb.Append('{');
+                    AppendLocation(sb, d.Location);
+                    sb.Append($"\"message\":\"{Esc(d.Message)}\"}}");
                 }
             }
             if (first) sb.Append("{\"message\":\"compilation failed\"}");
@@ -66,8 +73,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return sb.ToString();
         }
 
-        static string LinePart(SourceLocation? loc) =>
-            loc.HasValue ? $"\"line\":{loc.Value.Line}," : "";
+        static void AppendLocation(StringBuilder sb, SourceLocation? loc)
+        {
+            if (!loc.HasValue) return;
+            AppendLocation(sb, loc.Value);
+        }
+
+        static void AppendLocation(StringBuilder sb, SourceLocation loc)
+        {
+            if (loc.Line > 0) sb.Append($"\"line\":{loc.Line},");
+            if (loc.Column > 0) sb.Append($"\"column\":{loc.Column},");
+            if (loc.Length > 0) sb.Append($"\"length\":{loc.Length},");
+        }
 
         static string Esc(string s) =>
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
