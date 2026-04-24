@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.37] - 2026-04-24
+
+### Fixed
+- **`Microsoft.Win32.Registry` reference restored on the UPM asmdef.** The SDK asmdef uses `overrideReferences: true` and had dropped `Microsoft.Win32.Registry.dll` from `precompiledReferences`, so `PlayerPrefsService.EnumerateWindows()` failed to compile in consumer projects with `CS1069: The type name 'Registry' could not be found in the namespace 'Microsoft.Win32'`. Re-added the reference — it's part of Unity's .NET Standard 2.1 extras and resolves cleanly on Windows Editor + standalone where the code path runs.
+- **WebRTC live stream no longer renders the RT every game frame.** `WebRTCStreamer.RenderLoop()` was yielding on `WaitForEndOfFrame` and blitting every single frame regardless of the requested stream fps, so a 60 fps phone driving a 30 fps stream was doing 2× the `Graphics.Blit` / scene-camera `Camera.Render()` work for frames libwebrtc would never encode — which both cooked the device and let frames pile up inside the Unity-WebRTC binding's internal queue on bad networks. The loop now paces video blits via `Time.unscaledTime` against `1f / _fps` and catch-up bursts are clamped (next blit = `max(scheduled, now)`). Metadata sends are separately paced at 10 Hz (down from "every other rendered frame", which scaled with game fps). Net effect on a 60/30 setup: ~50% less streamer work, no added latency when the stream is healthy.
+
+### Changed
+- **`/files/zip` is now an async job with real progress.** The previous endpoint blocked the tunnel for the whole zip + base64 round-trip, which ran for minutes on big `persistentDataPath` trees and gave no feedback. Replaced with `/files/zip/start` (returns a `jobId` immediately), `/files/zip/progress?jobId=` (stage + `processedFiles/totalFiles` + `bytesWritten`), and `/files/zip/result?jobId=` (streams the base64 once done). C# version runs on `Task.Run`; Android version runs on a dedicated low-priority executor. `SnapshotsPanel` and `FileBrowserPanel` now show a live progress bar driven by these counters, and the snapshot-creation server route (`POST /api/snapshots`) likewise flipped to a job pattern (`GET /api/snapshots/jobs/:jobId`) so the dashboard never sits on a multi-minute HTTP request. Old `/files/zip` removed — pre-release, no backcompat needed.
+
 ## [1.7.36] - 2026-04-24
 
 ### Changed

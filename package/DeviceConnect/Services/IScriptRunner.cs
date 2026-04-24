@@ -16,6 +16,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
         string Execute(string code);
 
         /// <summary>
+        /// Compile only (parse + bind + emit) without executing. Used by the editor to
+        /// surface live compile diagnostics as Monaco squiggles.
+        /// </summary>
+        /// <param name="code">C# source code to analyze</param>
+        /// <returns>
+        /// JSON: { "ok": true, "diagnostics": [{ "line", "column", "length", "severity", "code", "message" }] }
+        /// Severity is "error" | "warning" | "info". The array is empty when the source compiles cleanly.
+        /// </returns>
+        string Diagnose(string code);
+
+        /// <summary>
         /// Whether this runner is available and ready.
         /// </summary>
         bool IsAvailable { get; }

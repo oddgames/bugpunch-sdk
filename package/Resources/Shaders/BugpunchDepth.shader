@@ -21,8 +21,9 @@ Shader "Hidden/Bugpunch/Depth"
                 Varyings o;
                 VertexPositionInputs p = GetVertexPositionInputs(v.positionOS.xyz);
                 o.positionHCS = p.positionCS;
-                // Normalised depth across the far plane (matches _ProjectionParams.w in Built-in).
-                o.depth01 = -p.positionVS.z / _ProjectionParams.y;
+                // Normalised depth across the far plane. _ProjectionParams.w = 1/far.
+                // View-space z is negative for points in front of the camera.
+                o.depth01 = -p.positionVS.z * _ProjectionParams.w;
                 return o;
             }
 

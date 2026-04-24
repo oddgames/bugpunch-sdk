@@ -13,7 +13,8 @@
     "precompiledReferences": [
         "nunit.framework.dll",
         "Newtonsoft.Json.dll",
-        "ODDGames.Scripting.dll"
+        "ODDGames.Scripting.dll",
+        "Microsoft.Win32.Registry.dll"
     ],
     "autoReferenced": true,
     "defineConstraints": [],

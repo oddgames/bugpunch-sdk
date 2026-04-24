@@ -25,10 +25,37 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
-        /// Return JSON array of all loaded materials.
+        /// Return JSON array of all loaded materials. Each entry includes names of
+        /// all GameObjects that reference it and all texture names bound to any
+        /// shader property — both exposed for dashboard-side search.
         /// </summary>
         public string ListMaterials()
         {
+            // Build material→GameObject index from all scene renderers (sharedMaterials
+            // shares the instanceId across renderers, so one lookup suffices per material).
+            var gosByMat = new Dictionary<int, List<string>>();
+            var renderers = UnityEngine.Object.FindObjectsByType<Renderer>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null) continue;
+                var go = renderer.gameObject;
+                if (go == null || go.hideFlags != HideFlags.None) continue;
+                var goName = go.name;
+                if (string.IsNullOrEmpty(goName)) continue;
+                foreach (var sm in renderer.sharedMaterials)
+                {
+                    if (sm == null) continue;
+                    var id = sm.GetInstanceID();
+                    if (!gosByMat.TryGetValue(id, out var list))
+                    {
+                        list = new List<string>();
+                        gosByMat[id] = list;
+                    }
+                    if (!list.Contains(goName)) list.Add(goName);
+                }
+            }
+
             var materials = Resources.FindObjectsOfTypeAll<Material>();
             var sb = new StringBuilder();
             sb.Append("[");
@@ -44,20 +71,37 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (!first) sb.Append(",");
                 first = false;
 
-                var shader = mat.shader != null ? mat.shader.name : "";
+                var shader = mat.shader;
+                var shaderName = shader != null ? shader.name : "";
                 var instanceId = mat.GetInstanceID();
 
-                // Get main texture name if any
-                var texName = "";
+                // Main texture (for legacy 'texture' field + "Main Tex" row in detail view).
+                var mainTexName = "";
                 if (mat.HasProperty("_MainTex"))
                 {
                     var tex = mat.mainTexture;
-                    if (tex != null) texName = tex.name;
+                    if (tex != null) mainTexName = tex.name;
                 }
                 else if (mat.HasProperty("_BaseMap"))
                 {
                     var tex = mat.GetTexture("_BaseMap");
-                    if (tex != null) texName = tex.name;
+                    if (tex != null) mainTexName = tex.name;
+                }
+
+                // All textures bound to any shader property — used for search.
+                var texNames = new List<string>();
+                if (shader != null)
+                {
+                    int propCount = shader.GetPropertyCount();
+                    for (int i = 0; i < propCount; i++)
+                    {
+                        if (shader.GetPropertyType(i) != ShaderPropertyType.Texture) continue;
+                        var tex = mat.GetTexture(shader.GetPropertyNameId(i));
+                        if (tex == null) continue;
+                        var tn = tex.name;
+                        if (string.IsNullOrEmpty(tn)) continue;
+                        if (!texNames.Contains(tn)) texNames.Add(tn);
+                    }
                 }
 
                 var color = "";
@@ -75,9 +119,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 sb.Append("{");
                 sb.Append($"\"id\":{instanceId}");
                 sb.Append($",\"name\":\"{Esc(name)}\"");
-                sb.Append($",\"shader\":\"{Esc(shader)}\"");
-                if (!string.IsNullOrEmpty(texName))
-                    sb.Append($",\"texture\":\"{Esc(texName)}\"");
+                sb.Append($",\"shader\":\"{Esc(shaderName)}\"");
+                if (!string.IsNullOrEmpty(mainTexName))
+                    sb.Append($",\"texture\":\"{Esc(mainTexName)}\"");
+                if (texNames.Count > 0)
+                {
+                    sb.Append(",\"textures\":[");
+                    for (int i = 0; i < texNames.Count; i++)
+                    {
+                        if (i > 0) sb.Append(",");
+                        sb.Append($"\"{Esc(texNames[i])}\"");
+                    }
+                    sb.Append("]");
+                }
+                if (gosByMat.TryGetValue(instanceId, out var gos) && gos.Count > 0)
+                {
+                    sb.Append(",\"gameObjects\":[");
+                    for (int i = 0; i < gos.Count; i++)
+                    {
+                        if (i > 0) sb.Append(",");
+                        sb.Append($"\"{Esc(gos[i])}\"");
+                    }
+                    sb.Append("]");
+                }
                 if (!string.IsNullOrEmpty(color))
                     sb.Append($",\"color\":\"{color}\"");
                 sb.Append("}");

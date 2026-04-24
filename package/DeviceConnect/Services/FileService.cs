@@ -4,6 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace ODDGames.Bugpunch.DeviceConnect
@@ -15,6 +17,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
     public class FileService
     {
         readonly List<(string name, string path)> _roots;
+        readonly Dictionary<string, ZipJob> _zipJobs = new Dictionary<string, ZipJob>();
+        readonly object _zipJobsLock = new object();
+        readonly string _tempCachePath;
 
         public FileService()
         {
@@ -24,6 +29,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             TryAddRoot("Data", Application.dataPath);
             TryAddRoot("StreamingAssets", Application.streamingAssetsPath);
             TryAddRoot("ConsoleLog", Application.consoleLogPath);
+            _tempCachePath = Application.temporaryCachePath;
         }
 
         void TryAddRoot(string name, string path)
@@ -382,10 +388,40 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
+        // ------------------------------------------------------------------
+        // Zip jobs — async, with progress polling.
+        //
+        // Flow: StartZipJob → poll GetZipProgress until stage == "done"
+        //       → GetZipResult returns {ok, size, base64} (and deletes temp).
+        //
+        // Running on Task.Run so the tunnel thread returns immediately; the
+        // work is pure File IO (no Unity API) so background threads are safe.
+        // ------------------------------------------------------------------
+
+        class ZipJob
+        {
+            public string JobId;
+            public string SourcePath;
+            public string TempZipPath;
+            // Stage transitions are single-writer (the worker task) — volatile
+            // is sufficient for readers. Counters use Interlocked so they must
+            // be plain fields (not volatile / properties).
+            public volatile string Stage;       // scanning | zipping | done | error
+            public int TotalFiles;              // set once after scan
+            public int ProcessedFiles;          // Interlocked during zipping
+            public long BytesWritten;           // Interlocked during zipping
+            public long TotalSize;              // final zip size
+            public string Error;
+            public DateTime StartedAtUtc;
+            public DateTime CompletedAtUtc;
+        }
+
         /// <summary>
-        /// Create a zip of a directory and return it as base64.
+        /// Kick off a zip job for a directory. Returns a jobId immediately;
+        /// use <see cref="GetZipProgress"/> to poll and <see cref="GetZipResult"/>
+        /// to fetch the base64 once the stage is "done".
         /// </summary>
-        public string ZipDirectory(string path)
+        public string StartZipJob(string path)
         {
             if (string.IsNullOrEmpty(path))
                 return Error("Path is required");
@@ -397,16 +433,74 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!Directory.Exists(path))
                 return Error("Directory not found: " + path);
 
+            var job = new ZipJob
+            {
+                JobId = Guid.NewGuid().ToString("N"),
+                SourcePath = path,
+                Stage = "scanning",
+                StartedAtUtc = DateTime.UtcNow,
+            };
+            job.TempZipPath = Path.Combine(_tempCachePath, $"bpzip_{job.JobId}.zip");
+
+            lock (_zipJobsLock)
+            {
+                PruneOldJobs_Locked();
+                _zipJobs[job.JobId] = job;
+            }
+
+            Task.Run(() => RunZipJob(job));
+
+            return $"{{\"ok\":true,\"jobId\":\"{job.JobId}\"}}";
+        }
+
+        /// <summary>
+        /// Poll the progress of a running/finished zip job.
+        /// </summary>
+        public string GetZipProgress(string jobId)
+        {
+            if (string.IsNullOrEmpty(jobId))
+                return Error("jobId is required");
+            ZipJob job;
+            lock (_zipJobsLock) _zipJobs.TryGetValue(jobId, out job);
+            if (job == null) return Error("Unknown jobId");
+
+            var sb = new StringBuilder();
+            sb.Append("{\"ok\":true,");
+            sb.Append($"\"jobId\":\"{Esc(job.JobId)}\",");
+            sb.Append($"\"stage\":\"{Esc(job.Stage)}\",");
+            sb.Append(string.Format(CultureInfo.InvariantCulture, "\"totalFiles\":{0},", job.TotalFiles));
+            sb.Append(string.Format(CultureInfo.InvariantCulture, "\"processedFiles\":{0},", Interlocked.CompareExchange(ref job.ProcessedFiles, 0, 0)));
+            sb.Append(string.Format(CultureInfo.InvariantCulture, "\"bytesWritten\":{0},", Interlocked.Read(ref job.BytesWritten)));
+            sb.Append(string.Format(CultureInfo.InvariantCulture, "\"totalSize\":{0},", job.TotalSize));
+            sb.Append($"\"done\":{(job.Stage == "done" ? "true" : "false")}");
+            if (job.Error != null)
+                sb.Append($",\"error\":\"{Esc(job.Error)}\"");
+            sb.Append("}");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Fetch the base64-encoded zip for a completed job. Deletes the temp
+        /// file and evicts the job entry on success.
+        /// </summary>
+        public string GetZipResult(string jobId)
+        {
+            if (string.IsNullOrEmpty(jobId))
+                return Error("jobId is required");
+            ZipJob job;
+            lock (_zipJobsLock) _zipJobs.TryGetValue(jobId, out job);
+            if (job == null) return Error("Unknown jobId");
+
+            if (job.Stage == "error")
+                return Error(job.Error ?? "Zip failed");
+            if (job.Stage != "done")
+                return "{\"ok\":false,\"pending\":true}";
+
             try
             {
-                var tempZip = Path.Combine(Application.temporaryCachePath, $"snapshot_{DateTime.UtcNow:yyyyMMddHHmmss}.zip");
-                if (File.Exists(tempZip)) File.Delete(tempZip);
-                ZipFile.CreateFromDirectory(path, tempZip);
-                var bytes = File.ReadAllBytes(tempZip);
-                File.Delete(tempZip);
+                var bytes = File.ReadAllBytes(job.TempZipPath);
                 var base64 = Convert.ToBase64String(bytes);
-
-                var sb = new StringBuilder();
+                var sb = new StringBuilder(base64.Length + 64);
                 sb.Append("{\"ok\":true,");
                 sb.Append(string.Format(CultureInfo.InvariantCulture, "\"size\":{0},", bytes.Length));
                 sb.Append($"\"base64\":\"{base64}\"");
@@ -417,6 +511,93 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 return Error(ex.Message);
             }
+            finally
+            {
+                try { if (File.Exists(job.TempZipPath)) File.Delete(job.TempZipPath); } catch { }
+                lock (_zipJobsLock) _zipJobs.Remove(jobId);
+            }
+        }
+
+        void RunZipJob(ZipJob job)
+        {
+            try
+            {
+                if (File.Exists(job.TempZipPath))
+                {
+                    try { File.Delete(job.TempZipPath); } catch { }
+                }
+
+                // Phase 1 — scan
+                var files = new List<string>();
+                EnumerateFilesRecursive(job.SourcePath, files);
+                job.TotalFiles = files.Count;
+                job.Stage = "zipping";
+
+                // Phase 2 — zip one file at a time with per-file progress
+                var srcRoot = NormalizePath(job.SourcePath);
+                var buf = new byte[81920];
+                using (var fs = new FileStream(job.TempZipPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
+                {
+                    foreach (var file in files)
+                    {
+                        var full = NormalizePath(file);
+                        var rel = full.Length > srcRoot.Length
+                            ? full.Substring(srcRoot.Length).TrimStart('/')
+                            : Path.GetFileName(full);
+                        if (string.IsNullOrEmpty(rel)) continue;
+                        var entry = zip.CreateEntry(rel, System.IO.Compression.CompressionLevel.Fastest);
+                        using (var es = entry.Open())
+                        using (var ifs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                        {
+                            int n;
+                            while ((n = ifs.Read(buf, 0, buf.Length)) > 0)
+                            {
+                                es.Write(buf, 0, n);
+                                Interlocked.Add(ref job.BytesWritten, n);
+                            }
+                        }
+                        Interlocked.Increment(ref job.ProcessedFiles);
+                    }
+                }
+
+                job.TotalSize = new FileInfo(job.TempZipPath).Length;
+                job.Stage = "done";
+                job.CompletedAtUtc = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                job.Error = ex.Message;
+                job.Stage = "error";
+                job.CompletedAtUtc = DateTime.UtcNow;
+                try { if (File.Exists(job.TempZipPath)) File.Delete(job.TempZipPath); } catch { }
+            }
+        }
+
+        static void EnumerateFilesRecursive(string dir, List<string> output)
+        {
+            try
+            {
+                foreach (var f in Directory.GetFiles(dir)) output.Add(f);
+                foreach (var d in Directory.GetDirectories(dir)) EnumerateFilesRecursive(d, output);
+            }
+            catch { /* skip inaccessible subtrees */ }
+        }
+
+        void PruneOldJobs_Locked()
+        {
+            var cutoff = DateTime.UtcNow.AddMinutes(-10);
+            List<string> stale = null;
+            foreach (var kv in _zipJobs)
+            {
+                var j = kv.Value;
+                if (j.CompletedAtUtc != default && j.CompletedAtUtc < cutoff)
+                {
+                    (stale ??= new List<string>()).Add(kv.Key);
+                    try { if (!string.IsNullOrEmpty(j.TempZipPath) && File.Exists(j.TempZipPath)) File.Delete(j.TempZipPath); } catch { }
+                }
+            }
+            if (stale != null) foreach (var k in stale) _zipJobs.Remove(k);
         }
 
         /// <summary>

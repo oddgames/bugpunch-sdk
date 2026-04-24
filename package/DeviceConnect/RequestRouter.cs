@@ -375,6 +375,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     return Response.Json(ScriptRunner.Execute(body));
                 }
 
+                // Compile-only diagnostics for live editor squiggles
+                if (path == "/diagnose" && method == "POST")
+                {
+                    if (ScriptRunner == null || !ScriptRunner.IsAvailable)
+                        return Response.Error("Script execution not available", 501);
+                    return Response.Json(ScriptRunner.Diagnose(body));
+                }
+
                 // Device info
                 if (path == "/device-info" || path.StartsWith("/device-info?"))
                     return Response.Json(DeviceInfo?.GetDeviceInfo() ?? "{}");
@@ -592,8 +600,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (subPath == "/files/info")
                         return Response.Json(Files.GetFileInfo(Q(path, "path")));
 
-                    if (subPath == "/files/zip" && method == "POST")
-                        return Response.Json(Files.ZipDirectory(Q(path, "path")));
+                    if (subPath == "/files/zip/start" && method == "POST")
+                        return Response.Json(Files.StartZipJob(Q(path, "path")));
+
+                    if (subPath == "/files/zip/progress")
+                        return Response.Json(Files.GetZipProgress(Q(path, "jobId")));
+
+                    if (subPath == "/files/zip/result")
+                        return Response.Json(Files.GetZipResult(Q(path, "jobId")));
 
                     if (subPath == "/files/unzip" && method == "POST")
                     {

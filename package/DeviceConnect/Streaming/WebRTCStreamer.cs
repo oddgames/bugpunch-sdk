@@ -48,7 +48,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         // Data channel for sending camera metadata per frame
         RTCDataChannel _metadataChannel;
-        int _metadataFrameSkip;
+        // Time-based pacing — the render loop yields every frame, but we only
+        // actually blit / send at these cadences so a 60 fps game driving a
+        // 30 fps stream doesn't burn GPU on wasted renders (and cook the
+        // device). Using unscaledTime so timeScale=0 pauses don't stall.
+        float _nextBlitTimeUnscaled;
+        float _nextMetadataTimeUnscaled;
+        const float METADATA_INTERVAL_SECONDS = 0.1f; // 10 Hz is plenty for cursor/touch
 
         /// <summary>
         /// Reference to the scene camera service for sending metadata via data channel.
@@ -312,7 +318,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Create data channel for per-frame camera metadata
             Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: creating data channel 'camera-metadata'");
             _metadataChannel = _pc.CreateDataChannel("camera-metadata", new RTCDataChannelInit());
-            _metadataFrameSkip = 0;
 
             // ICE candidate handler — queue candidates for browser to poll
             _pc.OnIceCandidate = candidate =>
@@ -526,12 +531,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
         IEnumerator RenderLoop()
         {
             int aspectCheckCounter = 0;
+            _nextBlitTimeUnscaled = 0f;
+            _nextMetadataTimeUnscaled = 0f;
             while (_streaming && _pc != null)
             {
                 yield return new WaitForEndOfFrame();
                 if (_rt == null) continue;
 
-                // Every ~30 frames, check if the device's live screen aspect
+                float now = Time.unscaledTime;
+
+                // Every ~30 frames (game frames, not blits — rotation detection
+                // can be cheap), check if the device's live screen aspect
                 // drifted from the RT (phone rotated, window resized on desktop).
                 // Only follow Screen when no panel-aspect override is active.
                 if (++aspectCheckCounter >= 30)
@@ -549,7 +559,41 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     }
                 }
 
-                // Check which camera is being used — log once on switch
+                // Metadata pacing — 10 Hz is enough for cursor/touch feedback.
+                if (now >= _nextMetadataTimeUnscaled
+                    && _metadataChannel != null
+                    && _metadataChannel.ReadyState == RTCDataChannelState.Open)
+                {
+                    _nextMetadataTimeUnscaled = Mathf.Max(_nextMetadataTimeUnscaled + METADATA_INTERVAL_SECONDS, now);
+                    var metaCam = _targetCamera ? _targetCamera : Camera.main;
+                    string F(float v) => v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+                    var sb = new System.Text.StringBuilder(256);
+                    sb.Append('{');
+                    if (metaCam != null)
+                    {
+                        var ct = metaCam.transform;
+                        var cp = ct.position;
+                        var cr = ct.eulerAngles;
+                        sb.Append($"\"px\":{F(cp.x)},\"py\":{F(cp.y)},\"pz\":{F(cp.z)},\"rx\":{F(cr.x)},\"ry\":{F(cr.y)},\"rz\":{F(cr.z)},");
+                    }
+                    var touchJson = RequestRouter.GetLiveTouchesForStream(500);
+                    sb.Append(touchJson);
+                    sb.Append('}');
+                    _metadataChannel.Send(sb.ToString());
+                }
+
+                // Video blit pacing — skip the frame unless we're due for the
+                // next one at the target fps. This is the main backpressure:
+                // a 60 fps game driving a 30 fps stream should render/blit at
+                // 30 fps, not 60.
+                if (now < _nextBlitTimeUnscaled) continue;
+                float blitInterval = 1f / Mathf.Max(1, _fps);
+                // Schedule the next blit. If we've fallen behind (e.g. the
+                // app stalled), clamp to `now` so we don't fire a burst of
+                // catch-up frames into the encoder.
+                _nextBlitTimeUnscaled = Mathf.Max(_nextBlitTimeUnscaled + blitInterval, now);
+
                 if (_targetCamera != null)
                 {
                     // Scene camera mode — render specific camera to RT
@@ -570,34 +614,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     ScreenCapture.CaptureScreenshotIntoRenderTexture(_screenCapRT);
                     // Blit with vertical flip and scale to streaming resolution
                     Graphics.Blit(_screenCapRT, _rt, new Vector2(1, -1), new Vector2(0, 1));
-                }
-
-                // Send camera metadata + touch data via data channel (every other frame)
-                _metadataFrameSkip++;
-                var metaCam = _targetCamera ? _targetCamera : Camera.main;
-                if (_metadataFrameSkip >= 2 && _metadataChannel != null && _metadataChannel.ReadyState == RTCDataChannelState.Open)
-                {
-                    _metadataFrameSkip = 0;
-                    string F(float v) => v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-
-                    var sb = new System.Text.StringBuilder(256);
-                    sb.Append('{');
-
-                    // Camera metadata
-                    if (metaCam != null)
-                    {
-                        var ct = metaCam.transform;
-                        var cp = ct.position;
-                        var cr = ct.eulerAngles;
-                        sb.Append($"\"px\":{F(cp.x)},\"py\":{F(cp.y)},\"pz\":{F(cp.z)},\"rx\":{F(cr.x)},\"ry\":{F(cr.y)},\"rz\":{F(cr.z)},");
-                    }
-
-                    // Native OS touch data — read from platform touch recorder
-                    var touchJson = RequestRouter.GetLiveTouchesForStream(500);
-                    sb.Append(touchJson);
-
-                    sb.Append('}');
-                    _metadataChannel.Send(sb.ToString());
                 }
             }
         }

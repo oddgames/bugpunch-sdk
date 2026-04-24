@@ -45,6 +45,22 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
+        public string Diagnose(string code)
+        {
+            if (string.IsNullOrWhiteSpace(code))
+                return "{\"ok\":true,\"diagnostics\":[]}";
+
+            try
+            {
+                ScriptCompiler.TryCompile(code, out var script);
+                return BuildDiagnosticsResponse(script?.Diagnostics);
+            }
+            catch (Exception ex)
+            {
+                return $"{{\"ok\":true,\"diagnostics\":[{{\"severity\":\"error\",\"message\":\"{Esc(ex.Message)}\"}}]}}";
+            }
+        }
+
         static string BuildSuccessResponse(object result)
         {
             var output = result == null ? "" : result.ToString();
@@ -71,6 +87,38 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (first) sb.Append("{\"message\":\"compilation failed\"}");
             sb.Append("]}");
             return sb.ToString();
+        }
+
+        static string BuildDiagnosticsResponse(System.Collections.Generic.IReadOnlyList<ScriptDiagnostic> diagnostics)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"ok\":true,\"diagnostics\":[");
+            bool first = true;
+            if (diagnostics != null)
+            {
+                foreach (var d in diagnostics)
+                {
+                    if (!first) sb.Append(',');
+                    first = false;
+                    sb.Append('{');
+                    AppendLocation(sb, d.Location);
+                    sb.Append($"\"severity\":\"{SeverityName(d.Severity)}\",");
+                    if (!string.IsNullOrEmpty(d.Code)) sb.Append($"\"code\":\"{Esc(d.Code)}\",");
+                    sb.Append($"\"message\":\"{Esc(d.Message)}\"}}");
+                }
+            }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        static string SeverityName(DiagnosticSeverity s)
+        {
+            switch (s)
+            {
+                case DiagnosticSeverity.Error: return "error";
+                case DiagnosticSeverity.Warning: return "warning";
+                default: return "info";
+            }
         }
 
         static void AppendLocation(StringBuilder sb, SourceLocation? loc)

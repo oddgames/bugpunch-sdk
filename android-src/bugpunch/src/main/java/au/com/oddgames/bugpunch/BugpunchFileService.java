@@ -19,7 +19,14 @@ import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -99,7 +106,9 @@ public final class BugpunchFileService {
                 case "/files/delete": result = deletePath(query(path, "path"), "true".equals(query(path, "recursive"))); break;
                 case "/files/mkdir":  result = createDirectory(query(path, "path")); break;
                 case "/files/info":   result = getFileInfo(query(path, "path")); break;
-                case "/files/zip":    result = zipDirectory(query(path, "path")); break;
+                case "/files/zip/start":    result = startZipJob(query(path, "path")); break;
+                case "/files/zip/progress": result = getZipProgress(query(path, "jobId")); break;
+                case "/files/zip/result":   result = getZipResult(query(path, "jobId")); break;
                 case "/files/unzip":  result = unzipToDirectory(query(path, "path"), body, !"false".equals(query(path, "clear"))); break;
                 default:
                     BugpunchTunnel.sendResponse(BugpunchTunnel.buildErrorResponse(requestId, 404,
@@ -280,23 +289,169 @@ public final class BugpunchFileService {
         return o.toString();
     }
 
-    private static String zipDirectory(String path) throws IOException, JSONException {
+    // ──────────────────────────────────────────────────────────────────────
+    // Zip jobs — async, with progress polling.
+    //
+    // Flow: /files/zip/start → poll /files/zip/progress until done
+    //       → /files/zip/result returns {ok, size, base64} (and deletes temp).
+    // ──────────────────────────────────────────────────────────────────────
+
+    private static final ConcurrentHashMap<String, ZipJobState> sZipJobs = new ConcurrentHashMap<>();
+    private static final ExecutorService sZipExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "Bugpunch-Zip");
+        t.setPriority(Thread.NORM_PRIORITY - 1);
+        t.setDaemon(true);
+        return t;
+    });
+
+    private static final class ZipJobState {
+        final String jobId;
+        final String sourcePath;
+        final File tempZip;
+        volatile String stage = "scanning";    // scanning | zipping | done | error
+        volatile int totalFiles;
+        final AtomicInteger processedFiles = new AtomicInteger();
+        final AtomicLong bytesWritten = new AtomicLong();
+        volatile long totalSize;
+        volatile String error;
+        volatile long completedAtMs;
+        ZipJobState(String id, String path, File tmp) {
+            this.jobId = id;
+            this.sourcePath = path;
+            this.tempZip = tmp;
+        }
+    }
+
+    private static String startZipJob(String path) throws JSONException, IOException {
         String np = normalize(path);
         if (np.isEmpty()) return errorJson("Path is required");
         if (!isAllowed(np)) return errorJson("Access denied: path is outside allowed roots");
         File dir = new File(np);
         if (!dir.isDirectory()) return errorJson("Directory not found: " + np);
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
-            zipInto(zos, dir, "");
-        }
-        byte[] bytes = baos.toByteArray();
+        String jobId = UUID.randomUUID().toString().replace("-", "");
+        File tmp = File.createTempFile("bpzip_" + jobId, ".zip");
+        // createTempFile creates an empty placeholder — we want fresh semantics in runZipJob.
+        if (!tmp.delete()) Log.w(TAG, "could not clear placeholder " + tmp.getAbsolutePath());
+
+        final ZipJobState state = new ZipJobState(jobId, np, tmp);
+        pruneOldZipJobs();
+        sZipJobs.put(jobId, state);
+        sZipExecutor.submit(() -> runZipJob(state));
+
         JSONObject o = new JSONObject();
         o.put("ok", true);
-        o.put("size", bytes.length);
-        o.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
+        o.put("jobId", jobId);
         return o.toString();
+    }
+
+    private static String getZipProgress(String jobId) throws JSONException {
+        ZipJobState s = jobId == null || jobId.isEmpty() ? null : sZipJobs.get(jobId);
+        if (s == null) return errorJson("Unknown jobId");
+        JSONObject o = new JSONObject();
+        o.put("ok", true);
+        o.put("jobId", s.jobId);
+        o.put("stage", s.stage);
+        o.put("totalFiles", s.totalFiles);
+        o.put("processedFiles", s.processedFiles.get());
+        o.put("bytesWritten", s.bytesWritten.get());
+        o.put("totalSize", s.totalSize);
+        o.put("done", "done".equals(s.stage));
+        if (s.error != null) o.put("error", s.error);
+        return o.toString();
+    }
+
+    private static String getZipResult(String jobId) throws JSONException, IOException {
+        ZipJobState s = jobId == null || jobId.isEmpty() ? null : sZipJobs.get(jobId);
+        if (s == null) return errorJson("Unknown jobId");
+        if ("error".equals(s.stage)) return errorJson(s.error != null ? s.error : "Zip failed");
+        if (!"done".equals(s.stage)) return "{\"ok\":false,\"pending\":true}";
+
+        try {
+            byte[] bytes;
+            try (FileInputStream in = new FileInputStream(s.tempZip)) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream((int) Math.min(Integer.MAX_VALUE, s.tempZip.length()));
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) baos.write(buf, 0, n);
+                bytes = baos.toByteArray();
+            }
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("size", bytes.length);
+            o.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
+            return o.toString();
+        } finally {
+            try { if (s.tempZip.exists() && !s.tempZip.delete()) Log.w(TAG, "could not delete " + s.tempZip); } catch (Throwable ignored) {}
+            sZipJobs.remove(jobId);
+        }
+    }
+
+    private static void runZipJob(ZipJobState s) {
+        try {
+            File src = new File(s.sourcePath);
+
+            // Phase 1 — scan
+            List<File> files = new ArrayList<>();
+            enumerateFilesRecursive(src, files);
+            s.totalFiles = files.size();
+            s.stage = "zipping";
+
+            // Phase 2 — zip one file at a time with per-file progress
+            String srcCanon = src.getCanonicalPath().replace('\\', '/');
+            byte[] buf = new byte[8192];
+            try (FileOutputStream fos = new FileOutputStream(s.tempZip);
+                 ZipOutputStream zos = new ZipOutputStream(fos)) {
+                for (File f : files) {
+                    String full = f.getCanonicalPath().replace('\\', '/');
+                    String rel = full.length() > srcCanon.length()
+                        ? full.substring(srcCanon.length())
+                        : f.getName();
+                    if (rel.startsWith("/")) rel = rel.substring(1);
+                    if (rel.isEmpty()) continue;
+                    zos.putNextEntry(new ZipEntry(rel));
+                    try (FileInputStream in = new FileInputStream(f)) {
+                        int n;
+                        while ((n = in.read(buf)) > 0) {
+                            zos.write(buf, 0, n);
+                            s.bytesWritten.addAndGet(n);
+                        }
+                    }
+                    zos.closeEntry();
+                    s.processedFiles.incrementAndGet();
+                }
+            }
+
+            s.totalSize = s.tempZip.length();
+            s.stage = "done";
+            s.completedAtMs = System.currentTimeMillis();
+        } catch (Throwable t) {
+            Log.w(TAG, "zip job failed for " + s.sourcePath, t);
+            s.error = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+            s.stage = "error";
+            s.completedAtMs = System.currentTimeMillis();
+            try { if (s.tempZip.exists()) s.tempZip.delete(); } catch (Throwable ignored) {}
+        }
+    }
+
+    private static void enumerateFilesRecursive(File dir, List<File> out) {
+        File[] kids = dir.listFiles();
+        if (kids == null) return;
+        for (File f : kids) {
+            if (f.isDirectory()) enumerateFilesRecursive(f, out);
+            else if (f.isFile()) out.add(f);
+        }
+    }
+
+    private static void pruneOldZipJobs() {
+        long cutoff = System.currentTimeMillis() - 10L * 60L * 1000L;
+        for (Map.Entry<String, ZipJobState> e : sZipJobs.entrySet()) {
+            ZipJobState s = e.getValue();
+            if (s.completedAtMs > 0 && s.completedAtMs < cutoff) {
+                try { if (s.tempZip.exists()) s.tempZip.delete(); } catch (Throwable ignored) {}
+                sZipJobs.remove(e.getKey());
+            }
+        }
     }
 
     private static String unzipToDirectory(String path, String base64Zip, boolean clearFirst) throws IOException, JSONException {
@@ -383,27 +538,6 @@ public final class BugpunchFileService {
             if (kids != null) for (File k : kids) if (!deleteRecursive(k)) return false;
         }
         return f.delete();
-    }
-
-    private static void zipInto(ZipOutputStream zos, File dir, String prefix) throws IOException {
-        File[] kids = dir.listFiles();
-        if (kids == null) return;
-        byte[] buf = new byte[8192];
-        for (File f : kids) {
-            String entryName = prefix + f.getName();
-            if (f.isDirectory()) {
-                zos.putNextEntry(new ZipEntry(entryName + "/"));
-                zos.closeEntry();
-                zipInto(zos, f, entryName + "/");
-            } else {
-                zos.putNextEntry(new ZipEntry(entryName));
-                try (FileInputStream in = new FileInputStream(f)) {
-                    int n;
-                    while ((n = in.read(buf)) > 0) zos.write(buf, 0, n);
-                }
-                zos.closeEntry();
-            }
-        }
     }
 
     private static String query(String path, String key) {
