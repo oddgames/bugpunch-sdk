@@ -60,6 +60,21 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         {
             // No-op on desktop
         }
+
+        public void ShowRequestHelp(Action<int> onChoice, Action onCancel)
+        {
+            // IMGUI fallback defers to the shared UI Toolkit picker — it
+            // already handles Editor + Standalone and owns its own host.
+            BugpunchRequestHelpPicker.ShowUIToolkitFallback(onChoice, onCancel);
+        }
+
+        public void ShowChatBoard()
+        {
+            // Same story as ShowRequestHelp — the chat board is a full
+            // UIToolkit surface already, so the IMGUI fallback just forwards.
+            Debug.Log("[Bugpunch.FallbackDialog] ShowChatBoard — delegating to UIToolkit chat board");
+            BugpunchChatBoard.Show();
+        }
     }
 
     class PermissionUI : MonoBehaviour

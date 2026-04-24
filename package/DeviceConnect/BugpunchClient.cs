@@ -47,11 +47,54 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public bool IsConnected => (Tunnel?.IsConnected ?? false) || PollActive;
 
         /// <summary>
-        /// When true, incoming debug session requests from the server are
-        /// automatically declined with "busy". Games can set this during
-        /// gameplay sequences that should not be interrupted.
+        /// Ref-counted suppression depth. When &gt; 0, Bugpunch defers anything
+        /// that would interrupt the player — incoming debug session requests
+        /// from the server are declined with "busy", and queued prompts
+        /// (directive questions, QA reply popups, feedback responses) hold
+        /// until the count drops back to zero. Increment via
+        /// <see cref="PushSuppression"/> during cutscenes, tutorials, modal
+        /// UIs, or any other gameplay sequence the user shouldn't be yanked
+        /// out of — multiple systems can nest their suppression scopes safely.
         /// </summary>
-        public bool SuppressDebugRequests { get; set; }
+        public int SuppressInteractionsCount { get; private set; }
+
+        /// <summary>
+        /// True whenever something on this client is currently holding a
+        /// suppression scope. Getter-only — use <see cref="PushSuppression"/>
+        /// to modify.
+        /// </summary>
+        public bool SuppressInteractions => SuppressInteractionsCount > 0;
+
+        /// <summary>
+        /// Push a new suppression scope. Each call increments
+        /// <see cref="SuppressInteractionsCount"/>; disposing the returned
+        /// token decrements it by exactly one (idempotent — disposing twice
+        /// is a no-op). Safe to nest across systems (cutscene + tutorial +
+        /// QA popup queue). Typical usage:
+        /// <code>
+        /// using (BugpunchClient.Instance.PushSuppression())
+        /// {
+        ///     // play cutscene
+        /// }
+        /// </code>
+        /// </summary>
+        public IDisposable PushSuppression() => new SuppressionHandle(this);
+
+        sealed class SuppressionHandle : IDisposable
+        {
+            BugpunchClient _owner;
+            public SuppressionHandle(BugpunchClient owner)
+            {
+                _owner = owner;
+                if (_owner != null) _owner.SuppressInteractionsCount++;
+            }
+            public void Dispose()
+            {
+                if (_owner == null) return;
+                _owner.SuppressInteractionsCount = Math.Max(0, _owner.SuppressInteractionsCount - 1);
+                _owner = null;
+            }
+        }
 
         public event Action OnConnected;
         public event Action OnDisconnected;
@@ -353,6 +396,89 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 BugpunchNative.StartPoll(Config.scriptPermission.ToString().ToLower(), Mathf.Max(5, (int)Config.pollInterval));
                 PollActive = true;
             }
+
+            // QA → player chat reply heartbeat. Cheap poll every 30s; if a
+            // thread has unread QA messages AND we're not suppressed, surface
+            // the chat board. Guarded so we don't re-pop every 30s if the
+            // user dismisses without replying (guard resets server-side when
+            // the unread count drops to 0).
+            StartCoroutine(ChatReplyHeartbeat());
+        }
+
+        // ─── Chat reply heartbeat ───────────────────────────────────────
+        //
+        // The chat board itself polls when it's open (5s). This heartbeat
+        // runs whether the board is open or not, so QA replies land on the
+        // player even if they haven't been thinking about chat. The native
+        // tunnel is the long-term home for this push, but v2 just polls —
+        // one request every 30s is trivial cost.
+
+        bool _chatReplyPopupShown;
+
+        IEnumerator ChatReplyHeartbeat()
+        {
+            // Small initial delay so we don't race the very first connect.
+            yield return new WaitForSeconds(10f);
+            while (true)
+            {
+                // Skip the check if the user's in a no-interrupt state; we'll
+                // check again on the next tick. Don't even bother hitting the
+                // server while suppressed — feels more polite and saves bytes.
+                if (!SuppressInteractions)
+                    yield return CheckChatUnreadCoroutine();
+                yield return new WaitForSeconds(30f);
+            }
+        }
+
+        IEnumerator CheckChatUnreadCoroutine()
+        {
+            if (Config == null || string.IsNullOrEmpty(Config.HttpBaseUrl) || string.IsNullOrEmpty(Config.apiKey))
+                yield break;
+
+            var url = Config.HttpBaseUrl + "/api/v1/chat/threads/mine";
+            using var req = UnityWebRequest.Get(url);
+            req.SetRequestHeader("Authorization", "Bearer " + (Config.apiKey ?? ""));
+            req.SetRequestHeader("X-Device-Id", DeviceIdentity.GetDeviceId() ?? "");
+            req.SetRequestHeader("Accept", "application/json");
+            req.timeout = 10;
+            yield return req.SendWebRequest();
+
+            if (req.result != UnityWebRequest.Result.Success) yield break;
+            if (req.responseCode < 200 || req.responseCode >= 300) yield break;
+
+            int unread = 0;
+            try
+            {
+                var body = req.downloadHandler != null ? req.downloadHandler.text : "";
+                var obj = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(body) ? "{}" : body);
+                var arr = obj["threads"] as Newtonsoft.Json.Linq.JArray;
+                if (arr != null)
+                {
+                    foreach (var t in arr)
+                    {
+                        int n = (int?)t["UnreadCount"] ?? (int?)t["unreadCount"] ?? 0;
+                        if (n > 0) unread++;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Bugpunch.BugpunchClient] ChatReplyHeartbeat parse failed: {ex.Message}");
+                yield break;
+            }
+
+            if (unread == 0)
+            {
+                // Server-side guard reset — when the user replies elsewhere
+                // or QA clears the queue, we re-arm the popup.
+                _chatReplyPopupShown = false;
+                yield break;
+            }
+            if (_chatReplyPopupShown) yield break;
+            if (SuppressInteractions) yield break; // double-check — state may have flipped during request
+
+            _chatReplyPopupShown = true;
+            UI.BugpunchChatBoard.Show();
         }
 
         IEnumerator ConnectLoop()
@@ -897,6 +1023,39 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// UnitySendMessage receiver. Fired by the native chat "shell" (Android
+        /// <c>BugpunchReportOverlay.showChatBoard</c> / iOS
+        /// <c>Bugpunch_ShowChatBoard</c>) so native stays native-first while
+        /// the actual chat UI lives in C#. Also used by the recording-bar chat
+        /// shortcut and (eventually) any other native surface that needs to
+        /// surface the chat board.
+        /// </summary>
+        public void OnShowChatBoardRequested(string _)
+        {
+            UI.BugpunchChatBoard.Show();
+        }
+
+        /// <summary>
+        /// UnitySendMessage receiver. Fired by the native recording bar's
+        /// chat icon — routes into the chat board. Kept distinct from
+        /// <see cref="OnShowChatBoardRequested"/> so we can log / instrument
+        /// the two entry points separately later.
+        /// </summary>
+        public void OnRecordingBarChatTapped(string _)
+        {
+            UI.BugpunchChatBoard.Show();
+        }
+
+        /// <summary>
+        /// UnitySendMessage receiver. Fired by the native recording bar's
+        /// feedback icon — routes into the feedback board.
+        /// </summary>
+        public void OnRecordingBarFeedbackTapped(string _)
+        {
+            UI.BugpunchFeedbackBoard.Show();
+        }
+
+        /// <summary>
         /// UnitySendMessage receiver. Fires when the poll response contains
         /// scheduled scripts to run against managed code. Payload is the raw
         /// JSON array: <c>[{"Id":"...","Name":"...","Code":"..."}]</c>. Runs
@@ -951,9 +1110,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void HandleUpgradeToWebSocket()
         {
-            if (SuppressDebugRequests)
+            if (SuppressInteractions)
             {
-                Debug.Log("[Bugpunch.BugpunchClient] Debug session requested but SuppressDebugRequests is true — declining");
+                Debug.Log("[Bugpunch.BugpunchClient] Debug session requested but SuppressInteractions is true — declining");
                 // TODO: respond "busy" to server via poll endpoint
                 return;
             }

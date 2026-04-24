@@ -41,6 +41,7 @@ public class BugpunchReportOverlay {
 
     private static View sWelcomeView;
     private static View sRecordingView;
+    private static View sRequestHelpView;
     private static TextView sTimerLabel;
     private static Handler sHandler;
     private static long sRecordStartTime;
@@ -221,12 +222,264 @@ public class BugpunchReportOverlay {
         });
     }
 
+    // ─── Request Help Picker ──────────────────────────────────────
+    //
+    // Three-choice card shown by `Bugpunch.RequestHelp()`:
+    //   0 → Record a bug   (capture video + report a problem)
+    //   1 → Ask for help   (short question to the dev team)
+    //   2 → Send feedback  (suggest / vote on features)
+    //
+    // Backdrop tap, Cancel button, and the Android system back button all
+    // dismiss with OnRequestHelpCancel. Picked choice dispatches via
+    // UnitySendMessage(CALLBACK_OBJECT, "OnRequestHelpChoice", "<index>").
+
+    public static void showRequestHelp(final Activity activity) {
+        activity.runOnUiThread(() -> {
+            if (sRequestHelpView != null) return;
+
+            Context ctx = activity;
+            int pad = dp(ctx, 24);
+            int padSmall = dp(ctx, 12);
+
+            // Backdrop — full screen semi-transparent, swallows touches
+            FrameLayout backdrop = new FrameLayout(ctx) {
+                @Override
+                public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+                    if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK
+                            && event.getAction() == android.view.KeyEvent.ACTION_UP) {
+                        hideRequestHelp(activity);
+                        sendToUnity("OnRequestHelpCancel", "");
+                        return true;
+                    }
+                    return super.dispatchKeyEvent(event);
+                }
+            };
+            backdrop.setBackgroundColor(Color.parseColor("#99000000"));
+            backdrop.setClickable(true); // consume touches that miss the card
+            backdrop.setFocusable(true);
+            backdrop.setFocusableInTouchMode(true);
+            backdrop.setOnClickListener(v -> {
+                hideRequestHelp(activity);
+                sendToUnity("OnRequestHelpCancel", "");
+            });
+
+            // Scroll wrapper so the card fits landscape orientation
+            ScrollView cardScroll = new ScrollView(ctx);
+            cardScroll.setFillViewport(false);
+            cardScroll.setClipToPadding(false);
+            int screenMargin = dp(ctx, 24);
+            FrameLayout.LayoutParams scrollLp = new FrameLayout.LayoutParams(
+                    dp(ctx, 340), ViewGroup.LayoutParams.WRAP_CONTENT);
+            scrollLp.gravity = Gravity.CENTER;
+            scrollLp.setMargins(0, screenMargin, 0, screenMargin);
+            backdrop.addView(cardScroll, scrollLp);
+
+            // Card container — reuse welcome-card styling (#F0222222, 16dp radius)
+            LinearLayout card = new LinearLayout(ctx);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(pad, pad, pad, pad);
+            card.setClickable(true); // stop clicks propagating to backdrop
+            android.graphics.drawable.GradientDrawable cardBg = new android.graphics.drawable.GradientDrawable();
+            cardBg.setColor(Color.parseColor("#F0222222"));
+            cardBg.setCornerRadius(dp(ctx, 16));
+            card.setBackground(cardBg);
+            cardScroll.addView(card, new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            // Title
+            TextView title = new TextView(ctx);
+            title.setText("What would you like to do?");
+            title.setTextColor(Color.WHITE);
+            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+            title.setTypeface(Typeface.DEFAULT_BOLD);
+            card.addView(title);
+
+            addSpacer(card, dp(ctx, 4));
+
+            // Subtitle
+            TextView subtitle = new TextView(ctx);
+            subtitle.setText("Pick what fits — we'll only bother the dev team with what you send.");
+            subtitle.setTextColor(Color.parseColor("#B8B8B8"));
+            subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            card.addView(subtitle);
+
+            addSpacer(card, padSmall);
+
+            // Three option buttons
+            card.addView(buildPickerOption(ctx, activity, 0,
+                    "Record a bug", "Capture a video + report a problem",
+                    Color.parseColor("#943838"), "bugpunch_help_bug"));
+            addSpacer(card, dp(ctx, 8));
+
+            card.addView(buildPickerOption(ctx, activity, 1,
+                    "Ask for help", "Short question to the dev team",
+                    Color.parseColor("#336199"), "bugpunch_help_ask"));
+            addSpacer(card, dp(ctx, 8));
+
+            card.addView(buildPickerOption(ctx, activity, 2,
+                    "Send feedback", "Suggest / vote on features",
+                    Color.parseColor("#407D4C"), "bugpunch_help_feedback"));
+
+            addSpacer(card, padSmall);
+
+            // Cancel text button
+            TextView cancel = new TextView(ctx);
+            cancel.setText("Cancel");
+            cancel.setTextColor(Color.parseColor("#999999"));
+            cancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            cancel.setGravity(Gravity.CENTER);
+            cancel.setClickable(true);
+            cancel.setPadding(0, dp(ctx, 8), 0, dp(ctx, 4));
+            cancel.setOnClickListener(v -> {
+                hideRequestHelp(activity);
+                sendToUnity("OnRequestHelpCancel", "");
+            });
+            card.addView(cancel);
+
+            // Add to window — focusable so back-button handler fires
+            WindowManager wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
+            WindowManager.LayoutParams wlp = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT);
+            wm.addView(backdrop, wlp);
+            backdrop.requestFocus();
+            sRequestHelpView = backdrop;
+
+            Log.d(TAG, "Request-help picker shown");
+        });
+    }
+
+    private static View buildPickerOption(Context ctx, final Activity activity, final int choice,
+                                          String titleText, String captionText, int accent,
+                                          String iconResName) {
+        LinearLayout btn = new LinearLayout(ctx);
+        btn.setOrientation(LinearLayout.HORIZONTAL);
+        btn.setGravity(Gravity.CENTER_VERTICAL);
+        int ip = dp(ctx, 14);
+        btn.setPadding(ip, dp(ctx, 12), ip, dp(ctx, 12));
+        btn.setClickable(true);
+        btn.setFocusable(true);
+
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.parseColor("#2B2B2B"));
+        bg.setStroke(dp(ctx, 1), Color.parseColor("#474747"));
+        bg.setCornerRadius(dp(ctx, 8));
+        btn.setBackground(bg);
+
+        // Leading icon — falls back to accent dot if drawable isn't bundled.
+        int iconRes = ctx.getResources().getIdentifier(
+                iconResName, "drawable", ctx.getPackageName());
+        if (iconRes != 0) {
+            ImageView iv = new ImageView(ctx);
+            iv.setImageResource(iconRes);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(dp(ctx, 48), dp(ctx, 48));
+            ivLp.rightMargin = dp(ctx, 12);
+            btn.addView(iv, ivLp);
+        } else {
+            View dot = new View(ctx);
+            android.graphics.drawable.GradientDrawable dotBg = new android.graphics.drawable.GradientDrawable();
+            dotBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            dotBg.setColor(accent);
+            dot.setBackground(dotBg);
+            LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(ctx, 10), dp(ctx, 10));
+            dotLp.rightMargin = dp(ctx, 12);
+            btn.addView(dot, dotLp);
+        }
+
+        // Text column
+        LinearLayout textCol = new LinearLayout(ctx);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        btn.addView(textCol, textLp);
+
+        TextView titleLabel = new TextView(ctx);
+        titleLabel.setText(titleText);
+        titleLabel.setTextColor(Color.WHITE);
+        titleLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        titleLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        textCol.addView(titleLabel);
+
+        TextView captionLabel = new TextView(ctx);
+        captionLabel.setText(captionText);
+        captionLabel.setTextColor(Color.parseColor("#B2B2B2"));
+        captionLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        LinearLayout.LayoutParams capLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        capLp.topMargin = dp(ctx, 2);
+        textCol.addView(captionLabel, capLp);
+
+        // Chevron
+        TextView chev = new TextView(ctx);
+        chev.setText("›");
+        chev.setTextColor(Color.parseColor("#8C8C8C"));
+        chev.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        chev.setTypeface(Typeface.DEFAULT_BOLD);
+        LinearLayout.LayoutParams chevLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        chevLp.leftMargin = dp(ctx, 8);
+        btn.addView(chev, chevLp);
+
+        btn.setOnClickListener(v -> {
+            hideRequestHelp(activity);
+            sendToUnity("OnRequestHelpChoice", String.valueOf(choice));
+        });
+
+        return btn;
+    }
+
+    public static void hideRequestHelp(final Activity activity) {
+        activity.runOnUiThread(() -> {
+            if (sRequestHelpView == null) return;
+            try {
+                WindowManager wm = (WindowManager) activity.getSystemService(Context.WINDOW_SERVICE);
+                wm.removeView(sRequestHelpView);
+            } catch (Exception e) {
+                Log.w(TAG, "Error removing request-help view", e);
+            }
+            sRequestHelpView = null;
+        });
+    }
+
+    // ─── Chat Board (native shell) ────────────────────────────────
+    //
+    // The full chat UI lives in C# (BugpunchChatBoard.cs) because it's a
+    // multi-view master-detail widget with polling and we don't want to
+    // reinvent a full chat client natively. This entry point exists so the
+    // SDK's public surface stays native-first: any caller that wants the
+    // chat board goes through INativeDialog.ShowChatBoard, which on Android
+    // reaches here, which bounces the request back into C#.
+    //
+    // Callback chain:
+    //   AndroidDialog.ShowChatBoard()
+    //     → BugpunchReportOverlay.showChatBoard(activity)
+    //       → UnitySendMessage("BugpunchClient", "OnShowChatBoardRequested", "")
+    //         → BugpunchClient.OnShowChatBoardRequested(...)
+    //           → BugpunchChatBoard.Show()
+    public static void showChatBoard(final Activity activity) {
+        // No native UI to draw — just forward the request. Running on the
+        // UI thread keeps this consistent with the other overlay methods
+        // and gives us a single place to add a native pre-check later
+        // (e.g. offline snackbar) without callers needing to care.
+        activity.runOnUiThread(() -> sendToUnity("OnShowChatBoardRequested", ""));
+    }
+
     // ─── Recording Overlay (floating button) ───────────────────────
 
     /**
      * Show the floating recording button. Stays visible until hideRecordingOverlay
      * is called or the app is destroyed.
      * Tap → UnitySendMessage(CALLBACK_OBJECT, "OnReportTapped", "")
+     *
+     * The chat + feedback icons stack above the red record circle so that
+     * any visible recording session also exposes the "Ask the team" / "Send
+     * feedback" shortcuts without needing a second overlay. Piggyback per
+     * the `feedback_indicator_piggyback.md` policy — the recording pill is
+     * already on screen while debug mode is active, so we reuse it.
      */
     public static void showRecordingOverlay(final Activity activity) {
         activity.runOnUiThread(() -> {
@@ -234,12 +487,27 @@ public class BugpunchReportOverlay {
 
             Context ctx = activity;
             int btnSize = dp(ctx, 56);
+            int shortcutSize = dp(ctx, 40);
             int margin = dp(ctx, 16);
 
-            // Container for button + timer
+            // Container for shortcuts + record button + timer
             LinearLayout container = new LinearLayout(ctx);
             container.setOrientation(LinearLayout.VERTICAL);
             container.setGravity(Gravity.CENTER_HORIZONTAL);
+
+            // Chat shortcut (topmost — least destructive action goes first)
+            ShortcutButton chatBtn = new ShortcutButton(ctx, ShortcutButton.ICON_CHAT);
+            LinearLayout.LayoutParams chatLp = new LinearLayout.LayoutParams(shortcutSize, shortcutSize);
+            chatLp.bottomMargin = dp(ctx, 8);
+            container.addView(chatBtn, chatLp);
+            chatBtn.setOnClickListener(v -> sendToUnity("OnRecordingBarChatTapped", ""));
+
+            // Feedback shortcut
+            ShortcutButton feedbackBtn = new ShortcutButton(ctx, ShortcutButton.ICON_FEEDBACK);
+            LinearLayout.LayoutParams feedbackLp = new LinearLayout.LayoutParams(shortcutSize, shortcutSize);
+            feedbackLp.bottomMargin = dp(ctx, 8);
+            container.addView(feedbackBtn, feedbackLp);
+            feedbackBtn.setOnClickListener(v -> sendToUnity("OnRecordingBarFeedbackTapped", ""));
 
             // Red circle button with white square stop icon
             RecordButton button = new RecordButton(ctx, btnSize);
@@ -275,6 +543,9 @@ public class BugpunchReportOverlay {
             // Drag + tap handling — attach to the button itself so taps on
             // the red circle are captured reliably. Pass the container as the
             // view to reposition (the window manages the whole container).
+            // Shortcut buttons above have their own onClick listeners and
+            // absorb their own events, so dragging is only active on the
+            // record button itself.
             button.setOnTouchListener(new DragTouchListener(wm, wlp, container, () -> {
                 sendToUnity("OnReportTapped", "");
             }));
@@ -415,6 +686,99 @@ public class BugpunchReportOverlay {
             // Record dot
             paint.setStyle(Paint.Style.FILL);
             c.drawCircle(body.left + size * 0.25f, body.top + size * 0.2f, size * 0.1f, paint);
+        }
+    }
+
+    /**
+     * Circular shortcut button for the recording overlay — draws a speech
+     * bubble (chat) or lightbulb (feedback) on a muted accent fill. Handles
+     * its own click dispatch via {@link View#setOnClickListener}; taps on
+     * this button don't drag the main overlay (it sits above the record
+     * button's DragTouchListener so events land here first).
+     */
+    static class ShortcutButton extends View {
+        static final int ICON_CHAT = 0;
+        static final int ICON_FEEDBACK = 1;
+        private final int iconType;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        ShortcutButton(Context ctx, int type) {
+            super(ctx);
+            iconType = type;
+            setElevation(dp(ctx, 4));
+            setClickable(true);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float w = getWidth(), h = getHeight();
+            float r = Math.min(w, h) / 2f;
+            float cx = w / 2f, cy = h / 2f;
+
+            // Circular fill — accent colour by icon type, matches the palette
+            // used on the Ask for help / Send feedback picker rows.
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(iconType == ICON_CHAT
+                    ? Color.parseColor("#336199")   // chat blue
+                    : Color.parseColor("#407D4C")); // feedback green
+            canvas.drawCircle(cx, cy, r * 0.92f, paint);
+
+            // White glyph
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setColor(Color.WHITE);
+            paint.setStrokeWidth(r * 0.12f);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+
+            if (iconType == ICON_CHAT) {
+                drawChat(canvas, cx, cy, r * 0.5f);
+            } else {
+                drawLightbulb(canvas, cx, cy, r * 0.5f);
+            }
+        }
+
+        private void drawChat(Canvas c, float cx, float cy, float s) {
+            // Rounded-rect speech bubble with a little tail on the bottom-left.
+            float bw = s * 1.7f, bh = s * 1.2f;
+            RectF body = new RectF(cx - bw / 2, cy - bh / 2 - s * 0.1f,
+                    cx + bw / 2, cy + bh / 2 - s * 0.1f);
+            paint.setStyle(Paint.Style.STROKE);
+            c.drawRoundRect(body, s * 0.25f, s * 0.25f, paint);
+
+            // Tail (two short strokes from bottom-left of bubble down-left).
+            Path tail = new Path();
+            tail.moveTo(body.left + s * 0.3f, body.bottom);
+            tail.lineTo(body.left + s * 0.1f, body.bottom + s * 0.4f);
+            tail.lineTo(body.left + s * 0.7f, body.bottom - s * 0.05f);
+            c.drawPath(tail, paint);
+
+            // Three dots inside — signals "talking".
+            paint.setStyle(Paint.Style.FILL);
+            float dotR = s * 0.1f;
+            float dotY = cy - s * 0.1f;
+            c.drawCircle(cx - s * 0.45f, dotY, dotR, paint);
+            c.drawCircle(cx, dotY, dotR, paint);
+            c.drawCircle(cx + s * 0.45f, dotY, dotR, paint);
+        }
+
+        private void drawLightbulb(Canvas c, float cx, float cy, float s) {
+            // Bulb = circle on top of a short neck + base.
+            paint.setStyle(Paint.Style.STROKE);
+            c.drawCircle(cx, cy - s * 0.2f, s * 0.7f, paint);
+
+            // Base (trapezoid-ish: two short horizontals)
+            Path base = new Path();
+            base.moveTo(cx - s * 0.35f, cy + s * 0.55f);
+            base.lineTo(cx + s * 0.35f, cy + s * 0.55f);
+            base.moveTo(cx - s * 0.25f, cy + s * 0.8f);
+            base.lineTo(cx + s * 0.25f, cy + s * 0.8f);
+            c.drawPath(base, paint);
+
+            // Filament hint inside the bulb (two short lines)
+            paint.setStyle(Paint.Style.FILL);
+            float fR = s * 0.08f;
+            c.drawCircle(cx - s * 0.18f, cy - s * 0.15f, fR, paint);
+            c.drawCircle(cx + s * 0.18f, cy - s * 0.15f, fR, paint);
         }
     }
 

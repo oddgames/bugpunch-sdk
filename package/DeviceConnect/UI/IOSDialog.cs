@@ -17,6 +17,8 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         static Action _welcomeConfirmCallback;
         static Action _welcomeCancelCallback;
         static Action _reportTappedCallback;
+        static Action<int> _requestHelpChoiceCallback;
+        static Action _requestHelpCancelCallback;
 
         delegate void PermissionCallbackDelegate(int result);
         delegate void BugSubmitDelegate(string title, string description, string severity);
@@ -24,6 +26,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         delegate void CrashSubmitDelegate(string title, string description, string severity, int includeVideo, int includeLogs);
         delegate void CrashDismissDelegate();
         delegate void VoidCallbackDelegate();
+        delegate void IntCallbackDelegate(int value);
 
         [DllImport("__Internal")] static extern void Bugpunch_ShowPermissionDialog(string title, string message, PermissionCallbackDelegate cb);
         [DllImport("__Internal")] static extern void Bugpunch_ShowBugReportDialog(BugSubmitDelegate onSubmit, BugCancelDelegate onCancel);
@@ -35,6 +38,8 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         [DllImport("__Internal")] static extern void Bugpunch_ShowRecordingOverlay(VoidCallbackDelegate onReportTapped);
         [DllImport("__Internal")] static extern void Bugpunch_HideRecordingOverlay();
         [DllImport("__Internal")] static extern void Bugpunch_ResetRecordingTimer();
+        [DllImport("__Internal")] static extern void Bugpunch_ShowRequestHelp(IntCallbackDelegate onChoice, VoidCallbackDelegate onCancel);
+        [DllImport("__Internal")] static extern void Bugpunch_ShowChatBoard();
 
         public void ShowPermission(string scriptName, string scriptDescription, Action<PermissionResult> callback)
         {
@@ -161,6 +166,38 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         public void HideRecordingOverlay()
         {
             Bugpunch_HideRecordingOverlay();
+        }
+
+        public void ShowRequestHelp(Action<int> onChoice, Action onCancel)
+        {
+            _requestHelpChoiceCallback = onChoice;
+            _requestHelpCancelCallback = onCancel;
+            Bugpunch_ShowRequestHelp(OnRequestHelpChoice, OnRequestHelpCancel);
+        }
+
+        [MonoPInvokeCallback(typeof(IntCallbackDelegate))]
+        static void OnRequestHelpChoice(int value)
+        {
+            var cb = _requestHelpChoiceCallback;
+            _requestHelpChoiceCallback = null;
+            _requestHelpCancelCallback = null;
+            cb?.Invoke(value);
+        }
+
+        [MonoPInvokeCallback(typeof(VoidCallbackDelegate))]
+        static void OnRequestHelpCancel()
+        {
+            var cb = _requestHelpCancelCallback;
+            _requestHelpChoiceCallback = null;
+            _requestHelpCancelCallback = null;
+            cb?.Invoke();
+        }
+
+        public void ShowChatBoard()
+        {
+            // Native shell — the heavy lifting lives in C# (BugpunchChatBoard)
+            // so iOS just bounces a UnitySendMessage back into Unity.
+            Bugpunch_ShowChatBoard();
         }
     }
 }

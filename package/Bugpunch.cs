@@ -1,4 +1,5 @@
 using ODDGames.Bugpunch.DeviceConnect;
+using ODDGames.Bugpunch.DeviceConnect.UI;
 using UnityEngine;
 
 namespace ODDGames.Bugpunch
@@ -43,6 +44,19 @@ namespace ODDGames.Bugpunch
         {
             if (!EnsureStarted()) return;
             BugpunchNative.ReportBug("feedback", null, message, null);
+        }
+
+        /// <summary>
+        /// Show a 3-button picker — "Record a bug" (enters debug mode),
+        /// "Ask for help" (opens the existing bug-report form routed as type="help"),
+        /// or "Send feedback" (opens the feedback board). Intended as a single
+        /// convenient entry point for a tester / player to choose what they want to
+        /// do without the game binding three separate UI buttons.
+        /// </summary>
+        public static void RequestHelp()
+        {
+            if (!EnsureStarted()) return;
+            BugpunchRequestHelpPicker.Show();
         }
 
         /// <summary>

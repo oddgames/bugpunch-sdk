@@ -857,5 +857,21 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             if (_doc != null)
                 _doc.rootVisualElement.Clear();
         }
+
+        public void ShowRequestHelp(Action<int> onChoice, Action onCancel)
+        {
+            // Editor + standalone fall back to the existing UI Toolkit picker —
+            // it already owns its own UIDocument host so it won't clobber this
+            // dialog's root.
+            BugpunchRequestHelpPicker.ShowUIToolkitFallback(onChoice, onCancel);
+        }
+
+        public void ShowChatBoard()
+        {
+            // The chat board owns its own UIDocument host; calling directly
+            // won't clobber other dialogs and lands on the right sub-view
+            // based on server state (threads exist vs empty vs disabled).
+            BugpunchChatBoard.Show();
+        }
     }
 }

@@ -90,6 +90,8 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         internal static Action _welcomeConfirmCallback;
         internal static Action _welcomeCancelCallback;
         internal static Action _reportTappedCallback;
+        internal static Action<int> _requestHelpChoiceCallback;
+        internal static Action _requestHelpCancelCallback;
 
         public void ShowReportWelcome(Action onConfirm, Action onCancel)
         {
@@ -118,6 +120,29 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 .GetStatic<AndroidJavaObject>("currentActivity");
             using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
             overlayClass.CallStatic("hideRecordingOverlay", activity);
+        }
+
+        public void ShowRequestHelp(Action<int> onChoice, Action onCancel)
+        {
+            _requestHelpChoiceCallback = onChoice;
+            _requestHelpCancelCallback = onCancel;
+
+            using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
+                .GetStatic<AndroidJavaObject>("currentActivity");
+            using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
+            overlayClass.CallStatic("showRequestHelp", activity);
+        }
+
+        public void ShowChatBoard()
+        {
+            // Native chat "shell" — the actual UI is C# (see BugpunchChatBoard)
+            // because the chat board is complex and we don't want to reinvent
+            // a full chat widget in Java. Native just forwards the request
+            // back into Unity via UnitySendMessage.
+            using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
+                .GetStatic<AndroidJavaObject>("currentActivity");
+            using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
+            overlayClass.CallStatic("showChatBoard", activity);
         }
 
         public void ShowCrashReport(CrashReportContext context, Action<CrashReportResult> onSubmit, Action onDismiss)
@@ -261,6 +286,45 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         {
             var cb = AndroidDialog._reportTappedCallback;
             if (cb != null) MainThread.Enqueue(() => cb.Invoke());
+        }
+
+        // Request-help picker — native card sends "0", "1" or "2" via UnitySendMessage.
+        void OnRequestHelpChoice(string message)
+        {
+            var cb = AndroidDialog._requestHelpChoiceCallback;
+            AndroidDialog._requestHelpChoiceCallback = null;
+            AndroidDialog._requestHelpCancelCallback = null;
+            if (cb == null) return;
+            if (!int.TryParse(message, out var idx)) return;
+            MainThread.Enqueue(() => cb.Invoke(idx));
+        }
+
+        void OnRequestHelpCancel(string message)
+        {
+            var cb = AndroidDialog._requestHelpCancelCallback;
+            AndroidDialog._requestHelpChoiceCallback = null;
+            AndroidDialog._requestHelpCancelCallback = null;
+            if (cb != null) MainThread.Enqueue(() => cb.Invoke());
+        }
+
+        // Chat board request — native "shell" forwards here so the Unity
+        // side can open the UIToolkit chat board. Same GameObject receiver as
+        // the rest of the report overlay callbacks, kept consistent so the
+        // BugpunchReportOverlay Java class only has to know one target name.
+        void OnShowChatBoardRequested(string message)
+        {
+            MainThread.Enqueue(() => BugpunchChatBoard.Show());
+        }
+
+        // Recording-bar shortcut taps — same routing, different entry point.
+        void OnRecordingBarChatTapped(string message)
+        {
+            MainThread.Enqueue(() => BugpunchChatBoard.Show());
+        }
+
+        void OnRecordingBarFeedbackTapped(string message)
+        {
+            MainThread.Enqueue(() => BugpunchFeedbackBoard.Show());
         }
     }
 

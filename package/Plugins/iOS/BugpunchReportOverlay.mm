@@ -10,6 +10,11 @@
 
 #import <UIKit/UIKit.h>
 
+// UnitySendMessage is provided by the Unity runtime (libiPhone-lib.a).
+// Declared here so the shortcut buttons on the recording overlay can
+// bounce taps back to C# without needing a C function pointer callback.
+extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg);
+
 // Interface must precede the C-linkage setup code below that addresses the
 // class via [BPOverlayActions class]. Implementation stays near the bottom
 // next to the helpers it uses.
@@ -18,9 +23,15 @@
 + (void)onWelcomeCancel;
 + (void)onRecordingTapped;
 + (void)onRecordingDragged:(UIPanGestureRecognizer *)pan;
++ (void)onRequestHelpChoice:(UIButton *)sender;
++ (void)onRequestHelpCancel;
++ (void)onRequestHelpBackdrop:(UITapGestureRecognizer *)tap;
++ (void)onRecordingBarChatTapped;
++ (void)onRecordingBarFeedbackTapped;
 @end
 
 typedef void (*ReportOverlayCallback)(void);
+typedef void (*ReportOverlayChoiceCallback)(int choice);
 
 // ─── Icon Drawing Helpers ───────────────────────────────────────
 
@@ -101,6 +112,85 @@ static void DrawVideoCameraIcon(CGContext *ctx, CGRect rect) {
 }
 @end
 
+// ─── Recording-bar Shortcut Buttons ─────────────────────────────
+//
+// Small circular buttons stacked above the red record circle. Drawn with
+// CG so we don't need to ship more PNGs — chat is a speech bubble on blue,
+// feedback is a lightbulb on green, matching the picker palette. Handles
+// its own tap dispatch via UIControl events.
+typedef NS_ENUM(NSInteger, BPShortcutKind) {
+    BPShortcutChat = 0,
+    BPShortcutFeedback = 1,
+};
+
+@interface BPShortcutButton : UIButton
+@property(nonatomic, assign) BPShortcutKind kind;
+@end
+@implementation BPShortcutButton
+- (void)drawRect:(CGRect)rect {
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (!ctx) return;
+
+    CGFloat w = rect.size.width, h = rect.size.height;
+    CGFloat cx = w / 2.0f, cy = h / 2.0f;
+    CGFloat r = MIN(w, h) / 2.0f;
+
+    // Accent-coloured circle fill
+    UIColor *fill = (self.kind == BPShortcutChat)
+        ? [UIColor colorWithRed:0.20 green:0.38 blue:0.60 alpha:1.0]   // chat blue
+        : [UIColor colorWithRed:0.25 green:0.49 blue:0.30 alpha:1.0];  // feedback green
+    CGContextSetFillColorWithColor(ctx, fill.CGColor);
+    CGContextFillEllipseInRect(ctx, CGRectMake(cx - r * 0.92f, cy - r * 0.92f,
+                                                r * 1.84f, r * 1.84f));
+
+    // White glyph (stroke)
+    CGContextSetStrokeColorWithColor(ctx, [UIColor whiteColor].CGColor);
+    CGContextSetLineWidth(ctx, r * 0.12f);
+    CGContextSetLineCap(ctx, kCGLineCapRound);
+    CGContextSetLineJoin(ctx, kCGLineJoinRound);
+
+    CGFloat s = r * 0.5f;
+    if (self.kind == BPShortcutChat) {
+        // Speech bubble with 3 dots + tail
+        CGFloat bw = s * 1.7f, bh = s * 1.2f;
+        CGRect body = CGRectMake(cx - bw / 2.0f, cy - bh / 2.0f - s * 0.1f, bw, bh);
+        UIBezierPath *bodyPath = [UIBezierPath bezierPathWithRoundedRect:body cornerRadius:s * 0.25f];
+        CGContextAddPath(ctx, bodyPath.CGPath);
+        CGContextStrokePath(ctx);
+
+        // Tail
+        CGContextMoveToPoint(ctx, CGRectGetMinX(body) + s * 0.3f, CGRectGetMaxY(body));
+        CGContextAddLineToPoint(ctx, CGRectGetMinX(body) + s * 0.1f, CGRectGetMaxY(body) + s * 0.4f);
+        CGContextAddLineToPoint(ctx, CGRectGetMinX(body) + s * 0.7f, CGRectGetMaxY(body) - s * 0.05f);
+        CGContextStrokePath(ctx);
+
+        // Three dots
+        CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
+        CGFloat dotR = s * 0.1f;
+        CGFloat dotY = cy - s * 0.1f;
+        CGContextFillEllipseInRect(ctx, CGRectMake(cx - s * 0.45f - dotR, dotY - dotR, dotR * 2, dotR * 2));
+        CGContextFillEllipseInRect(ctx, CGRectMake(cx - dotR, dotY - dotR, dotR * 2, dotR * 2));
+        CGContextFillEllipseInRect(ctx, CGRectMake(cx + s * 0.45f - dotR, dotY - dotR, dotR * 2, dotR * 2));
+    } else {
+        // Lightbulb
+        CGContextStrokeEllipseInRect(ctx, CGRectMake(cx - s * 0.7f, cy - s * 0.2f - s * 0.7f,
+                                                      s * 1.4f, s * 1.4f));
+        // Base — two short horizontal strokes
+        CGContextMoveToPoint(ctx, cx - s * 0.35f, cy + s * 0.55f);
+        CGContextAddLineToPoint(ctx, cx + s * 0.35f, cy + s * 0.55f);
+        CGContextMoveToPoint(ctx, cx - s * 0.25f, cy + s * 0.8f);
+        CGContextAddLineToPoint(ctx, cx + s * 0.25f, cy + s * 0.8f);
+        CGContextStrokePath(ctx);
+
+        // Filament dots
+        CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
+        CGFloat fR = s * 0.08f;
+        CGContextFillEllipseInRect(ctx, CGRectMake(cx - s * 0.18f - fR, cy - s * 0.15f - fR, fR * 2, fR * 2));
+        CGContextFillEllipseInRect(ctx, CGRectMake(cx + s * 0.18f - fR, cy - s * 0.15f - fR, fR * 2, fR * 2));
+    }
+}
+@end
+
 // ─── Record Button View ─────────────────────────────────────────
 
 @interface BPRecordButton : UIView
@@ -131,12 +221,15 @@ static void DrawVideoCameraIcon(CGContext *ctx, CGRect rect) {
 
 static UIView *sWelcomeBackdrop = nil;
 static UIView *sRecordingContainer = nil;
+static UIView *sRequestHelpBackdrop = nil;
 static UILabel *sTimerLabel = nil;
 static NSTimer *sTimer = nil;
 static NSDate *sRecordStartTime = nil;
 static ReportOverlayCallback sWelcomeConfirmCb = NULL;
 static ReportOverlayCallback sWelcomeCancelCb = NULL;
 static ReportOverlayCallback sReportTappedCb = NULL;
+static ReportOverlayChoiceCallback sRequestHelpChoiceCb = NULL;
+static ReportOverlayCallback sRequestHelpCancelCb = NULL;
 
 // ─── Drag State ─────────────────────────────────────────────────
 
@@ -175,9 +268,223 @@ static void UpdateTimer(void) {
     sTimerLabel.text = [NSString stringWithFormat:@"%d:%02d", m, s];
 }
 
+// ─── Request-Help Picker Helpers ────────────────────────────────
+
+static UIButton* BuildRequestHelpOption(int choice, NSString* title, NSString* caption, UIColor* accent, NSString* iconName) {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.tag = choice;
+    btn.backgroundColor = [UIColor colorWithWhite:0.17 alpha:1];
+    btn.layer.cornerRadius = 8;
+    btn.layer.borderWidth = 1;
+    btn.layer.borderColor = [UIColor colorWithWhite:0.28 alpha:1].CGColor;
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    [btn addTarget:[BPOverlayActions class] action:@selector(onRequestHelpChoice:)
+          forControlEvents:UIControlEventTouchUpInside];
+
+    // Leading icon — tries the packaged PNG first (auto-picks @2x/@3x via
+    // UIImage imageNamed:), falls back to an accent dot if the resource is
+    // missing from the app bundle.
+    UIView *leading = nil;
+    UIImage *iconImg = iconName ? [UIImage imageNamed:iconName] : nil;
+    if (!iconImg && iconName) {
+        NSString *path = [[NSBundle mainBundle] pathForResource:iconName ofType:@"png"];
+        if (path) iconImg = [UIImage imageWithContentsOfFile:path];
+    }
+    if (iconImg) {
+        UIImageView *iv = [[UIImageView alloc] initWithImage:iconImg];
+        iv.contentMode = UIViewContentModeScaleAspectFit;
+        iv.userInteractionEnabled = NO;
+        iv.translatesAutoresizingMaskIntoConstraints = NO;
+        [btn addSubview:iv];
+        leading = iv;
+    } else {
+        UIView *dot = [[UIView alloc] init];
+        dot.backgroundColor = accent;
+        dot.layer.cornerRadius = 5;
+        dot.userInteractionEnabled = NO;
+        dot.translatesAutoresizingMaskIntoConstraints = NO;
+        [btn addSubview:dot];
+        leading = dot;
+    }
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.text = title;
+    titleLabel.font = [UIFont boldSystemFontOfSize:15];
+    titleLabel.textColor = [UIColor whiteColor];
+    titleLabel.userInteractionEnabled = NO;
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [btn addSubview:titleLabel];
+
+    UILabel *captionLabel = [[UILabel alloc] init];
+    captionLabel.text = caption;
+    captionLabel.font = [UIFont systemFontOfSize:12];
+    captionLabel.textColor = [UIColor colorWithWhite:0.7 alpha:1];
+    captionLabel.numberOfLines = 0;
+    captionLabel.userInteractionEnabled = NO;
+    captionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [btn addSubview:captionLabel];
+
+    UILabel *chev = [[UILabel alloc] init];
+    chev.text = @"›";
+    chev.font = [UIFont boldSystemFontOfSize:20];
+    chev.textColor = [UIColor colorWithWhite:0.55 alpha:1];
+    chev.userInteractionEnabled = NO;
+    chev.translatesAutoresizingMaskIntoConstraints = NO;
+    [btn addSubview:chev];
+
+    BOOL hasIcon = [leading isKindOfClass:[UIImageView class]];
+    CGFloat leadingSize = hasIcon ? 48 : 10;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [btn.heightAnchor constraintGreaterThanOrEqualToConstant:hasIcon ? 72 : 58],
+
+        [leading.leadingAnchor constraintEqualToAnchor:btn.leadingAnchor constant:14],
+        [leading.centerYAnchor constraintEqualToAnchor:btn.centerYAnchor],
+        [leading.widthAnchor constraintEqualToConstant:leadingSize],
+        [leading.heightAnchor constraintEqualToConstant:leadingSize],
+
+        [titleLabel.leadingAnchor constraintEqualToAnchor:leading.trailingAnchor constant:12],
+        [titleLabel.topAnchor constraintEqualToAnchor:btn.topAnchor constant:12],
+        [titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:chev.leadingAnchor constant:-8],
+
+        [captionLabel.leadingAnchor constraintEqualToAnchor:titleLabel.leadingAnchor],
+        [captionLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:2],
+        [captionLabel.trailingAnchor constraintLessThanOrEqualToAnchor:chev.leadingAnchor constant:-8],
+        [captionLabel.bottomAnchor constraintEqualToAnchor:btn.bottomAnchor constant:-12],
+
+        [chev.trailingAnchor constraintEqualToAnchor:btn.trailingAnchor constant:-14],
+        [chev.centerYAnchor constraintEqualToAnchor:btn.centerYAnchor],
+    ]];
+
+    return btn;
+}
+
 // ─── C Bridge Functions ─────────────────────────────────────────
 
 extern "C" {
+
+void Bugpunch_ShowRequestHelp(ReportOverlayChoiceCallback onChoice, ReportOverlayCallback onCancel) {
+    sRequestHelpChoiceCb = onChoice;
+    sRequestHelpCancelCb = onCancel;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (sRequestHelpBackdrop) return;
+
+        UIView *root = GetRootView();
+        if (!root) return;
+
+        CGFloat pad = 24;
+        CGFloat cardW = 340;
+
+        // Backdrop — matches welcome card's black 0.6
+        sRequestHelpBackdrop = [[UIView alloc] initWithFrame:root.bounds];
+        sRequestHelpBackdrop.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
+        sRequestHelpBackdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [root addSubview:sRequestHelpBackdrop];
+
+        // Tap-outside-to-cancel — recognizer on backdrop; card cancels it via its own swallow view
+        UITapGestureRecognizer *bgTap = [[UITapGestureRecognizer alloc]
+            initWithTarget:[BPOverlayActions class] action:@selector(onRequestHelpBackdrop:)];
+        [sRequestHelpBackdrop addGestureRecognizer:bgTap];
+
+        // Card
+        UIView *card = [[UIView alloc] init];
+        card.backgroundColor = [UIColor colorWithWhite:0.13 alpha:0.97];
+        card.layer.cornerRadius = 12;
+        card.translatesAutoresizingMaskIntoConstraints = NO;
+        // Swallow taps on card so the backdrop recognizer doesn't fire when
+        // the user taps on empty space inside the card.
+        UITapGestureRecognizer *cardTap = [[UITapGestureRecognizer alloc] initWithTarget:nil action:NULL];
+        cardTap.cancelsTouchesInView = YES;
+        [card addGestureRecognizer:cardTap];
+        [sRequestHelpBackdrop addSubview:card];
+
+        // Title
+        UILabel *title = [[UILabel alloc] init];
+        title.text = @"What would you like to do?";
+        title.font = [UIFont boldSystemFontOfSize:20];
+        title.textColor = [UIColor whiteColor];
+        title.numberOfLines = 0;
+        title.translatesAutoresizingMaskIntoConstraints = NO;
+        [card addSubview:title];
+
+        // Subtitle
+        UILabel *subtitle = [[UILabel alloc] init];
+        subtitle.text = @"Pick what fits — we'll only bother the dev team with what you send.";
+        subtitle.font = [UIFont systemFontOfSize:13];
+        subtitle.textColor = [UIColor colorWithWhite:0.72 alpha:1];
+        subtitle.numberOfLines = 0;
+        subtitle.translatesAutoresizingMaskIntoConstraints = NO;
+        [card addSubview:subtitle];
+
+        // Three options
+        UIButton *opt0 = BuildRequestHelpOption(0, @"Record a bug",
+            @"Capture a video + report a problem",
+            [UIColor colorWithRed:0.58 green:0.22 blue:0.22 alpha:1],
+            @"bugpunch-help-bug");
+        [card addSubview:opt0];
+
+        UIButton *opt1 = BuildRequestHelpOption(1, @"Ask for help",
+            @"Short question to the dev team",
+            [UIColor colorWithRed:0.20 green:0.38 blue:0.60 alpha:1],
+            @"bugpunch-help-ask");
+        [card addSubview:opt1];
+
+        UIButton *opt2 = BuildRequestHelpOption(2, @"Send feedback",
+            @"Suggest / vote on features",
+            [UIColor colorWithRed:0.25 green:0.49 blue:0.30 alpha:1],
+            @"bugpunch-help-feedback");
+        [card addSubview:opt2];
+
+        // Cancel button
+        UIButton *cancel = [UIButton buttonWithType:UIButtonTypeSystem];
+        [cancel setTitle:@"Cancel" forState:UIControlStateNormal];
+        [cancel setTitleColor:[UIColor colorWithWhite:0.6 alpha:1] forState:UIControlStateNormal];
+        cancel.titleLabel.font = [UIFont systemFontOfSize:14];
+        cancel.translatesAutoresizingMaskIntoConstraints = NO;
+        [cancel addTarget:[BPOverlayActions class] action:@selector(onRequestHelpCancel)
+                 forControlEvents:UIControlEventTouchUpInside];
+        [card addSubview:cancel];
+
+        // Layout
+        [NSLayoutConstraint activateConstraints:@[
+            [card.centerXAnchor constraintEqualToAnchor:sRequestHelpBackdrop.centerXAnchor],
+            [card.centerYAnchor constraintEqualToAnchor:sRequestHelpBackdrop.centerYAnchor],
+            [card.widthAnchor constraintEqualToConstant:cardW],
+
+            [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:pad],
+            [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
+            [title.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
+
+            [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:6],
+            [subtitle.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
+            [subtitle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
+
+            [opt0.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:16],
+            [opt0.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
+            [opt0.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
+
+            [opt1.topAnchor constraintEqualToAnchor:opt0.bottomAnchor constant:8],
+            [opt1.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
+            [opt1.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
+
+            [opt2.topAnchor constraintEqualToAnchor:opt1.bottomAnchor constant:8],
+            [opt2.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
+            [opt2.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
+
+            [cancel.topAnchor constraintEqualToAnchor:opt2.bottomAnchor constant:12],
+            [cancel.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
+            [cancel.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-(pad - 4)],
+        ]];
+    });
+}
+
+void Bugpunch_HideRequestHelp(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [sRequestHelpBackdrop removeFromSuperview];
+        sRequestHelpBackdrop = nil;
+    });
+}
 
 void Bugpunch_ShowReportWelcome(ReportOverlayCallback onConfirm, ReportOverlayCallback onCancel) {
     sWelcomeConfirmCb = onConfirm;
@@ -331,23 +638,77 @@ void Bugpunch_ShowRecordingOverlay(ReportOverlayCallback onReportTapped) {
         if (!root) return;
 
         CGFloat btnSize = 56;
+        CGFloat shortcutSize = 40;
+        CGFloat shortcutGap = 8;
         CGFloat margin = 16;
 
-        // Container
-        sRecordingContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, btnSize + 20, btnSize + 24)];
+        // Container tall enough for [chat][gap][feedback][gap][record][timer]
+        CGFloat contentW = btnSize + 20;
+        CGFloat shortcutX = (contentW - shortcutSize) / 2.0f;
+        CGFloat shortcutsTotal = (shortcutSize + shortcutGap) * 2;
+        CGFloat contentH = shortcutsTotal + btnSize + 24;
+
+        sRecordingContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, contentW, contentH)];
         sRecordingContainer.center = CGPointMake(
-            root.bounds.size.width - btnSize/2 - margin,
-            root.bounds.size.height - btnSize/2 - margin - 40);
+            root.bounds.size.width - contentW / 2 - margin,
+            root.bounds.size.height - contentH / 2 - margin - 40);
         [root addSubview:sRecordingContainer];
 
-        // Record button
-        BPRecordButton *btn = [[BPRecordButton alloc] initWithFrame:CGRectMake(10, 0, btnSize, btnSize)];
+        // Chat shortcut (topmost)
+        BPShortcutButton *chatBtn = [[BPShortcutButton alloc]
+            initWithFrame:CGRectMake(shortcutX, 0, shortcutSize, shortcutSize)];
+        chatBtn.kind = BPShortcutChat;
+        chatBtn.backgroundColor = [UIColor clearColor];
+        chatBtn.layer.shadowColor = [UIColor blackColor].CGColor;
+        chatBtn.layer.shadowOffset = CGSizeMake(0, 2);
+        chatBtn.layer.shadowOpacity = 0.4;
+        chatBtn.layer.shadowRadius = 3;
+        [chatBtn addTarget:[BPOverlayActions class]
+                    action:@selector(onRecordingBarChatTapped)
+          forControlEvents:UIControlEventTouchUpInside];
+        [sRecordingContainer addSubview:chatBtn];
+
+        // Feedback shortcut (below chat)
+        BPShortcutButton *feedbackBtn = [[BPShortcutButton alloc]
+            initWithFrame:CGRectMake(shortcutX, shortcutSize + shortcutGap, shortcutSize, shortcutSize)];
+        feedbackBtn.kind = BPShortcutFeedback;
+        feedbackBtn.backgroundColor = [UIColor clearColor];
+        feedbackBtn.layer.shadowColor = [UIColor blackColor].CGColor;
+        feedbackBtn.layer.shadowOffset = CGSizeMake(0, 2);
+        feedbackBtn.layer.shadowOpacity = 0.4;
+        feedbackBtn.layer.shadowRadius = 3;
+        [feedbackBtn addTarget:[BPOverlayActions class]
+                        action:@selector(onRecordingBarFeedbackTapped)
+              forControlEvents:UIControlEventTouchUpInside];
+        [sRecordingContainer addSubview:feedbackBtn];
+
+        // Record button — sits below the shortcuts. Pan + tap below drive
+        // it via gestures attached to a wrapper view.
+        CGFloat recordY = shortcutsTotal;
+        UIView *recordWrapper = [[UIView alloc] initWithFrame:
+            CGRectMake(10, recordY, btnSize, btnSize)];
+        recordWrapper.backgroundColor = [UIColor clearColor];
+        [sRecordingContainer addSubview:recordWrapper];
+
+        BPRecordButton *btn = [[BPRecordButton alloc] initWithFrame:
+            CGRectMake(0, 0, btnSize, btnSize)];
         btn.backgroundColor = [UIColor clearColor];
         btn.userInteractionEnabled = NO;
-        [sRecordingContainer addSubview:btn];
+        [recordWrapper addSubview:btn];
+
+        // Tap + pan gestures are on the record wrapper specifically, NOT
+        // the full container — we don't want a tap on the shortcut buttons
+        // to also fire the record-stop callback.
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
+            initWithTarget:[BPOverlayActions class] action:@selector(onRecordingTapped)];
+        [recordWrapper addGestureRecognizer:tap];
+
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc]
+            initWithTarget:[BPOverlayActions class] action:@selector(onRecordingDragged:)];
+        [recordWrapper addGestureRecognizer:pan];
 
         // Timer label
-        sTimerLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, btnSize + 4, btnSize + 20, 16)];
+        sTimerLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, recordY + btnSize + 4, contentW, 16)];
         sTimerLabel.text = @"0:00";
         sTimerLabel.font = [UIFont boldSystemFontOfSize:11];
         sTimerLabel.textColor = [UIColor whiteColor];
@@ -358,21 +719,11 @@ void Bugpunch_ShowRecordingOverlay(ReportOverlayCallback onReportTapped) {
         sTimerLabel.layer.shadowRadius = 1;
         [sRecordingContainer addSubview:sTimerLabel];
 
-        // Drop shadow on container
+        // Drop shadow on container (record button's outer glow)
         sRecordingContainer.layer.shadowColor = [UIColor blackColor].CGColor;
         sRecordingContainer.layer.shadowOffset = CGSizeMake(0, 3);
         sRecordingContainer.layer.shadowOpacity = 0.4;
         sRecordingContainer.layer.shadowRadius = 4;
-
-        // Tap gesture
-        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
-            initWithTarget:[BPOverlayActions class] action:@selector(onRecordingTapped)];
-        [sRecordingContainer addGestureRecognizer:tap];
-
-        // Pan (drag) gesture
-        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc]
-            initWithTarget:[BPOverlayActions class] action:@selector(onRecordingDragged:)];
-        [sRecordingContainer addGestureRecognizer:pan];
 
         // Start timer
         sRecordStartTime = [NSDate date];
@@ -396,6 +747,17 @@ void Bugpunch_ResetRecordingTimer(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         sRecordStartTime = [NSDate date];
         if (sTimerLabel) sTimerLabel.text = @"0:00";
+    });
+}
+
+// Native "shell" for the chat board. The actual UI is C# — iOS just
+// forwards to Unity via UnitySendMessage. Routed through the existing
+// "BugpunchReportCallback" GameObject so both platforms land on the same
+// ReportOverlayCallback MonoBehaviour — keeps the shell parity Android ↔
+// iOS without adding yet another UnitySendMessage target.
+void Bugpunch_ShowChatBoard(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UnitySendMessage("BugpunchReportCallback", "OnShowChatBoardRequested", "");
     });
 }
 
@@ -434,6 +796,45 @@ void Bugpunch_ResetRecordingTimer(void) {
         view.center = CGPointMake(sViewStartCenter.x + translation.x,
                                    sViewStartCenter.y + translation.y);
     }
+}
+
++ (void)onRequestHelpChoice:(UIButton *)sender {
+    int choice = (int)sender.tag;
+    ReportOverlayChoiceCallback cb = sRequestHelpChoiceCb;
+    sRequestHelpChoiceCb = NULL;
+    sRequestHelpCancelCb = NULL;
+    Bugpunch_HideRequestHelp();
+    if (cb) cb(choice);
+}
+
++ (void)onRequestHelpCancel {
+    ReportOverlayCallback cb = sRequestHelpCancelCb;
+    sRequestHelpChoiceCb = NULL;
+    sRequestHelpCancelCb = NULL;
+    Bugpunch_HideRequestHelp();
+    if (cb) cb();
+}
+
++ (void)onRequestHelpBackdrop:(UITapGestureRecognizer *)tap {
+    // Only dismiss when the tap actually lands on the backdrop itself
+    // (not on the card, which has its own swallow recognizer).
+    if (tap.view != sRequestHelpBackdrop) return;
+    CGPoint loc = [tap locationInView:sRequestHelpBackdrop];
+    for (UIView *sub in sRequestHelpBackdrop.subviews) {
+        if (CGRectContainsPoint(sub.frame, loc)) return; // tap hit the card
+    }
+    [BPOverlayActions onRequestHelpCancel];
+}
+
++ (void)onRecordingBarChatTapped {
+    // Bounce to C#; the chat board lives there (see BugpunchChatBoard.cs).
+    // Target matches the Android side via BugpunchReportCallback so both
+    // platforms land on the same ReportOverlayCallback MonoBehaviour.
+    UnitySendMessage("BugpunchReportCallback", "OnRecordingBarChatTapped", "");
+}
+
++ (void)onRecordingBarFeedbackTapped {
+    UnitySendMessage("BugpunchReportCallback", "OnRecordingBarFeedbackTapped", "");
 }
 
 @end

@@ -72,6 +72,24 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         /// </summary>
         void HideRecordingOverlay();
 
+        /// <summary>
+        /// Show the 3-button "What would you like to do?" picker used by
+        /// <c>Bugpunch.RequestHelp()</c>. The callback fires with one of:
+        /// 0 = Record a bug, 1 = Ask for help, 2 = Send feedback.
+        /// <paramref name="onCancel"/> fires when the user dismisses the picker
+        /// without picking an option (backdrop tap, cancel button, system back).
+        /// </summary>
+        void ShowRequestHelp(Action<int> onChoice, Action onCancel);
+
+        /// <summary>
+        /// Surface the chat board (list of threads + detail view). On Android
+        /// and iOS this is a thin native shell that UnitySendMessages back to
+        /// <see cref="BugpunchClient"/>, which calls
+        /// <see cref="UI.BugpunchChatBoard.Show"/>. On Editor / Standalone
+        /// it opens the UIToolkit chat board directly.
+        /// </summary>
+        void ShowChatBoard();
+
         bool IsSupported { get; }
     }
 }
