@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.40] - 2026-04-24
+
+### Fixed
+- **IAP sub-asmdef now references the right Unity asmdef name.** v1.7.38 referenced `Unity.Purchasing`, but `com.unity.purchasing` 4.0+ publishes its runtime under `UnityEngine.Purchasing.asmdef` (named to match the namespace). With the wrong name the IAP reference didn't resolve and consumers hit the same `CS0234: The type or namespace name 'Purchasing' does not exist in the namespace 'UnityEngine'` family of errors. Changed the reference to `UnityEngine.Purchasing`.
+
 ## [1.7.39] - 2026-04-24
 
 ### Fixed

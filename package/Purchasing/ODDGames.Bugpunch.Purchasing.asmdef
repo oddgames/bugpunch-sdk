@@ -3,7 +3,7 @@
     "rootNamespace": "ODDGames.Bugpunch",
     "references": [
         "ODDGames.Bugpunch",
-        "Unity.Purchasing"
+        "UnityEngine.Purchasing"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
