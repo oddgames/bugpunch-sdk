@@ -32,6 +32,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// <summary>Change stream resolution/fps at runtime.</summary>
         string SetQuality(int width, int height, int fps);
 
+        /// <summary>
+        /// Override the target aspect ratio the render texture should match.
+        /// Pass (0, 0) to clear the override and fall back to the device's
+        /// current Screen.width/Screen.height. Used by scene mode to track the
+        /// dashboard panel aspect so the scene camera renders without distortion.
+        /// </summary>
+        void SetTargetAspect(int aspectWidth, int aspectHeight);
+
         /// <summary>Get current quality settings as JSON.</summary>
         string GetQuality();
 

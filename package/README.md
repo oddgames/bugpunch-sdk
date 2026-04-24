@@ -244,6 +244,40 @@ clibridge4unity UISESSION stop
 
 Sessions generate a live HTML report with screenshots, action timeline, and pass/fail badges. View locally or via `clibridge4unity serve` over HTTP.
 
+## In-App Purchases (analytics)
+
+If your game uses Unity IAP (`com.unity.purchasing` 4.0+), Bugpunch ships a
+one-line integration that auto-logs every successful purchase into analytics
+without duplicating the call inside `ProcessPurchase`:
+
+```csharp
+using ODDGames.Bugpunch;
+using UnityEngine.Purchasing;
+
+// existing code — just add .WithBugpunch() on the listener
+UnityPurchasing.Initialize(myStoreListener.WithBugpunch(), builder);
+```
+
+That's it. `WithBugpunch()` wraps your `IStoreListener` in a transparent
+decorator — your `ProcessPurchase` runs first unchanged, then Bugpunch
+side-channels the purchase to analytics with `{sku, price, currency,
+transactionId}`. Works with both `IStoreListener` and `IDetailedStoreListener`
+implementations, and forwards both the old and new failure callbacks.
+
+The integration only compiles when `com.unity.purchasing` is actually
+installed in your project (via a [version-define on the asmdef](ODDGames.Bugpunch.asmdef))
+— zero reflection, zero runtime cost when Unity IAP is absent.
+
+### Other billing paths
+
+- **Raw StoreKit / custom iOS billing** (Unity IAP not used) — call
+  `Bugpunch.LogPurchase(sku, price, currency, transactionId)` from your
+  `SKPaymentTransactionObserver` on `.purchased`.
+- **Custom Android billing (direct BillingClient)** — call the same
+  `Bugpunch.LogPurchase(...)` inside your own `onPurchasesUpdated`. Google
+  Play Billing has no system-wide observer pattern — there's no cross-SDK
+  auto-hook on Android.
+
 ## Requirements
 
 - Unity 2022.3+

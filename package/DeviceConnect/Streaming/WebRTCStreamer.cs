@@ -27,6 +27,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
         int _width = 1280;
         int _height = 720;
         int _fps = 30;
+        // Pixel budget (longest-edge cap) and aspect source. Actual _width/_height
+        // are always derived from the device's current Screen.width/Screen.height
+        // (game mode) or _overrideAspectW/H (scene mode — dashboard panel aspect)
+        // so the stream matches the viewer 1:1 with no distortion.
+        int _reqMaxEdge = 1280;
+        int _overrideAspectW; // 0 = use Screen.width
+        int _overrideAspectH; // 0 = use Screen.height
+        // Track the dimensions the RT was last sized for so RenderLoop can
+        // detect device rotation / resolution changes and hot-swap.
+        int _rtAspectW;
+        int _rtAspectH;
         volatile bool _streaming;
 
         readonly Queue<Action> _mainThreadQueue = new();
@@ -96,32 +107,32 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         public void Initialize(int width = 1280, int height = 720, int fps = 30)
         {
-            _width = width;
-            _height = height;
-            _fps = fps;
+            _reqMaxEdge = Mathf.Clamp(Mathf.Max(width, height), 160, 3840);
+            _fps = Mathf.Clamp(fps, 1, 60);
+            RecomputeDimensions();
 
             if (_webrtcUpdateCoroutine == null)
                 _webrtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
         }
 
         /// <summary>
-        /// Change stream quality at runtime. Stops and restarts streaming if active.
+        /// Change stream quality at runtime. The requested width/height are
+        /// interpreted as a pixel budget (the larger of the two becomes the
+        /// long-edge cap) — the actual RT dimensions preserve the device's
+        /// current aspect ratio. Hot-swaps the video track without
+        /// renegotiation, so the browser keeps streaming through the change.
         /// </summary>
         public string SetQuality(int width, int height, int fps)
         {
-            _width = Mathf.Clamp(width, 160, 3840);
-            _height = Mathf.Clamp(height, 120, 2160);
+            _reqMaxEdge = Mathf.Clamp(Mathf.Max(width, height), 160, 3840);
             _fps = Mathf.Clamp(fps, 1, 60);
-            Debug.Log($"[Bugpunch.WebRTCStreamer] WebRTC: quality set to {_width}x{_height}@{_fps}fps");
+            RecomputeDimensions();
+            Debug.Log($"[Bugpunch.WebRTCStreamer] WebRTC: quality set to budget={_reqMaxEdge}px @ {_fps}fps → {_width}x{_height}");
 
-            // Stop current stream so browser reconnects at new resolution
             if (_streaming)
-            {
-                StopStreaming();
-                Debug.Log("[Bugpunch.WebRTCStreamer] WebRTC: stream stopped for quality change — waiting for new offer");
-            }
+                ResizeRenderTarget();
 
-            return $"{{\"ok\":true,\"width\":{_width},\"height\":{_height},\"fps\":{_fps},\"reconnectRequired\":true}}";
+            return $"{{\"ok\":true,\"width\":{_width},\"height\":{_height},\"fps\":{_fps},\"reconnectRequired\":false}}";
         }
 
         /// <summary>
@@ -133,12 +144,64 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Override the aspect ratio the RT should match. Pass (0,0) to clear
+        /// and fall back to the device's live Screen dimensions. Triggers a
+        /// hot-swap of the render target if streaming is active.
+        /// </summary>
+        public void SetTargetAspect(int aspectWidth, int aspectHeight)
+        {
+            _overrideAspectW = Mathf.Max(0, aspectWidth);
+            _overrideAspectH = Mathf.Max(0, aspectHeight);
+            RecomputeDimensions();
+            if (_streaming)
+                ResizeRenderTarget();
+        }
+
+        // Derive _width/_height from the current aspect source + pixel budget.
+        // Rounds to even dimensions (most encoders require that).
+        void RecomputeDimensions()
+        {
+            int aw = _overrideAspectW > 0 ? _overrideAspectW : Screen.width;
+            int ah = _overrideAspectH > 0 ? _overrideAspectH : Screen.height;
+            if (aw <= 0 || ah <= 0) { aw = 16; ah = 9; }
+
+            int longEdge = _reqMaxEdge;
+            int w, h;
+            if (aw >= ah)
+            {
+                w = longEdge;
+                h = Mathf.Max(16, Mathf.RoundToInt(longEdge * (float)ah / aw));
+            }
+            else
+            {
+                h = longEdge;
+                w = Mathf.Max(16, Mathf.RoundToInt(longEdge * (float)aw / ah));
+            }
+            // Encoders want even dimensions
+            w &= ~1; h &= ~1;
+            _width = w;
+            _height = h;
+            _rtAspectW = aw;
+            _rtAspectH = ah;
+        }
+
+        /// <summary>
         /// Set which camera to stream from. Defaults to Camera.main.
+        /// Switching back to game mode (cam == null) clears any panel-aspect
+        /// override so the stream tracks the device's live screen aspect.
         /// </summary>
         public void SetCamera(Camera cam)
         {
             _targetCamera = cam;
             Debug.Log($"[Bugpunch.WebRTCStreamer] WebRTC: SetCamera → {(cam != null ? cam.name : "null (game view)")} streaming={_streaming}");
+            if (cam == null && (_overrideAspectW != 0 || _overrideAspectH != 0))
+            {
+                _overrideAspectW = 0;
+                _overrideAspectH = 0;
+                RecomputeDimensions();
+                if (_streaming)
+                    ResizeRenderTarget();
+            }
         }
 
         /// <summary>
@@ -379,9 +442,81 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void CreateRenderTexture()
         {
+            // Always recompute immediately before allocating — the device may
+            // have rotated between Initialize() and the first offer.
+            RecomputeDimensions();
             var format = WebRTC.GetSupportedRenderTextureFormat(SystemInfo.graphicsDeviceType);
             _rt = new RenderTexture(_width, _height, 24, format);
             _rt.Create();
+        }
+
+        /// <summary>
+        /// Hot-swap the render target: build a new RT + VideoStreamTrack at the
+        /// current _width/_height and use RTCRtpSender.ReplaceTrack so the
+        /// browser keeps streaming without a renegotiation. Called on quality
+        /// change, aspect override change, or device rotation detection.
+        /// </summary>
+        void ResizeRenderTarget()
+        {
+            if (_pc == null) return;
+            if (_rt != null && _rt.width == _width && _rt.height == _height) return;
+
+            var format = WebRTC.GetSupportedRenderTextureFormat(SystemInfo.graphicsDeviceType);
+            var newRt = new RenderTexture(_width, _height, 24, format);
+            if (!newRt.Create())
+            {
+                Debug.LogWarning("[Bugpunch.WebRTCStreamer] ResizeRenderTarget: RT.Create() failed");
+                Destroy(newRt);
+                return;
+            }
+
+            VideoStreamTrack newTrack;
+            try { newTrack = new VideoStreamTrack(newRt); }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Bugpunch.WebRTCStreamer] ResizeRenderTarget: new VideoStreamTrack failed: {ex.Message}");
+                newRt.Release(); Destroy(newRt);
+                return;
+            }
+
+            bool replaced = false;
+            foreach (var sender in _pc.GetSenders())
+            {
+                if (sender?.Track == null || sender.Track.Kind != TrackKind.Video) continue;
+                if (sender.ReplaceTrack(newTrack))
+                {
+                    replaced = true;
+                    break;
+                }
+            }
+
+            if (!replaced)
+            {
+                Debug.LogWarning("[Bugpunch.WebRTCStreamer] ResizeRenderTarget: ReplaceTrack failed — keeping old RT");
+                newTrack.Dispose();
+                newRt.Release(); Destroy(newRt);
+                return;
+            }
+
+            var oldRt = _rt;
+            var oldTrack = _videoTrack;
+            _rt = newRt;
+            _videoTrack = newTrack;
+
+            if (oldTrack != null) oldTrack.Dispose();
+            if (oldRt != null) { oldRt.Release(); Destroy(oldRt); }
+            if (_screenCapRT != null)
+            {
+                _screenCapRT.Release();
+                Destroy(_screenCapRT);
+                _screenCapRT = null;
+            }
+
+            // Reapply the bitrate cap — encoders reset encoding parameters on
+            // track swap.
+            SetVideoMaxBitrate(2_500_000, (uint)_fps);
+
+            Debug.Log($"[Bugpunch.WebRTCStreamer] ResizeRenderTarget: hot-swapped to {_width}x{_height}");
         }
 
         /// <summary>
@@ -390,10 +525,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         IEnumerator RenderLoop()
         {
+            int aspectCheckCounter = 0;
             while (_streaming && _pc != null)
             {
                 yield return new WaitForEndOfFrame();
                 if (_rt == null) continue;
+
+                // Every ~30 frames, check if the device's live screen aspect
+                // drifted from the RT (phone rotated, window resized on desktop).
+                // Only follow Screen when no panel-aspect override is active.
+                if (++aspectCheckCounter >= 30)
+                {
+                    aspectCheckCounter = 0;
+                    if (_overrideAspectW == 0 && _overrideAspectH == 0)
+                    {
+                        int sw = Screen.width, sh = Screen.height;
+                        if (sw > 0 && sh > 0 && (sw != _rtAspectW || sh != _rtAspectH))
+                        {
+                            RecomputeDimensions();
+                            ResizeRenderTarget();
+                            if (_rt == null) continue;
+                        }
+                    }
+                }
 
                 // Check which camera is being used — log once on switch
                 if (_targetCamera != null)

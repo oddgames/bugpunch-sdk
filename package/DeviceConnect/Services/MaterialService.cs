@@ -193,6 +193,295 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
+        /// Full property dump for the material drill-down inspector:
+        /// every shader property with its live value (Color, Float, Range,
+        /// Vector, Texture, Int) plus the shader's keyword list with each
+        /// keyword's current enabled state.
+        /// </summary>
+        public string GetProperties(int instanceId)
+        {
+            var mat = FindMaterial(instanceId);
+            if (mat == null) return "{\"error\":\"material not found\"}";
+
+            var shader = mat.shader;
+            var sb = new StringBuilder();
+            sb.Append("{");
+            sb.Append($"\"id\":{instanceId}");
+            sb.Append($",\"name\":\"{Esc(mat.name)}\"");
+            sb.Append($",\"shader\":\"{Esc(shader != null ? shader.name : "")}\"");
+            sb.Append($",\"renderQueue\":{mat.renderQueue}");
+
+            // Properties
+            sb.Append(",\"properties\":[");
+            if (shader != null)
+            {
+                int propCount = shader.GetPropertyCount();
+                bool first = true;
+                for (int i = 0; i < propCount; i++)
+                {
+                    var propName = shader.GetPropertyName(i);
+                    var propType = shader.GetPropertyType(i);
+                    var desc = shader.GetPropertyDescription(i);
+                    var flags = shader.GetPropertyFlags(i);
+                    // Skip HideInInspector-flagged unless hidden type already covered
+                    bool hidden = (flags & ShaderPropertyFlags.HideInInspector) != 0;
+
+                    if (!first) sb.Append(",");
+                    first = false;
+                    sb.Append("{");
+                    sb.Append($"\"name\":\"{Esc(propName)}\"");
+                    sb.Append($",\"label\":\"{Esc(desc)}\"");
+                    sb.Append($",\"hidden\":{(hidden ? "true" : "false")}");
+
+                    switch (propType)
+                    {
+                        case ShaderPropertyType.Color:
+                        {
+                            var c = mat.GetColor(propName);
+                            sb.Append(",\"type\":\"Color\"");
+                            sb.Append($",\"value\":{{\"r\":{c.r:F4},\"g\":{c.g:F4},\"b\":{c.b:F4},\"a\":{c.a:F4}}}");
+                            break;
+                        }
+                        case ShaderPropertyType.Float:
+                        {
+                            var v = mat.GetFloat(propName);
+                            sb.Append(",\"type\":\"Float\"");
+                            sb.Append($",\"value\":{v.ToString("G9", System.Globalization.CultureInfo.InvariantCulture)}");
+                            break;
+                        }
+                        case ShaderPropertyType.Range:
+                        {
+                            var v = mat.GetFloat(propName);
+                            var min = shader.GetPropertyRangeLimits(i).x;
+                            var max = shader.GetPropertyRangeLimits(i).y;
+                            sb.Append(",\"type\":\"Range\"");
+                            sb.Append($",\"value\":{v.ToString("G9", System.Globalization.CultureInfo.InvariantCulture)}");
+                            sb.Append($",\"min\":{min.ToString("G9", System.Globalization.CultureInfo.InvariantCulture)}");
+                            sb.Append($",\"max\":{max.ToString("G9", System.Globalization.CultureInfo.InvariantCulture)}");
+                            break;
+                        }
+                        case ShaderPropertyType.Vector:
+                        {
+                            var v = mat.GetVector(propName);
+                            sb.Append(",\"type\":\"Vector\"");
+                            sb.Append($",\"value\":{{\"x\":{v.x:F4},\"y\":{v.y:F4},\"z\":{v.z:F4},\"w\":{v.w:F4}}}");
+                            break;
+                        }
+                        case ShaderPropertyType.Texture:
+                        {
+                            var tex = mat.GetTexture(propName);
+                            var scale = mat.GetTextureScale(propName);
+                            var offset = mat.GetTextureOffset(propName);
+                            sb.Append(",\"type\":\"Texture\"");
+                            if (tex != null)
+                            {
+                                sb.Append(",\"value\":{");
+                                sb.Append($"\"id\":{tex.GetInstanceID()}");
+                                sb.Append($",\"name\":\"{Esc(tex.name)}\"");
+                                sb.Append($",\"width\":{tex.width}");
+                                sb.Append($",\"height\":{tex.height}");
+                                sb.Append("}");
+                            }
+                            else
+                            {
+                                sb.Append(",\"value\":null");
+                            }
+                            sb.Append($",\"scale\":{{\"x\":{scale.x:F4},\"y\":{scale.y:F4}}}");
+                            sb.Append($",\"offset\":{{\"x\":{offset.x:F4},\"y\":{offset.y:F4}}}");
+                            break;
+                        }
+#if UNITY_2021_1_OR_NEWER
+                        case ShaderPropertyType.Int:
+                        {
+                            var v = mat.GetInt(propName);
+                            sb.Append(",\"type\":\"Int\"");
+                            sb.Append($",\"value\":{v}");
+                            break;
+                        }
+#endif
+                    }
+                    sb.Append("}");
+                }
+            }
+            sb.Append("]");
+
+            // Keywords — union of shader-declared and currently-enabled keywords,
+            // each tagged with its current enabled state on this material.
+            sb.Append(",\"keywords\":[");
+            {
+                var enabled = new System.Collections.Generic.HashSet<string>(mat.shaderKeywords ?? Array.Empty<string>());
+                var all = new System.Collections.Generic.List<(string name, bool declared)>();
+                var seen = new System.Collections.Generic.HashSet<string>();
+#if UNITY_2021_2_OR_NEWER
+                if (shader != null)
+                {
+                    try
+                    {
+                        foreach (var kw in shader.keywordSpace.keywordNames)
+                        {
+                            if (string.IsNullOrEmpty(kw) || !seen.Add(kw)) continue;
+                            all.Add((kw, true));
+                        }
+                    }
+                    catch { /* some shaders throw — fall through to runtime-enabled list */ }
+                }
+#endif
+                foreach (var kw in enabled)
+                {
+                    if (string.IsNullOrEmpty(kw) || !seen.Add(kw)) continue;
+                    all.Add((kw, false));
+                }
+                all.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.Ordinal));
+
+                bool first = true;
+                foreach (var (kw, declared) in all)
+                {
+                    if (!first) sb.Append(",");
+                    first = false;
+                    sb.Append("{");
+                    sb.Append($"\"name\":\"{Esc(kw)}\"");
+                    sb.Append($",\"enabled\":{(enabled.Contains(kw) ? "true" : "false")}");
+                    sb.Append($",\"declared\":{(declared ? "true" : "false")}");
+                    sb.Append("}");
+                }
+            }
+            sb.Append("]");
+
+            sb.Append("}");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Write a single shader property on the material.
+        /// `type` is one of Color / Float / Range / Vector / Int / Texture.
+        /// For Texture, `textureId` is the instance ID of a loaded texture (0 = clear).
+        /// </summary>
+        public string SetProperty(int instanceId, string propName, string type, string body)
+        {
+            var mat = FindMaterial(instanceId);
+            if (mat == null) return "{\"ok\":false,\"error\":\"material not found\"}";
+            if (string.IsNullOrEmpty(propName)) return "{\"ok\":false,\"error\":\"missing property name\"}";
+            if (!mat.HasProperty(propName)) return "{\"ok\":false,\"error\":\"shader has no property " + Esc(propName) + "\"}";
+
+            try
+            {
+                switch (type)
+                {
+                    case "Color":
+                    {
+                        var c = new Color(
+                            ParseFloat(RequestRouter.JsonVal(body, "r")),
+                            ParseFloat(RequestRouter.JsonVal(body, "g")),
+                            ParseFloat(RequestRouter.JsonVal(body, "b")),
+                            ParseFloat(RequestRouter.JsonVal(body, "a"), 1f));
+                        mat.SetColor(propName, c);
+                        break;
+                    }
+                    case "Float":
+                    case "Range":
+                    {
+                        var v = ParseFloat(RequestRouter.JsonVal(body, "value"));
+                        mat.SetFloat(propName, v);
+                        break;
+                    }
+                    case "Int":
+                    {
+                        var v = ParseInt(RequestRouter.JsonVal(body, "value"));
+#if UNITY_2021_1_OR_NEWER
+                        mat.SetInteger(propName, v);
+#else
+                        mat.SetInt(propName, v);
+#endif
+                        break;
+                    }
+                    case "Vector":
+                    {
+                        var v = new Vector4(
+                            ParseFloat(RequestRouter.JsonVal(body, "x")),
+                            ParseFloat(RequestRouter.JsonVal(body, "y")),
+                            ParseFloat(RequestRouter.JsonVal(body, "z")),
+                            ParseFloat(RequestRouter.JsonVal(body, "w")));
+                        mat.SetVector(propName, v);
+                        break;
+                    }
+                    case "Texture":
+                    {
+                        var texIdStr = RequestRouter.JsonVal(body, "textureId");
+                        var texId = ParseInt(texIdStr);
+                        if (texId == 0)
+                        {
+                            mat.SetTexture(propName, null);
+                        }
+                        else
+                        {
+                            var tex = FindTexture(texId);
+                            if (tex == null) return "{\"ok\":false,\"error\":\"texture not found\"}";
+                            mat.SetTexture(propName, tex);
+                        }
+                        // Optional tiling / offset
+                        var sxStr = RequestRouter.JsonVal(body, "scaleX");
+                        var syStr = RequestRouter.JsonVal(body, "scaleY");
+                        var oxStr = RequestRouter.JsonVal(body, "offsetX");
+                        var oyStr = RequestRouter.JsonVal(body, "offsetY");
+                        if (!string.IsNullOrEmpty(sxStr) || !string.IsNullOrEmpty(syStr))
+                        {
+                            var cur = mat.GetTextureScale(propName);
+                            mat.SetTextureScale(propName, new Vector2(
+                                string.IsNullOrEmpty(sxStr) ? cur.x : ParseFloat(sxStr),
+                                string.IsNullOrEmpty(syStr) ? cur.y : ParseFloat(syStr)));
+                        }
+                        if (!string.IsNullOrEmpty(oxStr) || !string.IsNullOrEmpty(oyStr))
+                        {
+                            var cur = mat.GetTextureOffset(propName);
+                            mat.SetTextureOffset(propName, new Vector2(
+                                string.IsNullOrEmpty(oxStr) ? cur.x : ParseFloat(oxStr),
+                                string.IsNullOrEmpty(oyStr) ? cur.y : ParseFloat(oyStr)));
+                        }
+                        break;
+                    }
+                    default:
+                        return "{\"ok\":false,\"error\":\"unsupported type " + Esc(type) + "\"}";
+                }
+                return "{\"ok\":true}";
+            }
+            catch (Exception ex)
+            {
+                return "{\"ok\":false,\"error\":\"" + Esc(ex.Message) + "\"}";
+            }
+        }
+
+        /// <summary>
+        /// Enable or disable a shader keyword on the material.
+        /// </summary>
+        public string SetKeyword(int instanceId, string keyword, bool enabled)
+        {
+            var mat = FindMaterial(instanceId);
+            if (mat == null) return "{\"ok\":false,\"error\":\"material not found\"}";
+            if (string.IsNullOrEmpty(keyword)) return "{\"ok\":false,\"error\":\"missing keyword\"}";
+            try
+            {
+                if (enabled) mat.EnableKeyword(keyword);
+                else mat.DisableKeyword(keyword);
+                return "{\"ok\":true}";
+            }
+            catch (Exception ex)
+            {
+                return "{\"ok\":false,\"error\":\"" + Esc(ex.Message) + "\"}";
+            }
+        }
+
+        /// <summary>
+        /// Set the material's render queue (-1 = from shader).
+        /// </summary>
+        public string SetRenderQueue(int instanceId, int queue)
+        {
+            var mat = FindMaterial(instanceId);
+            if (mat == null) return "{\"ok\":false,\"error\":\"material not found\"}";
+            mat.renderQueue = queue;
+            return "{\"ok\":true}";
+        }
+
+        /// <summary>
         /// List all texture properties on a material.
         /// </summary>
         public string GetTextureProperties(int instanceId)
@@ -303,6 +592,30 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (m != null && m.GetInstanceID() == instanceId) return m;
             }
             return null;
+        }
+
+        static Texture FindTexture(int instanceId)
+        {
+            var all = Resources.FindObjectsOfTypeAll<Texture>();
+            foreach (var t in all)
+            {
+                if (t != null && t.GetInstanceID() == instanceId) return t;
+            }
+            return null;
+        }
+
+        static float ParseFloat(string s, float fallback = 0f)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            return float.TryParse(s, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+        }
+
+        static int ParseInt(string s, int fallback = 0)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            return int.TryParse(s, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
         }
 
         static string Esc(string s) =>

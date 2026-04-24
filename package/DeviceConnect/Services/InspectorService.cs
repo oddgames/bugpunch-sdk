@@ -67,7 +67,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (!first) sb.Append(",");
                 first = false;
 
-                sb.Append($"{{\"name\":\"{EscapeJson(p.Name)}\",\"type\":\"{EscapeJson(p.PropertyType.Name)}\",\"value\":{SerializeValue(value)},\"isPublic\":true,\"isStatic\":false,\"isProperty\":true,\"canWrite\":{(p.CanWrite ? "true" : "false")}}}");
+                sb.Append($"{{\"name\":\"{EscapeJson(p.Name)}\",\"type\":\"{EscapeJson(p.PropertyType.Name)}\",\"value\":{SerializeValue(value)}{RefIdSuffix(value)},\"isPublic\":true,\"isStatic\":false,\"isProperty\":true,\"canWrite\":{(p.CanWrite ? "true" : "false")}}}");
             }
 
             // Fields
@@ -91,7 +91,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 object value = null;
                 try { value = f.GetValue(component); } catch { }
 
-                sb.Append($"{{\"name\":\"{EscapeJson(f.Name)}\",\"type\":\"{EscapeJson(f.FieldType.Name)}\",\"value\":{SerializeValue(value)},\"isPublic\":{(f.IsPublic ? "true" : "false")},\"isStatic\":{(f.IsStatic ? "true" : "false")}}}");
+                sb.Append($"{{\"name\":\"{EscapeJson(f.Name)}\",\"type\":\"{EscapeJson(f.FieldType.Name)}\",\"value\":{SerializeValue(value)}{RefIdSuffix(value)},\"isPublic\":{(f.IsPublic ? "true" : "false")},\"isStatic\":{(f.IsStatic ? "true" : "false")}}}");
             }
 
             sb.Append("]");
@@ -740,6 +740,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             try { return $"\"{EscapeJson(value.ToString())}\""; }
             catch { return "\"(error)\""; }
         }
+
+        /// <summary>
+        /// Emits `,"refId":12345` when value is a live UnityEngine.Object, so
+        /// the web inspector can offer drill-down (e.g. click a Material
+        /// reference → open the Material property/keyword editor).
+        /// </summary>
+        static string RefIdSuffix(object value) =>
+            value is UnityEngine.Object uo && uo != null ? $",\"refId\":{uo.GetInstanceID()}" : "";
 
         static string EscapeJson(string s) =>
             s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";

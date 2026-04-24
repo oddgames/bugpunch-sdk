@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.35] - 2026-04-24
+
+### Added
+- **Auto-emit `scene_change` analytics event on every scene transition.** `BugpunchSceneTick` now fires a `scene_change` event with `{from, to, duration_ms}` through the existing `Bugpunch.TrackEvent` pipe in addition to pushing the ambient scene name to native. The first activation fires with `from=null` so session-entry scenes are captured as a first-class signal (can't derive "what scene did the user open the app into" from ambient metadata alone). Same-name transitions (additive-load promote → unload sequences firing `activeSceneChanged` with unchanged active name) are suppressed analytically but still update native metadata. Events land in `analytics_events` with `event_name='scene_change'` — queryable for session paths, time-in-scene, and entry-point analytics.
+
+## [1.7.34] - 2026-04-24
+
+### Added
+- **Unity IAP integration — one-line hookup.** If the game has `com.unity.purchasing` 4.0+ installed, wrapping the existing `IStoreListener` with the new `.WithBugpunch()` extension method auto-logs every successful purchase into Bugpunch analytics without duplicating the call inside `ProcessPurchase`. The wrapper is a transparent decorator — game's listener runs first unchanged, then Bugpunch side-channels `{sku, price, currency, transactionId}` to `LogPurchase`. Supports both `IStoreListener` and `IDetailedStoreListener`; forwards both old (reason-only) and new (detailed) failure callbacks. Gated behind a `BUGPUNCH_HAS_UNITY_IAP` version-define on `ODDGames.Bugpunch.asmdef` so the integration file compiles *only* when Unity IAP is present — zero reflection, zero runtime cost when absent, no effect on games that don't use IAP.
+
+## [1.7.33] - 2026-04-24
+
+### Fixed
+- **Remote IDE stream now matches the device's live aspect ratio.** The WebRTC streamer was allocating a RenderTexture at the raw `width`/`height` sent from the dashboard (all three presets are 16:9: 480×270 / 960×540 / 1920×1080), then blitting the game screen into it with `Graphics.Blit` — so a portrait phone (e.g. 1080×2400) was being squashed into 16:9 and the Remote IDE displayed a distorted, black-barred frame. `WebRTCStreamer` now treats the requested W/H as a **long-edge pixel budget** and derives the actual RT dimensions from `Screen.width`/`Screen.height` every allocation. In scene mode, `SceneCameraService.SetAspect` pushes the dashboard's panel aspect into the streamer via the new `IStreamer.SetTargetAspect(w, h)` hook so the scene camera and the RT stay in lock-step. Quality changes and orientation drift hot-swap the RenderTexture in place via `RTCRtpSender.ReplaceTrack` — no SDP renegotiation, no browser reconnect. The `/webrtc-quality` response now reports `reconnectRequired:false` and the dashboard skips the WebRTCStream remount on quality change.
+- **Device rotation no longer wedges the stream aspect.** The render loop now samples `Screen.width/Height` every ~30 frames while in game mode (no panel override active) and triggers a track-preserving resize the moment the aspect drifts — rotating the phone mid-session updates the stream within ~½ second instead of requiring a manual reconnect.
+
 ## [1.7.32] - 2026-04-24
 
 ### Changed

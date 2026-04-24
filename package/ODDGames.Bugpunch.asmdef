@@ -17,6 +17,12 @@
     ],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.purchasing",
+            "expression": "4.0.0",
+            "define": "BUGPUNCH_HAS_UNITY_IAP"
+        }
+    ],
     "noEngineReferences": false
 }

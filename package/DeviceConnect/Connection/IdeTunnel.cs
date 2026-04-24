@@ -29,6 +29,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         readonly ConcurrentQueue<Action> _mainThreadQueue = new();
 
+        // ClientWebSocket.SendAsync is not safe for concurrent calls — .NET throws
+        // InvalidOperationException("There is already one outstanding 'SendAsync' call").
+        // Scene-camera polls + heartbeats + WebRTC ICE events + RPC responses all share
+        // this socket, so serialize them through a single-writer gate.
+        readonly SemaphoreSlim _sendGate = new(1, 1);
+
         public bool IsConnected { get; private set; }
         public bool IsConnecting { get; private set; }
         public string DeviceId { get; private set; }
@@ -198,8 +204,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_ws?.State != WebSocketState.Open) return;
 
             var bytes = Encoding.UTF8.GetBytes(message);
+            await _sendGate.WaitAsync();
             try
             {
+                if (_ws?.State != WebSocketState.Open) return;
                 await _ws.SendAsync(
                     new ArraySegment<byte>(bytes),
                     WebSocketMessageType.Text,
@@ -210,6 +218,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             catch (Exception ex)
             {
                 Debug.LogError($"[Bugpunch.IdeTunnel] Send error: {ex.Message}");
+            }
+            finally
+            {
+                _sendGate.Release();
             }
         }
 

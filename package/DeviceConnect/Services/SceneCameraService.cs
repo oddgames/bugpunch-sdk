@@ -3,9 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using UnityEngine;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
+using UnityEngine.Rendering;
 
 namespace ODDGames.Bugpunch.DeviceConnect
 {
@@ -44,6 +42,27 @@ namespace ODDGames.Bugpunch.DeviceConnect
         List<(Collider collider, int tier, int instanceId)> _colliderCache;
         HashSet<int> _colliderKnownIds; // tracks IDs already sent to client
         float _colliderSearchRadius;     // current expansion radius
+
+        // Render-mode state (cross-pipeline: Built-in + URP + HDRP)
+        Material _replacementMaterial; // used for material-swap modes (normals/uv/depth/overdraw)
+        Material _wireframeMaterial;   // used for the edge-mesh overlay in wireframe mode
+        bool _wireframeEnabled;
+        bool _callbacksHooked;
+        bool _materialsSwapped;
+        bool _clearOverridden;
+        CameraClearFlags _savedClearFlags;
+        Color _savedBackgroundColor;
+        readonly List<(Renderer r, Material[] mats)> _savedMaterials = new();
+        Renderer[] _cachedRenderers;
+        int _cachedRenderersFrame = -1000;
+        const int RendererCacheValidForFrames = 30;
+        // Mesh → edge-mesh (MeshTopology.Lines) cache for the wireframe overlay.
+        // Built once per unique source Mesh and reused every frame.
+        readonly Dictionary<Mesh, Mesh> _edgeMeshes = new();
+        // Unity Scene-view gray for wireframe/depth backdrops
+        static readonly Color SceneViewClearColor = new Color(0.22f, 0.22f, 0.22f, 1f);
+        // Cap per-frame overlay draws so huge scenes don't tank the editor.
+        const int WireframeMaxDrawsPerFrame = 1024;
 
         public void SetStreamer(IStreamer streamer)
         {
@@ -103,7 +122,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Don't set targetTexture here — the WebRTC streamer manages the RT.
             // Just set the aspect ratio if dashboard sent viewport dimensions.
             if (viewportWidth > 0 && viewportHeight > 0)
+            {
                 _sceneCamera.aspect = (float)viewportWidth / viewportHeight;
+                _streamer?.SetTargetAspect(viewportWidth, viewportHeight);
+            }
 
             // Position at main camera location or default
             var mainCam = Camera.main;
@@ -164,7 +186,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_sceneCamera == null)
                 return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
             if (width > 0 && height > 0)
+            {
                 _sceneCamera.aspect = (float)width / height;
+                _streamer?.SetTargetAspect(width, height);
+            }
             return "{\"ok\":true}";
         }
 
@@ -395,328 +420,333 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// <summary>
         /// Set the scene camera's render mode.
         /// Modes: "default", "wireframe", "normals", "uv", "overdraw", "depth"
+        ///
+        /// Pipeline-agnostic: works in Built-in (Camera.onPreRender/onPostRender)
+        /// and URP/HDRP (RenderPipelineManager.begin/endCameraRendering) by
+        /// temporarily swapping materials on visible renderers when the scene
+        /// camera is the one rendering. Materials are restored immediately
+        /// after, so the main game camera is unaffected.
         /// </summary>
         public string SetRenderMode(string mode)
         {
             if (_sceneCamera == null)
                 return "{\"ok\":false,\"error\":\"Scene camera not active\"}";
 
-            // Clean up previous mode
             CleanupRenderMode();
 
-            switch (mode?.ToLower())
+            mode = (mode ?? "default").ToLowerInvariant();
+            if (mode == "shaded") mode = "default";
+
+            string shaderName = null;
+            Color? clearColorOverride = null;
+
+            switch (mode)
             {
                 case "default":
-                case "shaded":
-                    mode = "default";
                     break;
-
                 case "wireframe":
-                    // GL.wireframe is global — managed via camera callbacks
-                    Camera.onPreRender += OnWireframePreRender;
-                    Camera.onPostRender += OnWireframePostRender;
+                    // Wireframe is a true-line overlay driven from LateUpdate —
+                    // scene renders shaded normally, then edge-meshes draw on
+                    // top via Graphics.DrawMesh. No GL.wireframe (won't work on
+                    // GLES/Vulkan mobile), no material swap.
+                    shaderName = "Hidden/Bugpunch/Wireframe";
+                    clearColorOverride = SceneViewClearColor;
                     break;
-
                 case "normals":
-                {
-                    var shader = FindOrCreateShader("Hidden/Bugpunch/Normals", NormalsShaderSource);
-                    if (shader != null) _sceneCamera.SetReplacementShader(shader, "");
-                    else return "{\"ok\":false,\"error\":\"Failed to create normals shader\"}";
+                    shaderName = "Hidden/Bugpunch/Normals";
                     break;
-                }
-
                 case "uv":
-                {
-                    var shader = FindOrCreateShader("Hidden/Bugpunch/UV", UVShaderSource);
-                    if (shader != null) _sceneCamera.SetReplacementShader(shader, "");
-                    else return "{\"ok\":false,\"error\":\"Failed to create UV shader\"}";
+                    shaderName = "Hidden/Bugpunch/UV";
                     break;
-                }
-
                 case "depth":
-                {
-                    var shader = FindOrCreateShader("Hidden/Bugpunch/Depth", DepthShaderSource);
-                    if (shader != null) _sceneCamera.SetReplacementShader(shader, "");
-                    else return "{\"ok\":false,\"error\":\"Failed to create depth shader\"}";
+                    shaderName = "Hidden/Bugpunch/Depth";
+                    clearColorOverride = Color.black;
                     break;
-                }
-
                 case "overdraw":
-                {
-                    var shader = FindOrCreateShader("Hidden/Bugpunch/Overdraw", OverdrawShaderSource);
-                    if (shader != null) _sceneCamera.SetReplacementShader(shader, "");
-                    else return "{\"ok\":false,\"error\":\"Failed to create overdraw shader\"}";
+                    shaderName = "Hidden/Bugpunch/Overdraw";
+                    clearColorOverride = Color.black;
                     break;
-                }
-
                 default:
                     return $"{{\"ok\":false,\"error\":\"Unknown mode: {mode}\"}}";
             }
 
-            _currentRenderMode = mode.ToLower();
+            if (shaderName != null)
+            {
+                var shader = Shader.Find(shaderName);
+                if (shader == null)
+                {
+                    return $"{{\"ok\":false,\"error\":\"Shader not found: {shaderName}. Ensure sdk/package/Resources/Shaders/*.shader are imported.\"}}";
+                }
+                var mat = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+                if (mode == "wireframe")
+                {
+                    _wireframeMaterial = mat;
+                    _wireframeEnabled = true;
+                }
+                else
+                {
+                    _replacementMaterial = mat;
+                }
+            }
+
+            if (clearColorOverride.HasValue)
+                OverrideClearColor(clearColorOverride.Value);
+
+            // Material-swap modes need the camera callbacks. Wireframe does not —
+            // it's drawn from LateUpdate with Graphics.DrawMesh.
+            if (_replacementMaterial != null)
+                HookRenderCallbacks();
+
+            _currentRenderMode = mode;
             Debug.Log($"[Bugpunch.SceneCameraService] Scene camera render mode: {_currentRenderMode}");
             return $"{{\"ok\":true,\"mode\":\"{_currentRenderMode}\"}}";
         }
 
         void CleanupRenderMode()
         {
-            // Reset replacement shader
-            if (_sceneCamera != null)
-                _sceneCamera.ResetReplacementShader();
+            // Restore any renderers that are still swapped (safety net — should
+            // already be restored by EndRender for the last camera).
+            RestoreMaterials();
 
-            // Remove wireframe callbacks
-            Camera.onPreRender -= OnWireframePreRender;
-            Camera.onPostRender -= OnWireframePostRender;
-            GL.wireframe = false;
+            if (_replacementMaterial != null)
+            {
+                Destroy(_replacementMaterial);
+                _replacementMaterial = null;
+            }
+            if (_wireframeMaterial != null)
+            {
+                Destroy(_wireframeMaterial);
+                _wireframeMaterial = null;
+            }
 
+            _wireframeEnabled = false;
+            GL.wireframe = false; // safety: clean state in case something else set it
+
+            RestoreClearColor();
+            UnhookRenderCallbacks();
             _currentRenderMode = "default";
         }
 
-        void OnWireframePreRender(Camera cam)
+        // -----------------------------------------------------------------
+        // Cross-pipeline render callbacks (Built-in + URP + HDRP)
+        // -----------------------------------------------------------------
+
+        void HookRenderCallbacks()
         {
-            if (cam == _sceneCamera)
+            if (_callbacksHooked) return;
+            RenderPipelineManager.beginCameraRendering += OnBeginCameraRenderingSRP;
+            RenderPipelineManager.endCameraRendering += OnEndCameraRenderingSRP;
+            Camera.onPreRender += OnPreRenderBuiltin;
+            Camera.onPostRender += OnPostRenderBuiltin;
+            _callbacksHooked = true;
+        }
+
+        void UnhookRenderCallbacks()
+        {
+            if (!_callbacksHooked) return;
+            RenderPipelineManager.beginCameraRendering -= OnBeginCameraRenderingSRP;
+            RenderPipelineManager.endCameraRendering -= OnEndCameraRenderingSRP;
+            Camera.onPreRender -= OnPreRenderBuiltin;
+            Camera.onPostRender -= OnPostRenderBuiltin;
+            _callbacksHooked = false;
+        }
+
+        void OnBeginCameraRenderingSRP(ScriptableRenderContext _, Camera cam) => BeginRender(cam);
+        void OnEndCameraRenderingSRP(ScriptableRenderContext _, Camera cam) => EndRender(cam);
+        void OnPreRenderBuiltin(Camera cam) => BeginRender(cam);
+        void OnPostRenderBuiltin(Camera cam) => EndRender(cam);
+
+        void BeginRender(Camera cam)
+        {
+            if (cam != _sceneCamera) return;
+            if (_replacementMaterial != null)
+                SwapInReplacementMaterials();
+            if (_wireframeEnabled)
                 GL.wireframe = true;
         }
 
-        void OnWireframePostRender(Camera cam)
+        void EndRender(Camera cam)
         {
-            if (cam == _sceneCamera)
+            if (cam != _sceneCamera) return;
+            RestoreMaterials();
+            if (_wireframeEnabled)
                 GL.wireframe = false;
         }
 
-        /// <summary>
-        /// Try Shader.Find first, then fall back to creating from source in the Editor.
-        /// </summary>
-        static Shader FindOrCreateShader(string name, string source)
+        void SwapInReplacementMaterials()
         {
-            var shader = Shader.Find(name);
-            if (shader != null) return shader;
+            if (_materialsSwapped || _replacementMaterial == null) return;
+            RefreshRendererCache();
+            _savedMaterials.Clear();
+            foreach (var r in _cachedRenderers)
+            {
+                if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
+                // Skip UI, particles, lines — swapping them usually breaks more
+                // than it reveals. Mesh/Skinned renderers are what scene-view
+                // render modes care about.
+                if (!(r is MeshRenderer || r is SkinnedMeshRenderer)) continue;
 
-#if UNITY_EDITOR
-            try
-            {
-                shader = ShaderUtil.CreateShaderAsset(source, false);
-                if (shader != null) return shader;
+                var original = r.sharedMaterials;
+                _savedMaterials.Add((r, original));
+                int count = original.Length == 0 ? 1 : original.Length;
+                var replacements = new Material[count];
+                for (int i = 0; i < count; i++) replacements[i] = _replacementMaterial;
+                r.sharedMaterials = replacements;
             }
-            catch (Exception ex)
+            _materialsSwapped = true;
+        }
+
+        void RestoreMaterials()
+        {
+            if (!_materialsSwapped) return;
+            for (int i = 0; i < _savedMaterials.Count; i++)
             {
-                Debug.LogWarning($"[Bugpunch.SceneCameraService] Failed to create shader {name}: {ex.Message}");
+                var (r, mats) = _savedMaterials[i];
+                if (r != null) r.sharedMaterials = mats;
             }
-#endif
-            return null;
+            _savedMaterials.Clear();
+            _materialsSwapped = false;
+        }
+
+        void RefreshRendererCache()
+        {
+            int frame = Time.frameCount;
+            if (_cachedRenderers != null && frame - _cachedRenderersFrame < RendererCacheValidForFrames)
+                return;
+            _cachedRenderers = FindObjectsByType<Renderer>(FindObjectsSortMode.None);
+            _cachedRenderersFrame = frame;
+        }
+
+        void OverrideClearColor(Color color)
+        {
+            if (_clearOverridden || _sceneCamera == null) return;
+            _savedClearFlags = _sceneCamera.clearFlags;
+            _savedBackgroundColor = _sceneCamera.backgroundColor;
+            _sceneCamera.clearFlags = CameraClearFlags.SolidColor;
+            _sceneCamera.backgroundColor = color;
+            _clearOverridden = true;
+        }
+
+        void RestoreClearColor()
+        {
+            if (!_clearOverridden || _sceneCamera == null) return;
+            _sceneCamera.clearFlags = _savedClearFlags;
+            _sceneCamera.backgroundColor = _savedBackgroundColor;
+            _clearOverridden = false;
         }
 
         // -----------------------------------------------------------------
-        // Shader sources
+        // Wireframe overlay — draws line-topology edge meshes for every
+        // visible MeshRenderer on top of the normal shaded scene. Because
+        // we use Graphics.DrawMesh(...camera) with the scene camera, the
+        // overlay only shows on the scene view and works on any pipeline
+        // and any platform (including GLES/Vulkan mobile where GL.wireframe
+        // is unavailable).
         // -----------------------------------------------------------------
+        void LateUpdate()
+        {
+            if (!_wireframeEnabled || _sceneCamera == null || _wireframeMaterial == null) return;
 
-        const string NormalsShaderSource = @"
-Shader ""Hidden/Bugpunch/Normals"" {
-    SubShader {
-        Tags { ""RenderType""=""Opaque"" }
-        Pass {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-            struct v2f {
-                float4 pos : SV_POSITION;
-                float3 worldNormal : TEXCOORD0;
-            };
-            v2f vert(appdata_base v) {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                o.worldNormal = UnityObjectToWorldNormal(v.normal);
-                return o;
-            }
-            fixed4 frag(v2f i) : SV_Target {
-                return fixed4(i.worldNormal * 0.5 + 0.5, 1);
-            }
-            ENDCG
-        }
-    }
-    SubShader {
-        Tags { ""RenderType""=""Transparent"" }
-        Pass {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-            struct v2f {
-                float4 pos : SV_POSITION;
-                float3 worldNormal : TEXCOORD0;
-            };
-            v2f vert(appdata_base v) {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                o.worldNormal = UnityObjectToWorldNormal(v.normal);
-                return o;
-            }
-            fixed4 frag(v2f i) : SV_Target {
-                return fixed4(i.worldNormal * 0.5 + 0.5, 0.5);
-            }
-            ENDCG
-        }
-    }
-}";
+            RefreshRendererCache();
+            int drawn = 0;
+            for (int i = 0; i < _cachedRenderers.Length; i++)
+            {
+                if (drawn >= WireframeMaxDrawsPerFrame) break;
+                var r = _cachedRenderers[i];
+                if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
 
-        const string UVShaderSource = @"
-Shader ""Hidden/Bugpunch/UV"" {
-    SubShader {
-        Tags { ""RenderType""=""Opaque"" }
-        Pass {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-            struct v2f {
-                float4 pos : SV_POSITION;
-                float2 uv : TEXCOORD0;
-            };
-            v2f vert(appdata_base v) {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                o.uv = v.texcoord.xy;
-                return o;
-            }
-            fixed4 frag(v2f i) : SV_Target {
-                return fixed4(i.uv.x, i.uv.y, 0, 1);
-            }
-            ENDCG
-        }
-    }
-    SubShader {
-        Tags { ""RenderType""=""Transparent"" }
-        Pass {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-            struct v2f {
-                float4 pos : SV_POSITION;
-                float2 uv : TEXCOORD0;
-            };
-            v2f vert(appdata_base v) {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                o.uv = v.texcoord.xy;
-                return o;
-            }
-            fixed4 frag(v2f i) : SV_Target {
-                return fixed4(i.uv.x, i.uv.y, 0, 0.5);
-            }
-            ENDCG
-        }
-    }
-}";
+                Mesh src = null;
+                if (r is MeshRenderer)
+                {
+                    var mf = r.GetComponent<MeshFilter>();
+                    if (mf != null) src = mf.sharedMesh;
+                }
+                else if (r is SkinnedMeshRenderer smr)
+                {
+                    // Draw the skinned mesh in its bind pose — good enough for
+                    // a wireframe debug view and avoids the per-frame BakeMesh
+                    // cost. TODO: bake when we care about accurate skinning.
+                    src = smr.sharedMesh;
+                }
+                else
+                {
+                    continue;
+                }
+                if (src == null) continue;
 
-        const string DepthShaderSource = @"
-Shader ""Hidden/Bugpunch/Depth"" {
-    SubShader {
-        Tags { ""RenderType""=""Opaque"" }
-        Pass {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-            struct v2f {
-                float4 pos : SV_POSITION;
-                float depth : TEXCOORD0;
-            };
-            v2f vert(appdata_base v) {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                o.depth = -(UnityObjectToViewPos(v.vertex).z * _ProjectionParams.w);
-                return o;
-            }
-            fixed4 frag(v2f i) : SV_Target {
-                float d = saturate(1.0 - i.depth);
-                return fixed4(d, d, d, 1);
-            }
-            ENDCG
-        }
-    }
-    SubShader {
-        Tags { ""RenderType""=""Transparent"" }
-        Pass {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-            struct v2f {
-                float4 pos : SV_POSITION;
-                float depth : TEXCOORD0;
-            };
-            v2f vert(appdata_base v) {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                o.depth = -(UnityObjectToViewPos(v.vertex).z * _ProjectionParams.w);
-                return o;
-            }
-            fixed4 frag(v2f i) : SV_Target {
-                float d = saturate(1.0 - i.depth);
-                return fixed4(d, d, d, 0.5);
-            }
-            ENDCG
-        }
-    }
-}";
+                var edge = GetOrBuildEdgeMesh(src);
+                if (edge == null) continue;
 
-        const string OverdrawShaderSource = @"
-Shader ""Hidden/Bugpunch/Overdraw"" {
-    SubShader {
-        Tags { ""RenderType""=""Opaque"" }
-        ZTest Always
-        ZWrite Off
-        Blend One One
-        Pass {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-            struct v2f {
-                float4 pos : SV_POSITION;
-            };
-            v2f vert(appdata_base v) {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                return o;
+                Graphics.DrawMesh(edge, r.localToWorldMatrix, _wireframeMaterial,
+                                  r.gameObject.layer, _sceneCamera);
+                drawn++;
             }
-            fixed4 frag(v2f i) : SV_Target {
-                return fixed4(0.1, 0.04, 0.02, 0);
-            }
-            ENDCG
         }
-    }
-    SubShader {
-        Tags { ""RenderType""=""Transparent"" }
-        ZTest Always
-        ZWrite Off
-        Blend One One
-        Pass {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-            struct v2f {
-                float4 pos : SV_POSITION;
+
+        Mesh GetOrBuildEdgeMesh(Mesh src)
+        {
+            if (src == null) return null;
+            if (_edgeMeshes.TryGetValue(src, out var cached)) return cached;
+
+            var vertices = src.vertices;
+            if (vertices.Length == 0)
+            {
+                _edgeMeshes[src] = null;
+                return null;
+            }
+
+            var indices = new List<int>(src.triangles.Length);
+            var seen = new HashSet<long>();
+            // Merge edges across all submeshes.
+            for (int s = 0; s < src.subMeshCount; s++)
+            {
+                var tris = src.GetTriangles(s);
+                for (int t = 0; t < tris.Length; t += 3)
+                {
+                    int a = tris[t], b = tris[t + 1], c = tris[t + 2];
+                    AddUniqueEdge(seen, indices, a, b);
+                    AddUniqueEdge(seen, indices, b, c);
+                    AddUniqueEdge(seen, indices, c, a);
+                }
+            }
+
+            var mesh = new Mesh
+            {
+                name = src.name + "_bpEdges",
+                hideFlags = HideFlags.HideAndDontSave,
+                indexFormat = vertices.Length > 65000
+                    ? IndexFormat.UInt32
+                    : IndexFormat.UInt16,
             };
-            v2f vert(appdata_base v) {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                return o;
-            }
-            fixed4 frag(v2f i) : SV_Target {
-                return fixed4(0.1, 0.04, 0.02, 0);
-            }
-            ENDCG
+            mesh.vertices = vertices;
+            mesh.SetIndices(indices.ToArray(), MeshTopology.Lines, 0);
+            // Keep the source mesh bounds so frustum culling matches the visible render.
+            mesh.bounds = src.bounds;
+            _edgeMeshes[src] = mesh;
+            return mesh;
         }
-    }
-}";
+
+        static void AddUniqueEdge(HashSet<long> seen, List<int> indices, int a, int b)
+        {
+            int lo = a < b ? a : b;
+            int hi = a < b ? b : a;
+            long key = ((long)lo << 32) | (uint)hi;
+            if (seen.Add(key)) { indices.Add(a); indices.Add(b); }
+        }
+
+        void ClearEdgeMeshCache()
+        {
+            foreach (var m in _edgeMeshes.Values)
+            {
+                if (m != null) Destroy(m);
+            }
+            _edgeMeshes.Clear();
+        }
 
         void OnDestroy()
         {
             CleanupRenderMode();
+            ClearEdgeMeshCache();
         }
 
         /// <summary>
