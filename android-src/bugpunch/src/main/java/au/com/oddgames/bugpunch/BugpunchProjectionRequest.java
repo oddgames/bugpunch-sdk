@@ -21,12 +21,32 @@ public class BugpunchProjectionRequest extends Activity {
     private static final String TAG = "[Bugpunch.ProjectionRequest]";
     private static final int REQ_CODE = 0xB06C; // "bugc"
 
+    /** SharedPreferences file + keys used to remember prior denial so we don't re-prompt every session. */
+    public static final String PREFS = "bugpunch_prefs";
+    public static final String KEY_DENIED_AT = "bp_projection_denied_at"; // long, System.currentTimeMillis()
+
     /** Callback from Unity — use UnitySendMessage to deliver results. */
     private static String sCallbackObject;
     private static String sCallbackMethod;
 
     // Config stashed between request() and the activity onCreate
     private static int sWidth, sHeight, sBitrate, sFps, sWindowSeconds, sDpi;
+
+    /** True if the user previously denied MediaProjection. Callers use this
+     *  to skip the OS dialog and go straight to Unity-surface buffer mode. */
+    public static boolean wasPreviouslyDenied(Context ctx) {
+        try {
+            long t = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_DENIED_AT, 0L);
+            return t > 0L;
+        } catch (Exception e) { return false; }
+    }
+
+    /** Clear the "previously denied" flag so the next EnterDebugMode re-prompts. */
+    public static void clearDenialFlag(Context ctx) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_DENIED_AT).apply();
+        } catch (Exception ignored) {}
+    }
 
     /**
      * Called from Unity. Stashes config + callback info, then launches this
@@ -78,7 +98,22 @@ public class BugpunchProjectionRequest extends Activity {
         if (requestCode != REQ_CODE) { finish(); return; }
 
         if (resultCode != Activity.RESULT_OK || data == null) {
-            Log.w(TAG, "user denied MediaProjection consent");
+            Log.w(TAG, "user denied MediaProjection consent — falling back to Unity-surface buffer mode");
+            // Remember denial so next EnterDebugMode skips the OS dialog
+            try {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putLong(KEY_DENIED_AT, System.currentTimeMillis()).apply();
+            } catch (Exception ignored) {}
+            // Fall back to Unity-surface capture — the game won't get system-UI
+            // frames but at least bug reports will have game-only video.
+            try {
+                BugpunchRecorder.getInstance().configure(sWidth, sHeight, sBitrate, sFps, sWindowSeconds);
+                BugpunchRecorder.getInstance().startBufferMode(getApplicationContext());
+            } catch (Exception e) {
+                Log.e(TAG, "buffer-mode fallback start failed", e);
+            }
+            // Reported as false to Unity since projection itself was denied;
+            // Unity inspects BugpunchRecorder.isBufferMode() separately.
             sendResultToUnity(false);
             finish();
             return;

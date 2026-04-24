@@ -292,6 +292,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // C# just pushes scene/fps and forwards managed exceptions.
             BugpunchNative.Start(Config);
             gameObject.AddComponent<BugpunchSceneTick>();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Fallback video source for when MediaProjection consent is denied —
+            // the native recorder switches to buffer mode and this component
+            // feeds it NV12 frames from a mirror RenderTexture. Always mounted;
+            // it polls native state and stays idle until buffer mode activates.
+            gameObject.AddComponent<BugpunchSurfaceRecorder>();
+#endif
             // Managed-side script bridge for server "Request More Info"
             // directives. Everything else (directive fetching, caching,
             // queue matching, file globs, dialogs, denial prefs) lives

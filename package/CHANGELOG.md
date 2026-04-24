@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.31] - 2026-04-24
+
+### Added
+- **Android: Unity-surface fallback when MediaProjection consent is denied.** Previously, tapping "Cancel" on Android's system screen-recording consent dialog left us with no video at all — `BugpunchProjectionRequest` silently finished and `BugpunchRecorder` never started. Now: on denial we remember the refusal in SharedPreferences (`bp_projection_denied_at`) and spin the recorder up in buffer-input mode (`COLOR_FormatYUV420SemiPlanar`). A new `BugpunchSurfaceRecorder` MonoBehaviour on the Unity side mirrors the main camera's rendered output into a `RenderTexture` via a `CommandBuffer.Blit`, reads it back asynchronously through `AsyncGPUReadback` (no render-thread stall), converts RGBA32→NV12 on the managed thread, and pushes frames to the native encoder via `BugpunchNative.QueueVideoFrame`. The encoder, ring buffer, MP4 muxer, and crash-dump path are shared with the MediaProjection source — only the frame producer changed. Bug reports now ship ~15 fps game-only footage even when projection is denied, at ~4–6% CPU overhead. Next session after the denial, `BugpunchDebugMode.enter()` skips the OS dialog entirely via `BugpunchProjectionRequest.wasPreviouslyDenied()` and goes straight to buffer mode — no more repeated prompts.
+
 ## [1.7.30] - 2026-04-24
 
 ### Fixed

@@ -19,6 +19,8 @@ import android.view.Surface;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 /**
  * Native Android screen recorder with a rolling-window ring buffer.
@@ -80,6 +82,23 @@ public class BugpunchRecorder {
     /** Returns true if MediaProjection recording is currently active. */
     public boolean isRunning() { return mRunning; }
 
+    /** True if we're in buffer-input mode (Unity feeds frames via queueFrame). */
+    public boolean isBufferMode() { return mBufferMode; }
+
+    // Buffer-input mode — used when MediaProjection consent was denied and
+    // Unity feeds NV12 frames directly from a mirror RenderTexture.
+    private volatile boolean mBufferMode;
+    // Bounded queue; if full (Unity producing faster than codec drains) we
+    // drop the oldest frame rather than block the render thread.
+    private static final int PENDING_FRAMES_MAX = 4;
+    private final BlockingQueue<QueuedFrame> mPendingFrames = new ArrayBlockingQueue<>(PENDING_FRAMES_MAX);
+    private long mBufferModeStartNanos;
+    private static class QueuedFrame {
+        final byte[] nv12;
+        final long ptsUs;
+        QueuedFrame(byte[] nv12, long ptsUs) { this.nv12 = nv12; this.ptsUs = ptsUs; }
+    }
+
     // Ring buffer of encoded samples
     private final Deque<Sample> mBuffer = new ArrayDeque<>();
     private final Object mBufferLock = new Object();
@@ -124,6 +143,80 @@ public class BugpunchRecorder {
     public synchronized boolean start(Activity activity, int resultCode, Intent resultData, int dpi) {
         return startInternal(activity, resultCode, resultData, dpi);
     }
+
+    /**
+     * Start recording in buffer-input mode — no MediaProjection, no VirtualDisplay.
+     * Unity pushes NV12 frames via {@link #queueFrame(byte[], long)}.
+     * Used as a fallback when the user denies the OS MediaProjection consent
+     * dialog: we lose system-UI capture but still record the game surface.
+     *
+     * @return true if the encoder started successfully
+     */
+    public synchronized boolean startBufferMode(Context ctx) {
+        if (mRunning) { Log.w(TAG, "startBufferMode: already running"); return true; }
+        try {
+            mAppContext = ctx != null ? ctx.getApplicationContext() : null;
+
+            mEncoderThread = new HandlerThread("BugpunchEncoder");
+            mEncoderThread.start();
+            mEncoderHandler = new Handler(mEncoderThread.getLooper());
+
+            MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
+            // NV12 (Y plane + interleaved UV). Unity-side converter must match.
+            format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar);
+            format.setInteger(MediaFormat.KEY_BIT_RATE, mBitrate);
+            format.setInteger(MediaFormat.KEY_FRAME_RATE, mFps);
+            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL);
+
+            mEncoder = MediaCodec.createEncoderByType(MIME_TYPE);
+            mEncoder.setCallback(mCodecCallback, mEncoderHandler);
+            mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            // No createInputSurface — we're in buffer mode.
+            mEncoder.start();
+
+            mBufferMode = true;
+            mBufferModeStartNanos = System.nanoTime();
+            mPendingFrames.clear();
+            mRunning = true;
+            Log.i(TAG, "started buffer mode " + mWidth + "x" + mHeight + " @ " + mFps
+                + "fps, window=" + mWindowSeconds + "s");
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "startBufferMode failed", e);
+            teardown();
+            return false;
+        }
+    }
+
+    /**
+     * Queue an NV12-encoded frame for the encoder. Non-blocking — if the
+     * pending queue is full (encoder falling behind) the oldest queued frame
+     * is dropped. Safe to call from any thread. No-op if the recorder isn't
+     * running in buffer mode.
+     *
+     * @param nv12   Y plane (w*h bytes) followed by interleaved UV (w*h/2)
+     * @param ptsUs  presentation timestamp in microseconds, monotonically increasing
+     * @return true if the frame was queued (or dropped-to-requeue); false if not in buffer mode
+     */
+    public boolean queueFrame(byte[] nv12, long ptsUs) {
+        if (!mRunning || !mBufferMode) return false;
+        if (nv12 == null) return false;
+        QueuedFrame f = new QueuedFrame(nv12, ptsUs);
+        // Non-blocking: drop oldest on full so the render thread never waits.
+        if (!mPendingFrames.offer(f)) {
+            mPendingFrames.poll();
+            mPendingFrames.offer(f);
+        }
+        return true;
+    }
+
+    /**
+     * Time base helper for Unity-side PTS computation. Unity passes a nanos
+     * timestamp; we convert to microseconds relative to mBufferModeStartNanos
+     * so codec PTS values stay monotonic across sessions.
+     */
+    public long getBufferModeStartNanos() { return mBufferModeStartNanos; }
 
     private boolean startInternal(Context ctx, int resultCode, Intent resultData, int dpi) {
         if (mRunning) { Log.w(TAG, "already running"); return true; }
@@ -314,7 +407,24 @@ public class BugpunchRecorder {
     private final MediaCodec.Callback mCodecCallback = new MediaCodec.Callback() {
         @Override
         public void onInputBufferAvailable(MediaCodec codec, int index) {
-            // Surface input — no manual input buffers
+            if (!mBufferMode) return; // Surface-input path — no manual buffers
+            QueuedFrame f = mPendingFrames.poll();
+            if (f == null) {
+                // No frame ready — give the buffer back empty so the codec can
+                // recycle it. Queueing size=0 keeps the encoder from stalling
+                // indefinitely waiting for input.
+                try { codec.queueInputBuffer(index, 0, 0, 0, 0); } catch (Exception ignored) {}
+                return;
+            }
+            try {
+                ByteBuffer buf = codec.getInputBuffer(index);
+                int size = Math.min(f.nv12.length, buf != null ? buf.capacity() : f.nv12.length);
+                if (buf != null) { buf.clear(); buf.put(f.nv12, 0, size); }
+                codec.queueInputBuffer(index, 0, size, f.ptsUs, 0);
+            } catch (Exception e) {
+                Log.w(TAG, "queueInputBuffer failed", e);
+                try { codec.queueInputBuffer(index, 0, 0, 0, 0); } catch (Exception ignored) {}
+            }
         }
 
         @Override
@@ -398,5 +508,7 @@ public class BugpunchRecorder {
 
         synchronized (mBufferLock) { mBuffer.clear(); }
         mOutputFormat = null;
+        mBufferMode = false;
+        mPendingFrames.clear();
     }
 }

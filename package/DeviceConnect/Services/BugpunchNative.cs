@@ -330,6 +330,79 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #endif
         }
 
+        /// <summary>
+        /// True if the native video recorder is running in buffer-input mode
+        /// (i.e. MediaProjection consent was denied and we fell back to
+        /// Unity-surface capture). Unity polls this to decide whether to run
+        /// the <see cref="BugpunchSurfaceRecorder"/> pipeline. Android-only.
+        /// </summary>
+        public static bool IsVideoBufferMode()
+        {
+            if (!s_started) return false;
+#if UNITY_EDITOR
+            return false;
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRecorder");
+                using var inst = cls.CallStatic<AndroidJavaObject>("getInstance");
+                return inst != null && inst.Call<bool>("isBufferMode");
+            }
+            catch { return false; }
+#else
+            return false;
+#endif
+        }
+
+        /// <summary>
+        /// Width/height the native recorder was configured with — used by the
+        /// Unity surface recorder to size its mirror RenderTexture so frames
+        /// match the codec's expected buffer size. Returns (0, 0) if not in
+        /// buffer mode. Android-only.
+        /// </summary>
+        public static (int width, int height) GetVideoBufferSize()
+        {
+            if (!s_started) return (0, 0);
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRecorder");
+                using var inst = cls.CallStatic<AndroidJavaObject>("getInstance");
+                if (inst == null) return (0, 0);
+                int w = inst.Call<int>("getWidth");
+                int h = inst.Call<int>("getHeight");
+                return (w, h);
+            }
+            catch { return (0, 0); }
+#else
+            return (0, 0);
+#endif
+        }
+
+        /// <summary>
+        /// Submit a single NV12-encoded frame to the native recorder's
+        /// pending-frame queue. Non-blocking — if the queue is full (encoder
+        /// lagging) the oldest queued frame is dropped. Android-only.
+        /// </summary>
+        public static void QueueVideoFrame(byte[] nv12, long ptsUs)
+        {
+            if (!s_started || nv12 == null) return;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRecorder");
+                using var inst = cls.CallStatic<AndroidJavaObject>("getInstance");
+                if (inst == null) return;
+                // AndroidJavaObject.Call marshals the byte[] via JNI automatically.
+                inst.Call<bool>("queueFrame", nv12, ptsUs);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Bugpunch.BugpunchNative] QueueVideoFrame failed: {e.Message}");
+            }
+#endif
+        }
+
         public static void Trace(string label, string tagsJson)
         {
             if (!s_started || string.IsNullOrEmpty(label)) return;
