@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.43] - 2026-04-25
+
+### Changed
+- **Snapshots no longer bundle SDK-internal folders.** `FileService.StartZipJob` accepts an `excludeDirPrefixes` query param; the server passes `bugpunch_` for snapshot creation so directories like `bugpunch_uploads`, `bugpunch_crashes`, `bugpunch_picks`, and `bugpunch_snapshots` are skipped. Restores mirror this — `UnzipToDirectory` now takes `preserveDirPrefixes`, and the server's `/restore` route passes the same prefix so `clearFirst` no longer wipes the live upload queue / crash spool. Snapshots taken before this version still restore correctly; they're just larger than they need to be.
+- **Recording pill simplified.** Dropped the screenshot button from the floating debug widget on Android (`BugpunchDebugWidget.java`) and iOS (`BugpunchDebugWidget.mm`) — the report flow already grabs context shots automatically, the manual button was redundant. The Tools button now renders an icon (Android: new `toolbox` glyph in `BugpunchToolsActivity.FeatherIcon`; iOS: SF Symbol `wrench.and.screwdriver`) instead of a "Tools" text label, matching the report button's visual weight. Removed the now-orphaned `OnManualScreenshot` / `DrainManualScreenshots` plumbing from `DebugToolsBridge.cs`.
+
 ## [1.7.42] - 2026-04-25
 
 ### Fixed

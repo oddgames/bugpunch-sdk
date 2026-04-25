@@ -618,7 +618,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         return Response.Json(Files.GetFileInfo(Q(path, "path")));
 
                     if (subPath == "/files/zip/start" && method == "POST")
-                        return Response.Json(Files.StartZipJob(Q(path, "path")));
+                        return Response.Json(Files.StartZipJob(Q(path, "path"), Q(path, "excludeDirPrefixes")));
 
                     if (subPath == "/files/zip/progress")
                         return Response.Json(Files.GetZipProgress(Q(path, "jobId")));
@@ -629,7 +629,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (subPath == "/files/unzip" && method == "POST")
                     {
                         var clearFirst = Q(path, "clear") != "false";
-                        return Response.Json(Files.UnzipToDirectory(Q(path, "path"), body, clearFirst));
+                        return Response.Json(Files.UnzipToDirectory(Q(path, "path"), body, clearFirst, Q(path, "preserveDirPrefixes")));
                     }
 
                     if (subPath == "/files/prefs/export" && method == "POST")

@@ -414,14 +414,19 @@ namespace ODDGames.Bugpunch.DeviceConnect
             public string Error;
             public DateTime StartedAtUtc;
             public DateTime CompletedAtUtc;
+            public string[] ExcludeDirPrefixes; // e.g. "bugpunch_" — directories whose name starts with any of these are skipped
         }
 
         /// <summary>
         /// Kick off a zip job for a directory. Returns a jobId immediately;
         /// use <see cref="GetZipProgress"/> to poll and <see cref="GetZipResult"/>
         /// to fetch the base64 once the stage is "done".
+        ///
+        /// <paramref name="excludeDirPrefixes"/> is a comma-separated list of
+        /// directory-name prefixes to skip (used by snapshots to exclude the
+        /// SDK's own folders like "bugpunch_uploads", "bugpunch_crashes", …).
         /// </summary>
-        public string StartZipJob(string path)
+        public string StartZipJob(string path, string excludeDirPrefixes = null)
         {
             if (string.IsNullOrEmpty(path))
                 return Error("Path is required");
@@ -433,12 +438,26 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!Directory.Exists(path))
                 return Error("Directory not found: " + path);
 
+            string[] excludes = null;
+            if (!string.IsNullOrEmpty(excludeDirPrefixes))
+            {
+                var parts = excludeDirPrefixes.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                var list = new List<string>(parts.Length);
+                foreach (var p in parts)
+                {
+                    var t = p.Trim();
+                    if (t.Length > 0) list.Add(t);
+                }
+                if (list.Count > 0) excludes = list.ToArray();
+            }
+
             var job = new ZipJob
             {
                 JobId = Guid.NewGuid().ToString("N"),
                 SourcePath = path,
                 Stage = "scanning",
                 StartedAtUtc = DateTime.UtcNow,
+                ExcludeDirPrefixes = excludes,
             };
             job.TempZipPath = Path.Combine(_tempCachePath, $"bpzip_{job.JobId}.zip");
 
@@ -529,7 +548,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 // Phase 1 — scan
                 var files = new List<string>();
-                EnumerateFilesRecursive(job.SourcePath, files);
+                EnumerateFilesRecursive(job.SourcePath, files, job.ExcludeDirPrefixes);
                 job.TotalFiles = files.Count;
                 job.Stage = "zipping";
 
@@ -574,12 +593,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
-        static void EnumerateFilesRecursive(string dir, List<string> output)
+        static void EnumerateFilesRecursive(string dir, List<string> output, string[] excludeDirPrefixes = null)
         {
             try
             {
                 foreach (var f in Directory.GetFiles(dir)) output.Add(f);
-                foreach (var d in Directory.GetDirectories(dir)) EnumerateFilesRecursive(d, output);
+                foreach (var d in Directory.GetDirectories(dir))
+                {
+                    if (excludeDirPrefixes != null)
+                    {
+                        var name = Path.GetFileName(d);
+                        bool skip = false;
+                        for (int i = 0; i < excludeDirPrefixes.Length; i++)
+                        {
+                            if (!string.IsNullOrEmpty(name) && name.StartsWith(excludeDirPrefixes[i], StringComparison.OrdinalIgnoreCase))
+                            {
+                                skip = true;
+                                break;
+                            }
+                        }
+                        if (skip) continue;
+                    }
+                    EnumerateFilesRecursive(d, output, excludeDirPrefixes);
+                }
             }
             catch { /* skip inaccessible subtrees */ }
         }
@@ -602,8 +638,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         /// <summary>
         /// Extract a base64-encoded zip to a directory (replaces contents).
+        ///
+        /// <paramref name="preserveDirPrefixes"/> is a comma-separated list of
+        /// directory-name prefixes left untouched by <c>clearFirst</c>.
+        /// Snapshots exclude SDK-internal folders (e.g. <c>bugpunch_uploads</c>);
+        /// the restore mirrors that so the live SDK state isn't wiped.
         /// </summary>
-        public string UnzipToDirectory(string path, string base64Zip, bool clearFirst = true)
+        public string UnzipToDirectory(string path, string base64Zip, bool clearFirst = true, string preserveDirPrefixes = null)
         {
             if (string.IsNullOrEmpty(path))
                 return Error("Path is required");
@@ -618,11 +659,41 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var tempZip = Path.Combine(Application.temporaryCachePath, $"restore_{DateTime.UtcNow:yyyyMMddHHmmss}.zip");
                 File.WriteAllBytes(tempZip, bytes);
 
+                string[] preserves = null;
+                if (!string.IsNullOrEmpty(preserveDirPrefixes))
+                {
+                    var parts = preserveDirPrefixes.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    var list = new List<string>(parts.Length);
+                    foreach (var p in parts)
+                    {
+                        var t = p.Trim();
+                        if (t.Length > 0) list.Add(t);
+                    }
+                    if (list.Count > 0) preserves = list.ToArray();
+                }
+
                 if (clearFirst && Directory.Exists(path))
                 {
                     // Delete contents but not the directory itself
                     foreach (var f in Directory.GetFiles(path)) File.Delete(f);
-                    foreach (var d in Directory.GetDirectories(path)) Directory.Delete(d, true);
+                    foreach (var d in Directory.GetDirectories(path))
+                    {
+                        if (preserves != null)
+                        {
+                            var name = Path.GetFileName(d);
+                            bool keep = false;
+                            for (int i = 0; i < preserves.Length; i++)
+                            {
+                                if (!string.IsNullOrEmpty(name) && name.StartsWith(preserves[i], StringComparison.OrdinalIgnoreCase))
+                                {
+                                    keep = true;
+                                    break;
+                                }
+                            }
+                            if (keep) continue;
+                        }
+                        Directory.Delete(d, true);
+                    }
                 }
 
                 if (!Directory.Exists(path)) Directory.CreateDirectory(path);

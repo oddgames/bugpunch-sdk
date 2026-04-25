@@ -751,6 +751,16 @@ public class BugpunchToolsActivity extends Activity {
                     sh.lineTo(22 * u, 6 * u); sh.close();
                     c.drawPath(sh, paint);
                     break;
+                case "toolbox":
+                    // Box body
+                    c.drawRect(3 * u, 8 * u, 21 * u, 20 * u, paint);
+                    // Top handle (inverted U)
+                    c.drawLine(9 * u, 8 * u, 9 * u, 5 * u, paint);
+                    c.drawLine(9 * u, 5 * u, 15 * u, 5 * u, paint);
+                    c.drawLine(15 * u, 5 * u, 15 * u, 8 * u, paint);
+                    // Lid divider
+                    c.drawLine(3 * u, 12 * u, 21 * u, 12 * u, paint);
+                    break;
                 case "layers":
                     Path l1 = new Path();
                     l1.moveTo(12 * u, 2 * u); l1.lineTo(2 * u, 7 * u); l1.lineTo(12 * u, 12 * u);

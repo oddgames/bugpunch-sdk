@@ -268,27 +268,6 @@ public class DebugToolsBridge : MonoBehaviour
     // Called by the native widget's "Tools" button.
     void OnShowTools(string msg) => ShowPanel();
 
-    // Called by the native widget's screenshot button: "path|timestampMs"
-    static readonly List<(string path, long ts)> _manualScreenshots = new();
-
-    void OnManualScreenshot(string msg)
-    {
-        var parts = msg.Split('|');
-        if (parts.Length < 2) return;
-        string path = parts[0];
-        long.TryParse(parts[1], out long ts);
-        _manualScreenshots.Add((path, ts));
-        Debug.Log($"[DebugTools] Manual screenshot captured ({_manualScreenshots.Count} total): {path}");
-    }
-
-    /// <summary>Get and clear all manually captured screenshots (for attaching to a report).</summary>
-    public static List<(string path, long timestampMs)> DrainManualScreenshots()
-    {
-        var copy = new List<(string, long)>(_manualScreenshots);
-        _manualScreenshots.Clear();
-        return copy;
-    }
-
     // ── Editor/Standalone IMGUI fallback ──
 
     static bool _showImgui;

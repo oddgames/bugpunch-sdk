@@ -21,8 +21,8 @@ import android.widget.TextView;
 
 /**
  * Small draggable floating widget that appears when debug mode is active.
- * Shows a blinking recording indicator plus Report / Screenshot / Tools
- * buttons. Can be dragged anywhere on screen.
+ * Shows a blinking recording indicator plus Report and Tools buttons. Can be
+ * dragged anywhere on screen.
  *
  * Added to the Unity Activity's content view as a window overlay — no extra
  * permissions needed (it's inside our own Activity, not a system overlay).
@@ -117,39 +117,11 @@ public class BugpunchDebugWidget {
             reportLp.rightMargin = dp(activity, 6);
             row.addView(reportBtn, reportLp);
 
-            // Screenshot button — camera icon drawn via BugpunchToolsActivity.FeatherIcon
-            ImageView shotBtn = new ImageView(activity);
-            shotBtn.setImageDrawable(new BugpunchToolsActivity.FeatherIcon(activity, "camera", colDim));
-            shotBtn.setPadding(dp(activity, 6), dp(activity, 4), dp(activity, 6), dp(activity, 4));
-            shotBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            GradientDrawable shotBg = new GradientDrawable();
-            shotBg.setColor(colTools);
-            shotBg.setCornerRadius(radius);
-            shotBtn.setBackground(shotBg);
-            shotBtn.setOnClickListener(v -> {
-                // Capture from rolling buffer and notify Unity
-                String path = activity.getCacheDir().getAbsolutePath()
-                    + "/bp_manual_" + System.nanoTime() + ".jpg";
-                boolean ok = BugpunchScreenshot.writeLastFrame(path, 85);
-                if (!ok) BugpunchScreenshot.captureSync(path, 85);
-                long ts = System.currentTimeMillis();
-                BugpunchUnity.sendMessage("BugpunchToolsBridge", "OnManualScreenshot",
-                    path + "|" + ts);
-                // Flash feedback
-                v.setAlpha(0.4f);
-                v.animate().alpha(1f).setDuration(300).start();
-            });
-            LinearLayout.LayoutParams shotLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            shotLp.rightMargin = dp(activity, 6);
-            row.addView(shotBtn, shotLp);
-
-            // Tools button
-            TextView toolsBtn = new TextView(activity);
-            toolsBtn.setText(BugpunchStrings.text("widgetTools", "Tools"));
-            toolsBtn.setTextColor(colDim);
-            BugpunchTheme.applyTextSize(toolsBtn, "fontSizeBody", 13);
-            toolsBtn.setPadding(dp12, dp(activity, 4), dp12, dp(activity, 4));
+            // Tools button — toolbox icon drawn via BugpunchToolsActivity.FeatherIcon
+            ImageView toolsBtn = new ImageView(activity);
+            toolsBtn.setImageDrawable(new BugpunchToolsActivity.FeatherIcon(activity, "toolbox", colDim));
+            toolsBtn.setPadding(dp(activity, 6), dp(activity, 4), dp(activity, 6), dp(activity, 4));
+            toolsBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             GradientDrawable toolsBg = new GradientDrawable();
             toolsBg.setColor(colTools);
             toolsBg.setCornerRadius(radius);

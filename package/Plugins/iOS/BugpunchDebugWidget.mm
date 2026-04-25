@@ -1,7 +1,7 @@
 // BugpunchDebugWidget.mm — Draggable floating debug widget for iOS.
 //
-// Shows a blinking recording indicator plus Report / Screenshot / Tools
-// buttons. Can be dragged anywhere on screen. Added to the key UIWindow.
+// Shows a blinking recording indicator plus Report and Tools buttons. Can be
+// dragged anywhere on screen. Added to the key UIWindow.
 
 #import <UIKit/UIKit.h>
 
@@ -19,7 +19,7 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 @implementation BPDebugWidget
 
 - (instancetype)init {
-    self = [super initWithFrame:CGRectMake(16, 80, 210, 40)];
+    self = [super initWithFrame:CGRectMake(16, 80, 142, 40)];
     if (!self) return nil;
 
     UIColor* colCardBg  = [BPTheme color:@"cardBackground"
@@ -66,30 +66,18 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
     [report addTarget:self action:@selector(reportTapped) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:report];
 
-    // Screenshot button
-    UIButton* shot = [UIButton new];
-    shot.frame = CGRectMake(98, 5, 28, 30);
-    if (@available(iOS 13.0, *)) {
-        [shot setImage:[UIImage systemImageNamed:@"camera" withConfiguration:
-            [UIImageSymbolConfiguration configurationWithPointSize:14]] forState:UIControlStateNormal];
-        shot.tintColor = colMuted;
-    } else {
-        [shot setTitle:@"SS" forState:UIControlStateNormal];
-        [shot setTitleColor:colMuted forState:UIControlStateNormal];
-        shot.titleLabel.font = [UIFont systemFontOfSize:11];
-    }
-    shot.backgroundColor = colTools;
-    shot.layer.cornerRadius = radius;
-    [shot addTarget:self action:@selector(screenshotTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self addSubview:shot];
-
-    // Tools button
+    // Tools button — toolbox icon
     UIButton* tools = [UIButton new];
-    tools.frame = CGRectMake(132, 5, 60, 30);
-    [tools setTitle:[BPStrings text:@"widgetTools" fallback:@"Tools"]
-           forState:UIControlStateNormal];
-    [tools setTitleColor:colMuted forState:UIControlStateNormal];
-    tools.titleLabel.font = [UIFont systemFontOfSize:13];
+    tools.frame = CGRectMake(98, 5, 32, 30);
+    if (@available(iOS 14.0, *)) {
+        [tools setImage:[UIImage systemImageNamed:@"wrench.and.screwdriver" withConfiguration:
+            [UIImageSymbolConfiguration configurationWithPointSize:14]] forState:UIControlStateNormal];
+        tools.tintColor = colMuted;
+    } else {
+        [tools setTitle:[BPStrings text:@"widgetTools" fallback:@"Tools"] forState:UIControlStateNormal];
+        [tools setTitleColor:colMuted forState:UIControlStateNormal];
+        tools.titleLabel.font = [UIFont systemFontOfSize:13];
+    }
     tools.backgroundColor = colTools;
     tools.layer.cornerRadius = radius;
     [tools addTarget:self action:@selector(toolsTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -134,31 +122,6 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 - (void)reportTapped {
     extern void Bugpunch_ReportBug(const char*, const char*, const char*, const char*);
     Bugpunch_ReportBug("bug", "Bug report", "Triggered from debug widget", "");
-}
-
-- (void)screenshotTapped {
-    // Capture a screenshot and notify Unity so it can be added to the report gallery.
-    extern bool Bugpunch_BackbufferReady(void);
-    extern bool Bugpunch_WriteBackbufferJPEG(const char*, float);
-    NSString* caches = NSSearchPathForDirectoriesInDomains(
-        NSCachesDirectory, NSUserDomainMask, YES).firstObject;
-    NSString* path = [caches stringByAppendingPathComponent:
-        [NSString stringWithFormat:@"bp_manual_%f.jpg", [NSDate timeIntervalSinceReferenceDate]]];
-    if (Bugpunch_BackbufferReady()) {
-        Bugpunch_WriteBackbufferJPEG([path UTF8String], 0.85f);
-    }
-    long long ts = (long long)([[NSDate date] timeIntervalSince1970] * 1000);
-    NSString* msg = [NSString stringWithFormat:@"%@|%lld", path, ts];
-    BugpunchUnity_SendMessage("BugpunchToolsBridge", "OnManualScreenshot", [msg UTF8String]);
-
-    // Visual feedback — flash the button
-    UIView* flash = [[UIView alloc] initWithFrame:self.bounds];
-    flash.backgroundColor = [UIColor colorWithWhite:1 alpha:0.3];
-    flash.layer.cornerRadius = self.layer.cornerRadius;
-    flash.userInteractionEnabled = NO;
-    [self addSubview:flash];
-    [UIView animateWithDuration:0.3 animations:^{ flash.alpha = 0; }
-        completion:^(BOOL _) { [flash removeFromSuperview]; }];
 }
 
 - (void)toolsTapped {
