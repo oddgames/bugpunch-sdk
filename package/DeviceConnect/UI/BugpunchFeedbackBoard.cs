@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -21,7 +23,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
     /// <see cref="BugpunchClient.Instance"/> and sends the anon voter identity
     /// as <c>X-Device-Id</c>. The server resolves projectId from the API key.
     /// </summary>
-    public static class BugpunchFeedbackBoard
+    public static partial class BugpunchFeedbackBoard
     {
         static GameObject _hostGO;
         static UIDocument _doc;
@@ -33,6 +35,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         static VisualElement _listContainer;
         static VisualElement _submitContainer;
         static VisualElement _similarityContainer;
+        static VisualElement _detailContainer;
 
         // List state
         static readonly List<FeedbackItem> _items = new();
@@ -48,6 +51,33 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         // Similarity state
         static VisualElement _similarityBody;
+
+        // Detail state
+        static FeedbackItem _detailItem;
+        static VisualElement _detailBody;
+        static ScrollView _detailScroll;
+        static VisualElement _commentsList;
+        static Label _commentsEmptyLabel;
+        static TextField _commentDraftField;
+        static Button _commentPostButton;
+        static TextField _commentEmailField;
+
+        // Attachments — draft state for the submit form + the comment composer.
+        // Each UI session has at most one active draft per surface, so a
+        // single-element list is plenty. Texture cache keeps image GETs once
+        // per URL regardless of how many rows mention it.
+        static readonly List<PendingAttachment> _submitDraftAttachments = new();
+        static readonly List<PendingAttachment> _commentDraftAttachments = new();
+        static VisualElement _submitAttachmentPreview;
+        static Button _submitAttachButton;
+        static VisualElement _commentAttachmentPreview;
+        static Button _commentAttachButton;
+        static readonly Dictionary<string, Texture2D> _imageCache = new();
+
+        // PlayerPrefs — remember whether we've asked for an email this install.
+        // Stored across app launches so the prompt is a one-time-only nudge.
+        const string PREF_EMAIL_ASKED = "bp_feedback_email_asked";
+        const string PREF_EMAIL_VALUE = "bp_feedback_email";
 
         /// <summary>
         /// Show the feedback board. Entry point from
@@ -73,14 +103,17 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             _listContainer = new VisualElement();
             _submitContainer = new VisualElement();
             _similarityContainer = new VisualElement();
+            _detailContainer = new VisualElement();
 
             BuildListView(_listContainer);
             BuildSubmitView(_submitContainer);
             BuildSimilarityView(_similarityContainer);
+            BuildDetailView(_detailContainer);
 
             _card.Add(_listContainer);
             _card.Add(_submitContainer);
             _card.Add(_similarityContainer);
+            _card.Add(_detailContainer);
 
             SwitchTo(View.List);
 
@@ -96,7 +129,8 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         {
             if (e.keyCode != KeyCode.Escape) return;
             if (_submitContainer.style.display == DisplayStyle.Flex ||
-                _similarityContainer.style.display == DisplayStyle.Flex)
+                _similarityContainer.style.display == DisplayStyle.Flex ||
+                _detailContainer.style.display == DisplayStyle.Flex)
             {
                 SwitchTo(View.List);
             }
@@ -107,13 +141,14 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             e.StopPropagation();
         }
 
-        enum View { List, Submit, Similarity }
+        enum View { List, Submit, Similarity, Detail }
 
         static void SwitchTo(View v)
         {
             _listContainer.style.display = v == View.List ? DisplayStyle.Flex : DisplayStyle.None;
             _submitContainer.style.display = v == View.Submit ? DisplayStyle.Flex : DisplayStyle.None;
             _similarityContainer.style.display = v == View.Similarity ? DisplayStyle.Flex : DisplayStyle.None;
+            _detailContainer.style.display = v == View.Detail ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         static void Hide()
@@ -121,527 +156,16 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             if (_doc != null) _doc.rootVisualElement.Clear();
         }
 
-        // ─── List view ────────────────────────────────────────────────────
-
-        static void BuildListView(VisualElement container)
-        {
-            container.style.flexDirection = FlexDirection.Column;
-
-            // Header row: title + close button.
-            var header = new VisualElement();
-            header.style.flexDirection = FlexDirection.Row;
-            header.style.alignItems = Align.Center;
-            header.style.justifyContent = Justify.SpaceBetween;
-            header.style.marginBottom = 8;
-
-            var title = new Label("Feedback");
-            title.style.color = Color.white;
-            title.style.fontSize = 20;
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            header.Add(title);
-
-            var close = new Button(Hide) { text = "×" };
-            close.style.backgroundColor = Color.clear;
-            close.style.color = new Color(0.7f, 0.7f, 0.7f, 1);
-            close.style.fontSize = 22;
-            close.style.unityFontStyleAndWeight = FontStyle.Bold;
-            close.style.paddingTop = 0; close.style.paddingBottom = 0;
-            close.style.paddingLeft = 8; close.style.paddingRight = 8;
-            close.style.borderTopWidth = close.style.borderBottomWidth =
-                close.style.borderLeftWidth = close.style.borderRightWidth = 0;
-            close.style.marginLeft = 0;
-            header.Add(close);
-            container.Add(header);
-
-            var subtitle = new Label("Suggest what to build next, or vote on what others have asked for.");
-            subtitle.style.color = new Color(0.72f, 0.72f, 0.72f, 1);
-            subtitle.style.fontSize = 13;
-            subtitle.style.marginBottom = 10;
-            subtitle.style.whiteSpace = WhiteSpace.Normal;
-            container.Add(subtitle);
-
-            // Search
-            var search = new TextField();
-            StyleInput(search, "Search feedback…");
-            search.RegisterValueChangedCallback(e =>
-            {
-                _searchFilter = e.newValue ?? "";
-                RefreshList();
-            });
-            search.style.marginBottom = 8;
-            container.Add(search);
-
-            // Scroll list
-            _listScroll = new ScrollView(ScrollViewMode.Vertical);
-            _listScroll.style.maxHeight = 420;
-            _listScroll.style.minHeight = 160;
-            _listScroll.style.marginBottom = 8;
-            container.Add(_listScroll);
-
-            _listEmptyLabel = new Label("Loading…");
-            _listEmptyLabel.style.color = new Color(0.6f, 0.6f, 0.6f, 1);
-            _listEmptyLabel.style.fontSize = 13;
-            _listEmptyLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-            _listEmptyLabel.style.marginTop = 40;
-            _listEmptyLabel.style.marginBottom = 40;
-            _listScroll.Add(_listEmptyLabel);
-
-            // New-feedback button
-            var newBtn = new Button(() =>
-            {
-                _submitTitleField.value = "";
-                _submitDescField.value = "";
-                SwitchTo(View.Submit);
-                _submitTitleField.Focus();
-            });
-            newBtn.text = "+ New feedback";
-            StylePrimaryButton(newBtn);
-            newBtn.style.marginLeft = 0;
-            container.Add(newBtn);
-        }
-
-        static void RefreshList()
-        {
-            _listScroll.Clear();
-
-            var filter = _searchFilter?.Trim().ToLowerInvariant() ?? "";
-            var visible = new List<FeedbackItem>();
-            foreach (var item in _items)
-            {
-                if (!string.IsNullOrEmpty(filter) && (item.title == null ||
-                    item.title.ToLowerInvariant().IndexOf(filter, StringComparison.Ordinal) < 0))
-                {
-                    continue;
-                }
-                visible.Add(item);
-            }
-
-            if (visible.Count == 0)
-            {
-                _listEmptyLabel.text = _items.Count == 0
-                    ? "No feedback yet. Be the first to suggest something!"
-                    : "No feedback matches your search.";
-                _listScroll.Add(_listEmptyLabel);
-                return;
-            }
-
-            foreach (var item in visible)
-                _listScroll.Add(CreateListRow(item));
-        }
-
-        static VisualElement CreateListRow(FeedbackItem item)
-        {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.alignItems = Align.FlexStart;
-            row.style.backgroundColor = new Color(0.16f, 0.16f, 0.16f, 1);
-            row.style.borderTopLeftRadius = row.style.borderTopRightRadius =
-                row.style.borderBottomLeftRadius = row.style.borderBottomRightRadius = 6;
-            row.style.paddingTop = 10; row.style.paddingBottom = 10;
-            row.style.paddingLeft = 12; row.style.paddingRight = 8;
-            row.style.marginBottom = 6;
-
-            // Text column (title + body)
-            var text = new VisualElement();
-            text.style.flexGrow = 1;
-            text.style.flexShrink = 1;
-
-            var titleLabel = new Label(item.title ?? "(untitled)");
-            titleLabel.style.color = Color.white;
-            titleLabel.style.fontSize = 14;
-            titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            titleLabel.style.whiteSpace = WhiteSpace.Normal;
-            titleLabel.style.marginBottom = 2;
-            text.Add(titleLabel);
-
-            if (!string.IsNullOrEmpty(item.body))
-            {
-                var bodyText = item.body;
-                if (bodyText.Length > 160) bodyText = bodyText.Substring(0, 157) + "…";
-                var bodyLabel = new Label(bodyText);
-                bodyLabel.style.color = new Color(0.72f, 0.72f, 0.72f, 1);
-                bodyLabel.style.fontSize = 12;
-                bodyLabel.style.whiteSpace = WhiteSpace.Normal;
-                text.Add(bodyLabel);
-            }
-
-            row.Add(text);
-
-            // Vote pill
-            var voteBtn = new Button();
-            voteBtn.style.flexDirection = FlexDirection.Column;
-            voteBtn.style.alignItems = Align.Center;
-            voteBtn.style.justifyContent = Justify.Center;
-            voteBtn.style.marginLeft = 12;
-            voteBtn.style.minWidth = 52;
-            voteBtn.style.paddingTop = 6; voteBtn.style.paddingBottom = 6;
-            voteBtn.style.paddingLeft = 10; voteBtn.style.paddingRight = 10;
-            voteBtn.style.borderTopLeftRadius = voteBtn.style.borderTopRightRadius =
-                voteBtn.style.borderBottomLeftRadius = voteBtn.style.borderBottomRightRadius = 6;
-            voteBtn.style.borderTopWidth = voteBtn.style.borderBottomWidth =
-                voteBtn.style.borderLeftWidth = voteBtn.style.borderRightWidth = 1;
-            ApplyVoteStyle(voteBtn, item.hasMyVote);
-
-            var arrow = new Label("▲");
-            arrow.style.fontSize = 12;
-            arrow.style.unityFontStyleAndWeight = FontStyle.Bold;
-            arrow.style.color = item.hasMyVote ? Color.white : new Color(0.78f, 0.78f, 0.78f, 1);
-            arrow.pickingMode = PickingMode.Ignore;
-            voteBtn.Add(arrow);
-
-            var count = new Label(item.voteCount.ToString());
-            count.style.fontSize = 12;
-            count.style.unityFontStyleAndWeight = FontStyle.Bold;
-            count.style.color = item.hasMyVote ? Color.white : new Color(0.85f, 0.85f, 0.85f, 1);
-            count.pickingMode = PickingMode.Ignore;
-            voteBtn.Add(count);
-
-            voteBtn.clicked += () => _ = ToggleVote(item, voteBtn, arrow, count);
-
-            row.Add(voteBtn);
-            return row;
-        }
-
-        static void ApplyVoteStyle(VisualElement el, bool active)
-        {
-            if (active)
-            {
-                el.style.backgroundColor = new Color(0.24f, 0.5f, 0.30f, 1);
-                el.style.borderTopColor = el.style.borderBottomColor =
-                    el.style.borderLeftColor = el.style.borderRightColor = new Color(0.35f, 0.70f, 0.42f, 1);
-            }
-            else
-            {
-                el.style.backgroundColor = new Color(0.22f, 0.22f, 0.22f, 1);
-                el.style.borderTopColor = el.style.borderBottomColor =
-                    el.style.borderLeftColor = el.style.borderRightColor = new Color(0.36f, 0.36f, 0.36f, 1);
-            }
-        }
-
-        // ─── Submit view ──────────────────────────────────────────────────
-
-        static void BuildSubmitView(VisualElement container)
-        {
-            container.style.flexDirection = FlexDirection.Column;
-
-            var title = new Label("New feedback");
-            title.style.color = Color.white;
-            title.style.fontSize = 20;
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.marginBottom = 4;
-            container.Add(title);
-
-            var subtitle = new Label("Write a short title and (optionally) describe what you'd like.");
-            subtitle.style.color = new Color(0.72f, 0.72f, 0.72f, 1);
-            subtitle.style.fontSize = 13;
-            subtitle.style.marginBottom = 12;
-            subtitle.style.whiteSpace = WhiteSpace.Normal;
-            container.Add(subtitle);
-
-            var titleLabel = new Label("Title");
-            titleLabel.style.color = new Color(0.85f, 0.85f, 0.85f, 1);
-            titleLabel.style.fontSize = 13;
-            titleLabel.style.marginBottom = 4;
-            container.Add(titleLabel);
-
-            _submitTitleField = new TextField();
-            _submitTitleField.maxLength = 200;
-            StyleInput(_submitTitleField, "One-line summary");
-            container.Add(_submitTitleField);
-
-            var descLabel = new Label("Description (optional)");
-            descLabel.style.color = new Color(0.85f, 0.85f, 0.85f, 1);
-            descLabel.style.fontSize = 13;
-            descLabel.style.marginTop = 8;
-            descLabel.style.marginBottom = 4;
-            container.Add(descLabel);
-
-            _submitDescField = new TextField();
-            _submitDescField.multiline = true;
-            _submitDescField.maxLength = 4000;
-            StyleInput(_submitDescField, "More detail — how it would work, why it matters…", multiline: true);
-            container.Add(_submitDescField);
-
-            var btnRow = new VisualElement();
-            btnRow.style.flexDirection = FlexDirection.Row;
-            btnRow.style.justifyContent = Justify.FlexEnd;
-            btnRow.style.marginTop = 12;
-
-            var cancelBtn = new Button(() => SwitchTo(View.List)) { text = "Cancel" };
-            StyleSecondaryButton(cancelBtn);
-            btnRow.Add(cancelBtn);
-
-            var submitBtn = new Button() { text = "Submit" };
-            StylePrimaryButton(submitBtn);
-            submitBtn.SetEnabled(false);
-
-            _submitTitleField.RegisterValueChangedCallback(e =>
-                submitBtn.SetEnabled(!string.IsNullOrWhiteSpace(e.newValue)));
-
-            submitBtn.clicked += () =>
-            {
-                var t = _submitTitleField.value?.Trim() ?? "";
-                var d = _submitDescField.value?.Trim() ?? "";
-                if (string.IsNullOrEmpty(t)) return;
-                _ = SubmitWithSimilarityCheck(t, d, submitBtn);
-            };
-            btnRow.Add(submitBtn);
-            container.Add(btnRow);
-        }
-
-        // ─── Similarity prompt view ───────────────────────────────────────
-
-        static void BuildSimilarityView(VisualElement container)
-        {
-            container.style.flexDirection = FlexDirection.Column;
-
-            var title = new Label("Similar feedback already exists");
-            title.style.color = Color.white;
-            title.style.fontSize = 19;
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.marginBottom = 8;
-            title.style.whiteSpace = WhiteSpace.Normal;
-            container.Add(title);
-
-            _similarityBody = new VisualElement();
-            _similarityBody.style.marginBottom = 12;
-            container.Add(_similarityBody);
-        }
-
-        static void ShowSimilarity(SimilarityMatch match)
-        {
-            _similarityBody.Clear();
-
-            var intro = new Label("Sounds similar to:");
-            intro.style.color = new Color(0.78f, 0.78f, 0.78f, 1);
-            intro.style.fontSize = 13;
-            intro.style.marginBottom = 6;
-            _similarityBody.Add(intro);
-
-            var card = new VisualElement();
-            card.style.backgroundColor = new Color(0.17f, 0.17f, 0.17f, 1);
-            card.style.borderTopLeftRadius = card.style.borderTopRightRadius =
-                card.style.borderBottomLeftRadius = card.style.borderBottomRightRadius = 6;
-            card.style.paddingTop = 10; card.style.paddingBottom = 10;
-            card.style.paddingLeft = 12; card.style.paddingRight = 12;
-            card.style.marginBottom = 10;
-
-            var matchTitle = new Label(match.title ?? "(untitled)");
-            matchTitle.style.color = Color.white;
-            matchTitle.style.fontSize = 15;
-            matchTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-            matchTitle.style.whiteSpace = WhiteSpace.Normal;
-            matchTitle.style.marginBottom = 4;
-            card.Add(matchTitle);
-
-            var votes = new Label($"{match.voteCount} vote{(match.voteCount == 1 ? "" : "s")}");
-            votes.style.color = new Color(0.65f, 0.65f, 0.65f, 1);
-            votes.style.fontSize = 12;
-            card.Add(votes);
-
-            if (!string.IsNullOrEmpty(match.body))
-            {
-                var body = match.body.Length > 240 ? match.body.Substring(0, 237) + "…" : match.body;
-                var bodyLabel = new Label(body);
-                bodyLabel.style.color = new Color(0.72f, 0.72f, 0.72f, 1);
-                bodyLabel.style.fontSize = 12;
-                bodyLabel.style.whiteSpace = WhiteSpace.Normal;
-                bodyLabel.style.marginTop = 6;
-                card.Add(bodyLabel);
-            }
-
-            _similarityBody.Add(card);
-
-            var question = new Label("Want to vote for that instead?");
-            question.style.color = new Color(0.85f, 0.85f, 0.85f, 1);
-            question.style.fontSize = 13;
-            question.style.whiteSpace = WhiteSpace.Normal;
-            _similarityBody.Add(question);
-
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.justifyContent = Justify.FlexEnd;
-            row.style.marginTop = 12;
-
-            var postMineBtn = new Button(() => _ = CreateFeedback(_pendingSubmitTitle, _pendingSubmitDescription, bypassSimilarity: true, closeOnSuccess: true))
-            {
-                text = "Post mine anyway"
-            };
-            StyleSecondaryButton(postMineBtn);
-            row.Add(postMineBtn);
-
-            var voteBtn = new Button(() => _ = VoteFor(match.id))
-            {
-                text = "Vote for that"
-            };
-            StylePrimaryButton(voteBtn);
-            row.Add(voteBtn);
-
-            _similarityBody.Add(row);
-
-            SwitchTo(View.Similarity);
-        }
-
-        // ─── HTTP ─────────────────────────────────────────────────────────
-
-        static async System.Threading.Tasks.Task FetchList()
-        {
-            if (!TryGetBaseUrl(out var baseUrl, out var apiKey))
-            {
-                _listEmptyLabel.text = "Bugpunch isn't configured — feedback unavailable.";
-                return;
-            }
-
-            var url = baseUrl + "/api/feedback?sort=votes";
-            var (ok, status, body) = await HttpRequest("GET", url, apiKey, null);
-            if (!ok)
-            {
-                _listEmptyLabel.text = $"Could not load feedback (HTTP {status}).";
-                return;
-            }
-
-            _items.Clear();
-            try
-            {
-                var arr = JArray.Parse(string.IsNullOrEmpty(body) ? "[]" : body);
-                foreach (var t in arr)
-                    _items.Add(FeedbackItem.FromJson(t));
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Parse failed: {ex.Message}");
-                _listEmptyLabel.text = "Could not parse feedback list.";
-                return;
-            }
-
-            RefreshList();
-        }
-
-        static async System.Threading.Tasks.Task SubmitWithSimilarityCheck(string title, string description, Button submitBtn)
-        {
-            if (!TryGetBaseUrl(out var baseUrl, out var apiKey)) return;
-
-            submitBtn.SetEnabled(false);
-            submitBtn.text = "Checking…";
-            _pendingSubmitTitle = title;
-            _pendingSubmitDescription = description;
-
-            try
-            {
-                var simUrl = baseUrl + "/api/feedback/similarity";
-                var simBody = BuildJson(new Dictionary<string, string>
-                {
-                    ["title"] = title,
-                    ["description"] = description,
-                });
-                var (simOk, _, simResp) = await HttpRequest("POST", simUrl, apiKey, simBody);
-                if (simOk)
-                {
-                    SimilarityMatch top = null;
-                    try
-                    {
-                        var obj = JObject.Parse(string.IsNullOrEmpty(simResp) ? "{}" : simResp);
-                        var matches = obj["matches"] as JArray;
-                        if (matches != null)
-                        {
-                            foreach (var m in matches)
-                            {
-                                var match = SimilarityMatch.FromJson(m);
-                                if (match.score > 0.85f && (top == null || match.score > top.score))
-                                    top = match;
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.LogWarning($"[Bugpunch.FeedbackBoard] Similarity parse failed: {ex.Message}");
-                    }
-
-                    if (top != null)
-                    {
-                        ShowSimilarity(top);
-                        return;
-                    }
-                }
-                // Similarity either failed or found nothing — just post it.
-                await CreateFeedback(title, description, bypassSimilarity: false, closeOnSuccess: true);
-            }
-            finally
-            {
-                submitBtn.text = "Submit";
-                submitBtn.SetEnabled(true);
-            }
-        }
-
-        static async System.Threading.Tasks.Task CreateFeedback(string title, string description, bool bypassSimilarity, bool closeOnSuccess)
-        {
-            if (!TryGetBaseUrl(out var baseUrl, out var apiKey)) return;
-
-            var url = baseUrl + "/api/feedback";
-            var payload = new Dictionary<string, string>
-            {
-                ["title"] = title ?? "",
-                ["description"] = description ?? "",
-            };
-            if (bypassSimilarity) payload["bypassSimilarity"] = "true";
-            var body = BuildJson(payload);
-
-            var (ok, status, _) = await HttpRequest("POST", url, apiKey, body);
-            if (!ok)
-            {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Create failed (HTTP {status}).");
-                // Surface failure inline — lightweight toast on the card.
-                ShowInlineError("Could not submit feedback. Please try again.");
-                return;
-            }
-
-            // Refresh and return to list.
-            await FetchList();
-            if (closeOnSuccess) SwitchTo(View.List);
-        }
-
-        static async System.Threading.Tasks.Task ToggleVote(FeedbackItem item, VisualElement voteBtn, Label arrow, Label count)
-        {
-            if (!TryGetBaseUrl(out var baseUrl, out var apiKey)) return;
-
-            var url = baseUrl + "/api/feedback/" + UnityWebRequest.EscapeURL(item.id) + "/vote";
-            var (ok, _, body) = await HttpRequest("POST", url, apiKey, "{}");
-            if (!ok) return;
-
-            try
-            {
-                var obj = JObject.Parse(string.IsNullOrEmpty(body) ? "{}" : body);
-                var voteCount = (int?)obj["voteCount"] ?? item.voteCount;
-                var hasMyVote = (bool?)obj["hasMyVote"] ?? item.hasMyVote;
-                item.voteCount = voteCount;
-                item.hasMyVote = hasMyVote;
-                count.text = voteCount.ToString();
-                ApplyVoteStyle(voteBtn, hasMyVote);
-                arrow.style.color = hasMyVote ? Color.white : new Color(0.78f, 0.78f, 0.78f, 1);
-                count.style.color = hasMyVote ? Color.white : new Color(0.85f, 0.85f, 0.85f, 1);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Vote parse failed: {ex.Message}");
-            }
-        }
-
-        static async System.Threading.Tasks.Task VoteFor(string itemId)
-        {
-            if (!TryGetBaseUrl(out var baseUrl, out var apiKey)) return;
-            var url = baseUrl + "/api/feedback/" + UnityWebRequest.EscapeURL(itemId) + "/vote";
-            await HttpRequest("POST", url, apiKey, "{}");
-            await FetchList();
-            SwitchTo(View.List);
-        }
-
         static void ShowInlineError(string message)
         {
             // Simple inline error — appended to the similarity body if visible,
             // otherwise to the submit view. Avoids a full notification system.
+            var theme = BugpunchTheme.Current;
             var err = new Label(message);
-            err.style.color = new Color(1f, 0.5f, 0.5f, 1);
-            err.style.fontSize = 12;
+            // accentRecord = the red / destructive accent — matches native
+            // error toasts and the record button tint.
+            err.style.color = theme.accentRecord;
+            err.style.fontSize = theme.fontSizeCaption;
             err.style.marginTop = 8;
             err.style.whiteSpace = WhiteSpace.Normal;
             if (_submitContainer.style.display == DisplayStyle.Flex)
@@ -650,177 +174,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 _similarityContainer.Add(err);
         }
 
-        // Tiny HTTP wrapper — lives inside the feedback board since the SDK
-        // doesn't currently have a shared authed-JSON helper. Uses
-        // UnityWebRequest.SendWebRequest() with async/await.
-        static async System.Threading.Tasks.Task<(bool ok, long status, string body)> HttpRequest(string method, string url, string apiKey, string jsonBody)
-        {
-            UnityWebRequest req;
-            if (method == "GET")
-            {
-                req = UnityWebRequest.Get(url);
-            }
-            else
-            {
-                req = new UnityWebRequest(url, method);
-                req.downloadHandler = new DownloadHandlerBuffer();
-                if (jsonBody != null)
-                {
-                    var bytes = Encoding.UTF8.GetBytes(jsonBody);
-                    req.uploadHandler = new UploadHandlerRaw(bytes) { contentType = "application/json" };
-                    req.SetRequestHeader("Content-Type", "application/json");
-                }
-            }
-            req.SetRequestHeader("Authorization", "Bearer " + (apiKey ?? ""));
-            req.SetRequestHeader("X-Device-Id", DeviceIdentity.GetDeviceId() ?? "");
-            req.SetRequestHeader("Accept", "application/json");
-            req.timeout = 15;
-
-            var op = req.SendWebRequest();
-            while (!op.isDone)
-                await System.Threading.Tasks.Task.Yield();
-
-            var ok = req.result == UnityWebRequest.Result.Success && req.responseCode >= 200 && req.responseCode < 300;
-            var body = req.downloadHandler != null ? req.downloadHandler.text : "";
-            var code = req.responseCode;
-            req.Dispose();
-            return (ok, code, body);
-        }
-
-        static bool TryGetBaseUrl(out string baseUrl, out string apiKey)
-        {
-            baseUrl = null; apiKey = null;
-            var client = BugpunchClient.Instance;
-            if (client == null || client.Config == null)
-            {
-                Debug.LogWarning("[Bugpunch.FeedbackBoard] BugpunchClient not initialized — feedback unavailable.");
-                return false;
-            }
-            baseUrl = client.Config.HttpBaseUrl;
-            apiKey = client.Config.apiKey;
-            return !string.IsNullOrEmpty(baseUrl) && !string.IsNullOrEmpty(apiKey);
-        }
-
-        static string BuildJson(Dictionary<string, string> fields)
-        {
-            var sb = new StringBuilder("{");
-            bool first = true;
-            foreach (var kv in fields)
-            {
-                if (!first) sb.Append(',');
-                first = false;
-                sb.Append('"').Append(JsonConvert.ToString(kv.Key).Trim('"')).Append("\":");
-                if (kv.Key == "bypassSimilarity")
-                {
-                    // Simple bool — stored as "true" string in the dict.
-                    sb.Append(kv.Value == "true" ? "true" : "false");
-                }
-                else
-                {
-                    sb.Append(JsonConvert.ToString(kv.Value ?? ""));
-                }
-            }
-            sb.Append('}');
-            return sb.ToString();
-        }
-
-        // ─── Styling helpers ──────────────────────────────────────────────
-
-        static void StyleInput(TextField field, string placeholder, bool multiline = false)
-        {
-            field.multiline = multiline;
-            var input = field.Q<VisualElement>(className: "unity-text-field__input");
-            if (input != null)
-            {
-                input.style.backgroundColor = new Color(0.19f, 0.19f, 0.19f, 1);
-                input.style.borderTopColor = input.style.borderBottomColor =
-                    input.style.borderLeftColor = input.style.borderRightColor = new Color(0.31f, 0.31f, 0.31f, 1);
-                input.style.borderTopWidth = input.style.borderBottomWidth =
-                    input.style.borderLeftWidth = input.style.borderRightWidth = 1;
-                input.style.borderTopLeftRadius = input.style.borderTopRightRadius =
-                    input.style.borderBottomLeftRadius = input.style.borderBottomRightRadius = 6;
-                input.style.color = Color.white;
-                input.style.paddingTop = 6; input.style.paddingBottom = 6;
-                input.style.paddingLeft = 8; input.style.paddingRight = 8;
-                if (multiline) input.style.minHeight = 80;
-            }
-
-            if (!string.IsNullOrEmpty(placeholder))
-            {
-                var ph = new Label(placeholder);
-                ph.style.position = Position.Absolute;
-                ph.style.left = 10; ph.style.top = 7;
-                ph.style.color = new Color(0.45f, 0.45f, 0.45f, 1);
-                ph.style.fontSize = 13;
-                ph.pickingMode = PickingMode.Ignore;
-                field.Add(ph);
-                field.RegisterValueChangedCallback(e =>
-                    ph.style.display = string.IsNullOrEmpty(e.newValue) ? DisplayStyle.Flex : DisplayStyle.None);
-            }
-        }
-
-        static void StylePrimaryButton(Button btn)
-        {
-            btn.style.backgroundColor = new Color(0.18f, 0.49f, 0.20f, 1);
-            btn.style.color = Color.white;
-            btn.style.fontSize = 14;
-            btn.style.unityFontStyleAndWeight = FontStyle.Bold;
-            btn.style.paddingTop = 8; btn.style.paddingBottom = 8;
-            btn.style.paddingLeft = 20; btn.style.paddingRight = 20;
-            btn.style.borderTopLeftRadius = btn.style.borderTopRightRadius =
-                btn.style.borderBottomLeftRadius = btn.style.borderBottomRightRadius = 6;
-            btn.style.borderTopWidth = btn.style.borderBottomWidth =
-                btn.style.borderLeftWidth = btn.style.borderRightWidth = 0;
-            btn.style.marginLeft = 8;
-        }
-
-        static void StyleSecondaryButton(Button btn)
-        {
-            btn.style.backgroundColor = new Color(0.26f, 0.26f, 0.26f, 1);
-            btn.style.color = new Color(0.85f, 0.85f, 0.85f, 1);
-            btn.style.fontSize = 14;
-            btn.style.unityFontStyleAndWeight = FontStyle.Bold;
-            btn.style.paddingTop = 8; btn.style.paddingBottom = 8;
-            btn.style.paddingLeft = 20; btn.style.paddingRight = 20;
-            btn.style.borderTopLeftRadius = btn.style.borderTopRightRadius =
-                btn.style.borderBottomLeftRadius = btn.style.borderBottomRightRadius = 6;
-            btn.style.borderTopWidth = btn.style.borderBottomWidth =
-                btn.style.borderLeftWidth = btn.style.borderRightWidth = 0;
-            btn.style.marginLeft = 8;
-        }
-
         // ─── Infra ────────────────────────────────────────────────────────
-
-        static VisualElement CreateBackdrop(Action onClickOutside)
-        {
-            var backdrop = new VisualElement();
-            backdrop.style.position = Position.Absolute;
-            backdrop.style.left = 0; backdrop.style.top = 0;
-            backdrop.style.right = 0; backdrop.style.bottom = 0;
-            backdrop.style.backgroundColor = new Color(0, 0, 0, 0.7f);
-            backdrop.style.alignItems = Align.Center;
-            backdrop.style.justifyContent = Justify.Center;
-            backdrop.RegisterCallback<PointerDownEvent>(e =>
-            {
-                if (e.target == backdrop) onClickOutside?.Invoke();
-            });
-            return backdrop;
-        }
-
-        static VisualElement CreateCard()
-        {
-            var card = new VisualElement();
-            card.style.backgroundColor = new Color(0.13f, 0.13f, 0.13f, 0.97f);
-            card.style.borderTopLeftRadius = card.style.borderTopRightRadius =
-                card.style.borderBottomLeftRadius = card.style.borderBottomRightRadius = 12;
-            card.style.paddingTop = 22; card.style.paddingBottom = 22;
-            card.style.paddingLeft = 24; card.style.paddingRight = 24;
-            card.style.maxWidth = 520;
-            card.style.minWidth = 360;
-            card.style.width = Length.Percent(90);
-            card.RegisterCallback<PointerDownEvent>(e => e.StopPropagation());
-            return card;
-        }
 
         static void EnsureDocument()
         {
@@ -858,56 +212,304 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             return _styleSheet;
         }
 
-        // ─── Data types ───────────────────────────────────────────────────
+    }
 
-        class FeedbackItem
+    /// <summary>
+    /// Feedback-board markdown renderer — converts the supported subset
+    /// (<c>**bold**</c>, <c>*italic*</c>, <c>`code`</c>, bullet / numbered
+    /// lists, <c>[text](http(s)://…)</c>, paragraphs with single-newline
+    /// breaks) into a UI Toolkit tree of <see cref="Label"/>s inside the
+    /// given container. No headings, no tables, no HTML, no code blocks.
+    ///
+    /// Links must start with <c>http://</c> or <c>https://</c>; anything
+    /// else is emitted as plain text so <c>javascript:</c> / <c>data:</c>
+    /// / relative-path attempts can't execute via <see cref="Application.OpenURL"/>.
+    /// </summary>
+    internal static class BugpunchMarkdownRenderer
+    {
+        enum InlineKind { Text, Code, Bold, Italic, Link, Br }
+
+        struct InlineToken
         {
-            public string id;
-            public string projectId;
-            public string title;
-            public string body;
-            public int voteCount;
-            public string status;
-            public string createdAt;
-            public string createdBy;
-            public bool hasMyVote;
-
-            public static FeedbackItem FromJson(JToken t)
-            {
-                return new FeedbackItem
-                {
-                    id = (string)t["id"] ?? "",
-                    projectId = (string)t["projectId"] ?? "",
-                    title = (string)t["title"] ?? "",
-                    body = (string)t["body"] ?? "",
-                    voteCount = (int?)t["voteCount"] ?? 0,
-                    status = (string)t["status"] ?? "",
-                    createdAt = (string)t["createdAt"] ?? "",
-                    createdBy = (string)t["createdBy"] ?? "",
-                    hasMyVote = (bool?)t["hasMyVote"] ?? false,
-                };
-            }
+            public InlineKind Kind;
+            public string Value;
+            public string Href; // only for Link
         }
 
-        class SimilarityMatch
+        /// <summary>
+        /// Render markdown into <paramref name="container"/>. Paragraphs and
+        /// list items become child Labels; bullets start with "• " and
+        /// numbered items with "{n}. ".
+        /// </summary>
+        public static void RenderTo(
+            VisualElement container, string source,
+            Color textColor, int fontSize)
         {
-            public string id;
-            public string title;
-            public string body;
-            public int voteCount;
-            public float score;
+            if (container == null || string.IsNullOrEmpty(source)) return;
 
-            public static SimilarityMatch FromJson(JToken t)
+            container.style.flexDirection = FlexDirection.Column;
+
+            var lines = (source ?? "").Replace("\r\n", "\n").Split('\n');
+            var paragraph = new StringBuilder();
+
+            void FlushParagraph()
             {
-                return new SimilarityMatch
-                {
-                    id = (string)t["id"] ?? "",
-                    title = (string)t["title"] ?? "",
-                    body = (string)t["body"] ?? "",
-                    voteCount = (int?)t["voteCount"] ?? 0,
-                    score = (float?)t["score"] ?? 0f,
-                };
+                var text = paragraph.ToString().Trim();
+                paragraph.Length = 0;
+                if (string.IsNullOrEmpty(text)) return;
+                container.Add(BuildInlineLabel(text, textColor, fontSize));
             }
+
+            int i = 0;
+            while (i < lines.Length)
+            {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    FlushParagraph();
+                    i++;
+                    continue;
+                }
+
+                var bulletMatch = Regex.Match(line, @"^\s*[-*]\s+(.*)$");
+                var numberMatch = Regex.Match(line, @"^\s*\d+\.\s+(.*)$");
+                if (bulletMatch.Success || numberMatch.Success)
+                {
+                    FlushParagraph();
+                    var isBullet = bulletMatch.Success;
+                    int ordinal = 1;
+                    while (i < lines.Length)
+                    {
+                        var l = lines[i];
+                        if (string.IsNullOrWhiteSpace(l)) break;
+                        var bm = Regex.Match(l, @"^\s*[-*]\s+(.*)$");
+                        var nm = Regex.Match(l, @"^\s*\d+\.\s+(.*)$");
+                        if (isBullet && bm.Success)
+                        {
+                            container.Add(BuildListItem("• " + bm.Groups[1].Value, textColor, fontSize));
+                            i++;
+                            continue;
+                        }
+                        if (!isBullet && nm.Success)
+                        {
+                            container.Add(BuildListItem($"{ordinal}. " + nm.Groups[1].Value, textColor, fontSize));
+                            ordinal++;
+                            i++;
+                            continue;
+                        }
+                        break;
+                    }
+                    continue;
+                }
+
+                if (paragraph.Length > 0) paragraph.Append('\n');
+                paragraph.Append(line);
+                i++;
+            }
+            FlushParagraph();
+        }
+
+        /// <summary>
+        /// Strip markdown markers for a plain-text list preview. Leaves a
+        /// readable summary without <c>**</c> / <c>*</c> / <c>`</c> /
+        /// <c>[text](url)</c> visual noise.
+        /// </summary>
+        public static string StripForPreview(string source)
+        {
+            if (string.IsNullOrEmpty(source)) return "";
+            var s = source;
+            s = Regex.Replace(s, @"`([^`]+)`", "$1");
+            s = Regex.Replace(s, @"\*\*([^*]+)\*\*", "$1");
+            s = Regex.Replace(s, @"\*([^*]+)\*", "$1");
+            s = Regex.Replace(s, @"\[([^\]]+)\]\((https?://[^)]+)\)", "$1");
+            s = Regex.Replace(s, @"^\s*[-*]\s+", "• ", RegexOptions.Multiline);
+            s = Regex.Replace(s, @"^\s*\d+\.\s+", "", RegexOptions.Multiline);
+            return s;
+        }
+
+        // ── paragraph / list-item label builders ────────────────────────
+
+        static VisualElement BuildInlineLabel(string text, Color color, int fontSize)
+        {
+            // Paragraphs are assembled as a single Label so UI Toolkit's
+            // text wrapping does the right thing; the Label takes a rich
+            // marker-like string we build by collapsing the token stream.
+            // UI Toolkit's Label doesn't render nested links clickably, so
+            // we emit links in square brackets with their URL appended and
+            // wire up a tap handler over the whole label to open the URL.
+            // That's a conscious trade-off — richer per-token styling would
+            // mean dozens of sibling Labels and breaks wrapping.
+            var tokens = TokenizeInline(text);
+
+            // Collect link hrefs to wire up the first-link tap as a fallback.
+            string firstHref = null;
+            var buf = new StringBuilder();
+            foreach (var t in tokens)
+            {
+                switch (t.Kind)
+                {
+                    case InlineKind.Br:     buf.Append('\n'); break;
+                    case InlineKind.Text:   buf.Append(t.Value); break;
+                    case InlineKind.Code:   buf.Append(t.Value); break;
+                    case InlineKind.Bold:   buf.Append(t.Value); break;
+                    case InlineKind.Italic: buf.Append(t.Value); break;
+                    case InlineKind.Link:
+                        buf.Append(t.Value);
+                        if (firstHref == null) firstHref = t.Href;
+                        break;
+                }
+            }
+
+            var label = new Label(buf.ToString());
+            label.style.color = color;
+            label.style.fontSize = fontSize;
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.marginBottom = 4;
+
+            // If the paragraph contains any link, tapping it opens the
+            // first URL. That's the simplest meaningful action without
+            // introducing per-token hit testing in UI Toolkit.
+            if (firstHref != null)
+            {
+                label.style.color = new Color(0.56f, 0.82f, 1f, 1);
+                label.RegisterCallback<PointerDownEvent>(e =>
+                {
+                    Application.OpenURL(firstHref);
+                    e.StopPropagation();
+                });
+            }
+            return label;
+        }
+
+        static VisualElement BuildListItem(string text, Color color, int fontSize)
+        {
+            var tokens = TokenizeInline(text);
+            string firstHref = null;
+            var buf = new StringBuilder();
+            foreach (var t in tokens)
+            {
+                switch (t.Kind)
+                {
+                    case InlineKind.Br:     buf.Append(' '); break;
+                    case InlineKind.Text:   buf.Append(t.Value); break;
+                    case InlineKind.Code:   buf.Append(t.Value); break;
+                    case InlineKind.Bold:   buf.Append(t.Value); break;
+                    case InlineKind.Italic: buf.Append(t.Value); break;
+                    case InlineKind.Link:
+                        buf.Append(t.Value);
+                        if (firstHref == null) firstHref = t.Href;
+                        break;
+                }
+            }
+            var label = new Label(buf.ToString());
+            label.style.color = color;
+            label.style.fontSize = fontSize;
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.marginLeft = 8;
+            if (firstHref != null)
+            {
+                label.style.color = new Color(0.56f, 0.82f, 1f, 1);
+                label.RegisterCallback<PointerDownEvent>(e =>
+                {
+                    Application.OpenURL(firstHref);
+                    e.StopPropagation();
+                });
+            }
+            return label;
+        }
+
+        // ── inline tokenizer ────────────────────────────────────────────
+
+        static List<InlineToken> TokenizeInline(string source)
+        {
+            var tokens = new List<InlineToken>();
+            var buf = new StringBuilder();
+            void Flush()
+            {
+                if (buf.Length == 0) return;
+                var s = buf.ToString();
+                buf.Length = 0;
+                var parts = s.Split('\n');
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    if (parts[i].Length > 0)
+                        tokens.Add(new InlineToken { Kind = InlineKind.Text, Value = parts[i] });
+                    if (i < parts.Length - 1)
+                        tokens.Add(new InlineToken { Kind = InlineKind.Br });
+                }
+            }
+
+            int p = 0;
+            while (p < source.Length)
+            {
+                char ch = source[p];
+
+                // `code`
+                if (ch == '`')
+                {
+                    int end = source.IndexOf('`', p + 1);
+                    if (end > p)
+                    {
+                        Flush();
+                        tokens.Add(new InlineToken { Kind = InlineKind.Code, Value = source.Substring(p + 1, end - p - 1) });
+                        p = end + 1;
+                        continue;
+                    }
+                }
+
+                // [text](http(s)://url)
+                if (ch == '[')
+                {
+                    int closeText = source.IndexOf(']', p + 1);
+                    if (closeText > p && closeText + 1 < source.Length && source[closeText + 1] == '(')
+                    {
+                        int closeUrl = source.IndexOf(')', closeText + 2);
+                        if (closeUrl > closeText + 1)
+                        {
+                            var t = source.Substring(p + 1, closeText - p - 1);
+                            var href = source.Substring(closeText + 2, closeUrl - closeText - 2).Trim();
+                            if (Regex.IsMatch(href, @"^https?://", RegexOptions.IgnoreCase))
+                            {
+                                Flush();
+                                tokens.Add(new InlineToken { Kind = InlineKind.Link, Value = t, Href = href });
+                                p = closeUrl + 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                // **bold**
+                if (ch == '*' && p + 1 < source.Length && source[p + 1] == '*')
+                {
+                    int end = source.IndexOf("**", p + 2);
+                    if (end > p + 1)
+                    {
+                        Flush();
+                        tokens.Add(new InlineToken { Kind = InlineKind.Bold, Value = source.Substring(p + 2, end - p - 2) });
+                        p = end + 2;
+                        continue;
+                    }
+                }
+
+                // *italic*
+                if (ch == '*')
+                {
+                    int end = source.IndexOf('*', p + 1);
+                    if (end > p + 1 && (p + 1 >= source.Length || source[p + 1] != '*'))
+                    {
+                        Flush();
+                        tokens.Add(new InlineToken { Kind = InlineKind.Italic, Value = source.Substring(p + 1, end - p - 1) });
+                        p = end + 1;
+                        continue;
+                    }
+                }
+
+                buf.Append(ch);
+                p++;
+            }
+            Flush();
+            return tokens;
         }
     }
 }

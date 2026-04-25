@@ -25,7 +25,6 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         static Texture2D _iconCamera;
         static Texture2D _iconVideocam;
         static Texture2D _iconStopCircle;
-        static Texture2D _iconLogo;
 
         static UIDocument EnsureDocument()
         {
@@ -99,7 +98,11 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         {
             // In Editor, find via AssetDatabase; at runtime, relative to data path
             #if UNITY_EDITOR
-            var guids = UnityEditor.AssetDatabase.FindAssets("bugpunch_logo t:Texture2D");
+            // Pivot off photo_camera_white — one of the SDK-shipped icons
+            // that lives in the same folder. Used to locate the Icons dir
+            // without hardcoding the package path (works under Assets/ or
+            // a UPM install).
+            var guids = UnityEditor.AssetDatabase.FindAssets("photo_camera_white t:Texture2D");
             if (guids.Length > 0)
             {
                 var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
@@ -153,7 +156,6 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         static Texture2D CameraIcon => GetIcon(ref _iconCamera, "photo_camera_white.png");
         static Texture2D VideocamIcon => GetIcon(ref _iconVideocam, "videocam_white.png");
         static Texture2D StopCircleIcon => GetIcon(ref _iconStopCircle, "stop_circle_white.png");
-        static Texture2D LogoIcon => GetIcon(ref _iconLogo, "bugpunch_logo.png");
 
         static VisualElement CreateIconElement(Texture2D icon, int size, Color? tint = null)
         {
@@ -172,10 +174,15 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         }
 
         // ─── Logo Header ──────────────────────────────────────────────
+        //
+        // SDK ships unbranded — this header is only emitted if the host
+        // game's BugpunchTheme has a logo texture set (BugpunchTheme.brandLogo
+        // when populated by the customer). No name label by default.
 
         static VisualElement CreateLogoHeader()
         {
-            var logo = LogoIcon;
+            var theme = BugpunchTheme.Current;
+            var logo = theme?.brandLogo;
             if (logo == null) return null;
 
             var row = new VisualElement();
@@ -187,56 +194,41 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             img.style.marginRight = 8;
             row.Add(img);
 
-            var name = new Label("Bugpunch");
-            name.style.fontSize = 14;
-            name.style.color = new Color(0.6f, 0.6f, 0.6f, 1);
-            name.style.unityFontStyleAndWeight = FontStyle.Bold;
-            row.Add(name);
+            var name = !string.IsNullOrEmpty(theme.brandName) ? theme.brandName : null;
+            if (name != null)
+            {
+                var label = new Label(name);
+                label.style.fontSize = theme.fontSizeBody;
+                label.style.color = theme.textMuted;
+                label.style.unityFontStyleAndWeight = FontStyle.Bold;
+                row.Add(label);
+            }
 
             return row;
         }
 
         static VisualElement CreateBackdrop(Action onClickOutside = null)
         {
-            var backdrop = new VisualElement();
+            // Shared inline styles + click-outside handling lives in
+            // BugpunchUIToolkit. We just tag the USS class for the
+            // stylesheet to pick up additional rules.
+            var backdrop = BugpunchUIToolkit.CreateBackdrop(onClickOutside);
             backdrop.AddToClassList("bp-backdrop");
-            // Inline fallback styles in case USS didn't load
-            backdrop.style.position = Position.Absolute;
-            backdrop.style.left = 0; backdrop.style.top = 0;
-            backdrop.style.right = 0; backdrop.style.bottom = 0;
-            backdrop.style.backgroundColor = new Color(0, 0, 0, 0.7f);
-            backdrop.style.alignItems = Align.Center;
-            backdrop.style.justifyContent = Justify.Center;
-
-            if (onClickOutside != null)
-            {
-                backdrop.RegisterCallback<PointerDownEvent>(e =>
-                {
-                    if (e.target == backdrop)
-                        onClickOutside();
-                });
-            }
-
             return backdrop;
         }
 
         static VisualElement CreateCard(bool wide = false)
         {
-            var card = new VisualElement();
+            // UIToolkitDialog cards use 24/24 padding and don't pin a
+            // percent width — pass widthPercent: 0 to opt out.
+            var card = BugpunchUIToolkit.CreateCard(
+                maxWidth: wide ? 700f : 420f,
+                minWidth: wide ? 480f : 320f,
+                widthPercent: 0f,
+                verticalPadding: 24f,
+                horizontalPadding: 24f);
             card.AddToClassList("bp-card");
             if (wide) card.AddToClassList("bp-card-wide");
-            // Inline fallback
-            card.style.backgroundColor = new Color(0.13f, 0.13f, 0.13f, 0.96f);
-            card.style.borderTopLeftRadius = 12;
-            card.style.borderTopRightRadius = 12;
-            card.style.borderBottomLeftRadius = 12;
-            card.style.borderBottomRightRadius = 12;
-            card.style.paddingTop = 24; card.style.paddingBottom = 24;
-            card.style.paddingLeft = 24; card.style.paddingRight = 24;
-            card.style.maxWidth = wide ? 700 : 420;
-            card.style.minWidth = wide ? 480 : 320;
-            // Stop clicks on card from propagating to backdrop
-            card.RegisterCallback<PointerDownEvent>(e => e.StopPropagation());
             return card;
         }
 
@@ -244,7 +236,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         {
             var label = new Label(text);
             label.AddToClassList(className);
-            label.style.color = color ?? Color.white;
+            label.style.color = color ?? BugpunchTheme.Current.textPrimary;
             label.style.fontSize = fontSize;
             label.style.unityFontStyleAndWeight = fontStyle;
             label.style.whiteSpace = WhiteSpace.Normal;
@@ -253,6 +245,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         static TextField CreateTextField(string placeholder, bool multiline = false)
         {
+            var theme = BugpunchTheme.Current;
             var field = new TextField();
             field.multiline = multiline;
             field.AddToClassList(multiline ? "bp-textarea" : "bp-input");
@@ -261,14 +254,14 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             var input = field.Q<VisualElement>(className: "unity-text-field__input");
             if (input != null)
             {
-                input.style.backgroundColor = new Color(0.19f, 0.19f, 0.19f, 1);
+                input.style.backgroundColor = theme.cardBackground;
                 input.style.borderTopColor = input.style.borderBottomColor =
-                    input.style.borderLeftColor = input.style.borderRightColor = new Color(0.31f, 0.31f, 0.31f, 1);
+                    input.style.borderLeftColor = input.style.borderRightColor = theme.cardBorder;
                 input.style.borderTopWidth = input.style.borderBottomWidth =
                     input.style.borderLeftWidth = input.style.borderRightWidth = 1;
                 input.style.borderTopLeftRadius = input.style.borderTopRightRadius =
                     input.style.borderBottomLeftRadius = input.style.borderBottomRightRadius = 6;
-                input.style.color = Color.white;
+                input.style.color = theme.textPrimary;
                 input.style.paddingTop = 6; input.style.paddingBottom = 6;
                 input.style.paddingLeft = 8; input.style.paddingRight = 8;
                 if (multiline) input.style.minHeight = 60;
@@ -280,8 +273,8 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 var ph = new Label(placeholder);
                 ph.style.position = Position.Absolute;
                 ph.style.left = 8; ph.style.top = 6;
-                ph.style.color = new Color(0.45f, 0.45f, 0.45f, 1);
-                ph.style.fontSize = 13;
+                ph.style.color = theme.textMuted;
+                ph.style.fontSize = theme.fontSizeBody - 1;
                 ph.pickingMode = PickingMode.Ignore;
                 field.Add(ph);
 
@@ -295,6 +288,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         static Button CreateButton(string text, string className, Action onClick)
         {
+            var theme = BugpunchTheme.Current;
             var btn = new Button(onClick) { text = text };
             btn.AddToClassList("bp-btn");
             btn.AddToClassList(className);
@@ -303,7 +297,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 btn.style.borderBottomLeftRadius = btn.style.borderBottomRightRadius = 6;
             btn.style.paddingTop = 8; btn.style.paddingBottom = 8;
             btn.style.paddingLeft = 20; btn.style.paddingRight = 20;
-            btn.style.fontSize = 14;
+            btn.style.fontSize = theme.fontSizeBody;
             btn.style.unityFontStyleAndWeight = FontStyle.Bold;
             btn.style.borderTopWidth = btn.style.borderBottomWidth =
                 btn.style.borderLeftWidth = btn.style.borderRightWidth = 0;
@@ -312,24 +306,24 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             switch (className)
             {
                 case "bp-btn-primary":
-                    btn.style.backgroundColor = new Color(0.18f, 0.49f, 0.20f, 1);
-                    btn.style.color = Color.white;
+                    btn.style.backgroundColor = theme.accentPrimary;
+                    btn.style.color = theme.textPrimary;
                     break;
                 case "bp-btn-danger":
-                    btn.style.backgroundColor = new Color(0.78f, 0.16f, 0.16f, 1);
-                    btn.style.color = Color.white;
+                    btn.style.backgroundColor = theme.accentRecord;
+                    btn.style.color = theme.textPrimary;
                     break;
                 case "bp-btn-secondary":
-                    btn.style.backgroundColor = new Color(0.26f, 0.26f, 0.26f, 1);
-                    btn.style.color = new Color(0.78f, 0.78f, 0.78f, 1);
+                    btn.style.backgroundColor = theme.cardBorder;
+                    btn.style.color = theme.textSecondary;
                     break;
                 case "bp-btn-link":
                     btn.style.backgroundColor = Color.clear;
-                    btn.style.color = new Color(0.55f, 0.55f, 0.55f, 1);
+                    btn.style.color = theme.textMuted;
                     btn.style.paddingTop = 4; btn.style.paddingBottom = 4;
                     btn.style.paddingLeft = 8; btn.style.paddingRight = 8;
                     btn.style.unityFontStyleAndWeight = FontStyle.Normal;
-                    btn.style.fontSize = 13;
+                    btn.style.fontSize = theme.fontSizeBody - 1;
                     break;
             }
 
@@ -348,18 +342,19 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             Button[] buttons = new Button[4];
             int selected = defaultIndex;
 
+            var theme = BugpunchTheme.Current;
             void Refresh()
             {
                 for (int i = 0; i < buttons.Length; i++)
                 {
                     bool active = i == selected;
-                    buttons[i].style.backgroundColor = active
-                        ? new Color(0.24f, 0.39f, 0.63f, 1)
-                        : new Color(0.22f, 0.22f, 0.22f, 1);
+                    // Selected severity uses the chat accent so it pops against
+                    // the dark card without fighting the primary CTA colour.
+                    buttons[i].style.backgroundColor = active ? theme.accentChat : theme.cardBorder;
                     buttons[i].style.borderTopColor = buttons[i].style.borderBottomColor =
                         buttons[i].style.borderLeftColor = buttons[i].style.borderRightColor =
-                            active ? new Color(0.39f, 0.63f, 0.96f, 1) : new Color(0.31f, 0.31f, 0.31f, 1);
-                    buttons[i].style.color = active ? Color.white : new Color(0.78f, 0.78f, 0.78f, 1);
+                            active ? theme.accentChat : theme.cardBorder;
+                    buttons[i].style.color = active ? theme.textPrimary : theme.textSecondary;
                 }
             }
 
@@ -421,7 +416,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
             var logo = CreateLogoHeader();
             if (logo != null) card.Add(logo);
-            card.Add(CreateLabel("Script Permission", "bp-title", Color.white, 20, FontStyle.Bold));
+            card.Add(CreateLabel("Script Permission", "bp-title", BugpunchTheme.Current.textPrimary, BugpunchTheme.Current.fontSizeTitle, FontStyle.Bold));
             card.Add(CreateLabel($"The server wants to run a script on this device:\n\n{scriptName}",
                 "bp-subtitle"));
             if (!string.IsNullOrEmpty(scriptDescription))
@@ -444,7 +439,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
             var logo = CreateLogoHeader();
             if (logo != null) card.Add(logo);
-            card.Add(CreateLabel("Bug Report", "bp-title", Color.white, 20, FontStyle.Bold));
+            card.Add(CreateLabel("Bug Report", "bp-title", BugpunchTheme.Current.textPrimary, BugpunchTheme.Current.fontSizeTitle, FontStyle.Bold));
             card.Add(CreateLabel("Describe the issue you encountered.", "bp-subtitle"));
 
             card.Add(CreateLabel("Title", "bp-label"));
@@ -497,7 +492,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             var logo = CreateLogoHeader();
             if (logo != null) card.Add(logo);
             card.Add(CreateLabel("Crash Report", "bp-title bp-title-error",
-                new Color(1f, 0.3f, 0.3f), 20, FontStyle.Bold));
+                BugpunchTheme.Current.accentRecord, BugpunchTheme.Current.fontSizeTitle, FontStyle.Bold));
 
             // Top row: thumbnail + exception
             var topRow = new VisualElement();
@@ -531,7 +526,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             if (!string.IsNullOrEmpty(context.exceptionMessage))
             {
                 var excLabel = CreateLabel(context.exceptionMessage, "bp-exception-text",
-                    new Color(1f, 0.5f, 0.5f), 13, FontStyle.Bold);
+                    BugpunchTheme.Current.accentRecord, BugpunchTheme.Current.fontSizeBody - 1, FontStyle.Bold);
                 excLabel.style.marginBottom = 6;
                 infoCol.Add(excLabel);
             }
@@ -541,14 +536,14 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 var scrollView = new ScrollView(ScrollViewMode.Vertical);
                 scrollView.AddToClassList("bp-stack-scroll");
                 scrollView.style.maxHeight = 120;
-                scrollView.style.backgroundColor = new Color(0.11f, 0.11f, 0.11f, 1);
+                scrollView.style.backgroundColor = BugpunchTheme.Current.cardBackground;
                 scrollView.style.borderTopLeftRadius = scrollView.style.borderTopRightRadius =
                     scrollView.style.borderBottomLeftRadius = scrollView.style.borderBottomRightRadius = 4;
                 scrollView.style.paddingTop = 6; scrollView.style.paddingBottom = 6;
                 scrollView.style.paddingLeft = 6; scrollView.style.paddingRight = 6;
 
                 var stackLabel = CreateLabel(context.stackTrace, "bp-stack-text",
-                    new Color(0.67f, 0.67f, 0.67f), 11);
+                    BugpunchTheme.Current.textSecondary, BugpunchTheme.Current.fontSizeCaption - 1);
                 scrollView.Add(stackLabel);
                 infoCol.Add(scrollView);
             }
@@ -592,13 +587,13 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             videoToggle.SetEnabled(!string.IsNullOrEmpty(context.videoPath));
             videoToggle.RegisterValueChangedCallback(e => includeVideo = e.newValue);
             videoToggle.style.marginRight = 16;
-            videoToggle.style.color = new Color(0.78f, 0.78f, 0.78f, 1);
+            videoToggle.style.color = BugpunchTheme.Current.textSecondary;
             toggleRow.Add(videoToggle);
 
             var logsToggle = new Toggle("Include logs");
             logsToggle.value = true;
             logsToggle.RegisterValueChangedCallback(e => includeLogs = e.newValue);
-            logsToggle.style.color = new Color(0.78f, 0.78f, 0.78f, 1);
+            logsToggle.style.color = BugpunchTheme.Current.textSecondary;
             toggleRow.Add(logsToggle);
 
             card.Add(toggleRow);
@@ -640,11 +635,12 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             card.style.alignItems = Align.Center;
             card.style.maxWidth = 340;
 
-            // Bugpunch logo at the top
-            var logoImg = LogoIcon;
-            if (logoImg != null)
+            // Brand logo at the top — only renders if the host game's
+            // BugpunchTheme has a brandLogo set. SDK ships unbranded.
+            var brandLogo = BugpunchTheme.Current?.brandLogo;
+            if (brandLogo != null)
             {
-                var logoEl = CreateIconElement(logoImg, 48);
+                var logoEl = CreateIconElement(brandLogo, 48);
                 logoEl.style.marginBottom = 12;
                 card.Add(logoEl);
             }
@@ -662,10 +658,13 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             camBg.style.marginLeft = 8; camBg.style.marginRight = 8;
             camBg.style.borderTopLeftRadius = camBg.style.borderTopRightRadius =
                 camBg.style.borderBottomLeftRadius = camBg.style.borderBottomRightRadius = 8;
-            camBg.style.backgroundColor = new Color(0.15f, 0.28f, 0.4f, 1);
+            // Tint the icon chips with dimmed accents so the welcome splash
+            // telegraphs "we're about to record a bug" via colour alone.
+            var welcomeTheme = BugpunchTheme.Current;
+            camBg.style.backgroundColor = new Color(welcomeTheme.accentChat.r * 0.45f, welcomeTheme.accentChat.g * 0.45f, welcomeTheme.accentChat.b * 0.45f, 1f);
             camBg.style.alignItems = Align.Center;
             camBg.style.justifyContent = Justify.Center;
-            camBg.Add(CreateIconElement(CameraIcon, 28, new Color(0.39f, 0.71f, 0.96f)));
+            camBg.Add(CreateIconElement(CameraIcon, 28, welcomeTheme.accentChat));
             iconsRow.Add(camBg);
 
             // Video icon with tinted background
@@ -674,21 +673,21 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             vidBg.style.marginLeft = 8; vidBg.style.marginRight = 8;
             vidBg.style.borderTopLeftRadius = vidBg.style.borderTopRightRadius =
                 vidBg.style.borderBottomLeftRadius = vidBg.style.borderBottomRightRadius = 8;
-            vidBg.style.backgroundColor = new Color(0.35f, 0.15f, 0.15f, 1);
+            vidBg.style.backgroundColor = new Color(welcomeTheme.accentRecord.r * 0.45f, welcomeTheme.accentRecord.g * 0.45f, welcomeTheme.accentRecord.b * 0.45f, 1f);
             vidBg.style.alignItems = Align.Center;
             vidBg.style.justifyContent = Justify.Center;
-            vidBg.Add(CreateIconElement(VideocamIcon, 28, new Color(0.94f, 0.33f, 0.31f)));
+            vidBg.Add(CreateIconElement(VideocamIcon, 28, welcomeTheme.accentRecord));
             iconsRow.Add(vidBg);
 
             card.Add(iconsRow);
 
             // Title
-            card.Add(CreateLabel("Report a Bug", "bp-welcome-title", Color.white, 20, FontStyle.Bold));
+            card.Add(CreateLabel("Report a Bug", "bp-welcome-title", welcomeTheme.textPrimary, welcomeTheme.fontSizeTitle, FontStyle.Bold));
 
             // Body
             var body = CreateLabel(
                 "We'll record your screen while you reproduce the issue.\n\nWhen you're ready, tap the report button to send us the details.",
-                "bp-welcome-body", new Color(0.73f, 0.73f, 0.73f), 14);
+                "bp-welcome-body", welcomeTheme.textSecondary, welcomeTheme.fontSizeBody);
             body.style.unityTextAlign = TextAnchor.MiddleCenter;
             body.style.marginBottom = 20;
             body.style.paddingLeft = 8; body.style.paddingRight = 8;
@@ -746,7 +745,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             btn.style.width = 56; btn.style.height = 56;
             btn.style.borderTopLeftRadius = btn.style.borderTopRightRadius =
                 btn.style.borderBottomLeftRadius = btn.style.borderBottomRightRadius = 28;
-            btn.style.backgroundColor = new Color(0.83f, 0.18f, 0.18f, 1);
+            btn.style.backgroundColor = BugpunchTheme.Current.accentRecord;
             btn.style.alignItems = Align.Center;
             btn.style.justifyContent = Justify.Center;
             btn.style.borderTopWidth = btn.style.borderBottomWidth =
@@ -758,7 +757,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             var stopTex = StopCircleIcon;
             if (stopTex != null)
             {
-                btn.Add(CreateIconElement(stopTex, 28, Color.white));
+                btn.Add(CreateIconElement(stopTex, 28, BugpunchTheme.Current.textPrimary));
             }
             else
             {
@@ -766,7 +765,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 stopSquare.style.width = 20; stopSquare.style.height = 20;
                 stopSquare.style.borderTopLeftRadius = stopSquare.style.borderTopRightRadius =
                     stopSquare.style.borderBottomLeftRadius = stopSquare.style.borderBottomRightRadius = 3;
-                stopSquare.style.backgroundColor = Color.white;
+                stopSquare.style.backgroundColor = BugpunchTheme.Current.textPrimary;
                 stopSquare.pickingMode = PickingMode.Ignore;
                 btn.Add(stopSquare);
             }
@@ -778,7 +777,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             timer.AddToClassList("bp-record-timer");
             timer.style.fontSize = 11;
             timer.style.unityFontStyleAndWeight = FontStyle.Bold;
-            timer.style.color = Color.white;
+            timer.style.color = BugpunchTheme.Current.textPrimary;
             timer.style.unityTextAlign = TextAnchor.MiddleCenter;
             timer.style.marginTop = 4;
             timer.pickingMode = PickingMode.Ignore;

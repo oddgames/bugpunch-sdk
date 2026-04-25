@@ -7,9 +7,12 @@
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import <CoreMotion/CoreMotion.h>
-#import <OSLog/OSLog.h>
 #import <zlib.h>
+
+#import "BugpunchTheme.h"
+#import "BugpunchStrings.h"
+#import "BugpunchLogReader.h"
+#import "BugpunchShake.h"
 
 // Symbols from sibling files
 extern "C" {
@@ -51,6 +54,7 @@ extern "C" {
     bool BugpunchRing_Dump(const char* outputPath);
     void BugpunchRing_Configure(int width, int height, int fps, int bitrate, int windowSeconds);
     bool BugpunchRing_Start(void);
+    void BugpunchRing_Stop(void);
     bool BugpunchRing_IsRunning(void);
     double BugpunchRing_GetLastDumpStartHostTime(void);
     double BugpunchRing_GetLastDumpEndHostTime(void);
@@ -65,22 +69,12 @@ extern "C" {
     const char* BugpunchTouch_GetLiveTouches(int trailMs);
 }
 
-// Log reader (same file for now — compact enough to inline).
+// BPLogReader (log ring + OSLogStore pull) lives in BugpunchLogReader.{h,mm}.
+// BPShake (CoreMotion shake detector) lives in BugpunchShake.{h,mm}.
 //
 // Zero device-side parsing: each OSLog entry becomes one raw text line
 // (logcat-ish format so the server's parser handles it the same way as
 // Android). The SDK never builds structured JSON — the server owns that.
-@interface BPLogReader : NSObject
-+ (void)startWithMaxEntries:(NSInteger)n;
-+ (void)stop;
-+ (NSString*)snapshotText;
-+ (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace;
-@end
-
-@interface BPShake : NSObject
-+ (void)startWithThreshold:(double)t onShake:(void(^)(void))cb;
-+ (void)stop;
-@end
 
 @interface BPDebugMode : NSObject
 @property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* metadata;
@@ -95,6 +89,14 @@ extern "C" {
 @property (nonatomic, assign) int frameCount;
 @property (nonatomic, assign) int ctxShotFlushCounter;
 @property (nonatomic, copy) NSString* ctxShotDiskPath;
+// Cache-driven debug-mode auto-prompt state.
+//  - autoPromptShown: launch-time prompt fired (or skipped because cache
+//    wasn't internal); guards against re-prompting in the same session.
+//  - startedFromCachedPrompt: ring buffer is running because the cached
+//    prompt's consent was accepted; tunnel role-change → non-internal
+//    tears it down. Manual Bugpunch_EnterDebugMode never sets this.
+@property (nonatomic, assign) BOOL autoPromptShown;
+@property (nonatomic, assign) BOOL startedFromCachedPrompt;
 + (instancetype)shared;
 - (void)onFrame:(CADisplayLink*)link;
 @end
@@ -523,6 +525,17 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
     }
     if (cfg.count > 0 || !d.config) d.config = cfg;
 
+    // Push the native-overlay theme into BPTheme so every surface built
+    // downstream (welcome card, request-help picker, recording overlay,
+    // consent sheet, crash/bug dialogs) reads its colours, radii and font
+    // sizes from one place. Nil / empty theme block falls back to defaults.
+    [BPTheme applyFromJson:cfg[@"theme"]];
+
+    // Apply user-visible strings + locale overrides — every overlay
+    // resolves its labels through BPStrings text:fallback: so a missing
+    // / empty block falls back to the caller's hardcoded English.
+    [BPStrings applyFromJson:cfg[@"strings"]];
+
     NSDictionary* metaDict = cfg[@"metadata"];
     if ([metaDict isKindOfClass:[NSDictionary class]]) {
         for (NSString* k in metaDict) {
@@ -673,14 +686,17 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                     if (br.length) body[@"branch"] = br;
                     NSString* cs = cur.metadata[@"changeset"];
                     if (cs.length) body[@"changeset"] = cs;
-                    // Extract screenshot path for ANR reports.
+                    // Extract screenshot + logs paths for ANR reports.
                     NSString* shotPath = nil;
+                    NSString* logsPath = nil;
                     for (NSString* line in [rawStr componentsSeparatedByString:@"\n"]) {
                         if ([line hasPrefix:@"---"]) break;
-                        if ([line hasPrefix:@"screenshot:"]) {
+                        if (!shotPath && [line hasPrefix:@"screenshot:"]) {
                             shotPath = [line substringFromIndex:@"screenshot:".length];
-                            break;
+                        } else if (!logsPath && [line hasPrefix:@"logs:"]) {
+                            logsPath = [line substringFromIndex:@"logs:".length];
                         }
+                        if (shotPath && logsPath) break;
                     }
                     BOOL hasShot = shotPath.length > 0 &&
                         [[NSFileManager defaultManager] fileExistsAtPath:shotPath];
@@ -718,6 +734,14 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                                 @"path": ctxShotPath,
                                 @"requires": @"context_screenshot" }];
                         }
+                        if (logsPath.length > 0 &&
+                            [[NSFileManager defaultManager] fileExistsAtPath:logsPath]) {
+                            [attach addObject:@{ @"field": @"logs",
+                                @"filename": @"logs.log",
+                                @"contentType": @"text/plain",
+                                @"path": logsPath,
+                                @"requires": @"logs" }];
+                        }
                         NSData* attachJsonData = [NSJSONSerialization dataWithJSONObject:attach
                             options:0 error:nil];
                         NSString* attachJson = attachJsonData
@@ -739,6 +763,14 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
     } @catch (NSException* ex) {
         NSLog(@"[Bugpunch] crash drain failed: %@", ex);
     }
+
+    // Cache-driven debug-mode auto-prompt. If the last roleConfig the
+    // server delivered was "internal", fire the consent sheet now — don't
+    // wait for the tunnel handshake to return. The tunnel will tear down
+    // any speculative recording if the server now says non-internal.
+    extern void Bugpunch_MaybeAutoPromptDebugModeOnLaunch(void);
+    Bugpunch_MaybeAutoPromptDebugModeOnLaunch();
+
     return true;
 }
 
@@ -772,11 +804,118 @@ void Bugpunch_EnterDebugMode(int skipConsent) {
     BPDebugMode* d = [BPDebugMode shared];
     if (!d.started) return;
     if (BugpunchRing_IsRunning()) return;
+    // Manual entry — clear the cache-driven flag so a subsequent server
+    // role of non-internal doesn't tear down a user-initiated recording.
+    d.startedFromCachedPrompt = NO;
     if (skipConsent) {
         dispatch_async(dispatch_get_main_queue(), ^{ BPStartRingFromConfig(); });
     } else {
         Bugpunch_PresentConsentSheet(^{ BPStartRingFromConfig(); });
     }
+}
+
+// Cache-driven debug-mode auto-prompt key.
+//   "internal" | "external" | "user" | absent (no cache yet → wait for server)
+static NSString* const kBPLastTesterRoleKey = @"bugpunch.last_tester_role";
+
+// Tunnel hooks: read/write the cache used by the launch-time auto-prompt.
+// Implementations live here so the cache lives next to the prompt logic;
+// BugpunchTunnel.mm calls these from cacheRoleConfig: when the server's
+// roleConfig arrives.
+extern "C" void Bugpunch_WriteLastTesterRoleCache(const char* normalizedRole) {
+    if (!normalizedRole || !*normalizedRole) return;
+    @autoreleasepool {
+        NSString* v;
+        if (strcmp(normalizedRole, "internal") == 0)      v = @"internal";
+        else if (strcmp(normalizedRole, "external") == 0) v = @"external";
+        else                                              v = @"user";
+        [[NSUserDefaults standardUserDefaults] setObject:v forKey:kBPLastTesterRoleKey];
+    }
+}
+
+extern "C" const char* Bugpunch_ReadLastTesterRoleCache(void) {
+    NSString* v = [[NSUserDefaults standardUserDefaults] stringForKey:kBPLastTesterRoleKey];
+    if (![v isKindOfClass:[NSString class]] || v.length == 0) return NULL;
+    return [v UTF8String];
+}
+
+static void BPRunAutoPromptOnMain(void) {
+    BPDebugMode* d = [BPDebugMode shared];
+    if (d.autoPromptShown) return;
+    if (!d.started) return;
+    if (BugpunchRing_IsRunning()) return;
+
+    NSString* cached = [[NSUserDefaults standardUserDefaults] stringForKey:kBPLastTesterRoleKey];
+    if (![cached isEqualToString:@"internal"]) {
+        // First-ever launch (nil) or last-known non-internal → no prompt.
+        return;
+    }
+    d.autoPromptShown = YES;
+    NSLog(@"[Bugpunch] cached role=internal — auto-prompting consent on launch");
+    Bugpunch_PresentConsentSheet(^{
+        [BPDebugMode shared].startedFromCachedPrompt = YES;
+        BPStartRingFromConfig();
+    });
+}
+
+/// Cache-driven launch flow. If the last roleConfig was "internal", show
+/// the consent sheet immediately so the video ring can come up before the
+/// tunnel handshake returns. Other cached values (and an empty cache)
+/// wait for the server. Called once from Bugpunch_StartDebugMode after
+/// debug mode is started.
+extern "C" void Bugpunch_MaybeAutoPromptDebugModeOnLaunch(void) {
+    // Defer to main queue. From +load this guarantees we run after main()
+    // boots and the runloop is up. If UIApplication still has no scenes
+    // by the time main fires (e.g. +load → main → before scene init), we
+    // wait for UIApplicationDidFinishLaunchingNotification — the consent
+    // sheet's keyWindow lookup needs a window to attach to.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL hasScene = UIApplication.sharedApplication.connectedScenes.count > 0;
+        if (!hasScene) {
+            __block id obs = [[NSNotificationCenter defaultCenter]
+                addObserverForName:UIApplicationDidFinishLaunchingNotification
+                            object:nil queue:[NSOperationQueue mainQueue]
+                        usingBlock:^(NSNotification* n) {
+                BPRunAutoPromptOnMain();
+                if (obs) [[NSNotificationCenter defaultCenter] removeObserver:obs];
+                obs = nil;
+            }];
+            return;
+        }
+        BPRunAutoPromptOnMain();
+    });
+}
+
+/// Tunnel callback: server-delivered roleConfig flipped TO "internal".
+/// If the cached path didn't already prompt, prompt now.
+extern "C" void Bugpunch_OnRoleBecameInternal(void) {
+    BPDebugMode* d = [BPDebugMode shared];
+    if (d.autoPromptShown) return;
+    if (!d.started) return;
+    if (BugpunchRing_IsRunning()) return;
+    d.autoPromptShown = YES;
+    NSLog(@"[Bugpunch] role flipped to internal — prompting consent mid-session");
+    Bugpunch_PresentConsentSheet(^{
+        [BPDebugMode shared].startedFromCachedPrompt = YES;
+        BPStartRingFromConfig();
+    });
+}
+
+/// Tunnel callback: server-delivered roleConfig flipped AWAY from "internal".
+/// If the ring buffer is running because of the speculative cached prompt,
+/// tear it down. Manual Bugpunch_EnterDebugMode recordings (which clear
+/// startedFromCachedPrompt) are left alone.
+extern "C" void Bugpunch_OnRoleLeftInternal(void) {
+    BPDebugMode* d = [BPDebugMode shared];
+    if (!d.startedFromCachedPrompt) return;
+    NSLog(@"[Bugpunch] role left internal — tearing down speculative recording");
+    d.startedFromCachedPrompt = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (BugpunchRing_IsRunning()) BugpunchRing_Stop();
+        BugpunchTouch_Stop();
+        extern void Bugpunch_HideDebugWidget(void);
+        Bugpunch_HideDebugWidget();
+    });
 }
 
 void Bugpunch_StopDebugMode(void) {
@@ -1033,173 +1172,3 @@ void Bugpunch_PushLogEntry(const char* type, const char* message,
 
 }
 
-// ── Log reader (OSLogStore, iOS 15+) ──
-//
-// Keeps the first kStartupSize entries in a separate array so they're never
-// evicted. Recent entries live in a capped ring buffer. On snapshot, emits:
-//   [startup entries] + [breaker with skipped count] + [recent entries]
-
-@implementation BPLogReader {
-}
-
-static const NSInteger kStartupSize = 2000;
-static NSMutableArray<NSString*>* gStartupBuffer;
-static NSMutableArray<NSString*>* gLogBuffer;
-static NSInteger gMaxEntries = 2000;
-static NSInteger gSkippedCount = 0;
-static BOOL gStartupFull = NO;
-static dispatch_source_t gLogTimer;
-static NSDate* gLastFetch;
-static NSDateFormatter* gLineFmt;
-
-+ (void)startWithMaxEntries:(NSInteger)n {
-    gMaxEntries = MAX(50, n);
-    gStartupBuffer = [NSMutableArray array];
-    gLogBuffer = [NSMutableArray array];
-    gStartupFull = NO;
-    gSkippedCount = 0;
-    // Look back 60s on first poll to capture startup logs.
-    gLastFetch = [NSDate dateWithTimeIntervalSinceNow:-60];
-    // logcat-ish "MM-dd HH:mm:ss.SSS" so the server parser can match one
-    // format across Android + iOS.
-    gLineFmt = [[NSDateFormatter alloc] init];
-    gLineFmt.dateFormat = @"MM-dd HH:mm:ss.SSS";
-    gLineFmt.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
-
-    // Poll OSLogStore every 2s. Too-frequent polling hurts battery; 2s is
-    // fine given crash dumps happen on demand and buffer is just "recent
-    // context".
-    dispatch_queue_t q = dispatch_queue_create("com.oddgames.bugpunch.logreader", 0);
-    gLogTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
-    dispatch_source_set_timer(gLogTimer, DISPATCH_TIME_NOW,
-        2 * NSEC_PER_SEC, 500 * NSEC_PER_MSEC);
-    dispatch_source_set_event_handler(gLogTimer, ^{ [BPLogReader pullOnce]; });
-    dispatch_resume(gLogTimer);
-}
-
-+ (void)stop {
-    if (gLogTimer) { dispatch_source_cancel(gLogTimer); gLogTimer = nil; }
-}
-
-+ (void)pullOnce {
-    if (@available(iOS 15.0, *)) {
-        NSError* err = nil;
-        OSLogStore* store = [OSLogStore storeWithScope:OSLogStoreCurrentProcessIdentifier error:&err];
-        if (!store) return;
-        OSLogPosition* pos = [store positionWithDate:gLastFetch];
-        OSLogEnumerator* en = [store entriesEnumeratorWithOptions:0 position:pos predicate:nil error:&err];
-        if (!en) return;
-        for (OSLogEntryLog* e in en) {
-            if (![e isKindOfClass:[OSLogEntryLog class]]) continue;
-            NSString* lvl = [BPLogReader levelCharFor:e.level];
-            NSString* subsystem = e.subsystem.length > 0 ? e.subsystem : @"iOS";
-            NSString* msg = e.composedMessage ?: @"";
-            NSString* line = [NSString stringWithFormat:@"%@     0     0 %@ %@: %@",
-                [gLineFmt stringFromDate:e.date], lvl, subsystem, msg];
-            [BPLogReader appendLine:line];
-        }
-        gLastFetch = [NSDate date];
-    }
-}
-
-+ (void)appendLine:(NSString*)line {
-    if (!line) return;
-    // N5: tee to the native log sink. Bugpunch_TunnelEnqueueLogLine no-ops
-    // unless alwaysLog + consent.accepted + tunnel connected, so it's free
-    // for non-QA devices.
-    extern void Bugpunch_TunnelEnqueueLogLine(const char*);
-    const char* c = [line UTF8String];
-    if (c) Bugpunch_TunnelEnqueueLogLine(c);
-
-    @synchronized (gLogBuffer) {
-        if (!gStartupFull) {
-            [gStartupBuffer addObject:line];
-            if ((NSInteger)gStartupBuffer.count >= kStartupSize) gStartupFull = YES;
-        } else {
-            [gLogBuffer addObject:line];
-            while ((NSInteger)gLogBuffer.count > gMaxEntries) {
-                [gLogBuffer removeObjectAtIndex:0];
-                gSkippedCount++;
-            }
-        }
-    }
-}
-
-+ (NSString*)levelCharFor:(OSLogEntryLogLevel)level API_AVAILABLE(ios(15.0)) {
-    switch (level) {
-        case OSLogEntryLogLevelFault: return @"F";
-        case OSLogEntryLogLevelError: return @"E";
-        case OSLogEntryLogLevelNotice: return @"W";
-        default: return @"I";
-    }
-}
-
-+ (NSString*)snapshotText {
-    NSMutableString* out = [NSMutableString stringWithCapacity:8192];
-    @synchronized (gLogBuffer) {
-        for (NSString* s in gStartupBuffer) { [out appendString:s]; [out appendString:@"\n"]; }
-        if (gSkippedCount > 0) {
-            [out appendFormat:@"--- %ld log entries omitted ---\n", (long)gSkippedCount];
-        }
-        for (NSString* s in gLogBuffer) { [out appendString:s]; [out appendString:@"\n"]; }
-    }
-    return out;
-}
-
-+ (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace {
-    if (!gLogBuffer) return;  // not started yet
-    NSString* lvl =
-        [type isEqualToString:@"Error"]     ? @"E" :
-        [type isEqualToString:@"Exception"] ? @"E" :
-        [type isEqualToString:@"Warning"]   ? @"W" : @"I";
-    NSString* msg = message ?: @"";
-    if (stackTrace.length > 0) {
-        // Join stack onto the message line; server parser treats everything
-        // after the first newline in a single logical line as stack.
-        msg = [msg stringByAppendingFormat:@"\n%@", stackTrace];
-    }
-    NSString* line = [NSString stringWithFormat:@"%@     0     0 %@ Unity: %@",
-        [gLineFmt stringFromDate:[NSDate date]], lvl, msg];
-    [BPLogReader appendLine:line];
-}
-@end
-
-// ── Shake detector (CoreMotion) ──
-
-@implementation BPShake
-static CMMotionManager* gMotion;
-static void (^gShakeCb)(void);
-
-+ (void)startWithThreshold:(double)t onShake:(void(^)(void))cb {
-    if (gMotion) return;
-    gMotion = [CMMotionManager new];
-    gShakeCb = [cb copy];
-    if (!gMotion.accelerometerAvailable) return;
-    gMotion.accelerometerUpdateInterval = 1.0 / 30.0;
-    NSOperationQueue* q = [NSOperationQueue new];
-    __block NSTimeInterval lastShake = 0;
-    __block NSTimeInterval lastSpike = 0;
-    __block int spikes = 0;
-    [gMotion startAccelerometerUpdatesToQueue:q withHandler:^(CMAccelerometerData* d, NSError* e) {
-        if (!d) return;
-        double x = d.acceleration.x, y = d.acceleration.y, z = d.acceleration.z;
-        // iOS accel is in G's; subtract 1 to remove gravity.
-        double mag = sqrt(x * x + y * y + z * z) - 1.0;
-        // Convert Gs → m/s² (×9.81) to match Android threshold semantics.
-        if (mag * 9.81 < t) return;
-        NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-        if (now - lastSpike > 0.5) spikes = 0;
-        spikes++;
-        lastSpike = now;
-        if (spikes >= 2 && now - lastShake > 2.0) {
-            lastShake = now; spikes = 0;
-            if (gShakeCb) gShakeCb();
-        }
-    }];
-}
-
-+ (void)stop {
-    if (gMotion) [gMotion stopAccelerometerUpdates];
-    gMotion = nil; gShakeCb = nil;
-}
-@end
