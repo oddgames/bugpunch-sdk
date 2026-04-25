@@ -7,20 +7,26 @@
 
 #import <UIKit/UIKit.h>
 
-// ── Colours ──
-#define COL_BG        [UIColor colorWithRed:0.08 green:0.09 blue:0.11 alpha:0.97]
-#define COL_PANEL     [UIColor colorWithRed:0.11 green:0.12 blue:0.15 alpha:1]
-#define COL_ACCENT    [UIColor colorWithRed:0.25 green:0.56 blue:0.96 alpha:1]
-#define COL_DANGER    [UIColor colorWithRed:0.85 green:0.22 blue:0.22 alpha:1]
-#define COL_WARN      [UIColor colorWithRed:0.85 green:0.60 blue:0.18 alpha:1]
-#define COL_TEXT      [UIColor colorWithRed:0.90 green:0.91 blue:0.93 alpha:1]
-#define COL_DIM       [UIColor colorWithRed:0.55 green:0.57 blue:0.62 alpha:1]
-#define COL_CAT       [UIColor colorWithRed:0.14 green:0.15 blue:0.19 alpha:1]
-#define COL_CAT_SEL   [UIColor colorWithRed:0.20 green:0.22 blue:0.28 alpha:1]
-#define COL_ITEM      [UIColor colorWithRed:0.12 green:0.13 blue:0.17 alpha:1]
-#define COL_SEARCH    [UIColor colorWithRed:0.16 green:0.17 blue:0.21 alpha:1]
-#define COL_TOG_ON    [UIColor colorWithRed:0.20 green:0.72 blue:0.40 alpha:1]
-#define COL_TOG_OFF   [UIColor colorWithRed:0.30 green:0.31 blue:0.35 alpha:1]
+#import "BugpunchTheme.h"
+#import "BugpunchStrings.h"
+
+// ── Colours (resolved through BPTheme so a customised palette flows here). ──
+// Macros expand at every call-site so the BPTheme lookup happens lazily —
+// new theme values applied mid-session are picked up the next time the
+// panel rebuilds. Hardcoded fallbacks preserve the original SDK look.
+#define COL_BG        [BPTheme color:@"backdrop"       fallback:[UIColor colorWithRed:0.08 green:0.09 blue:0.11 alpha:0.97]]
+#define COL_PANEL     [BPTheme color:@"cardBackground" fallback:[UIColor colorWithRed:0.11 green:0.12 blue:0.15 alpha:1]]
+#define COL_ACCENT    [BPTheme color:@"accentPrimary"  fallback:[UIColor colorWithRed:0.25 green:0.56 blue:0.96 alpha:1]]
+#define COL_DANGER    [BPTheme color:@"accentBug"      fallback:[UIColor colorWithRed:0.85 green:0.22 blue:0.22 alpha:1]]
+#define COL_WARN      [BPTheme color:@"accentRecord"   fallback:[UIColor colorWithRed:0.85 green:0.60 blue:0.18 alpha:1]]
+#define COL_TEXT      [BPTheme color:@"textPrimary"    fallback:[UIColor colorWithRed:0.90 green:0.91 blue:0.93 alpha:1]]
+#define COL_DIM       [BPTheme color:@"textMuted"      fallback:[UIColor colorWithRed:0.55 green:0.57 blue:0.62 alpha:1]]
+#define COL_CAT       [BPTheme color:@"cardBorder"     fallback:[UIColor colorWithRed:0.14 green:0.15 blue:0.19 alpha:1]]
+#define COL_CAT_SEL   [BPTheme color:@"accentChat"     fallback:[UIColor colorWithRed:0.20 green:0.22 blue:0.28 alpha:1]]
+#define COL_ITEM      [BPTheme color:@"cardBorder"     fallback:[UIColor colorWithRed:0.12 green:0.13 blue:0.17 alpha:1]]
+#define COL_SEARCH    [BPTheme color:@"cardBorder"     fallback:[UIColor colorWithRed:0.16 green:0.17 blue:0.21 alpha:1]]
+#define COL_TOG_ON    [BPTheme color:@"accentPrimary"  fallback:[UIColor colorWithRed:0.20 green:0.72 blue:0.40 alpha:1]]
+#define COL_TOG_OFF   [BPTheme color:@"textMuted"      fallback:[UIColor colorWithRed:0.30 green:0.31 blue:0.35 alpha:1]]
 
 // ── SF Symbol name mapping from Feather icon names ──
 static NSString* BPSFSymbol(NSString* featherName) {
@@ -196,7 +202,7 @@ static UIColor* BPParseColor(NSString* c) {
     ]];
 
     UILabel* title = [[UILabel alloc] init];
-    title.text = @"Debug Tools";
+    title.text = [BPStrings text:@"toolsTitle" fallback:@"Debug Tools"];
     title.textColor = COL_TEXT;
     title.font = [UIFont boldSystemFontOfSize:landscape ? 18 : 22];
     title.translatesAutoresizingMaskIntoConstraints = NO;
@@ -223,7 +229,7 @@ static UIColor* BPParseColor(NSString* c) {
     // Search bar
     UISearchBar* search = [[UISearchBar alloc] init];
     search.delegate = self;
-    search.placeholder = @"Search tools...";
+    search.placeholder = [BPStrings text:@"toolsSearchHint" fallback:@"Search tools..."];
     search.searchBarStyle = UISearchBarStyleMinimal;
     search.barTintColor = COL_SEARCH;
     search.tintColor = COL_ACCENT;
@@ -367,9 +373,15 @@ static UIColor* BPParseColor(NSString* c) {
     NSMutableOrderedSet<NSString*>* cats = [NSMutableOrderedSet orderedSetWithObject:@"All"];
     for (BPToolItem* t in _allTools) [cats addObject:t.category];
 
+    // "All" is the canonical id used in tool-definition JSON and as the
+    // active-category sentinel; the chip surfaces a localised label so it
+    // reads in the active locale. Other categories pass through verbatim.
+    NSString* allLabel = [BPStrings text:@"toolsAllCategory" fallback:@"All"];
+
     for (NSString* cat in cats) {
         UIButton* chip = [UIButton new];
-        [chip setTitle:cat forState:UIControlStateNormal];
+        NSString* label = [cat isEqualToString:@"All"] ? allLabel : cat;
+        [chip setTitle:label forState:UIControlStateNormal];
         [chip setTitleColor:[cat isEqualToString:_activeCategory] ? COL_TEXT : COL_DIM
                    forState:UIControlStateNormal];
         chip.titleLabel.font = [UIFont systemFontOfSize:14];
@@ -378,13 +390,17 @@ static UIColor* BPParseColor(NSString* c) {
         chip.contentEdgeInsets = UIEdgeInsetsMake(6, 14, 6, 14);
         [chip addTarget:self action:@selector(catTapped:) forControlEvents:UIControlEventTouchUpInside];
         chip.tag = [cats indexOfObject:cat];
-        chip.accessibilityLabel = cat;  // stash the name
+        // accessibilityLabel stashes the canonical id so catTapped: can
+        // restore _activeCategory to the untranslated value (locale labels
+        // would break the [_activeCategory isEqualToString:@"All"] checks
+        // elsewhere in this file).
+        chip.accessibilityLabel = cat;
         [_catStack addArrangedSubview:chip];
     }
 }
 
 - (void)catTapped:(UIButton*)sender {
-    _activeCategory = sender.currentTitle;
+    _activeCategory = sender.accessibilityLabel ?: sender.currentTitle;
     [self rebuildCategories];
     [self rebuildToolList];
 }
@@ -477,7 +493,8 @@ static UIColor* BPParseColor(NSString* c) {
     // Control
     if ([tool.controlType isEqualToString:@"button"]) {
         UIButton* btn = [UIButton new];
-        [btn setTitle:@"Run" forState:UIControlStateNormal];
+        [btn setTitle:[BPStrings text:@"toolsRunButton" fallback:@"Run"]
+             forState:UIControlStateNormal];
         [btn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
         btn.titleLabel.font = [UIFont boldSystemFontOfSize:13];
         btn.backgroundColor = tool.color;
@@ -562,7 +579,7 @@ static UIColor* BPParseColor(NSString* c) {
     [self sendCallback:sender.accessibilityIdentifier action:@"click" value:@""];
     // Flash "Running…" in the button title so the user sees the press registered.
     NSString* original = [sender titleForState:UIControlStateNormal];
-    [sender setTitle:@"Running\u2026" forState:UIControlStateNormal];
+    [sender setTitle:[BPStrings text:@"toolsRunningButton" fallback:@"Running\u2026"] forState:UIControlStateNormal];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [sender setTitle:original forState:UIControlStateNormal];
     });

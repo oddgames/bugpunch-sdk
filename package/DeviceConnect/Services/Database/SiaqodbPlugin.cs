@@ -87,7 +87,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogWarning($"[Bugpunch.SiaqodbPlugin] Siaqodb: failed to load {storedType.Name}: {ex.Message}");
+                        BugpunchNative.ReportSdkError($"SiaqodbPlugin.Load({storedType.Name})", ex);
                     }
 
                     sb.Append("]}");

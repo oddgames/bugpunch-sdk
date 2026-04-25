@@ -52,7 +52,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.PlayerPrefsService] PlayerPrefs enumerate failed: {ex.Message}");
+                BugpunchNative.ReportSdkError("PlayerPrefsService.Enumerate", ex);
                 return $"{{\"error\":\"{Esc(ex.Message)}\"}}";
             }
         }
@@ -333,7 +333,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.PlayerPrefsService] Failed to read plist: {ex.Message}");
+                BugpunchNative.ReportSdkError("PlayerPrefsService.ReadPlist", ex);
             }
         }
 

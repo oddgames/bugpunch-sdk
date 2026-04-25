@@ -29,11 +29,14 @@ import android.widget.TextView;
  */
 public class BugpunchDebugWidget {
     private static final String TAG = "[Bugpunch.DebugWidget]";
-    private static final int COL_BG = 0xE0141820;
-    private static final int COL_REC = 0xFFE03030;
-    private static final int COL_TEXT = 0xFFE6E8EE;
-    private static final int COL_DIM = 0xFF8C90A0;
-    private static final int COL_TOOLS = 0xFF333849;
+    // Hardcoded fallbacks live here so the widget still renders if the theme
+    // dictionary somehow didn't apply at startup. Live values come from
+    // BugpunchTheme — game-customisable via BugpunchConfig.Theme.
+    private static final int COL_BG_FALLBACK     = 0xE0141820;
+    private static final int COL_REC_FALLBACK    = 0xFFE03030;
+    private static final int COL_DIM_FALLBACK    = 0xFF8C90A0;
+    private static final int COL_TOOLS_FALLBACK  = 0xFF333849;
+    private static final int COL_BORDER_FALLBACK = 0xFF2A3240;
 
     private static FrameLayout sWidget;
     private static View sRecDot;
@@ -64,15 +67,24 @@ public class BugpunchDebugWidget {
             widgetLp.leftMargin = dp(activity, 16);
             widgetLp.topMargin = dp(activity, 80);
 
+            int colBg     = BugpunchTheme.color("cardBackground", COL_BG_FALLBACK);
+            int colRec    = BugpunchTheme.color("accentRecord",  COL_REC_FALLBACK);
+            int colDim    = BugpunchTheme.color("textMuted",     COL_DIM_FALLBACK);
+            int colTools  = BugpunchTheme.color("cardBorder",    COL_TOOLS_FALLBACK);
+            int colBorder = BugpunchTheme.color("cardBorder",    COL_BORDER_FALLBACK);
+            int colText   = BugpunchTheme.color("textPrimary",   Color.WHITE);
+            int colBug    = BugpunchTheme.color("accentBug",     0xFFDA3838);
+            int radius    = BugpunchTheme.dp(activity, "cardRadius", 12);
+
             // Inner row
             LinearLayout row = new LinearLayout(activity);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp12, dp8, dp12, dp8);
             GradientDrawable bg = new GradientDrawable();
-            bg.setColor(COL_BG);
+            bg.setColor(colBg);
             bg.setCornerRadius(dp(activity, 20));
-            bg.setStroke(dp(activity, 1), 0xFF2A3240);
+            bg.setStroke(dp(activity, 1), colBorder);
             row.setBackground(bg);
             row.setElevation(dp(activity, 6));
 
@@ -80,7 +92,7 @@ public class BugpunchDebugWidget {
             sRecDot = new View(activity);
             GradientDrawable dotBg = new GradientDrawable();
             dotBg.setShape(GradientDrawable.OVAL);
-            dotBg.setColor(COL_REC);
+            dotBg.setColor(colRec);
             sRecDot.setBackground(dotBg);
             int dotSize = dp(activity, 10);
             LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dotSize, dotSize);
@@ -89,13 +101,13 @@ public class BugpunchDebugWidget {
 
             // Report button
             TextView reportBtn = new TextView(activity);
-            reportBtn.setText("Report");
-            reportBtn.setTextColor(Color.WHITE);
-            reportBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            reportBtn.setText(BugpunchStrings.text("widgetReport", "Report"));
+            reportBtn.setTextColor(colText);
+            BugpunchTheme.applyTextSize(reportBtn, "fontSizeBody", 13);
             reportBtn.setPadding(dp12, dp(activity, 4), dp12, dp(activity, 4));
             GradientDrawable reportBg = new GradientDrawable();
-            reportBg.setColor(0xFFDA3838);
-            reportBg.setCornerRadius(dp(activity, 12));
+            reportBg.setColor(colBug);
+            reportBg.setCornerRadius(radius);
             reportBtn.setBackground(reportBg);
             reportBtn.setOnClickListener(v -> {
                 BugpunchReportingService.reportBug("bug", "Bug report", "Triggered from debug widget", null);
@@ -107,12 +119,12 @@ public class BugpunchDebugWidget {
 
             // Screenshot button — camera icon drawn via BugpunchToolsActivity.FeatherIcon
             ImageView shotBtn = new ImageView(activity);
-            shotBtn.setImageDrawable(new BugpunchToolsActivity.FeatherIcon(activity, "camera", COL_DIM));
+            shotBtn.setImageDrawable(new BugpunchToolsActivity.FeatherIcon(activity, "camera", colDim));
             shotBtn.setPadding(dp(activity, 6), dp(activity, 4), dp(activity, 6), dp(activity, 4));
             shotBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             GradientDrawable shotBg = new GradientDrawable();
-            shotBg.setColor(COL_TOOLS);
-            shotBg.setCornerRadius(dp(activity, 12));
+            shotBg.setColor(colTools);
+            shotBg.setCornerRadius(radius);
             shotBtn.setBackground(shotBg);
             shotBtn.setOnClickListener(v -> {
                 // Capture from rolling buffer and notify Unity
@@ -134,13 +146,13 @@ public class BugpunchDebugWidget {
 
             // Tools button
             TextView toolsBtn = new TextView(activity);
-            toolsBtn.setText("Tools");
-            toolsBtn.setTextColor(COL_DIM);
-            toolsBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            toolsBtn.setText(BugpunchStrings.text("widgetTools", "Tools"));
+            toolsBtn.setTextColor(colDim);
+            BugpunchTheme.applyTextSize(toolsBtn, "fontSizeBody", 13);
             toolsBtn.setPadding(dp12, dp(activity, 4), dp12, dp(activity, 4));
             GradientDrawable toolsBg = new GradientDrawable();
-            toolsBg.setColor(COL_TOOLS);
-            toolsBg.setCornerRadius(dp(activity, 12));
+            toolsBg.setColor(colTools);
+            toolsBg.setCornerRadius(radius);
             toolsBtn.setBackground(toolsBg);
             toolsBtn.setOnClickListener(v -> {
                 BugpunchUnity.sendMessage("BugpunchToolsBridge", "OnShowTools", "");

@@ -6,6 +6,9 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 
+#import "BugpunchTheme.h"
+#import "BugpunchStrings.h"
+
 @interface BPConsentViewController : UIViewController
 @property (nonatomic, copy) void (^onStart)(void);
 @end
@@ -23,47 +26,56 @@
     [self.view insertSubview:blur atIndex:0];
 
     UIView* card = [UIView new];
-    card.backgroundColor = [UIColor colorWithRed:0x14/255.0 green:0x18/255.0 blue:0x20/255.0 alpha:1];
-    card.layer.cornerRadius = 20;
+    card.backgroundColor = [BPTheme color:@"cardBackground"
+        fallback:[UIColor colorWithRed:0x14/255.0 green:0x18/255.0 blue:0x20/255.0 alpha:1]];
+    card.layer.cornerRadius = [BPTheme radius:@"cardRadius" fallback:20];
     card.layer.borderWidth = 1;
-    card.layer.borderColor = [UIColor colorWithRed:0x2a/255.0 green:0x32/255.0 blue:0x40/255.0 alpha:1].CGColor;
+    card.layer.borderColor = [BPTheme color:@"cardBorder"
+        fallback:[UIColor colorWithRed:0x2a/255.0 green:0x32/255.0 blue:0x40/255.0 alpha:1]].CGColor;
     card.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:card];
 
     UILabel* title = [UILabel new];
-    title.text = @"Enable debug recording";
-    title.textColor = UIColor.whiteColor;
-    title.font = [UIFont boldSystemFontOfSize:20];
+    title.text = [BPStrings text:@"consentTitle" fallback:@"Enable debug recording"];
+    title.textColor = [BPTheme color:@"textPrimary" fallback:UIColor.whiteColor];
+    title.font = [UIFont boldSystemFontOfSize:[BPTheme font:@"fontSizeTitle" fallback:20]];
     title.textAlignment = NSTextAlignmentCenter;
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:title];
 
     UILabel* body = [UILabel new];
-    body.text = @"Bugpunch will record your screen so that bug reports include the moments "
-                 "leading up to an issue. Recording stays on your device until you submit a report.";
-    body.textColor = [UIColor colorWithRed:0xa8/255.0 green:0xb2/255.0 blue:0xbf/255.0 alpha:1];
-    body.font = [UIFont systemFontOfSize:14];
+    body.text = [BPStrings text:@"consentBody"
+        fallback:@"Your screen will be recorded so bug reports can include the moments "
+                  "leading up to an issue. Recording stays on your device until you submit a report."];
+    body.textColor = [BPTheme color:@"textSecondary"
+        fallback:[UIColor colorWithRed:0xa8/255.0 green:0xb2/255.0 blue:0xbf/255.0 alpha:1]];
+    body.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeBody" fallback:14]];
     body.textAlignment = NSTextAlignmentCenter;
     body.numberOfLines = 0;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:body];
 
     UIButton* start = [UIButton buttonWithType:UIButtonTypeSystem];
-    [start setTitle:@"Start Recording" forState:UIControlStateNormal];
-    [start setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [start setTitle:[BPStrings text:@"consentStart" fallback:@"Start Recording"]
+           forState:UIControlStateNormal];
+    [start setTitleColor:[BPTheme color:@"textPrimary" fallback:UIColor.whiteColor]
+                forState:UIControlStateNormal];
     start.titleLabel.font = [UIFont boldSystemFontOfSize:15];
-    start.backgroundColor = [UIColor colorWithRed:0x2a/255.0 green:0x7b/255.0 blue:0xe0/255.0 alpha:1];
-    start.layer.cornerRadius = 12;
+    start.backgroundColor = [BPTheme color:@"accentPrimary"
+        fallback:[UIColor colorWithRed:0x2a/255.0 green:0x7b/255.0 blue:0xe0/255.0 alpha:1]];
+    start.layer.cornerRadius = [BPTheme radius:@"cardRadius" fallback:12];
     start.translatesAutoresizingMaskIntoConstraints = NO;
     [start addTarget:self action:@selector(onStartTap) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:start];
 
     UIButton* cancel = [UIButton buttonWithType:UIButtonTypeSystem];
-    [cancel setTitle:@"Not now" forState:UIControlStateNormal];
-    [cancel setTitleColor:[UIColor colorWithRed:0xa8/255.0 green:0xb2/255.0 blue:0xbf/255.0 alpha:1]
+    [cancel setTitle:[BPStrings text:@"consentCancel" fallback:@"Not now"]
+            forState:UIControlStateNormal];
+    [cancel setTitleColor:[BPTheme color:@"textSecondary"
+        fallback:[UIColor colorWithRed:0xa8/255.0 green:0xb2/255.0 blue:0xbf/255.0 alpha:1]]
                  forState:UIControlStateNormal];
     cancel.titleLabel.font = [UIFont boldSystemFontOfSize:15];
-    cancel.layer.cornerRadius = 12;
+    cancel.layer.cornerRadius = [BPTheme radius:@"cardRadius" fallback:12];
     cancel.translatesAutoresizingMaskIntoConstraints = NO;
     [cancel addTarget:self action:@selector(onCancelTap) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:cancel];

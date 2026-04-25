@@ -231,7 +231,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"{TAG} TrySetupCompute failed: {e.Message}");
+                BugpunchNative.ReportSdkError("BugpunchSurfaceRecorder.TrySetupCompute", e);
                 return false;
             }
         }

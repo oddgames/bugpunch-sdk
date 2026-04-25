@@ -14,10 +14,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
     {
         // Reusable preview resources — created once, destroyed with the service
         Camera _previewCam;
-        GameObject _previewSphere;
+        GameObject _previewObject;
+        MeshFilter _previewMeshFilter;
+        MeshRenderer _previewMeshRenderer;
         Light _previewLight;
         Light _previewFillLight;
         GameObject _previewRoot; // parent container, positioned far away
+
+        // Cached primitive meshes for shape preview switching
+        readonly Dictionary<string, Mesh> _shapeMeshes = new Dictionary<string, Mesh>();
 
         void OnDestroy()
         {
@@ -151,20 +156,22 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
-        /// Render a material on a sphere and return JPEG bytes.
+        /// Render a material on a primitive shape and return JPEG bytes.
+        /// `shape` is one of: sphere (default), cube, cylinder, capsule, plane, quad.
         /// Must be called from a coroutine (needs rendering).
         /// </summary>
-        public byte[] RenderThumbnail(int instanceId, int size = 128, int quality = 80)
+        public byte[] RenderThumbnail(int instanceId, int size = 128, int quality = 80, string shape = null)
         {
             var mat = FindMaterial(instanceId);
             if (mat == null) return null;
 
             EnsurePreviewScene();
+            ApplyShape(shape);
 
             try
             {
-                // Apply material to sphere
-                _previewSphere.GetComponent<MeshRenderer>().sharedMaterial = mat;
+                // Apply material to preview object
+                _previewMeshRenderer.sharedMaterial = mat;
 
                 var rt = RenderTexture.GetTemporary(size, size, 24, RenderTextureFormat.ARGB32);
                 rt.antiAliasing = 4;
@@ -186,7 +193,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.MaterialService] Material thumbnail failed: {ex.Message}");
+                BugpunchNative.ReportSdkError("MaterialService.Thumbnail", ex);
                 return null;
             }
         }
@@ -251,7 +258,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.MaterialService] Material texture export failed: {ex.Message}");
+                BugpunchNative.ReportSdkError("MaterialService.TextureExport", ex);
                 return null;
             }
         }
@@ -597,20 +604,21 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _previewRoot.transform.position = farPos;
             _previewRoot.hideFlags = HideFlags.HideAndDontSave;
 
-            // Sphere
-            _previewSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            _previewSphere.transform.SetParent(_previewRoot.transform, false);
-            _previewSphere.transform.localPosition = Vector3.zero;
-            _previewSphere.hideFlags = HideFlags.HideAndDontSave;
-            // Remove collider — not needed for preview
-            var col = _previewSphere.GetComponent<Collider>();
-            if (col != null) Destroy(col);
+            // Preview object — bare MeshFilter+MeshRenderer (no collider).
+            // Mesh is swapped per-render via ApplyShape().
+            _previewObject = new GameObject("PreviewObject");
+            _previewObject.transform.SetParent(_previewRoot.transform, false);
+            _previewObject.transform.localPosition = Vector3.zero;
+            _previewObject.hideFlags = HideFlags.HideAndDontSave;
+            _previewMeshFilter = _previewObject.AddComponent<MeshFilter>();
+            _previewMeshRenderer = _previewObject.AddComponent<MeshRenderer>();
+            _previewMeshFilter.sharedMesh = GetShapeMesh("sphere");
 
             // Camera
             var camGo = new GameObject("PreviewCam");
             camGo.transform.SetParent(_previewRoot.transform, false);
             camGo.transform.localPosition = new Vector3(0, 0, -2.2f);
-            camGo.transform.LookAt(_previewSphere.transform);
+            camGo.transform.LookAt(_previewObject.transform);
             camGo.hideFlags = HideFlags.HideAndDontSave;
             _previewCam = camGo.AddComponent<Camera>();
             _previewCam.enabled = false; // manual render only
@@ -625,7 +633,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var lightGo = new GameObject("PreviewLight");
             lightGo.transform.SetParent(_previewRoot.transform, false);
             lightGo.transform.localPosition = new Vector3(1.5f, 2f, -1.5f);
-            lightGo.transform.LookAt(_previewSphere.transform);
+            lightGo.transform.LookAt(_previewObject.transform);
             lightGo.hideFlags = HideFlags.HideAndDontSave;
             _previewLight = lightGo.AddComponent<Light>();
             _previewLight.type = LightType.Directional;
@@ -636,12 +644,94 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var fillGo = new GameObject("PreviewFillLight");
             fillGo.transform.SetParent(_previewRoot.transform, false);
             fillGo.transform.localPosition = new Vector3(-1f, -0.5f, -2f);
-            fillGo.transform.LookAt(_previewSphere.transform);
+            fillGo.transform.LookAt(_previewObject.transform);
             fillGo.hideFlags = HideFlags.HideAndDontSave;
             _previewFillLight = fillGo.AddComponent<Light>();
             _previewFillLight.type = LightType.Directional;
             _previewFillLight.intensity = 0.4f;
             _previewFillLight.color = new Color(0.8f, 0.85f, 1f);
+        }
+
+        // ------------------------------------------------------------------
+        // Shape selection — swap mesh + tweak transform per shape so that
+        // the result fits the same framing as the default sphere.
+        // ------------------------------------------------------------------
+
+        void ApplyShape(string shape)
+        {
+            var key = NormalizeShape(shape);
+            var mesh = GetShapeMesh(key);
+            if (_previewMeshFilter.sharedMesh != mesh) _previewMeshFilter.sharedMesh = mesh;
+
+            // Each primitive has different bounds — tune so it fills the frame.
+            var t = _previewObject.transform;
+            switch (key)
+            {
+                case "cube":
+                    t.localRotation = Quaternion.Euler(20f, 35f, 0f);
+                    t.localScale = Vector3.one * 0.85f;
+                    break;
+                case "cylinder":
+                    t.localRotation = Quaternion.Euler(15f, 25f, 0f);
+                    t.localScale = Vector3.one * 0.85f;
+                    break;
+                case "capsule":
+                    t.localRotation = Quaternion.Euler(15f, 25f, 0f);
+                    t.localScale = Vector3.one * 0.7f;
+                    break;
+                case "plane":
+                    // Unity's plane is 10×10 in XZ at y=0; tilt toward camera.
+                    t.localRotation = Quaternion.Euler(60f, 0f, 0f);
+                    t.localScale = Vector3.one * 0.18f;
+                    break;
+                case "quad":
+                    // Unity's quad is 1×1 facing -Z, so it already faces the camera.
+                    t.localRotation = Quaternion.identity;
+                    t.localScale = Vector3.one * 1.4f;
+                    break;
+                default: // sphere
+                    t.localRotation = Quaternion.identity;
+                    t.localScale = Vector3.one;
+                    break;
+            }
+        }
+
+        Mesh GetShapeMesh(string key)
+        {
+            if (_shapeMeshes.TryGetValue(key, out var cached) && cached != null) return cached;
+
+            PrimitiveType type;
+            switch (key)
+            {
+                case "cube":     type = PrimitiveType.Cube; break;
+                case "cylinder": type = PrimitiveType.Cylinder; break;
+                case "capsule":  type = PrimitiveType.Capsule; break;
+                case "plane":    type = PrimitiveType.Plane; break;
+                case "quad":     type = PrimitiveType.Quad; break;
+                default:         type = PrimitiveType.Sphere; break;
+            }
+            var go = GameObject.CreatePrimitive(type);
+            var mesh = go.GetComponent<MeshFilter>().sharedMesh;
+            DestroyImmediate(go);
+            _shapeMeshes[key] = mesh;
+            return mesh;
+        }
+
+        static string NormalizeShape(string shape)
+        {
+            if (string.IsNullOrEmpty(shape)) return "sphere";
+            switch (shape.ToLowerInvariant())
+            {
+                case "sphere":
+                case "cube":
+                case "cylinder":
+                case "capsule":
+                case "plane":
+                case "quad":
+                    return shape.ToLowerInvariant();
+                default:
+                    return "sphere";
+            }
         }
 
         // ------------------------------------------------------------------

@@ -33,6 +33,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
                  "crash/bug reports and displayed on the Performance dashboard page.")]
         public bool performanceMonitoring = true;
 
+        [Header("SDK Diagnostics")]
+        [Tooltip("Show an on-screen banner whenever the Bugpunch SDK itself swallows an internal " +
+                 "error (JNI/P-Invoke failures, JSON parse failures, exceptions thrown inside SDK " +
+                 "code, etc.). Tap the banner to see recent errors. Default ON for visibility — " +
+                 "turn off in production builds, or toggle live via Bugpunch.SetSdkErrorOverlay(bool).")]
+        public bool showSdkErrorOverlay = true;
+
         [Header("Advanced")]
         [Tooltip("Script permission policy for remote execution")]
         public ScriptPermission scriptPermission = ScriptPermission.Ask;
@@ -90,6 +97,20 @@ namespace ODDGames.Bugpunch.DeviceConnect
                  "on Internal-tagged devices. Matches are evaluated in order; a line can be " +
                  "touched by multiple rules.")]
         public LogRedactionRule[] logRedactionRules = Array.Empty<LogRedactionRule>();
+
+        [Header("Theme")]
+        [Tooltip("Colours, corner radius, and font sizes applied across every Bugpunch UI surface " +
+                 "(UI Toolkit modals in C#, native cards on Android + iOS). Serialised into the " +
+                 "native config blob at startup so all three surfaces render from the same values. " +
+                 "Hex strings accept #RGB, #RRGGBB, or #RRGGBBAA.")]
+        public BugpunchTheme Theme = new BugpunchTheme();
+
+        [Header("Strings")]
+        [Tooltip("Every user-facing string drawn by the SDK. Defaults are English; add entries to " +
+                 "Translations to localise. Strings serialise into the native config blob the same " +
+                 "way Theme does, so C# UIToolkit, Android Java, and iOS ObjC all draw from the " +
+                 "same source.")]
+        public BugpunchStrings Strings = new BugpunchStrings();
 
         public enum ScriptPermission { Ask, Always, Never }
 
@@ -199,5 +220,71 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Debug.LogWarning("[Bugpunch.BugpunchConfig] No BugpunchConfig found in Resources/. Create one via Assets > Create > ODD Games > Bugpunch Config");
             return config;
         }
+
+#if UNITY_EDITOR
+        // ─── Default icon defaulting (editor only) ─────────────────────
+        //
+        // Packaged picker icons live outside Resources/ so they're not
+        // auto-included in every build. Instead the asset references on
+        // BugpunchTheme.iconBug/iconAsk/iconFeedback pull them in only when
+        // the developer has them assigned. Reset() (called by Unity when
+        // the asset is created or when the user picks "Reset" from the
+        // inspector cog) auto-populates those fields with the defaults so
+        // a fresh config picks them up without manual work. If the
+        // developer replaces an icon with their own, the default texture
+        // becomes unreferenced and Unity's build pipeline strips it.
+
+        void Reset()
+        {
+            if (Theme == null) Theme = new BugpunchTheme();
+            PopulateDefaultIconsIfMissing();
+        }
+
+        // Backfill defaults onto an already-existing config (e.g. a project
+        // that was created before the icons moved out of Resources/). Only
+        // fires when ALL three fields are null — the "config predates
+        // defaults" case. If the developer deliberately cleared one icon
+        // to drop it from the picker, the other two stay populated and we
+        // don't reverse the explicit clear. Use the cog-menu "Reset picker
+        // icons to defaults" if you want to force-restore the full set.
+        void OnValidate()
+        {
+            if (Theme == null) return;
+            if (Theme.iconBug == null && Theme.iconAsk == null && Theme.iconFeedback == null)
+                PopulateDefaultIconsIfMissing();
+        }
+
+        [ContextMenu("Reset picker icons to defaults")]
+        void ResetIconsToDefaultsMenu()
+        {
+            if (Theme == null) Theme = new BugpunchTheme();
+            Theme.iconBug = Theme.iconAsk = Theme.iconFeedback = null;
+            PopulateDefaultIconsIfMissing();
+            UnityEditor.EditorUtility.SetDirty(this);
+        }
+
+        void PopulateDefaultIconsIfMissing()
+        {
+            if (Theme.iconBug      == null) Theme.iconBug      = LoadDefaultIcon("bugpunch-help-bug");
+            if (Theme.iconAsk      == null) Theme.iconAsk      = LoadDefaultIcon("bugpunch-help-ask");
+            if (Theme.iconFeedback == null) Theme.iconFeedback = LoadDefaultIcon("bugpunch-help-feedback");
+        }
+
+        static Texture2D LoadDefaultIcon(string name)
+        {
+            // FindAssets with t:Texture2D matches by base name across the
+            // project — works whether the SDK lives under Assets/ or in
+            // Packages/au.com.oddgames.bugpunch/Icons/ as a UPM install.
+            var guids = UnityEditor.AssetDatabase.FindAssets(name + " t:Texture2D");
+            foreach (var guid in guids)
+            {
+                var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                if (System.IO.Path.GetFileNameWithoutExtension(path) != name) continue;
+                var tex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (tex != null) return tex;
+            }
+            return null;
+        }
+#endif
     }
 }

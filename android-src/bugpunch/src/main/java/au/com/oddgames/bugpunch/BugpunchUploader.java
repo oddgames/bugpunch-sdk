@@ -164,6 +164,7 @@ public class BugpunchUploader {
                     drainInternal();
                 } catch (Throwable t) {
                     Log.w(TAG, "enqueue failed", t);
+                    BugpunchSdkErrorOverlay.reportThrowable("BugpunchUploader", "enqueue", t);
                 }
             }
         });
@@ -224,6 +225,7 @@ public class BugpunchUploader {
                     drainInternal();
                 } catch (Throwable t) {
                     Log.w(TAG, "enqueuePreflight failed", t);
+                    BugpunchSdkErrorOverlay.reportThrowable("BugpunchUploader", "enqueuePreflight", t);
                 }
             }
         });
@@ -268,6 +270,7 @@ public class BugpunchUploader {
                 processOne(f);
             } catch (Throwable t) {
                 Log.w(TAG, "processOne failed: " + f.getName(), t);
+                BugpunchSdkErrorOverlay.reportThrowable("BugpunchUploader", "processOne(" + f.getName() + ")", t);
             }
         }
     }
@@ -433,6 +436,7 @@ public class BugpunchUploader {
                     drainInternal();
                 } catch (Throwable t) {
                     Log.w(TAG, "enqueueJson failed", t);
+                    BugpunchSdkErrorOverlay.reportThrowable("BugpunchUploader", "enqueueJson", t);
                 }
             }
         });

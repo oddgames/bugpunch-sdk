@@ -726,6 +726,26 @@ public class BugpunchCrashHandler {
                       .append(shotTimestamps.get(i)).append('\n');
                 }
                 sb.append("screenshot_count:").append(shotPaths.size()).append('\n');
+
+                // Log snapshot. The native signal handler dumps the rolling
+                // mirror buffer to disk from inside the signal handler, but the
+                // ANR watchdog runs in regular Java land and the process is
+                // still alive — so just call snapshotText() directly and write
+                // the file ourselves. Crash drain reads `logs:` and attaches
+                // the file to the upload, identical to the native crash path.
+                try {
+                    String logsText = BugpunchLogReader.snapshotText();
+                    if (logsText != null && !logsText.isEmpty()) {
+                        String logsPath = mCrashDir + "/anr_" + baseTs + "_logs.log";
+                        java.io.FileWriter logWriter = new java.io.FileWriter(logsPath);
+                        logWriter.write(logsText);
+                        logWriter.close();
+                        sb.append("logs:").append(logsPath).append('\n');
+                    }
+                } catch (Throwable t) {
+                    Log.w(TAG, "ANR log snapshot failed", t);
+                }
+
                 sb.append("---STACK---\n");
                 for (StackTraceElement frame : stack) {
                     sb.append(frame.getClassName()).append('.')

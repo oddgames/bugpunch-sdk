@@ -269,6 +269,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 else if (json.Contains("\"type\":\"registered\"") || json.Contains("\"type\": \"registered\""))
                 {
                     Debug.Log("[Bugpunch.IdeTunnel] Device registered with server");
+                    var cfg = ExtractRoleConfig(json);
+                    if (!string.IsNullOrEmpty(cfg))
+                        _mainThreadQueue.Enqueue(() => RoleState.ApplyFromJson(cfg));
                 }
                 // pong / other frames: ignored
             }
@@ -276,6 +279,34 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 Debug.LogError($"[Bugpunch.IdeTunnel] Message parse error: {ex.Message}\n{json}");
             }
+        }
+
+        /// <summary>
+        /// Extract the inner <c>roleConfig</c> object from a <c>registered</c>
+        /// frame as a JSON string, or null if absent. Hand-rolled balanced
+        /// brace scanner so we don't pull in a dependency just for handshake
+        /// parsing.
+        /// </summary>
+        static string ExtractRoleConfig(string json)
+        {
+            const string needle = "\"roleConfig\":";
+            int i = json.IndexOf(needle, StringComparison.Ordinal);
+            if (i < 0) return null;
+            i += needle.Length;
+            while (i < json.Length && json[i] == ' ') i++;
+            if (i >= json.Length || json[i] != '{') return null;
+            int depth = 0;
+            bool inStr = false;
+            for (int j = i; j < json.Length; j++)
+            {
+                char c = json[j];
+                if (c == '\\' && inStr) { j++; continue; }
+                if (c == '"') { inStr = !inStr; continue; }
+                if (inStr) continue;
+                if (c == '{') depth++;
+                else if (c == '}') { depth--; if (depth == 0) return json.Substring(i, j - i + 1); }
+            }
+            return null;
         }
 
         [Serializable]

@@ -68,6 +68,20 @@
             android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
+        <!--
+          Transparent host for the chat composer's image picker. Launches
+          Intent.ACTION_PICK from onCreate, copies the chosen URI into the
+          cache dir, and finishes. Needed because startActivityForResult
+          must be called from a real Activity — Unity's main activity
+          doesn't expose its onActivityResult to us.
+        -->
+        <activity
+            android:name="au.com.oddgames.bugpunch.BugpunchImagePicker$PickerActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+
         <service
             android:name="au.com.oddgames.bugpunch.BugpunchProjectionService"
             android:foregroundServiceType="mediaProjection"

@@ -5,6 +5,9 @@
 
 #import <UIKit/UIKit.h>
 
+#import "BugpunchTheme.h"
+#import "BugpunchStrings.h"
+
 extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 
 @interface BPDebugWidget : UIView
@@ -19,9 +22,23 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
     self = [super initWithFrame:CGRectMake(16, 80, 210, 40)];
     if (!self) return nil;
 
-    self.backgroundColor = [UIColor colorWithRed:0.08 green:0.09 blue:0.11 alpha:0.88];
+    UIColor* colCardBg  = [BPTheme color:@"cardBackground"
+        fallback:[UIColor colorWithRed:0.08 green:0.09 blue:0.11 alpha:0.88]];
+    UIColor* colBorder  = [BPTheme color:@"cardBorder"
+        fallback:[UIColor colorWithRed:0.16 green:0.19 blue:0.25 alpha:1]];
+    UIColor* colRec     = [BPTheme color:@"accentRecord"
+        fallback:[UIColor colorWithRed:0.88 green:0.19 blue:0.19 alpha:1]];
+    UIColor* colBug     = [BPTheme color:@"accentBug"
+        fallback:[UIColor colorWithRed:0.85 green:0.22 blue:0.22 alpha:1]];
+    UIColor* colTools   = [BPTheme color:@"cardBorder"
+        fallback:[UIColor colorWithRed:0.20 green:0.22 blue:0.28 alpha:1]];
+    UIColor* colMuted   = [BPTheme color:@"textMuted"
+        fallback:[UIColor colorWithRed:0.55 green:0.57 blue:0.62 alpha:1]];
+    UIColor* colText    = [BPTheme color:@"textPrimary" fallback:UIColor.whiteColor];
+
+    self.backgroundColor = colCardBg;
     self.layer.cornerRadius = 20;
-    self.layer.borderColor = [UIColor colorWithRed:0.16 green:0.19 blue:0.25 alpha:1].CGColor;
+    self.layer.borderColor = colBorder.CGColor;
     self.layer.borderWidth = 1;
     self.layer.shadowColor = UIColor.blackColor.CGColor;
     self.layer.shadowOffset = CGSizeMake(0, 4);
@@ -31,18 +48,21 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 
     // Recording dot
     _recDot = [[UIView alloc] initWithFrame:CGRectMake(12, 15, 10, 10)];
-    _recDot.backgroundColor = [UIColor colorWithRed:0.88 green:0.19 blue:0.19 alpha:1];
+    _recDot.backgroundColor = colRec;
     _recDot.layer.cornerRadius = 5;
     [self addSubview:_recDot];
+
+    CGFloat radius = [BPTheme radius:@"cardRadius" fallback:12];
 
     // Report button
     UIButton* report = [UIButton new];
     report.frame = CGRectMake(32, 5, 60, 30);
-    [report setTitle:@"Report" forState:UIControlStateNormal];
-    [report setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [report setTitle:[BPStrings text:@"widgetReport" fallback:@"Report"]
+            forState:UIControlStateNormal];
+    [report setTitleColor:colText forState:UIControlStateNormal];
     report.titleLabel.font = [UIFont boldSystemFontOfSize:12];
-    report.backgroundColor = [UIColor colorWithRed:0.85 green:0.22 blue:0.22 alpha:1];
-    report.layer.cornerRadius = 12;
+    report.backgroundColor = colBug;
+    report.layer.cornerRadius = radius;
     [report addTarget:self action:@selector(reportTapped) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:report];
 
@@ -52,26 +72,26 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
     if (@available(iOS 13.0, *)) {
         [shot setImage:[UIImage systemImageNamed:@"camera" withConfiguration:
             [UIImageSymbolConfiguration configurationWithPointSize:14]] forState:UIControlStateNormal];
-        shot.tintColor = [UIColor colorWithRed:0.55 green:0.57 blue:0.62 alpha:1];
+        shot.tintColor = colMuted;
     } else {
         [shot setTitle:@"SS" forState:UIControlStateNormal];
-        [shot setTitleColor:[UIColor colorWithRed:0.55 green:0.57 blue:0.62 alpha:1] forState:UIControlStateNormal];
+        [shot setTitleColor:colMuted forState:UIControlStateNormal];
         shot.titleLabel.font = [UIFont systemFontOfSize:11];
     }
-    shot.backgroundColor = [UIColor colorWithRed:0.20 green:0.22 blue:0.28 alpha:1];
-    shot.layer.cornerRadius = 12;
+    shot.backgroundColor = colTools;
+    shot.layer.cornerRadius = radius;
     [shot addTarget:self action:@selector(screenshotTapped) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:shot];
 
     // Tools button
     UIButton* tools = [UIButton new];
     tools.frame = CGRectMake(132, 5, 60, 30);
-    [tools setTitle:@"Tools" forState:UIControlStateNormal];
-    [tools setTitleColor:[UIColor colorWithRed:0.55 green:0.57 blue:0.62 alpha:1]
-               forState:UIControlStateNormal];
+    [tools setTitle:[BPStrings text:@"widgetTools" fallback:@"Tools"]
+           forState:UIControlStateNormal];
+    [tools setTitleColor:colMuted forState:UIControlStateNormal];
     tools.titleLabel.font = [UIFont systemFontOfSize:13];
-    tools.backgroundColor = [UIColor colorWithRed:0.20 green:0.22 blue:0.28 alpha:1];
-    tools.layer.cornerRadius = 12;
+    tools.backgroundColor = colTools;
+    tools.layer.cornerRadius = radius;
     [tools addTarget:self action:@selector(toolsTapped) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:tools];
 

@@ -49,7 +49,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.ScreenCaptureService] Screen capture failed: {ex.Message}");
+                BugpunchNative.ReportSdkError("ScreenCaptureService.CaptureScreen", ex);
                 return null;
             }
         }
@@ -109,7 +109,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.ScreenCaptureService] Camera capture failed: {ex.Message}");
+                BugpunchNative.ReportSdkError("ScreenCaptureService.CaptureFromCamera", ex);
                 return null;
             }
         }

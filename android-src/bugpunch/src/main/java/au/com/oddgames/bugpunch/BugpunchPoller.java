@@ -135,9 +135,12 @@ public final class BugpunchPoller {
             body.put("stableDeviceId", nullToEmpty(BugpunchIdentity.getStableDeviceId(activity)));
             body.put("buildChannel", nullToEmpty(buildChannel));
 
+            // Send the cached token if we have one — lets the server keep our
+            // existing token instead of rotating (#226 proof-of-possession).
             HttpResult res = postJson(
                 BugpunchRuntime.getServerUrl().replaceAll("/+$", "") + "/api/devices/register",
                 "X-Api-Key", BugpunchRuntime.getApiKey(),
+                "X-Device-Token", sDeviceToken,
                 body.toString());
 
             if (!res.ok) {
@@ -263,6 +266,7 @@ public final class BugpunchPoller {
                     body.toString());
             } catch (Throwable t) {
                 Log.w(TAG, "postScriptResult failed", t);
+                BugpunchSdkErrorOverlay.reportThrowable("BugpunchPoller", "postScriptResult", t);
             }
         });
     }
@@ -289,6 +293,12 @@ public final class BugpunchPoller {
 
     private static HttpResult postJson(String url, String headerName, String headerValue,
                                        String body) {
+        return postJson(url, headerName, headerValue, null, null, body);
+    }
+
+    private static HttpResult postJson(String url, String headerName, String headerValue,
+                                       String header2Name, String header2Value,
+                                       String body) {
         HttpURLConnection con = null;
         try {
             con = (HttpURLConnection) new URL(url).openConnection();
@@ -298,6 +308,9 @@ public final class BugpunchPoller {
             con.setDoOutput(true);
             con.setRequestProperty("Content-Type", "application/json");
             con.setRequestProperty(headerName, headerValue);
+            if (header2Name != null && header2Value != null && !header2Value.isEmpty()) {
+                con.setRequestProperty(header2Name, header2Value);
+            }
             byte[] payload = body.getBytes(StandardCharsets.UTF_8);
             con.setFixedLengthStreamingMode(payload.length);
             try (OutputStream out = con.getOutputStream()) { out.write(payload); }
@@ -314,6 +327,7 @@ public final class BugpunchPoller {
             return new HttpResult(status, sb.toString());
         } catch (Throwable t) {
             Log.w(TAG, "postJson failed: " + url, t);
+            BugpunchSdkErrorOverlay.reportThrowable("BugpunchPoller", "postJson(" + url + ")", t);
             return new HttpResult(-1, "");
         } finally {
             if (con != null) con.disconnect();

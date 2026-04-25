@@ -15,6 +15,7 @@
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import "BugpunchLogReader.h"
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -538,6 +539,28 @@ static void write_anr_report(uint64_t elapsed_ms) {
             [report appendFormat:@"anr_screenshot_ts_%lu:%@\n", (unsigned long)i, shotTimestamps[i]];
         }
         [report appendFormat:@"screenshot_count:%lu\n", (unsigned long)shotPaths.count];
+
+        // Log snapshot. The signal handler can't touch BPLogReader (uses
+        // @synchronized — not async-signal-safe), but the ANR watchdog runs
+        // on a regular pthread with the process still alive, so we can pull
+        // the ring directly. Crash drain reads `logs:` to attach the file.
+        @try {
+            NSString* logsText = [BPLogReader snapshotText];
+            if (logsText.length > 0) {
+                NSString* logsPath = [crashDir stringByAppendingPathComponent:
+                    [NSString stringWithFormat:@"anr_%llu_logs.log", (unsigned long long)tsMs]];
+                NSError* logErr = nil;
+                if ([logsText writeToFile:logsPath atomically:YES
+                        encoding:NSUTF8StringEncoding error:&logErr]) {
+                    [report appendFormat:@"logs:%@\n", logsPath];
+                } else {
+                    NSLog(@"[BugpunchCrash] ANR log snapshot write failed: %@", logErr);
+                }
+            }
+        } @catch (NSException* ex) {
+            NSLog(@"[BugpunchCrash] ANR log snapshot exception: %@", ex);
+        }
+
         [report appendFormat:@"platform:iOS\n"];
         [report appendFormat:@"app_version:%s\n", s_app_version];
         [report appendFormat:@"bundle_id:%s\n", s_bundle_id];

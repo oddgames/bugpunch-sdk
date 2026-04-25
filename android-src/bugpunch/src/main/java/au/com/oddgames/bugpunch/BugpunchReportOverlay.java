@@ -76,7 +76,7 @@ public class BugpunchReportOverlay {
 
             // Backdrop — full screen semi-transparent
             FrameLayout backdrop = new FrameLayout(ctx);
-            backdrop.setBackgroundColor(Color.parseColor("#99000000"));
+            backdrop.setBackgroundColor(BugpunchTheme.color("backdrop", 0x99000000));
             backdrop.setClickable(true); // consume touches
 
             // Scrollable card wrapper — handles landscape where card may exceed screen height
@@ -95,8 +95,9 @@ public class BugpunchReportOverlay {
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(pad, pad, pad, pad);
             android.graphics.drawable.GradientDrawable cardBg = new android.graphics.drawable.GradientDrawable();
-            cardBg.setColor(Color.parseColor("#F0222222"));
-            cardBg.setCornerRadius(dp(ctx, 16));
+            cardBg.setColor(BugpunchTheme.color("cardBackground", 0xF0222222));
+            cardBg.setStroke(dp(ctx, 1), BugpunchTheme.color("cardBorder", 0xFF474747));
+            cardBg.setCornerRadius(BugpunchTheme.dp(ctx, "cardRadius", 16));
             card.setBackground(cardBg);
             cardScroll.addView(card, new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -135,9 +136,9 @@ public class BugpunchReportOverlay {
 
             // Title
             TextView title = new TextView(ctx);
-            title.setText("Report a Bug");
-            title.setTextColor(Color.WHITE);
-            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+            title.setText(BugpunchStrings.text("welcomeTitle", "Report a Bug"));
+            title.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
+            BugpunchTheme.applyTextSize(title, "fontSizeTitle", 20);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             title.setGravity(Gravity.CENTER);
             card.addView(title);
@@ -146,24 +147,25 @@ public class BugpunchReportOverlay {
 
             // Body text
             TextView body = new TextView(ctx);
-            body.setText("We'll record your screen while you reproduce the issue.\n\nWhen you're ready, tap the report button to send us the details.");
-            body.setTextColor(Color.parseColor("#BBBBBB"));
-            body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            body.setText(BugpunchStrings.text("welcomeBody",
+                "We'll record your screen while you reproduce the issue.\n\nWhen you're ready, tap the report button to send us the details."));
+            body.setTextColor(BugpunchTheme.color("textSecondary", 0xFFBBBBBB));
+            BugpunchTheme.applyTextSize(body, "fontSizeBody", 14);
             body.setGravity(Gravity.CENTER);
             body.setLineSpacing(dp(ctx, 2), 1f);
             card.addView(body);
 
             addSpacer(card, pad);
 
-            // "Got it" button
+            // "Got it" button — primary accent
             Button gotItBtn = new Button(ctx);
-            gotItBtn.setText("Got it");
-            gotItBtn.setTextColor(Color.WHITE);
-            gotItBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            gotItBtn.setText(BugpunchStrings.text("welcomeConfirm", "Got it"));
+            gotItBtn.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
+            BugpunchTheme.applyTextSize(gotItBtn, "fontSizeBody", 16);
             gotItBtn.setTypeface(Typeface.DEFAULT_BOLD);
             gotItBtn.setAllCaps(false);
             android.graphics.drawable.GradientDrawable btnBg = new android.graphics.drawable.GradientDrawable();
-            btnBg.setColor(Color.parseColor("#2E7D32")); // green
+            btnBg.setColor(BugpunchTheme.color("accentPrimary", 0xFF2E7D32));
             btnBg.setCornerRadius(dp(ctx, 8));
             gotItBtn.setBackground(btnBg);
             gotItBtn.setPadding(dp(ctx, 16), dp(ctx, 12), dp(ctx, 16), dp(ctx, 12));
@@ -180,9 +182,9 @@ public class BugpunchReportOverlay {
 
             // "Cancel" link
             TextView cancel = new TextView(ctx);
-            cancel.setText("Cancel");
-            cancel.setTextColor(Color.parseColor("#888888"));
-            cancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            cancel.setText(BugpunchStrings.text("welcomeCancel", "Cancel"));
+            cancel.setTextColor(BugpunchTheme.color("textMuted", 0xFF888888));
+            BugpunchTheme.applyTextSize(cancel, "fontSizeBody", 14);
             cancel.setGravity(Gravity.CENTER);
             cancel.setClickable(true);
             cancel.setOnClickListener(v -> {
@@ -202,6 +204,7 @@ public class BugpunchReportOverlay {
                     PixelFormat.TRANSLUCENT);
             // Make focusable so buttons work
             wlp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            inheritImmersiveFlags(backdrop, activity);
             wm.addView(backdrop, wlp);
             sWelcomeView = backdrop;
 
@@ -225,9 +228,9 @@ public class BugpunchReportOverlay {
     // ─── Request Help Picker ──────────────────────────────────────
     //
     // Three-choice card shown by `Bugpunch.RequestHelp()`:
-    //   0 → Record a bug   (capture video + report a problem)
-    //   1 → Ask for help   (short question to the dev team)
-    //   2 → Send feedback  (suggest / vote on features)
+    //   0 → Ask for help       (short question to the dev team)
+    //   1 → Record a bug       (capture video + report a problem)
+    //   2 → Request a feature  (suggest / vote on improvements)
     //
     // Backdrop tap, Cancel button, and the Android system back button all
     // dismiss with OnRequestHelpCancel. Picked choice dispatches via
@@ -254,7 +257,7 @@ public class BugpunchReportOverlay {
                     return super.dispatchKeyEvent(event);
                 }
             };
-            backdrop.setBackgroundColor(Color.parseColor("#99000000"));
+            backdrop.setBackgroundColor(BugpunchTheme.color("backdrop", 0x99000000));
             backdrop.setClickable(true); // consume touches that miss the card
             backdrop.setFocusable(true);
             backdrop.setFocusableInTouchMode(true);
@@ -263,70 +266,93 @@ public class BugpunchReportOverlay {
                 sendToUnity("OnRequestHelpCancel", "");
             });
 
-            // Scroll wrapper so the card fits landscape orientation
+            // Horizontal (row) layout kicks in at ≥ 540dp of available screen
+            // width. This is the usual tablet / landscape phone breakpoint —
+            // narrow phones fall back to the original vertical stack.
+            boolean horizontal = ctx.getResources().getConfiguration().screenWidthDp >= 540;
+
+            // Scroll wrapper so the card fits landscape orientation.
+            // Horizontal picker needs a wider card (3 × option ≈ 160dp + gaps)
+            // than the vertical stack (single column at 340dp).
             ScrollView cardScroll = new ScrollView(ctx);
             cardScroll.setFillViewport(false);
             cardScroll.setClipToPadding(false);
             int screenMargin = dp(ctx, 24);
+            int cardWidthDp = horizontal ? 560 : 340;
             FrameLayout.LayoutParams scrollLp = new FrameLayout.LayoutParams(
-                    dp(ctx, 340), ViewGroup.LayoutParams.WRAP_CONTENT);
+                    dp(ctx, cardWidthDp), ViewGroup.LayoutParams.WRAP_CONTENT);
             scrollLp.gravity = Gravity.CENTER;
             scrollLp.setMargins(0, screenMargin, 0, screenMargin);
             backdrop.addView(cardScroll, scrollLp);
 
-            // Card container — reuse welcome-card styling (#F0222222, 16dp radius)
+            // Card container
             LinearLayout card = new LinearLayout(ctx);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(pad, pad, pad, pad);
             card.setClickable(true); // stop clicks propagating to backdrop
             android.graphics.drawable.GradientDrawable cardBg = new android.graphics.drawable.GradientDrawable();
-            cardBg.setColor(Color.parseColor("#F0222222"));
-            cardBg.setCornerRadius(dp(ctx, 16));
+            cardBg.setColor(BugpunchTheme.color("cardBackground", 0xF0222222));
+            cardBg.setStroke(dp(ctx, 1), BugpunchTheme.color("cardBorder", 0xFF474747));
+            cardBg.setCornerRadius(BugpunchTheme.dp(ctx, "cardRadius", 16));
             card.setBackground(cardBg);
             cardScroll.addView(card, new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
             // Title
             TextView title = new TextView(ctx);
-            title.setText("What would you like to do?");
-            title.setTextColor(Color.WHITE);
-            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+            title.setText(BugpunchStrings.text("pickerTitle", "What would you like to do?"));
+            title.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
+            BugpunchTheme.applyTextSize(title, "fontSizeTitle", 20);
             title.setTypeface(Typeface.DEFAULT_BOLD);
+            if (horizontal) title.setGravity(Gravity.CENTER);
             card.addView(title);
 
             addSpacer(card, dp(ctx, 4));
 
             // Subtitle
             TextView subtitle = new TextView(ctx);
-            subtitle.setText("Pick what fits — we'll only bother the dev team with what you send.");
-            subtitle.setTextColor(Color.parseColor("#B8B8B8"));
-            subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            subtitle.setText(BugpunchStrings.text("pickerSubtitle",
+                "Pick what fits — we'll only bother the dev team with what you send."));
+            subtitle.setTextColor(BugpunchTheme.color("textSecondary", 0xFFB8B8B8));
+            BugpunchTheme.applyTextSize(subtitle, "fontSizeCaption", 13);
+            if (horizontal) subtitle.setGravity(Gravity.CENTER);
             card.addView(subtitle);
 
             addSpacer(card, padSmall);
 
-            // Three option buttons
-            card.addView(buildPickerOption(ctx, activity, 0,
-                    "Record a bug", "Capture a video + report a problem",
-                    Color.parseColor("#943838"), "bugpunch_help_bug"));
-            addSpacer(card, dp(ctx, 8));
+            // Three option panels. Horizontal row on wide screens, vertical
+            // column on narrow phones — shared builder so we don't duplicate
+            // icon / label / underline wiring.
+            LinearLayout options = new LinearLayout(ctx);
+            options.setOrientation(horizontal ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+            if (horizontal) options.setWeightSum(3f);
+            card.addView(options, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-            card.addView(buildPickerOption(ctx, activity, 1,
-                    "Ask for help", "Short question to the dev team",
-                    Color.parseColor("#336199"), "bugpunch_help_ask"));
-            addSpacer(card, dp(ctx, 8));
-
-            card.addView(buildPickerOption(ctx, activity, 2,
-                    "Send feedback", "Suggest / vote on features",
-                    Color.parseColor("#407D4C"), "bugpunch_help_feedback"));
+            int gap = dp(ctx, horizontal ? 12 : 8);
+            addOption(options, ctx, activity, 0,
+                    BugpunchStrings.text("pickerAskTitle", "Ask for help"),
+                    BugpunchStrings.text("pickerAskCaption", "Short question to the dev team"),
+                    BugpunchTheme.color("accentChat", 0xFF336199), "bugpunch_help_ask",
+                    horizontal, 0, gap);
+            addOption(options, ctx, activity, 1,
+                    BugpunchStrings.text("pickerBugTitle", "Record a bug"),
+                    BugpunchStrings.text("pickerBugCaption", "Capture a video + report a problem"),
+                    BugpunchTheme.color("accentBug", 0xFF943838), "bugpunch_help_bug",
+                    horizontal, 1, gap);
+            addOption(options, ctx, activity, 2,
+                    BugpunchStrings.text("pickerFeatureTitle", "Request a feature"),
+                    BugpunchStrings.text("pickerFeatureCaption", "Suggest / vote on improvements"),
+                    BugpunchTheme.color("accentFeedback", 0xFF407D4C), "bugpunch_help_feedback",
+                    horizontal, 2, gap);
 
             addSpacer(card, padSmall);
 
             // Cancel text button
             TextView cancel = new TextView(ctx);
-            cancel.setText("Cancel");
-            cancel.setTextColor(Color.parseColor("#999999"));
-            cancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            cancel.setText(BugpunchStrings.text("pickerCancel", "Cancel"));
+            cancel.setTextColor(BugpunchTheme.color("textMuted", 0xFF999999));
+            BugpunchTheme.applyTextSize(cancel, "fontSizeBody", 14);
             cancel.setGravity(Gravity.CENTER);
             cancel.setClickable(true);
             cancel.setPadding(0, dp(ctx, 8), 0, dp(ctx, 4));
@@ -344,12 +370,138 @@ public class BugpunchReportOverlay {
                     WindowManager.LayoutParams.TYPE_APPLICATION,
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                     PixelFormat.TRANSLUCENT);
+            inheritImmersiveFlags(backdrop, activity);
             wm.addView(backdrop, wlp);
             backdrop.requestFocus();
             sRequestHelpView = backdrop;
 
-            Log.d(TAG, "Request-help picker shown");
+            Log.d(TAG, "Request-help picker shown (layout=" + (horizontal ? "horizontal" : "vertical") + ")");
         });
+    }
+
+    /**
+     * Build one picker option and add it to {@code parent}. Horizontal row
+     * picker uses a stacked icon/title/caption with an accent underline bar;
+     * vertical stack keeps the legacy icon-leading row with chevron. Both
+     * share the same accent colour + click callback.
+     */
+    private static void addOption(LinearLayout parent, Context ctx, Activity activity, int choice,
+                                  String titleText, String captionText, int accent, String iconResName,
+                                  boolean horizontal, int indexInRow, int gap) {
+        View option = horizontal
+                ? buildPickerOptionStacked(ctx, activity, choice, titleText, captionText, accent, iconResName)
+                : buildPickerOption(ctx, activity, choice, titleText, captionText, accent, iconResName);
+
+        LinearLayout.LayoutParams lp;
+        if (horizontal) {
+            lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            if (indexInRow > 0) lp.leftMargin = gap;
+        } else {
+            lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (indexInRow > 0) lp.topMargin = gap;
+        }
+        parent.addView(option, lp);
+    }
+
+    /**
+     * Stacked-layout option panel used by the horizontal picker.
+     *
+     * <pre>
+     *   ┌─────────────┐
+     *   │   [icon]    │    64dp centered
+     *   │    Title    │    18sp bold
+     *   │   caption   │    13sp, 2 lines
+     *   │ ═══════════ │    2dp accent underline
+     *   └─────────────┘
+     * </pre>
+     */
+    private static View buildPickerOptionStacked(Context ctx, final Activity activity, final int choice,
+                                                 String titleText, String captionText, int accent,
+                                                 String iconResName) {
+        // Outer panel = clickable card with an accent bottom-underline drawn
+        // as a 2dp child view. Kept as two views rather than a LayerDrawable
+        // so the underline always sits flush with the card's rounded corners.
+        LinearLayout panel = new LinearLayout(ctx);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER_HORIZONTAL);
+        panel.setClickable(true);
+        panel.setFocusable(true);
+
+        int ipV = dp(ctx, 14);
+        int ipH = dp(ctx, 10);
+        panel.setPadding(ipH, ipV, ipH, 0);
+
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(BugpunchTheme.color("cardBackground", 0xFF2B2B2B));
+        bg.setStroke(dp(ctx, 1), BugpunchTheme.color("cardBorder", 0xFF474747));
+        bg.setCornerRadius(dp(ctx, 10));
+        panel.setBackground(bg);
+
+        // Icon (64dp square, centered). Falls back to the accent dot only if
+        // the bundled drawable went missing from the AAR.
+        int iconRes = ctx.getResources().getIdentifier(
+                iconResName, "drawable", ctx.getPackageName());
+        if (iconRes != 0) {
+            ImageView iv = new ImageView(ctx);
+            iv.setImageResource(iconRes);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(dp(ctx, 64), dp(ctx, 64));
+            ivLp.gravity = Gravity.CENTER_HORIZONTAL;
+            panel.addView(iv, ivLp);
+        } else {
+            View dot = new View(ctx);
+            android.graphics.drawable.GradientDrawable dotBg = new android.graphics.drawable.GradientDrawable();
+            dotBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            dotBg.setColor(accent);
+            dot.setBackground(dotBg);
+            LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(ctx, 16), dp(ctx, 16));
+            dotLp.gravity = Gravity.CENTER_HORIZONTAL;
+            dotLp.topMargin = dp(ctx, 24);
+            dotLp.bottomMargin = dp(ctx, 24);
+            panel.addView(dot, dotLp);
+        }
+
+        addSpacer(panel, dp(ctx, 8));
+
+        TextView titleLabel = new TextView(ctx);
+        titleLabel.setText(titleText);
+        titleLabel.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
+        titleLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        titleLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        titleLabel.setGravity(Gravity.CENTER);
+        panel.addView(titleLabel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        addSpacer(panel, dp(ctx, 4));
+
+        TextView captionLabel = new TextView(ctx);
+        captionLabel.setText(captionText);
+        captionLabel.setTextColor(BugpunchTheme.color("textSecondary", 0xFFB2B2B2));
+        captionLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        captionLabel.setGravity(Gravity.CENTER);
+        captionLabel.setMaxLines(2);
+        captionLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams capLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        capLp.leftMargin = capLp.rightMargin = dp(ctx, 4);
+        panel.addView(captionLabel, capLp);
+
+        addSpacer(panel, dp(ctx, 12));
+
+        // Accent underline — 2dp bar flush with the bottom of the card
+        View underline = new View(ctx);
+        underline.setBackgroundColor(accent);
+        LinearLayout.LayoutParams ulp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 2));
+        panel.addView(underline, ulp);
+
+        panel.setOnClickListener(v -> {
+            hideRequestHelp(activity);
+            sendToUnity("OnRequestHelpChoice", String.valueOf(choice));
+        });
+
+        return panel;
     }
 
     private static View buildPickerOption(Context ctx, final Activity activity, final int choice,
@@ -364,8 +516,8 @@ public class BugpunchReportOverlay {
         btn.setFocusable(true);
 
         android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-        bg.setColor(Color.parseColor("#2B2B2B"));
-        bg.setStroke(dp(ctx, 1), Color.parseColor("#474747"));
+        bg.setColor(BugpunchTheme.color("cardBackground", 0xFF2B2B2B));
+        bg.setStroke(dp(ctx, 1), BugpunchTheme.color("cardBorder", 0xFF474747));
         bg.setCornerRadius(dp(ctx, 8));
         btn.setBackground(bg);
 
@@ -399,15 +551,15 @@ public class BugpunchReportOverlay {
 
         TextView titleLabel = new TextView(ctx);
         titleLabel.setText(titleText);
-        titleLabel.setTextColor(Color.WHITE);
+        titleLabel.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
         titleLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         titleLabel.setTypeface(Typeface.DEFAULT_BOLD);
         textCol.addView(titleLabel);
 
         TextView captionLabel = new TextView(ctx);
         captionLabel.setText(captionText);
-        captionLabel.setTextColor(Color.parseColor("#B2B2B2"));
-        captionLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        captionLabel.setTextColor(BugpunchTheme.color("textSecondary", 0xFFB2B2B2));
+        BugpunchTheme.applyTextSize(captionLabel, "fontSizeCaption", 12);
         LinearLayout.LayoutParams capLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         capLp.topMargin = dp(ctx, 2);
@@ -416,7 +568,7 @@ public class BugpunchReportOverlay {
         // Chevron
         TextView chev = new TextView(ctx);
         chev.setText("›");
-        chev.setTextColor(Color.parseColor("#8C8C8C"));
+        chev.setTextColor(BugpunchTheme.color("textMuted", 0xFF8C8C8C));
         chev.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
         chev.setTypeface(Typeface.DEFAULT_BOLD);
         LinearLayout.LayoutParams chevLp = new LinearLayout.LayoutParams(
@@ -517,7 +669,7 @@ public class BugpunchReportOverlay {
             // Timer label
             sTimerLabel = new TextView(ctx);
             sTimerLabel.setText("0:00");
-            sTimerLabel.setTextColor(Color.WHITE);
+            sTimerLabel.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
             sTimerLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
             sTimerLabel.setTypeface(Typeface.DEFAULT_BOLD);
             sTimerLabel.setGravity(Gravity.CENTER);
@@ -600,6 +752,23 @@ public class BugpunchReportOverlay {
     }
 
     // ─── Helpers ───────────────────────────────────────────────────
+
+    /**
+     * Mirror the host activity's decor-view system-UI flags onto a
+     * {@link WindowManager}-managed overlay so adding it doesn't pull the
+     * app out of immersive / fullscreen mode (which would surface the
+     * status and nav bars). Unity's activity sets
+     * {@code SYSTEM_UI_FLAG_IMMERSIVE_STICKY} et al. — without this copy a
+     * new focusable {@code TYPE_APPLICATION} window resets to default
+     * visibility and the user sees the status bar pop in.
+     */
+    private static void inheritImmersiveFlags(View overlay, Activity activity) {
+        if (overlay == null || activity == null) return;
+        try {
+            overlay.setSystemUiVisibility(
+                    activity.getWindow().getDecorView().getSystemUiVisibility());
+        } catch (Throwable ignore) { /* best-effort */ }
+    }
 
     private static int dp(Context ctx, int dp) {
         return (int) (dp * ctx.getResources().getDisplayMetrics().density + 0.5f);
@@ -719,8 +888,8 @@ public class BugpunchReportOverlay {
             // used on the Ask for help / Send feedback picker rows.
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(iconType == ICON_CHAT
-                    ? Color.parseColor("#336199")   // chat blue
-                    : Color.parseColor("#407D4C")); // feedback green
+                    ? BugpunchTheme.color("accentChat", 0xFF336199)
+                    : BugpunchTheme.color("accentFeedback", 0xFF407D4C));
             canvas.drawCircle(cx, cy, r * 0.92f, paint);
 
             // White glyph
@@ -796,9 +965,9 @@ public class BugpunchReportOverlay {
         @Override
         protected void onDraw(Canvas canvas) {
             float r = size / 2f;
-            // Red circle
+            // Accent-record circle
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.parseColor("#D32F2F"));
+            paint.setColor(BugpunchTheme.color("accentRecord", 0xFFD32F2F));
             canvas.drawCircle(r, r, r * 0.9f, paint);
 
             // White rounded square (stop icon)

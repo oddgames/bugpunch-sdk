@@ -42,6 +42,18 @@ import org.json.JSONObject;
 public class BugpunchDebugMode {
     private static final String TAG = "[Bugpunch.DebugMode]";
 
+    // Tracks whether the most recent recording start originated from the
+    // cache-driven launch auto-prompt. The role-transition dispatch path
+    // uses this so it only tears down a recording the cache itself triggered
+    // — never one the user explicitly opted into via Bugpunch.EnterDebugMode().
+    private static volatile boolean sStartedFromCachedPrompt;
+
+    // Set true once the launch-time auto-prompt has been shown for this
+    // process so a roleConfig that arrives during the same session doesn't
+    // re-prompt (and so onRoleBecameInternal can see whether the cache
+    // already covered it).
+    private static volatile boolean sAutoPromptShown;
+
     /**
      * Enable debug recording. With {@code skipConsent=false} (default) shows
      * a native consent sheet with Start / Cancel; with {@code true} skips it
@@ -51,10 +63,88 @@ public class BugpunchDebugMode {
     public static void enter(final Activity activity, final boolean skipConsent) {
         if (!BugpunchRuntime.isStarted() || activity == null) return;
         if (BugpunchRecorder.getInstance().hasFootage()) return;
+        // Manual call — clear the cache-driven flag so a subsequent server
+        // role of non-internal doesn't tear down a user-initiated recording.
+        sStartedFromCachedPrompt = false;
         activity.runOnUiThread(new Runnable() {
             @Override public void run() {
                 if (skipConsent) startRecordingFromConfig(activity);
                 else             showConsentDialog(activity);
+            }
+        });
+    }
+
+    /**
+     * Cache-driven launch flow. If the last-known tester role was
+     * "internal", show the consent sheet immediately so the video ring
+     * buffer can come up before the tunnel handshake returns. Other cached
+     * values (and an empty cache) wait for the server.
+     *
+     * Called once from {@link BugpunchRuntime#attachActivity(Activity)}
+     * after Activity-bound init completes.
+     */
+    public static void maybeAutoPromptOnLaunch(final Activity activity) {
+        if (activity == null) return;
+        if (sAutoPromptShown) return;
+        if (!BugpunchRuntime.isStarted()) return;
+        if (BugpunchRecorder.getInstance().isRunning()) return;
+
+        String cached = BugpunchTunnel.readLastTesterRoleFromCache(
+            activity.getApplicationContext());
+        if (!"internal".equals(cached)) {
+            // First-ever launch (null) or last-known non-internal: no
+            // speculative prompt. Wait for the server's roleConfig.
+            return;
+        }
+        sAutoPromptShown = true;
+        Log.i(TAG, "cached role=internal — auto-prompting consent on launch");
+        activity.runOnUiThread(new Runnable() {
+            @Override public void run() {
+                sStartedFromCachedPrompt = true;
+                showConsentDialog(activity);
+            }
+        });
+    }
+
+    /**
+     * Called from {@link BugpunchTunnel#applyRoleConfigInternal} when the
+     * server's roleConfig flips us TO "internal". If the cached path didn't
+     * already prompt (cache was missing or non-internal), prompt now.
+     */
+    static void onRoleBecameInternal() {
+        if (sAutoPromptShown) return;
+        Activity activity = BugpunchRuntime.getAttachedActivity();
+        if (activity == null) return;
+        if (!BugpunchRuntime.isStarted()) return;
+        if (BugpunchRecorder.getInstance().isRunning()) return;
+        sAutoPromptShown = true;
+        Log.i(TAG, "role flipped to internal — prompting consent mid-session");
+        activity.runOnUiThread(new Runnable() {
+            @Override public void run() {
+                sStartedFromCachedPrompt = true;
+                showConsentDialog(activity);
+            }
+        });
+    }
+
+    /**
+     * Called from {@link BugpunchTunnel#applyRoleConfigInternal} when the
+     * server's roleConfig flips us AWAY from "internal". If a recording is
+     * running because of the speculative cached prompt, tear it down — the
+     * server's authoritative answer wins. Manual {@code Bugpunch.EnterDebugMode}
+     * recordings are left alone.
+     */
+    static void onRoleLeftInternal() {
+        if (!sStartedFromCachedPrompt) return;
+        Activity activity = BugpunchRuntime.getAttachedActivity();
+        if (activity == null) return;
+        Log.i(TAG, "role left internal — tearing down speculative recording");
+        sStartedFromCachedPrompt = false;
+        activity.runOnUiThread(new Runnable() {
+            @Override public void run() {
+                try { BugpunchRecorder.getInstance().stop(); } catch (Throwable ignore) {}
+                try { BugpunchTouchRecorder.stop(); } catch (Throwable ignore) {}
+                try { BugpunchDebugWidget.hide(); } catch (Throwable ignore) {}
             }
         });
     }
@@ -111,7 +201,10 @@ public class BugpunchDebugMode {
         final Dialog dialog = new Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar);
         Window window = dialog.getWindow();
         if (window != null) {
-            window.setBackgroundDrawable(new ColorDrawable(0xAA000000));
+            // Backdrop uses the shared theme — matches the other native
+            // overlays so the dim level is consistent across surfaces.
+            window.setBackgroundDrawable(new ColorDrawable(
+                BugpunchTheme.color("backdrop", 0xAA000000)));
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT);
         }
@@ -129,9 +222,9 @@ public class BugpunchDebugMode {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setGravity(Gravity.CENTER_HORIZONTAL);
         GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(0xFF141820);
-        cardBg.setCornerRadius(dp.of(20));
-        cardBg.setStroke(dp.of(1), 0xFF2A3240);
+        cardBg.setColor(BugpunchTheme.color("cardBackground", 0xFF141820));
+        cardBg.setCornerRadius(BugpunchTheme.dp(activity, "cardRadius", 20));
+        cardBg.setStroke(dp.of(1), BugpunchTheme.color("cardBorder", 0xFF2A3240));
         card.setBackground(cardBg);
         int padH = dp.of(28), padV = dp.of(32);
         card.setPadding(padH, padV, padH, padV);
@@ -141,9 +234,9 @@ public class BugpunchDebugMode {
 
         // Title
         TextView title = new TextView(activity);
-        title.setText("Enable debug recording");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        title.setText(BugpunchStrings.text("consentTitle", "Enable debug recording"));
+        title.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
+        BugpunchTheme.applyTextSize(title, "fontSizeTitle", 20);
         title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
@@ -153,11 +246,12 @@ public class BugpunchDebugMode {
 
         // Body
         TextView body = new TextView(activity);
-        body.setText("Bugpunch will record your screen so that bug reports include the "
-            + "moments leading up to an issue. Recording stays on your device until you "
-            + "submit a report.");
-        body.setTextColor(0xFFA8B2BF);
-        body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        body.setText(BugpunchStrings.text("consentBody",
+            "Your screen will be recorded so bug reports can include the moments "
+            + "leading up to an issue. Recording stays on your device until you submit a "
+            + "report."));
+        body.setTextColor(BugpunchTheme.color("textSecondary", 0xFFA8B2BF));
+        BugpunchTheme.applyTextSize(body, "fontSizeBody", 14);
         body.setGravity(Gravity.CENTER);
         body.setLineSpacing(dp.of(3), 1f);
         LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(
@@ -166,7 +260,10 @@ public class BugpunchDebugMode {
         card.addView(body, bodyLp);
 
         // Primary CTA
-        Button start = pillButton(activity, "Start Recording", 0xFF2A7BE0, Color.WHITE, dp);
+        Button start = pillButton(activity,
+            BugpunchStrings.text("consentStart", "Start Recording"),
+            BugpunchTheme.color("accentPrimary", 0xFF2A7BE0),
+            BugpunchTheme.color("textPrimary", Color.WHITE), dp);
         LinearLayout.LayoutParams startLp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp.of(48));
         startLp.bottomMargin = dp.of(10);
@@ -179,7 +276,10 @@ public class BugpunchDebugMode {
         });
 
         // Secondary
-        Button notNow = pillButton(activity, "Not now", 0x00000000, 0xFFA8B2BF, dp);
+        Button notNow = pillButton(activity,
+            BugpunchStrings.text("consentCancel", "Not now"),
+            0x00000000,
+            BugpunchTheme.color("textSecondary", 0xFFA8B2BF), dp);
         LinearLayout.LayoutParams notNowLp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp.of(48));
         card.addView(notNow, notNowLp);
@@ -201,7 +301,7 @@ public class BugpunchDebugMode {
         b.setTypeface(b.getTypeface(), android.graphics.Typeface.BOLD);
         GradientDrawable bgShape = new GradientDrawable();
         bgShape.setColor(bg);
-        bgShape.setCornerRadius(dp.of(12));
+        bgShape.setCornerRadius(BugpunchTheme.dp(ctx, "cardRadius", 12));
         b.setBackground(bgShape);
         return b;
     }

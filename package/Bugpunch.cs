@@ -403,6 +403,30 @@ namespace ODDGames.Bugpunch
         }
 
         /// <summary>
+        /// Toggle the on-screen SDK self-diagnostic banner at runtime. Defaults
+        /// to <c>BugpunchConfig.showSdkErrorOverlay</c> at startup. Errors are
+        /// always logged to the Unity console regardless — this only controls
+        /// the visible banner.
+        /// </summary>
+        public static void SetSdkErrorOverlay(bool enabled) => BugpunchNative.SetSdkErrorOverlay(enabled);
+
+        /// <summary>
+        /// Report an internal SDK problem to the on-screen diagnostic banner.
+        /// Intended for use inside the SDK itself — game code shouldn't normally
+        /// call this. Safe to call before init and never throws.
+        /// </summary>
+        public static void SdkError(string source, string message)
+            => BugpunchNative.ReportSdkError(source, message, null);
+
+        /// <summary>
+        /// Report an internal SDK exception to the on-screen diagnostic banner.
+        /// Intended for use inside the SDK itself — game code shouldn't normally
+        /// call this. Safe to call before init and never throws.
+        /// </summary>
+        public static void SdkError(string source, System.Exception exception)
+            => BugpunchNative.ReportSdkError(source, exception);
+
+        /// <summary>
         /// Override the release branch for this process. Takes precedence over
         /// the BugpunchConfig asset's `branch` field. Call before SDK init — e.g.
         /// from a CI-generated partial class that bakes the current git branch

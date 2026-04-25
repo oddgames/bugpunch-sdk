@@ -2,6 +2,9 @@
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
 
+#import "BugpunchTheme.h"
+#import "BugpunchStrings.h"
+
 extern "C" const char* Bugpunch_GetStableDeviceId(void);
 
 typedef void (*PermissionCallback)(int result);
@@ -34,7 +37,10 @@ typedef void (*CrashReportDismissCallback)(void);
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.92];
+    // Card-style fullscreen backdrop — use the card background so the crash
+    // report reads as one surface over the game instead of pure black.
+    self.view.backgroundColor = [BPTheme color:@"cardBackground"
+        fallback:[[UIColor blackColor] colorWithAlphaComponent:0.92]];
 
     UIScrollView* scroll = [[UIScrollView alloc] initWithFrame:self.view.bounds];
     scroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -56,40 +62,39 @@ typedef void (*CrashReportDismissCallback)(void);
     CGFloat pad = 16;
     CGFloat y = 0;
 
-    // ── Logo row ──
+    // ── Optional brand row ──
+    // SDK ships unbranded; if the host app drops a `bugpunch-logo.png`
+    // (or @2x) into its bundle to brand the overlay, it'll be picked up
+    // here. Row collapses to zero height when no asset is present.
     UIView* logoRow = [[UIView alloc] init];
     logoRow.translatesAutoresizingMaskIntoConstraints = NO;
     [content addSubview:logoRow];
 
-    UIImageView* logoImg = [[UIImageView alloc] init];
     NSString* logoPath = [[NSBundle mainBundle] pathForResource:@"bugpunch-logo" ofType:@"png"];
     if (!logoPath) logoPath = [[NSBundle mainBundle] pathForResource:@"bugpunch-logo@2x" ofType:@"png"];
-    if (logoPath) logoImg.image = [UIImage imageWithContentsOfFile:logoPath];
-    logoImg.contentMode = UIViewContentModeScaleAspectFit;
-    logoImg.translatesAutoresizingMaskIntoConstraints = NO;
-    [logoRow addSubview:logoImg];
-
-    UILabel* logoLabel = [[UILabel alloc] init];
-    logoLabel.text = @"Bugpunch";
-    logoLabel.font = [UIFont boldSystemFontOfSize:14];
-    logoLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1];
-    logoLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [logoRow addSubview:logoLabel];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [logoImg.leadingAnchor constraintEqualToAnchor:logoRow.leadingAnchor],
-        [logoImg.centerYAnchor constraintEqualToAnchor:logoRow.centerYAnchor],
-        [logoImg.widthAnchor constraintEqualToConstant:24],
-        [logoImg.heightAnchor constraintEqualToConstant:24],
-        [logoLabel.leadingAnchor constraintEqualToAnchor:logoImg.trailingAnchor constant:6],
-        [logoLabel.centerYAnchor constraintEqualToAnchor:logoRow.centerYAnchor],
-    ]];
+    BOOL hasLogo = (logoPath.length > 0);
+    if (hasLogo) {
+        UIImageView* logoImg = [[UIImageView alloc] init];
+        logoImg.image = [UIImage imageWithContentsOfFile:logoPath];
+        logoImg.contentMode = UIViewContentModeScaleAspectFit;
+        logoImg.translatesAutoresizingMaskIntoConstraints = NO;
+        [logoRow addSubview:logoImg];
+        [NSLayoutConstraint activateConstraints:@[
+            [logoImg.leadingAnchor constraintEqualToAnchor:logoRow.leadingAnchor],
+            [logoImg.centerYAnchor constraintEqualToAnchor:logoRow.centerYAnchor],
+            [logoImg.widthAnchor constraintEqualToConstant:24],
+            [logoImg.heightAnchor constraintEqualToConstant:24],
+        ]];
+    }
 
     // ── Header ──
     UILabel* header = [[UILabel alloc] init];
-    header.text = @"Crash Report";
-    header.font = [UIFont boldSystemFontOfSize:22];
-    header.textColor = [UIColor colorWithRed:1 green:0.33 blue:0.33 alpha:1];
+    header.text = [BPStrings text:@"crashHeader" fallback:@"Crash Report"];
+    // Crash header uses the title font size bumped a little (x1.1) to stay
+    // visually distinct from the form labels below.
+    header.font = [UIFont boldSystemFontOfSize:([BPTheme font:@"fontSizeTitle" fallback:20] * 1.1f)];
+    header.textColor = [BPTheme color:@"accentBug"
+        fallback:[UIColor colorWithRed:1 green:0.33 blue:0.33 alpha:1]];
     header.translatesAutoresizingMaskIntoConstraints = NO;
     [content addSubview:header];
 
@@ -127,7 +132,7 @@ typedef void (*CrashReportDismissCallback)(void);
 
     // ── Stack trace ──
     UILabel* stackLabel = [[UILabel alloc] init];
-    stackLabel.text = @"Stack Trace:";
+    stackLabel.text = [BPStrings text:@"crashStackTrace" fallback:@"Stack Trace:"];
     stackLabel.font = [UIFont systemFontOfSize:12];
     stackLabel.textColor = [UIColor colorWithWhite:0.67 alpha:1];
     stackLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -144,11 +149,11 @@ typedef void (*CrashReportDismissCallback)(void);
     [content addSubview:_stackView];
 
     // ── Title field ──
-    UILabel* titleLabel = [self makeLabel:@"Title"];
+    UILabel* titleLabel = [self makeLabel:[BPStrings text:@"crashTitleField" fallback:@"Title"]];
     [content addSubview:titleLabel];
 
     _titleField = [[UITextField alloc] init];
-    _titleField.placeholder = @"Brief description of the issue";
+    _titleField.placeholder = [BPStrings text:@"crashTitleHint" fallback:@"Brief description of the issue"];
     _titleField.textColor = [UIColor whiteColor];
     _titleField.backgroundColor = [UIColor colorWithWhite:0.17 alpha:1];
     _titleField.layer.cornerRadius = 6;
@@ -166,7 +171,7 @@ typedef void (*CrashReportDismissCallback)(void);
     [content addSubview:_titleField];
 
     // ── Description field ──
-    UILabel* descLabel = [self makeLabel:@"Description (what were you doing?)"];
+    UILabel* descLabel = [self makeLabel:[BPStrings text:@"crashDescField" fallback:@"Description (what were you doing?)"]];
     [content addSubview:descLabel];
 
     _descField = [[UITextView alloc] init];
@@ -178,7 +183,7 @@ typedef void (*CrashReportDismissCallback)(void);
     [content addSubview:_descField];
 
     // ── Severity control ──
-    UILabel* sevLabel = [self makeLabel:@"Severity"];
+    UILabel* sevLabel = [self makeLabel:[BPStrings text:@"crashSeverity" fallback:@"Severity"]];
     [content addSubview:sevLabel];
 
     _sevControl = [[UISegmentedControl alloc] initWithItems:@[@"Low", @"Medium", @"High", @"Critical"]];
@@ -191,7 +196,7 @@ typedef void (*CrashReportDismissCallback)(void);
     toggleRow.translatesAutoresizingMaskIntoConstraints = NO;
     [content addSubview:toggleRow];
 
-    UILabel* vidLabel = [self makeLabel:@"Include video"];
+    UILabel* vidLabel = [self makeLabel:[BPStrings text:@"crashIncludeVideo" fallback:@"Include video"]];
     vidLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [toggleRow addSubview:vidLabel];
 
@@ -201,7 +206,7 @@ typedef void (*CrashReportDismissCallback)(void);
     _videoSwitch.translatesAutoresizingMaskIntoConstraints = NO;
     [toggleRow addSubview:_videoSwitch];
 
-    UILabel* logLabel = [self makeLabel:@"Include logs"];
+    UILabel* logLabel = [self makeLabel:[BPStrings text:@"crashIncludeLogs" fallback:@"Include logs"]];
     logLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [toggleRow addSubview:logLabel];
 
@@ -212,7 +217,8 @@ typedef void (*CrashReportDismissCallback)(void);
 
     // ── Buttons ──
     UIButton* dismissBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [dismissBtn setTitle:@"Dismiss" forState:UIControlStateNormal];
+    [dismissBtn setTitle:[BPStrings text:@"crashDismiss" fallback:@"Dismiss"]
+                forState:UIControlStateNormal];
     [dismissBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     dismissBtn.backgroundColor = [UIColor colorWithWhite:0.27 alpha:1];
     dismissBtn.layer.cornerRadius = 8;
@@ -221,9 +227,12 @@ typedef void (*CrashReportDismissCallback)(void);
     [content addSubview:dismissBtn];
 
     UIButton* submitBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [submitBtn setTitle:@"Submit Report" forState:UIControlStateNormal];
-    [submitBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    submitBtn.backgroundColor = [UIColor colorWithRed:0.18 green:0.49 blue:0.20 alpha:1];
+    [submitBtn setTitle:[BPStrings text:@"crashSubmit" fallback:@"Submit Report"]
+               forState:UIControlStateNormal];
+    [submitBtn setTitleColor:[BPTheme color:@"textPrimary" fallback:[UIColor whiteColor]]
+                    forState:UIControlStateNormal];
+    submitBtn.backgroundColor = [BPTheme color:@"accentPrimary"
+        fallback:[UIColor colorWithRed:0.18 green:0.49 blue:0.20 alpha:1]];
     submitBtn.layer.cornerRadius = 8;
     submitBtn.titleLabel.font = [UIFont boldSystemFontOfSize:16];
     submitBtn.translatesAutoresizingMaskIntoConstraints = NO;

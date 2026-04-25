@@ -46,19 +46,38 @@ import java.util.List;
  * UnitySendMessage when the user interacts with a control.
  */
 public class BugpunchToolsActivity extends Activity {
-    private static final int COL_BG       = 0xF8141820;
-    private static final int COL_PANEL    = 0xFF1C1F28;
-    private static final int COL_ACCENT   = 0xFF4090F0;
-    private static final int COL_DANGER   = 0xFFDA3838;
-    private static final int COL_WARN     = 0xFFD99A2E;
-    private static final int COL_TEXT     = 0xFFE6E8EE;
-    private static final int COL_DIM      = 0xFF8C90A0;
-    private static final int COL_CAT      = 0xFF23262F;
-    private static final int COL_CAT_SEL  = 0xFF333849;
-    private static final int COL_ITEM     = 0xFF1E222C;
-    private static final int COL_SEARCH   = 0xFF282C38;
-    private static final int COL_TOG_ON   = 0xFF34B85C;
-    private static final int COL_TOG_OFF  = 0xFF4D5060;
+    // Palette — non-final so applyTheme() at onCreate can overwrite from
+    // BugpunchTheme. Hardcoded fallbacks match the original SDK look so
+    // the panel still renders if the theme dictionary somehow didn't apply.
+    private static int COL_BG       = 0xF8141820;
+    private static int COL_PANEL    = 0xFF1C1F28;
+    private static int COL_ACCENT   = 0xFF4090F0;
+    private static int COL_DANGER   = 0xFFDA3838;
+    private static int COL_WARN     = 0xFFD99A2E;
+    private static int COL_TEXT     = 0xFFE6E8EE;
+    private static int COL_DIM      = 0xFF8C90A0;
+    private static int COL_CAT      = 0xFF23262F;
+    private static int COL_CAT_SEL  = 0xFF333849;
+    private static int COL_ITEM     = 0xFF1E222C;
+    private static int COL_SEARCH   = 0xFF282C38;
+    private static int COL_TOG_ON   = 0xFF34B85C;
+    private static int COL_TOG_OFF  = 0xFF4D5060;
+
+    private static void applyTheme() {
+        COL_BG      = BugpunchTheme.color("backdrop",       0xF8141820);
+        COL_PANEL   = BugpunchTheme.color("cardBackground", 0xFF1C1F28);
+        COL_ACCENT  = BugpunchTheme.color("accentPrimary",  0xFF4090F0);
+        COL_DANGER  = BugpunchTheme.color("accentBug",      0xFFDA3838);
+        COL_WARN    = BugpunchTheme.color("accentRecord",   0xFFD99A2E);
+        COL_TEXT    = BugpunchTheme.color("textPrimary",    0xFFE6E8EE);
+        COL_DIM     = BugpunchTheme.color("textMuted",      0xFF8C90A0);
+        COL_CAT     = BugpunchTheme.color("cardBorder",     0xFF23262F);
+        COL_CAT_SEL = BugpunchTheme.color("accentChat",     0xFF333849);
+        COL_ITEM    = BugpunchTheme.color("cardBorder",     0xFF1E222C);
+        COL_SEARCH  = BugpunchTheme.color("cardBorder",     0xFF282C38);
+        COL_TOG_ON  = BugpunchTheme.color("accentPrimary",  0xFF34B85C);
+        COL_TOG_OFF = BugpunchTheme.color("textMuted",      0xFF4D5060);
+    }
 
     private List<ToolItem> allTools = new ArrayList<>();
     private String activeCategory = "All";
@@ -85,6 +104,7 @@ public class BugpunchToolsActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        applyTheme();
         parseTools(getIntent().getStringExtra("tools_json"));
 
         boolean landscape = getResources().getConfiguration().orientation
@@ -96,7 +116,9 @@ public class BugpunchToolsActivity extends Activity {
         // covers everything). The panel itself is inset with a WindowInsets
         // listener below so its content clears the system chrome.
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(0x80000000); // 50% black scrim
+        // 50%-ish scrim — reuse the themed backdrop hue at half alpha so a
+        // tinted theme (e.g. blue) carries through to the dim layer.
+        root.setBackgroundColor((BugpunchTheme.color("backdrop", 0x000000) & 0x00FFFFFF) | 0x80000000);
         root.setOnClickListener(v -> finish());
         root.setFitsSystemWindows(false);
 
@@ -108,7 +130,9 @@ public class BugpunchToolsActivity extends Activity {
         main.setPadding(pad, pad, pad, pad);
         main.setOnClickListener(v -> {}); // consume taps so they don't pass through to dismiss
         GradientDrawable panelBg = new GradientDrawable();
-        panelBg.setColor(0xE6141820); // 90% opacity dark
+        // 90%-opacity card. Re-uses COL_BG so a customised palette extends
+        // to the panel surface.
+        panelBg.setColor((COL_BG & 0x00FFFFFF) | 0xE6000000);
         panelBg.setCornerRadius(dp(16));
         main.setBackground(panelBg);
         main.setElevation(dp(12));
@@ -143,7 +167,7 @@ public class BugpunchToolsActivity extends Activity {
         header.setPadding(0, 0, 0, dp(landscape ? 6 : 12));
 
         TextView title = new TextView(this);
-        title.setText("Debug Tools");
+        title.setText(BugpunchStrings.text("toolsTitle", "Debug Tools"));
         title.setTextColor(COL_TEXT);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, landscape ? 18 : 22);
         title.setTypeface(Typeface.DEFAULT_BOLD);
@@ -154,7 +178,7 @@ public class BugpunchToolsActivity extends Activity {
         header.addView(title, titleLp);
 
         EditText search = new EditText(this);
-        search.setHint("Search...");
+        search.setHint(BugpunchStrings.text("toolsSearchHint", "Search..."));
         search.setHintTextColor(COL_DIM);
         search.setTextColor(COL_TEXT);
         search.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
@@ -309,9 +333,14 @@ public class BugpunchToolsActivity extends Activity {
         boolean landscape = getResources().getConfiguration().orientation
             == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
 
+        // "All" is the canonical id used in tool-definition JSON and as the
+        // active-category sentinel; the surface label is localised so the
+        // chip reads in the active locale (e.g. "Tutti" / "Tous"). Other
+        // categories come from C# tool registration data, untouched.
+        String allLabel = BugpunchStrings.text("toolsAllCategory", "All");
         for (String cat : cats) {
             TextView chip = new TextView(this);
-            chip.setText(cat);
+            chip.setText("All".equals(cat) ? allLabel : cat);
             chip.setTextColor(cat.equals(activeCategory) ? COL_TEXT : COL_DIM);
             chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
             chip.setPadding(dp(14), dp(8), dp(14), dp(8));
@@ -426,8 +455,8 @@ public class BugpunchToolsActivity extends Activity {
 
     private View makeButton(ToolItem tool) {
         TextView btn = new TextView(this);
-        btn.setText("Run");
-        btn.setTextColor(Color.WHITE);
+        btn.setText(BugpunchStrings.text("toolsRunButton", "Run"));
+        btn.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
         btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         btn.setGravity(Gravity.CENTER);
         btn.setPadding(dp(16), dp(6), dp(16), dp(6));

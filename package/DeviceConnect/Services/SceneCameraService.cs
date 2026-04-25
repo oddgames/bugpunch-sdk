@@ -39,7 +39,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         // Collider streaming
         const int MeshVertexBudget = 2000;
-        List<(Collider collider, int tier, int instanceId)> _colliderCache;
+        // Movement thresholds for the transform-delta poll.
+        const float ColliderMoveSqrEpsilon = 1e-6f;   // ~1 mm
+        const float ColliderRotateEpsilonDeg = 0.5f;
+        class ColliderCacheEntry
+        {
+            public Collider collider;
+            public int tier;
+            public int instanceId;
+            public Vector3 lastPos;
+            public Quaternion lastRot;
+        }
+        List<ColliderCacheEntry> _colliderCache;
         HashSet<int> _colliderKnownIds; // tracks IDs already sent to client
         float _colliderSearchRadius;     // current expansion radius
 
@@ -873,7 +884,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             if (reset || _colliderKnownIds == null)
             {
-                _colliderCache = new List<(Collider, int, int)>();
+                _colliderCache = new List<ColliderCacheEntry>();
                 _colliderKnownIds = new HashSet<int>();
                 _colliderSearchRadius = 0f;
             }
@@ -899,7 +910,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 int tier = ClassifyTier(col);
                 _colliderKnownIds.Add(id);
-                _colliderCache.Add((col, tier, id));
 
                 if (count > 0) sb.Append(",");
                 sb.Append("{");
@@ -908,8 +918,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var go = col.gameObject;
                 var t = col.transform;
                 var wPos = t.position;
-                var rot = t.eulerAngles;
+                var wRot = t.rotation;
+                var rot = wRot.eulerAngles;
                 var ls = t.lossyScale;
+                _colliderCache.Add(new ColliderCacheEntry
+                {
+                    collider = col,
+                    tier = tier,
+                    instanceId = id,
+                    lastPos = wPos,
+                    lastRot = wRot,
+                });
                 sb.Append($"\"id\":{id},\"name\":\"{EscapeJson(go.name)}\",");
                 sb.Append($"\"tier\":{tier},");
 
@@ -932,10 +951,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
-        /// Compact transform-only update for a given tier.
+        /// Compact transform-only update — emits any cached collider whose world
+        /// transform changed since the last call, regardless of Rigidbody tier.
+        /// World-space comparison catches parent-driven motion (animated rigs,
+        /// scripted parents) that Transform.hasChanged would miss.
         /// Returns {"t":[[id,px,py,pz,rx,ry,rz],...], "r":[removedIds]}
         /// </summary>
-        public string GetColliderTransforms(int tier)
+        public string GetColliderTransforms()
         {
             var sb = new StringBuilder();
             sb.Append("{\"t\":[");
@@ -947,24 +969,34 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 for (int i = _colliderCache.Count - 1; i >= 0; i--)
                 {
-                    var (col, t, cachedId) = _colliderCache[i];
-                    if (t != tier) continue;
+                    var entry = _colliderCache[i];
+                    var col = entry.collider;
 
                     // Collider destroyed or disabled since snapshot
                     if (col == null || !col.enabled || !col.gameObject.activeInHierarchy)
                     {
                         if (removed == null) removed = new List<int>();
-                        removed.Add(cachedId);
+                        removed.Add(entry.instanceId);
                         _colliderCache.RemoveAt(i);
                         continue;
                     }
 
-                    var pos = col.transform.position;
-                    var rot = col.transform.eulerAngles;
+                    var tr = col.transform;
+                    var pos = tr.position;
+                    var rotQ = tr.rotation;
+
+                    if ((pos - entry.lastPos).sqrMagnitude < ColliderMoveSqrEpsilon
+                        && Quaternion.Angle(rotQ, entry.lastRot) < ColliderRotateEpsilonDeg)
+                        continue;
+
+                    entry.lastPos = pos;
+                    entry.lastRot = rotQ;
+
+                    var rot = rotQ.eulerAngles;
                     string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
 
                     if (written > 0) sb.Append(",");
-                    sb.Append($"[{cachedId},{F(pos.x)},{F(pos.y)},{F(pos.z)},{F(rot.x)},{F(rot.y)},{F(rot.z)}]");
+                    sb.Append($"[{entry.instanceId},{F(pos.x)},{F(pos.y)},{F(pos.z)},{F(rot.x)},{F(rot.y)},{F(rot.z)}]");
                     written++;
                 }
             }

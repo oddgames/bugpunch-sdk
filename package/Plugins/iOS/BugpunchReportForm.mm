@@ -9,6 +9,9 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
+#import "BugpunchTheme.h"
+#import "BugpunchStrings.h"
+
 // Coordinator entry point (defined in BugpunchDebugMode.mm).
 extern "C" void Bugpunch_SubmitReport(const char* title, const char* description,
     const char* reporterEmail, const char* severity,
@@ -52,7 +55,9 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
 }
 - (void)drawRect:(CGRect)r {
     [_shot drawInRect:_shotRect];
-    [[UIColor colorWithRed:1.0 green:0.17 blue:0.36 alpha:1.0] setStroke];
+    UIColor* ink = [BPTheme color:@"accentBug"
+        fallback:[UIColor colorWithRed:1.0 green:0.17 blue:0.36 alpha:1.0]];
+    [ink setStroke];
     for (UIBezierPath* p in _strokes) { p.lineWidth = 10; p.lineCapStyle = kCGLineCapRound; [p stroke]; }
     if (_current) { _current.lineWidth = 10; _current.lineCapStyle = kCGLineCapRound; [_current stroke]; }
 }
@@ -86,11 +91,13 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     fmt.opaque = NO;
     UIGraphicsImageRenderer* r =
         [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
+    UIColor* ink = [BPTheme color:@"accentBug"
+        fallback:[UIColor colorWithRed:1.0 green:0.17 blue:0.36 alpha:1.0]];
     return [r imageWithActions:^(UIGraphicsImageRendererContext* ctx) {
         CGContextSaveGState(ctx.CGContext);
         CGContextTranslateCTM(ctx.CGContext, -_shotRect.origin.x, -_shotRect.origin.y);
         CGContextScaleCTM(ctx.CGContext, 1.0 / _shotScale, 1.0 / _shotScale);
-        [[UIColor colorWithRed:1.0 green:0.17 blue:0.36 alpha:1.0] setStroke];
+        [ink setStroke];
         CGFloat w = 10.0 / _shotScale;
         for (UIBezierPath* p in _strokes) { p.lineWidth = w; p.lineCapStyle = kCGLineCapRound; [p stroke]; }
         CGContextRestoreGState(ctx.CGContext);
@@ -126,10 +133,18 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     bar.spacing = 8;
     bar.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:bar];
-    [bar addArrangedSubview:[self buttonTitle:@"Undo"   bg:0x394048ff sel:@selector(onUndo)]];
-    [bar addArrangedSubview:[self buttonTitle:@"Clear"  bg:0x394048ff sel:@selector(onClear)]];
-    [bar addArrangedSubview:[self buttonTitle:@"Cancel" bg:0x394048ff sel:@selector(onCancel)]];
-    [bar addArrangedSubview:[self buttonTitle:@"Done"   bg:0x2a7be0ff sel:@selector(onDoneTap)]];
+    UIColor* secondaryBg = [BPTheme color:@"cardBorder"
+        fallback:[UIColor colorWithRed:0x39/255.0 green:0x40/255.0 blue:0x48/255.0 alpha:1]];
+    UIColor* primaryBg   = [BPTheme color:@"accentPrimary"
+        fallback:[UIColor colorWithRed:0x2A/255.0 green:0x7B/255.0 blue:0xE0/255.0 alpha:1]];
+    [bar addArrangedSubview:[self buttonTitle:[BPStrings text:@"annotateUndo"   fallback:@"Undo"]
+                                            bg:secondaryBg sel:@selector(onUndo)]];
+    [bar addArrangedSubview:[self buttonTitle:[BPStrings text:@"annotateClear"  fallback:@"Clear"]
+                                            bg:secondaryBg sel:@selector(onClear)]];
+    [bar addArrangedSubview:[self buttonTitle:[BPStrings text:@"annotateCancel" fallback:@"Cancel"]
+                                            bg:secondaryBg sel:@selector(onCancel)]];
+    [bar addArrangedSubview:[self buttonTitle:[BPStrings text:@"annotateDone"   fallback:@"Done"]
+                                            bg:primaryBg sel:@selector(onDoneTap)]];
 
     [NSLayoutConstraint activateConstraints:@[
         [_canvas.topAnchor constraintEqualToAnchor:self.view.topAnchor],
@@ -142,15 +157,13 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
         [bar.heightAnchor constraintEqualToConstant:44],
     ]];
 }
-- (UIButton*)buttonTitle:(NSString*)t bg:(uint32_t)bg sel:(SEL)sel {
+- (UIButton*)buttonTitle:(NSString*)t bg:(UIColor*)bg sel:(SEL)sel {
     UIButton* b = [UIButton buttonWithType:UIButtonTypeSystem];
     [b setTitle:t forState:UIControlStateNormal];
-    [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    b.backgroundColor = [UIColor colorWithRed:((bg >> 24) & 0xff) / 255.0
-                                        green:((bg >> 16) & 0xff) / 255.0
-                                         blue:((bg >>  8) & 0xff) / 255.0
-                                        alpha:(bg        & 0xff) / 255.0];
-    b.layer.cornerRadius = 6;
+    [b setTitleColor:[BPTheme color:@"textPrimary" fallback:UIColor.whiteColor]
+            forState:UIControlStateNormal];
+    b.backgroundColor = bg;
+    b.layer.cornerRadius = [BPTheme radius:@"cardRadius" fallback:6];
     [b addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
     return b;
 }
@@ -173,16 +186,19 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
 
 // ── Report form VC ──
 
-// ── Palette (mirrors Android BugpunchReportActivity). ──
-#define BP_COLOR_BG          [UIColor colorWithRed:0x0B/255.0 green:0x0D/255.0 blue:0x10/255.0 alpha:1]
-#define BP_COLOR_SURFACE     [UIColor colorWithRed:0x17/255.0 green:0x1B/255.0 blue:0x20/255.0 alpha:1]
-#define BP_COLOR_SURFACE_ALT [UIColor colorWithRed:0x1E/255.0 green:0x24/255.0 blue:0x2B/255.0 alpha:1]
-#define BP_COLOR_BORDER      [UIColor colorWithRed:0x2A/255.0 green:0x31/255.0 blue:0x39/255.0 alpha:1]
-#define BP_COLOR_TEXT        [UIColor colorWithRed:0xF1/255.0 green:0xF4/255.0 blue:0xF7/255.0 alpha:1]
-#define BP_COLOR_TEXT_DIM    [UIColor colorWithRed:0x8B/255.0 green:0x95/255.0 blue:0xA2/255.0 alpha:1]
-#define BP_COLOR_TEXT_LABEL  [UIColor colorWithRed:0xB8/255.0 green:0xC2/255.0 blue:0xCF/255.0 alpha:1]
-#define BP_COLOR_ACCENT      [UIColor colorWithRed:0x3B/255.0 green:0x82/255.0 blue:0xF6/255.0 alpha:1]
-#define BP_COLOR_ACCENT_DARK [UIColor colorWithRed:0x25/255.0 green:0x63/255.0 blue:0xEB/255.0 alpha:1]
+// ── Palette (resolved through BPTheme so a customised palette flows here). ──
+// Macros expand at every call-site so the BPTheme lookup happens lazily —
+// new theme values applied mid-session are picked up the next time a form
+// is built. Hardcoded fallbacks mirror the original SDK look exactly.
+#define BP_COLOR_BG          [BPTheme color:@"backdrop"       fallback:[UIColor colorWithRed:0x0B/255.0 green:0x0D/255.0 blue:0x10/255.0 alpha:1]]
+#define BP_COLOR_SURFACE     [BPTheme color:@"cardBackground" fallback:[UIColor colorWithRed:0x17/255.0 green:0x1B/255.0 blue:0x20/255.0 alpha:1]]
+#define BP_COLOR_SURFACE_ALT [BPTheme color:@"cardBorder"     fallback:[UIColor colorWithRed:0x1E/255.0 green:0x24/255.0 blue:0x2B/255.0 alpha:1]]
+#define BP_COLOR_BORDER      [BPTheme color:@"cardBorder"     fallback:[UIColor colorWithRed:0x2A/255.0 green:0x31/255.0 blue:0x39/255.0 alpha:1]]
+#define BP_COLOR_TEXT        [BPTheme color:@"textPrimary"    fallback:[UIColor colorWithRed:0xF1/255.0 green:0xF4/255.0 blue:0xF7/255.0 alpha:1]]
+#define BP_COLOR_TEXT_DIM    [BPTheme color:@"textMuted"      fallback:[UIColor colorWithRed:0x8B/255.0 green:0x95/255.0 blue:0xA2/255.0 alpha:1]]
+#define BP_COLOR_TEXT_LABEL  [BPTheme color:@"textSecondary"  fallback:[UIColor colorWithRed:0xB8/255.0 green:0xC2/255.0 blue:0xCF/255.0 alpha:1]]
+#define BP_COLOR_ACCENT      [BPTheme color:@"accentPrimary"  fallback:[UIColor colorWithRed:0x3B/255.0 green:0x82/255.0 blue:0xF6/255.0 alpha:1]]
+#define BP_COLOR_ACCENT_DARK [BPTheme color:@"accentChat"     fallback:[UIColor colorWithRed:0x25/255.0 green:0x63/255.0 blue:0xEB/255.0 alpha:1]]
 
 @interface BPReportFormViewController : UIViewController<UITextFieldDelegate, UITextViewDelegate>
 @property (nonatomic, copy) NSString* screenshotPath;
@@ -221,7 +237,7 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     _emailField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     _emailField.autocorrectionType = UITextAutocorrectionTypeNo;
     _emailField.attributedPlaceholder = [[NSAttributedString alloc]
-        initWithString:@"you@studio.com"
+        initWithString:[BPStrings text:@"reportFormEmailHint" fallback:@"you@studio.com"]
             attributes:@{NSForegroundColorAttributeName: BP_COLOR_TEXT_DIM}];
     [_emailField.heightAnchor constraintEqualToConstant:44].active = YES;
 
@@ -236,8 +252,12 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     _descField.text = _description_ ?: @"";
     [_descField.heightAnchor constraintEqualToConstant:120].active = YES;
 
-    _severity = [[UISegmentedControl alloc]
-        initWithItems:@[@"Low", @"Medium", @"High", @"Critical"]];
+    _severity = [[UISegmentedControl alloc] initWithItems:@[
+        [BPStrings text:@"reportFormSeverityLow"      fallback:@"Low"],
+        [BPStrings text:@"reportFormSeverityMedium"   fallback:@"Medium"],
+        [BPStrings text:@"reportFormSeverityHigh"     fallback:@"High"],
+        [BPStrings text:@"reportFormSeverityCritical" fallback:@"Critical"],
+    ]];
     _severity.selectedSegmentIndex = 1;
     if (@available(iOS 13.0, *)) {
         _severity.selectedSegmentTintColor = BP_COLOR_ACCENT;
@@ -269,13 +289,13 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     s.alignment = UIStackViewAlignmentLeading;
 
     UILabel* eyebrow = [UILabel new];
-    eyebrow.text = @"BUG REPORT";
+    eyebrow.text = [BPStrings text:@"reportFormEyebrow" fallback:@"BUG REPORT"];
     eyebrow.textColor = BP_COLOR_ACCENT;
     eyebrow.font = [UIFont boldSystemFontOfSize:11];
     [s addArrangedSubview:eyebrow];
 
     UILabel* header = [UILabel new];
-    header.text = @"Tell us what happened";
+    header.text = [BPStrings text:@"reportFormHeader" fallback:@"Tell us what happened"];
     header.textColor = BP_COLOR_TEXT;
     header.font = [UIFont boldSystemFontOfSize:22];
     [s addArrangedSubview:header];
@@ -316,7 +336,7 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     [card addSubview:_preview];
 
     UILabel* pill = [UILabel new];
-    pill.text = @"  \u270E  Tap to annotate  ";
+    pill.text = [NSString stringWithFormat:@"\u270E  %@  ", [BPStrings text:@"reportFormTapToAnnotate" fallback:@"Tap to annotate"]];
     pill.textColor = BP_COLOR_TEXT;
     pill.font = [UIFont boldSystemFontOfSize:11];
     pill.backgroundColor = [UIColor colorWithRed:0x0B/255.0 green:0x0D/255.0 blue:0x10/255.0 alpha:0.8];
@@ -363,13 +383,16 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
         if (thumbs) [form addArrangedSubview:thumbs];
     }
 
-    [form addArrangedSubview:[self fieldLabel:@"Your email"]];
+    [form addArrangedSubview:[self fieldLabel:
+        [BPStrings text:@"reportFormEmailLabel" fallback:@"Your email"]]];
     [form addArrangedSubview:_emailField];
 
-    [form addArrangedSubview:[self fieldLabel:@"Description"]];
+    [form addArrangedSubview:[self fieldLabel:
+        [BPStrings text:@"reportFormDescField" fallback:@"Description"]]];
     [form addArrangedSubview:_descField];
 
-    [form addArrangedSubview:[self fieldLabel:@"Severity"]];
+    [form addArrangedSubview:[self fieldLabel:
+        [BPStrings text:@"reportFormSeverityLabel" fallback:@"Severity"]]];
     [form addArrangedSubview:_severity];
 
     UIView* gap = [UIView new];
@@ -380,8 +403,10 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     buttons.axis = UILayoutConstraintAxisHorizontal;
     buttons.spacing = 12;
     buttons.distribution = UIStackViewDistributionFillEqually;
-    UIButton* cancel = [self secondaryButtonTitle:@"Cancel" sel:@selector(onCancel)];
-    UIButton* send   = [self primaryButtonTitle:@"Send report" sel:@selector(onSend)];
+    UIButton* cancel = [self secondaryButtonTitle:
+        [BPStrings text:@"reportFormCancel" fallback:@"Cancel"] sel:@selector(onCancel)];
+    UIButton* send   = [self primaryButtonTitle:
+        [BPStrings text:@"reportFormSendButton" fallback:@"Send report"] sel:@selector(onSend)];
     [cancel.heightAnchor constraintEqualToConstant:46].active = YES;
     [send.heightAnchor constraintEqualToConstant:46].active = YES;
     [buttons addArrangedSubview:cancel];
@@ -444,7 +469,9 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
 
     // Header label
     UILabel* lbl = [UILabel new];
-    lbl.text = [NSString stringWithFormat:@"SCREENSHOTS (%lu)", (unsigned long)_extraScreenshots.count];
+    lbl.text = [NSString stringWithFormat:@"%@ (%lu)",
+        [BPStrings text:@"reportFormScreenshotsLabel" fallback:@"SCREENSHOTS"],
+        (unsigned long)_extraScreenshots.count];
     lbl.textColor = BP_COLOR_TEXT_LABEL;
     lbl.font = [UIFont boldSystemFontOfSize:11];
     lbl.translatesAutoresizingMaskIntoConstraints = NO;
@@ -710,14 +737,21 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     NSString* desc = _descField.text ?: @"";
     if (desc.length == 0) {
         UIAlertController* a = [UIAlertController
-            alertControllerWithTitle:nil message:@"Please add a description"
-            preferredStyle:UIAlertControllerStyleAlert];
-        [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            alertControllerWithTitle:nil
+                             message:[BPStrings text:@"reportFormDescRequired"
+                                            fallback:@"Please add a description"]
+                      preferredStyle:UIAlertControllerStyleAlert];
+        [a addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:a animated:YES completion:nil];
         return;
     }
-    NSArray* sev = @[@"Low", @"Medium", @"High", @"Critical"];
-    NSString* severity = sev[_severity.selectedSegmentIndex];
+    // Map the localised severity label back to the canonical English code
+    // the server expects (mirrors BugpunchReportActivity.java).
+    static NSString* const kSeverityCodes[] = {@"low", @"medium", @"high", @"critical"};
+    NSInteger sevIdx = _severity.selectedSegmentIndex;
+    if (sevIdx < 0 || sevIdx > 3) sevIdx = 1;
+    NSString* severity = kSeverityCodes[sevIdx];
     Bugpunch_SubmitReport(
         [(_title_ ?: @"Bug report") UTF8String],
         [desc UTF8String],

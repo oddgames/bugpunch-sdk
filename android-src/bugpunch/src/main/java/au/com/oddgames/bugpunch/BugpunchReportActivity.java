@@ -43,16 +43,30 @@ public class BugpunchReportActivity extends Activity {
     private static final String TAG = "[Bugpunch.ReportActivity]";
     private static final int REQ_ANNOTATE = 4201;
 
-    // ── Palette (kept in sync with the iOS form). ──
-    private static final int COLOR_BG          = 0xFF0B0D10;
-    private static final int COLOR_SURFACE     = 0xFF171B20;
-    private static final int COLOR_SURFACE_ALT = 0xFF1E242B;
-    private static final int COLOR_BORDER      = 0xFF2A3139;
-    private static final int COLOR_TEXT        = 0xFFF1F4F7;
-    private static final int COLOR_TEXT_DIM    = 0xFF8B95A2;
-    private static final int COLOR_TEXT_LABEL  = 0xFFB8C2CF;
-    private static final int COLOR_ACCENT      = 0xFF3B82F6;
-    private static final int COLOR_ACCENT_DARK = 0xFF2563EB;
+    // ── Palette (resolved from BugpunchTheme at form-build time). ──
+    // Hardcoded fallbacks match the original SDK look so the form still
+    // renders if the theme dictionary somehow wasn't applied at startup.
+    private int COLOR_BG;
+    private int COLOR_SURFACE;
+    private int COLOR_SURFACE_ALT;
+    private int COLOR_BORDER;
+    private int COLOR_TEXT;
+    private int COLOR_TEXT_DIM;
+    private int COLOR_TEXT_LABEL;
+    private int COLOR_ACCENT;
+    private int COLOR_ACCENT_DARK;
+
+    private void applyTheme() {
+        COLOR_BG          = BugpunchTheme.color("backdrop",       0xFF0B0D10);
+        COLOR_SURFACE     = BugpunchTheme.color("cardBackground", 0xFF171B20);
+        COLOR_SURFACE_ALT = BugpunchTheme.color("cardBorder",     0xFF1E242B);
+        COLOR_BORDER      = BugpunchTheme.color("cardBorder",     0xFF2A3139);
+        COLOR_TEXT        = BugpunchTheme.color("textPrimary",    0xFFF1F4F7);
+        COLOR_TEXT_DIM    = BugpunchTheme.color("textMuted",      0xFF8B95A2);
+        COLOR_TEXT_LABEL  = BugpunchTheme.color("textSecondary",  0xFFB8C2CF);
+        COLOR_ACCENT      = BugpunchTheme.color("accentPrimary",  0xFF3B82F6);
+        COLOR_ACCENT_DARK = BugpunchTheme.color("accentChat",     0xFF2563EB);
+    }
 
     private static final String EX_SHOT = "bp_shot";
     private static final String EX_TITLE = "bp_title";
@@ -147,6 +161,8 @@ public class BugpunchReportActivity extends Activity {
     }
 
     private void buildUi() {
+        applyTheme();
+
         final boolean landscape = isLandscape();
         final int pad = dp(20);
 
@@ -154,14 +170,14 @@ public class BugpunchReportActivity extends Activity {
         LinearLayout headerBlock = new LinearLayout(this);
         headerBlock.setOrientation(LinearLayout.VERTICAL);
         TextView eyebrow = new TextView(this);
-        eyebrow.setText("BUG REPORT");
+        eyebrow.setText(BugpunchStrings.text("reportFormEyebrow", "BUG REPORT"));
         eyebrow.setTextColor(COLOR_ACCENT);
         eyebrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         eyebrow.setLetterSpacing(0.2f);
         eyebrow.setTypeface(Typeface.DEFAULT_BOLD);
         headerBlock.addView(eyebrow);
         TextView header = new TextView(this);
-        header.setText("Tell us what happened");
+        header.setText(BugpunchStrings.text("reportFormHeader", "Tell us what happened"));
         header.setTextColor(COLOR_TEXT);
         header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         header.setTypeface(Typeface.DEFAULT_BOLD);
@@ -197,7 +213,7 @@ public class BugpunchReportActivity extends Activity {
 
         // Tap-to-annotate pill floats bottom-right on top of the screenshot.
         TextView pill = new TextView(this);
-        pill.setText("\u270E  Tap to annotate");
+        pill.setText("\u270E  " + BugpunchStrings.text("reportFormTapToAnnotate", "Tap to annotate"));
         pill.setTextColor(COLOR_TEXT);
         pill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         pill.setTypeface(Typeface.DEFAULT_BOLD);
@@ -205,8 +221,10 @@ public class BugpunchReportActivity extends Activity {
         GradientDrawable pillBg = new GradientDrawable();
         pillBg.setShape(GradientDrawable.RECTANGLE);
         pillBg.setCornerRadius(dp(999));
-        pillBg.setColor(0xCC0B0D10);
-        pillBg.setStroke(dp(1), 0x332A3139);
+        // Pill backdrop reuses the app backdrop hue at high alpha so it
+        // reads against any screenshot regardless of palette tweaks.
+        pillBg.setColor((COLOR_BG & 0x00FFFFFF) | 0xCC000000);
+        pillBg.setStroke(dp(1), (COLOR_BORDER & 0x00FFFFFF) | 0x33000000);
         pill.setBackground(pillBg);
         FrameLayout.LayoutParams lpPill = new FrameLayout.LayoutParams(
             LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
@@ -219,24 +237,30 @@ public class BugpunchReportActivity extends Activity {
         // captured via the debug widget. Shown only when there are extras.
         View thumbSection = buildThumbStrip();
 
-        TextView emailLabel = label("Your email");
+        TextView emailLabel = label(BugpunchStrings.text("reportFormEmailLabel", "Your email"));
         mEmail = input(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        mEmail.setHint("you@studio.com");
+        mEmail.setHint(BugpunchStrings.text("reportFormEmailHint", "you@studio.com"));
         mEmail.setHintTextColor(COLOR_TEXT_DIM);
 
-        TextView descLabel = label("Description");
+        TextView descLabel = label(BugpunchStrings.text("reportFormDescField", "Description"));
         mDescription = input(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         mDescription.setMinLines(4);
         mDescription.setGravity(Gravity.TOP | Gravity.START);
-        mDescription.setHint("What went wrong? Steps to reproduce?");
+        mDescription.setHint(BugpunchStrings.text("reportFormDescPlaceholder",
+            "What went wrong? Steps to reproduce?"));
         mDescription.setHintTextColor(COLOR_TEXT_DIM);
         if (mInitialDescription != null) mDescription.setText(mInitialDescription);
 
-        TextView sevLabel = label("Severity");
+        TextView sevLabel = label(BugpunchStrings.text("reportFormSeverityLabel", "Severity"));
         mSeverity = new Spinner(this);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item,
-            new String[] { "Low", "Medium", "High", "Critical" }) {
+            new String[] {
+                BugpunchStrings.text("reportFormSeverityLow",      "Low"),
+                BugpunchStrings.text("reportFormSeverityMedium",   "Medium"),
+                BugpunchStrings.text("reportFormSeverityHigh",     "High"),
+                BugpunchStrings.text("reportFormSeverityCritical", "Critical"),
+            }) {
             @Override public View getView(int pos, View convert, android.view.ViewGroup p) {
                 TextView v = (TextView) super.getView(pos, convert, p);
                 v.setTextColor(COLOR_TEXT);
@@ -260,7 +284,7 @@ public class BugpunchReportActivity extends Activity {
         // Top hairline so the footer reads as a separate band from the form.
         View footerDivider = new View(this);
         footerDivider.setBackgroundColor(COLOR_BORDER);
-        Button cancel = secondaryButton("Cancel");
+        Button cancel = secondaryButton(BugpunchStrings.text("reportFormCancel", "Cancel"));
         cancel.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { finish(); }
         });
@@ -268,7 +292,7 @@ public class BugpunchReportActivity extends Activity {
             0, dp(46), 1f);
         lpBtn.rightMargin = dp(12);
         buttons.addView(cancel, lpBtn);
-        Button send = primaryButton("Send report");
+        Button send = primaryButton(BugpunchStrings.text("reportFormSendButton", "Send report"));
         send.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onSend(); }
         });
@@ -417,22 +441,39 @@ public class BugpunchReportActivity extends Activity {
     private void onSend() {
         String email = mEmail.getText().toString().trim();
         String desc = mDescription.getText().toString().trim();
-        String severity = (String) mSeverity.getSelectedItem();
+        // Map the localised severity label back to the canonical English
+        // severity string the server expects. Default to "medium".
+        String severityCanonical = severityCanonicalForIndex(mSeverity.getSelectedItemPosition());
         if (desc.isEmpty()) {
-            Toast.makeText(this, "Please add a description", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,
+                BugpunchStrings.text("reportFormDescRequired", "Please add a description"),
+                Toast.LENGTH_SHORT).show();
             return;
         }
         try {
             String[] extras = mExtraShots.isEmpty() ? null : mExtraShots.toArray(new String[0]);
             BugpunchReportingService.submitReport(
                 mInitialTitle != null ? mInitialTitle : "Bug report",
-                desc, email, severity, mShotPath, mAnnotationsPath, extras);
-            Toast.makeText(this, "Report sent", Toast.LENGTH_SHORT).show();
+                desc, email, severityCanonical, mShotPath, mAnnotationsPath, extras);
+            Toast.makeText(this,
+                BugpunchStrings.text("reportFormSent", "Report sent"),
+                Toast.LENGTH_SHORT).show();
         } catch (Throwable t) {
             Log.w(TAG, "submit failed", t);
-            Toast.makeText(this, "Failed to send report", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,
+                BugpunchStrings.text("reportFormFailed", "Failed to send report"),
+                Toast.LENGTH_SHORT).show();
         }
         finish();
+    }
+
+    private static String severityCanonicalForIndex(int idx) {
+        switch (idx) {
+            case 0:  return "low";
+            case 2:  return "high";
+            case 3:  return "critical";
+            default: return "medium";
+        }
     }
 
     // ── Screenshot thumbnail strip ──
@@ -472,7 +513,8 @@ public class BugpunchReportActivity extends Activity {
     private void rebuildThumbs() {
         if (mThumbStrip == null) return;
         mThumbStrip.removeAllViews();
-        mThumbCountLabel.setText("SCREENSHOTS (" + mExtraShots.size() + ")");
+        mThumbCountLabel.setText(BugpunchStrings.text("reportFormScreenshotsLabel", "SCREENSHOTS")
+            + " (" + mExtraShots.size() + ")");
 
         int thumbH = dp(64);
         for (int idx = 0; idx < mExtraShots.size(); idx++) {
@@ -543,9 +585,10 @@ public class BugpunchReportActivity extends Activity {
                 android.content.ClipboardManager cm =
                     (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 if (cm != null) {
-                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Bugpunch device ID", id));
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("device ID", id));
                     android.widget.Toast.makeText(BugpunchReportActivity.this,
-                        "Device ID copied", android.widget.Toast.LENGTH_SHORT).show();
+                        BugpunchStrings.text("reportFormDeviceIdCopied", "Device ID copied"),
+                        android.widget.Toast.LENGTH_SHORT).show();
                 }
             }
         });

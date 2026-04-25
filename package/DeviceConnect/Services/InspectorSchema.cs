@@ -191,7 +191,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.InspectorSchema] Failed to load BugpunchInspectorSchema: {ex.Message}");
+                BugpunchNative.ReportSdkError("InspectorSchema.Load", ex);
             }
         }
     }

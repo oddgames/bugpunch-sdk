@@ -78,8 +78,11 @@ static NSString* BPLoadToken(void) {
 }
 
 /** POST JSON, synchronously on the poll queue. Returns (status, body). */
-static void BPPostJsonSync(NSString* url, NSString* headerName, NSString* headerValue,
-                           NSString* bodyJson, void (^completion)(NSInteger status, NSString* body)) {
+static void BPPostJsonSync2(NSString* url,
+                            NSString* headerName, NSString* headerValue,
+                            NSString* header2Name, NSString* header2Value,
+                            NSString* bodyJson,
+                            void (^completion)(NSInteger status, NSString* body)) {
     if (!gSession) {
         NSURLSessionConfiguration* cfg = [NSURLSessionConfiguration defaultSessionConfiguration];
         cfg.timeoutIntervalForRequest = 15.0;
@@ -91,6 +94,9 @@ static void BPPostJsonSync(NSString* url, NSString* headerName, NSString* header
     req.HTTPMethod = @"POST";
     [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [req setValue:headerValue forHTTPHeaderField:headerName];
+    if (header2Name && header2Value && header2Value.length > 0) {
+        [req setValue:header2Value forHTTPHeaderField:header2Name];
+    }
     req.HTTPBody = [bodyJson dataUsingEncoding:NSUTF8StringEncoding];
 
     dispatch_semaphore_t sem = dispatch_semaphore_create(0);
@@ -112,6 +118,11 @@ static void BPPostJsonSync(NSString* url, NSString* headerName, NSString* header
     [task resume];
     dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
     completion(statusOut, bodyOut);
+}
+
+static void BPPostJsonSync(NSString* url, NSString* headerName, NSString* headerValue,
+                           NSString* bodyJson, void (^completion)(NSInteger status, NSString* body)) {
+    BPPostJsonSync2(url, headerName, headerValue, nil, nil, bodyJson, completion);
 }
 
 // -- Register -----------------------------------------------------------------
@@ -143,7 +154,9 @@ static void BPEnsureRegistered(void) {
     NSString* bodyJson = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding];
 
     NSString* url = [serverUrl stringByAppendingString:@"/api/devices/register"];
-    BPPostJsonSync(url, @"X-Api-Key", apiKey, bodyJson,
+    // Send the cached token if we have one — lets the server keep our existing
+    // token instead of rotating (#226 proof-of-possession).
+    BPPostJsonSync2(url, @"X-Api-Key", apiKey, @"X-Device-Token", gDeviceToken ?: @"", bodyJson,
         ^(NSInteger status, NSString* bodyRsp) {
             if (status < 200 || status >= 300) {
                 NSLog(@"[BugpunchPoller] register failed: %ld", (long)status);

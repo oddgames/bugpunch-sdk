@@ -17,13 +17,13 @@
   <Project Path="Unity.VisualScripting.State.Editor.csproj" />
   <Project Path="Unity.Burst.CodeGen.csproj" />
   <Project Path="Unity.VisualScripting.Flow.csproj" />
+  <Project Path="ODDGames.Bugpunch.csproj" />
   <Project Path="Unity.WebRTC.csproj" />
   <Project Path="Unity.PerformanceTesting.csproj" />
   <Project Path="Unity.Burst.Editor.csproj" />
   <Project Path="Unity.VisualScripting.State.csproj" />
-  <Project Path="Unity.AI.Navigation.Updater.csproj" />
   <Project Path="ODDGames.Bugpunch.Editor.csproj" />
-  <Project Path="ODDGames.Bugpunch.csproj" />
+  <Project Path="Unity.AI.Navigation.Updater.csproj" />
   <Project Path="Unity.AI.Navigation.Editor.csproj" />
   <Project Path="Unity.Recorder.csproj" />
   <Project Path="Unity.WebRTC.Editor.csproj" />

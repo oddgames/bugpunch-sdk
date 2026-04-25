@@ -39,16 +39,34 @@ public class DebugModeButton : MonoBehaviour
         }
 
         // "Enter Debug" — top-right, always visible
-        var btn = new GameObject("EnterDebugButton");
+        CreateButton(canvas,
+            "EnterDebugButton",
+            "Enter Debug",
+            new Vector2(-16, -16),
+            new Color(0.18f, 0.55f, 0.83f, 0.9f),
+            () => ODDGames.Bugpunch.Bugpunch.EnterDebugMode());
+
+        // "Request Help" — just below the Enter Debug button
+        CreateButton(canvas,
+            "RequestHelpButton",
+            "Request Help",
+            new Vector2(-16, -64),
+            new Color(0.36f, 0.47f, 0.71f, 0.9f),
+            () => ODDGames.Bugpunch.Bugpunch.RequestHelp());
+    }
+
+    static void CreateButton(Canvas canvas, string name, string text, Vector2 anchoredPos, Color color, UnityEngine.Events.UnityAction onClick)
+    {
+        var btn = new GameObject(name);
         btn.transform.SetParent(canvas.transform, false);
         var rect = btn.AddComponent<RectTransform>();
         rect.anchorMin = new Vector2(1, 1);
         rect.anchorMax = new Vector2(1, 1);
         rect.pivot = new Vector2(1, 1);
-        rect.anchoredPosition = new Vector2(-16, -16);
+        rect.anchoredPosition = anchoredPos;
         rect.sizeDelta = new Vector2(140, 40);
-        btn.AddComponent<Image>().color = new Color(0.18f, 0.55f, 0.83f, 0.9f);
-        btn.AddComponent<Button>().onClick.AddListener(() => ODDGames.Bugpunch.Bugpunch.EnterDebugMode());
+        btn.AddComponent<Image>().color = color;
+        btn.AddComponent<Button>().onClick.AddListener(onClick);
 
         var label = new GameObject("Label");
         label.transform.SetParent(btn.transform, false);
@@ -58,7 +76,7 @@ public class DebugModeButton : MonoBehaviour
         lr.offsetMin = Vector2.zero;
         lr.offsetMax = Vector2.zero;
         var tmp = label.AddComponent<TMPro.TextMeshProUGUI>();
-        tmp.text = "Enter Debug";
+        tmp.text = text;
         tmp.fontSize = 18;
         tmp.color = Color.white;
         tmp.alignment = TMPro.TextAlignmentOptions.Center;

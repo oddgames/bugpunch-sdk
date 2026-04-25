@@ -58,9 +58,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public static event Action OnChanged;
 
 #if UNITY_EDITOR
-        static RoleState()
+        // Read PlayerPrefs from a main-thread Editor init hook rather than a
+        // static constructor — the static ctor would otherwise run on whichever
+        // thread first touched the type (e.g. the IdeTunnel WebSocket receive
+        // thread when handling the registered frame), and PlayerPrefs.GetString
+        // is main-thread-only. InitializeOnLoadMethod fires on the main thread
+        // every time the Editor reloads scripts.
+        [UnityEditor.InitializeOnLoadMethod]
+        static void EditorInit()
         {
-            s_role = Parse(PlayerPrefs.GetString(PP_ROLE, "public"));
+            try { s_role = Parse(PlayerPrefs.GetString(PP_ROLE, "public")); }
+            catch { /* leave as Public on first launch */ }
         }
 #endif
 

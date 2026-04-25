@@ -130,7 +130,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.TextureService] Texture thumbnail failed (id={instanceId}): {ex.Message}");
+                BugpunchNative.ReportSdkError($"TextureService.Thumbnail({instanceId})", ex);
                 return null;
             }
         }
@@ -176,7 +176,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.TextureService] Full texture capture failed (id={instanceId}): {ex.Message}");
+                BugpunchNative.ReportSdkError($"TextureService.GetFullTexture({instanceId})", ex);
                 return null;
             }
         }
@@ -252,11 +252,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         static bool IsReadable(Texture tex)
         {
-            if (tex is Texture2D t2d)
-            {
-                try { t2d.GetPixel(0, 0); return true; }
-                catch { return false; }
-            }
+            if (tex is Texture2D t2d) return t2d.isReadable && t2d.width > 0 && t2d.height > 0;
             return tex is RenderTexture;
         }
 

@@ -98,9 +98,10 @@ public class BugpunchCrashActivity extends Activity {
         int pad = dp(16);
         int padSmall = dp(8);
 
-        // Root: dark background ScrollView
+        // Root: dark background ScrollView (uses the shared theme backdrop
+        // alpha so a customised palette stays consistent across overlays).
         ScrollView scrollView = new ScrollView(this);
-        scrollView.setBackgroundColor(Color.parseColor("#E6000000")); // 90% opaque black
+        scrollView.setBackgroundColor(BugpunchTheme.color("backdrop", 0xE6000000));
         scrollView.setFillViewport(true);
 
         LinearLayout root = new LinearLayout(this);
@@ -109,36 +110,27 @@ public class BugpunchCrashActivity extends Activity {
         scrollView.addView(root, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ── Logo row ──
-        LinearLayout logoRow = new LinearLayout(this);
-        logoRow.setOrientation(LinearLayout.HORIZONTAL);
-        logoRow.setGravity(Gravity.CENTER_VERTICAL);
-
+        // ── Optional brand row ──
+        // SDK ships unbranded; if the host game drops a `bugpunch_logo`
+        // drawable into their app's res/drawable to brand the overlay,
+        // it'll be picked up here.
         int logoResId = getResources().getIdentifier("bugpunch_logo", "drawable", getPackageName());
         if (logoResId != 0) {
             ImageView logoImg = new ImageView(this);
             logoImg.setImageResource(logoResId);
             logoImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
             LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(24), dp(24));
-            logoParams.setMarginEnd(dp(6));
-            logoRow.addView(logoImg, logoParams);
+            logoParams.gravity = Gravity.START;
+            root.addView(logoImg, logoParams);
+            addSpacer(root, dp(8));
         }
-
-        TextView logoLabel = new TextView(this);
-        logoLabel.setText("Bugpunch");
-        logoLabel.setTextColor(Color.parseColor("#999999"));
-        logoLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        logoLabel.setTypeface(Typeface.DEFAULT_BOLD);
-        logoRow.addView(logoLabel);
-
-        root.addView(logoRow);
-        addSpacer(root, dp(8));
 
         // ── Header ──
         TextView header = new TextView(this);
-        header.setText("Crash Report");
-        header.setTextColor(Color.parseColor("#FF5555"));
-        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        header.setText(BugpunchStrings.text("crashHeader", "Crash Report"));
+        header.setTextColor(BugpunchTheme.color("accentBug", 0xFFFF5555));
+        header.setTextSize(TypedValue.COMPLEX_UNIT_SP,
+            BugpunchTheme.sp("fontSizeTitle", 20) + 2);
         header.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(header);
         addSpacer(root, dp(8));
@@ -164,12 +156,19 @@ public class BugpunchCrashActivity extends Activity {
             addSpacer(root, padSmall);
         }
 
+        int colTextPrimary   = BugpunchTheme.color("textPrimary",   Color.WHITE);
+        int colTextSecondary = BugpunchTheme.color("textSecondary", 0xFFAAAAAA);
+        int colTextMuted     = BugpunchTheme.color("textMuted",     0xFF666666);
+        int colCardBorder    = BugpunchTheme.color("cardBorder",    0xFF2A2A2A);
+        int colAccentBug     = BugpunchTheme.color("accentBug",     0xFFFF8888);
+        int colAccentPrimary = BugpunchTheme.color("accentPrimary", 0xFF2E7D32);
+
         // ── Exception message ──
         if (!TextUtils.isEmpty(exceptionMsg)) {
             TextView exLabel = new TextView(this);
             exLabel.setText(exceptionMsg);
-            exLabel.setTextColor(Color.parseColor("#FF8888"));
-            exLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            exLabel.setTextColor(colAccentBug);
+            BugpunchTheme.applyTextSize(exLabel, "fontSizeBody", 14);
             exLabel.setTypeface(Typeface.DEFAULT_BOLD);
             exLabel.setMaxLines(3);
             exLabel.setEllipsize(TextUtils.TruncateAt.END);
@@ -180,19 +179,19 @@ public class BugpunchCrashActivity extends Activity {
         // ── Stack trace (scrollable) ──
         if (!TextUtils.isEmpty(stackTrace)) {
             TextView stackLabel = new TextView(this);
-            stackLabel.setText("Stack Trace:");
-            stackLabel.setTextColor(Color.parseColor("#AAAAAA"));
-            stackLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            stackLabel.setText(BugpunchStrings.text("crashStackTrace", "Stack Trace:"));
+            stackLabel.setTextColor(colTextSecondary);
+            BugpunchTheme.applyTextSize(stackLabel, "fontSizeCaption", 12);
             root.addView(stackLabel);
 
             ScrollView stackScroll = new ScrollView(this);
-            stackScroll.setBackgroundColor(Color.parseColor("#1A1A1A"));
+            stackScroll.setBackgroundColor(colCardBorder);
             int sp = dp(8);
             stackScroll.setPadding(sp, sp, sp, sp);
 
             TextView stackText = new TextView(this);
             stackText.setText(stackTrace);
-            stackText.setTextColor(Color.parseColor("#CCCCCC"));
+            stackText.setTextColor(colTextSecondary);
             stackText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
             stackText.setTypeface(Typeface.MONOSPACE);
             stackScroll.addView(stackText);
@@ -205,15 +204,15 @@ public class BugpunchCrashActivity extends Activity {
 
         // ── Title input ──
         TextView titleLabel = new TextView(this);
-        titleLabel.setText("Title");
-        titleLabel.setTextColor(Color.WHITE);
+        titleLabel.setText(BugpunchStrings.text("crashTitleField", "Title"));
+        titleLabel.setTextColor(colTextPrimary);
         root.addView(titleLabel);
 
         EditText titleInput = new EditText(this);
-        titleInput.setHint("Brief description of the issue");
-        titleInput.setTextColor(Color.WHITE);
-        titleInput.setHintTextColor(Color.parseColor("#666666"));
-        titleInput.setBackgroundColor(Color.parseColor("#2A2A2A"));
+        titleInput.setHint(BugpunchStrings.text("crashTitleHint", "Brief description of the issue"));
+        titleInput.setTextColor(colTextPrimary);
+        titleInput.setHintTextColor(colTextMuted);
+        titleInput.setBackgroundColor(colCardBorder);
         titleInput.setSingleLine(true);
         titleInput.setPadding(dp(8), dp(8), dp(8), dp(8));
         // Pre-fill with exception message truncated
@@ -227,15 +226,15 @@ public class BugpunchCrashActivity extends Activity {
 
         // ── Description input ──
         TextView descLabel = new TextView(this);
-        descLabel.setText("Description (what were you doing?)");
-        descLabel.setTextColor(Color.WHITE);
+        descLabel.setText(BugpunchStrings.text("crashDescField", "Description (what were you doing?)"));
+        descLabel.setTextColor(colTextPrimary);
         root.addView(descLabel);
 
         EditText descInput = new EditText(this);
-        descInput.setHint("Steps to reproduce, additional context...");
-        descInput.setTextColor(Color.WHITE);
-        descInput.setHintTextColor(Color.parseColor("#666666"));
-        descInput.setBackgroundColor(Color.parseColor("#2A2A2A"));
+        descInput.setHint(BugpunchStrings.text("crashDescHint", "Steps to reproduce, additional context..."));
+        descInput.setTextColor(colTextPrimary);
+        descInput.setHintTextColor(colTextMuted);
+        descInput.setBackgroundColor(colCardBorder);
         descInput.setMinLines(3);
         descInput.setGravity(Gravity.TOP);
         descInput.setPadding(dp(8), dp(8), dp(8), dp(8));
@@ -245,8 +244,8 @@ public class BugpunchCrashActivity extends Activity {
 
         // ── Severity spinner ──
         TextView sevLabel = new TextView(this);
-        sevLabel.setText("Severity");
-        sevLabel.setTextColor(Color.WHITE);
+        sevLabel.setText(BugpunchStrings.text("crashSeverity", "Severity"));
+        sevLabel.setTextColor(colTextPrimary);
         root.addView(sevLabel);
 
         Spinner sevSpinner = new Spinner(this);
@@ -255,7 +254,7 @@ public class BugpunchCrashActivity extends Activity {
                 android.R.layout.simple_spinner_dropdown_item, severities);
         sevSpinner.setAdapter(adapter);
         sevSpinner.setSelection(2); // Default to "High" for crashes
-        sevSpinner.setBackgroundColor(Color.parseColor("#2A2A2A"));
+        sevSpinner.setBackgroundColor(colCardBorder);
         root.addView(sevSpinner);
         addSpacer(root, padSmall);
 
@@ -264,15 +263,15 @@ public class BugpunchCrashActivity extends Activity {
         checkRow.setOrientation(LinearLayout.HORIZONTAL);
 
         CheckBox videoCheck = new CheckBox(this);
-        videoCheck.setText("Include video");
-        videoCheck.setTextColor(Color.WHITE);
+        videoCheck.setText(BugpunchStrings.text("crashIncludeVideo", "Include video"));
+        videoCheck.setTextColor(colTextPrimary);
         videoCheck.setChecked(hasVideo);
         videoCheck.setEnabled(hasVideo);
         checkRow.addView(videoCheck);
 
         CheckBox logsCheck = new CheckBox(this);
-        logsCheck.setText("Include logs");
-        logsCheck.setTextColor(Color.WHITE);
+        logsCheck.setText(BugpunchStrings.text("crashIncludeLogs", "Include logs"));
+        logsCheck.setTextColor(colTextPrimary);
         logsCheck.setChecked(true);
         LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -288,9 +287,9 @@ public class BugpunchCrashActivity extends Activity {
         btnRow.setGravity(Gravity.END);
 
         Button dismissBtn = new Button(this);
-        dismissBtn.setText("Dismiss");
-        dismissBtn.setTextColor(Color.WHITE);
-        dismissBtn.setBackgroundColor(Color.parseColor("#444444"));
+        dismissBtn.setText(BugpunchStrings.text("crashDismiss", "Dismiss"));
+        dismissBtn.setTextColor(colTextPrimary);
+        dismissBtn.setBackgroundColor(BugpunchTheme.color("cardBorder", 0xFF444444));
         dismissBtn.setOnClickListener(v -> {
             sendDismissToUnity();
             finish();
@@ -301,9 +300,9 @@ public class BugpunchCrashActivity extends Activity {
         btnRow.addView(spacer, new LinearLayout.LayoutParams(dp(12), 1));
 
         Button submitBtn = new Button(this);
-        submitBtn.setText("Submit Report");
-        submitBtn.setTextColor(Color.WHITE);
-        submitBtn.setBackgroundColor(Color.parseColor("#2E7D32"));
+        submitBtn.setText(BugpunchStrings.text("crashSubmit", "Submit Report"));
+        submitBtn.setTextColor(colTextPrimary);
+        submitBtn.setBackgroundColor(colAccentPrimary);
         submitBtn.setOnClickListener(v -> {
             String title = titleInput.getText().toString();
             String desc = descInput.getText().toString();

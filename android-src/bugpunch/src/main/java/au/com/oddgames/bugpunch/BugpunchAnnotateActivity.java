@@ -48,8 +48,12 @@ public class BugpunchAnnotateActivity extends Activity {
         mBaseShot = shotPath != null ? BitmapFactory.decodeFile(shotPath) : null;
         if (mBaseShot == null) { finish(); return; }
 
+        int colSecondaryBtn = BugpunchTheme.color("cardBorder",   0xFF394048);
+        int colPrimaryBtn   = BugpunchTheme.color("accentPrimary", 0xFF2A7BE0);
+        int colBarBg        = BugpunchTheme.color("cardBackground", 0xCC101418);
+
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.BLACK);
+        root.setBackgroundColor(BugpunchTheme.color("backdrop", 0xFF000000));
 
         mView = new AnnotateView(this, mBaseShot);
         root.addView(mView, new FrameLayout.LayoutParams(
@@ -60,21 +64,21 @@ public class BugpunchAnnotateActivity extends Activity {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         int p = dp(12);
         bar.setPadding(p, p, p, p);
-        bar.setBackgroundColor(0xCC101418);
+        bar.setBackgroundColor(colBarBg);
 
-        Button undo = button("Undo", 0xFF394048);
+        Button undo = button(BugpunchStrings.text("annotateUndo", "Undo"), colSecondaryBtn);
         undo.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { mView.undo(); }
         });
-        Button clear = button("Clear", 0xFF394048);
+        Button clear = button(BugpunchStrings.text("annotateClear", "Clear"), colSecondaryBtn);
         clear.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { mView.clearStrokes(); }
         });
-        Button cancel = button("Cancel", 0xFF394048);
+        Button cancel = button(BugpunchStrings.text("annotateCancel", "Cancel"), colSecondaryBtn);
         cancel.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { setResult(RESULT_CANCELED); finish(); }
         });
-        Button done = button("Done", 0xFF2A7BE0);
+        Button done = button(BugpunchStrings.text("annotateDone", "Done"), colPrimaryBtn);
         done.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onDone(); }
         });
@@ -141,7 +145,7 @@ public class BugpunchAnnotateActivity extends Activity {
     private Button button(String text, int bg) {
         Button b = new Button(this);
         b.setText(text);
-        b.setTextColor(Color.WHITE);
+        b.setTextColor(BugpunchTheme.color("textPrimary", Color.WHITE));
         b.setBackgroundColor(bg);
         b.setAllCaps(false);
         return b;
@@ -166,7 +170,10 @@ public class BugpunchAnnotateActivity extends Activity {
             super(ctx);
             mShot = shot;
             mStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            mStrokePaint.setColor(0xFFFF2B5C);
+            // Annotation ink uses the bug accent so the customer's brand
+            // palette extends to the mark-up tool too. 0xFFFF2B5C is the
+            // hot-pink fallback that matches the SDK's default theme.
+            mStrokePaint.setColor(BugpunchTheme.color("accentBug", 0xFFFF2B5C));
             mStrokePaint.setStyle(Paint.Style.STROKE);
             mStrokePaint.setStrokeCap(Paint.Cap.ROUND);
             mStrokePaint.setStrokeJoin(Paint.Join.ROUND);

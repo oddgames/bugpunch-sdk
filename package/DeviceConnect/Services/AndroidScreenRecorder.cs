@@ -51,7 +51,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.AndroidScreenRecorder] AndroidScreenRecorder.StartRecording failed: {e.Message}");
+                BugpunchNative.ReportSdkError("AndroidScreenRecorder.StartRecording", e);
                 OnStarted?.Invoke(false);
             }
 #else
@@ -74,7 +74,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.AndroidScreenRecorder] AndroidScreenRecorder.StopRecording failed: {e.Message}");
+                BugpunchNative.ReportSdkError("AndroidScreenRecorder.StopRecording", e);
             }
 #endif
             IsRecording = false;
@@ -99,7 +99,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.AndroidScreenRecorder] AndroidScreenRecorder.DumpToFile failed: {e.Message}");
+                BugpunchNative.ReportSdkError("AndroidScreenRecorder.DumpToFile", e);
                 return false;
             }
 #else
@@ -122,7 +122,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.AndroidScreenRecorder] DumpToBytes read failed: {e.Message}");
+                BugpunchNative.ReportSdkError("AndroidScreenRecorder.DumpToBytes", e);
                 return null;
             }
         }

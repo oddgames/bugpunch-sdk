@@ -90,7 +90,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.RingBufferRecorder] RingBufferRecorder.StartRecording (Android) failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RingBufferRecorder.StartRecording.Android", e);
                 OnStarted?.Invoke(false);
             }
 
@@ -105,7 +105,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.RingBufferRecorder] RingBufferRecorder.StartRecording (iOS) failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RingBufferRecorder.StartRecording.iOS", e);
                 OnStarted?.Invoke(false);
             }
 
@@ -129,7 +129,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.RingBufferRecorder] RingBufferRecorder.StopRecording (Android) failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RingBufferRecorder.StopRecording.Android", e);
             }
 #elif UNITY_IOS && !UNITY_EDITOR
             try
@@ -138,7 +138,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.RingBufferRecorder] RingBufferRecorder.StopRecording (iOS) failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RingBufferRecorder.StopRecording.iOS", e);
             }
 #endif
             IsRecording = false;
@@ -165,7 +165,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.RingBufferRecorder] RingBufferRecorder.DumpToFile (Android) failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RingBufferRecorder.DumpToFile.Android", e);
                 return false;
             }
 
@@ -176,7 +176,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.RingBufferRecorder] RingBufferRecorder.DumpToFile (iOS) failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RingBufferRecorder.DumpToFile.iOS", e);
                 return false;
             }
 
@@ -204,7 +204,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Bugpunch.RingBufferRecorder] RingBufferRecorder.DumpToBytes read failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RingBufferRecorder.DumpToBytes", e);
                 return null;
             }
         }

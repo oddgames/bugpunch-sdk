@@ -96,9 +96,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var extraJson = t_cachedDataJson;
                 t_cachedDataJson = null;
                 BugpunchNative.ReportBug("exception", title, stackTrace ?? string.Empty, extraJson);
+
+                // If the exception originated inside SDK code, also surface it on
+                // the on-screen diagnostic banner so we're not in the dark when
+                // the SDK itself throws (vs. game code throwing through the SDK).
+                if (IsSdkOrigin(stackTrace))
+                {
+                    BugpunchNative.ReportSdkError("UnityExceptionForwarder", title, stackTrace);
+                }
             }
             catch { }
             finally { t_inForward = false; }
+        }
+
+        /// <summary>
+        /// Heuristic: if the stack trace contains any frame from
+        /// <c>ODDGames.Bugpunch.</c> the exception originated inside the SDK.
+        /// Cheap string scan — runs on the throwing thread and is bounded to
+        /// the trace string length.
+        /// </summary>
+        static bool IsSdkOrigin(string stackTrace)
+        {
+            if (string.IsNullOrEmpty(stackTrace)) return false;
+            return stackTrace.IndexOf("ODDGames.Bugpunch.", StringComparison.Ordinal) >= 0;
         }
 
         static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
@@ -121,7 +141,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var title = $"{ex.GetType().FullName}: {ex.Message}";
                 if (title.Length > 200) title = title.Substring(0, 200);
                 var extraJson = SerializeExceptionData(ex);
-                BugpunchNative.ReportBug("exception", title, ex.ToString(), extraJson);
+                var stack = ex.ToString();
+                BugpunchNative.ReportBug("exception", title, stack, extraJson);
+                if (IsSdkOrigin(stack))
+                {
+                    BugpunchNative.ReportSdkError("UnityExceptionForwarder", title, stack);
+                }
             }
             catch { }
             finally { t_inForward = false; }

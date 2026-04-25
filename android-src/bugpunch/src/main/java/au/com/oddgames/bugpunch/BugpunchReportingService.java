@@ -133,6 +133,7 @@ public final class BugpunchReportingService {
             return new Object[] { path, shots.toArray(new String[0]) };
         } catch (Throwable t) {
             Log.w(TAG, "prepareTraceAttachments failed", t);
+            BugpunchSdkErrorOverlay.reportThrowable("BugpunchReportingService", "prepareTraceAttachments", t);
             return null;
         }
     }
@@ -527,6 +528,7 @@ public final class BugpunchReportingService {
             return f.getAbsolutePath();
         } catch (IOException e) {
             Log.w(TAG, "writeGzipLogs failed", e);
+            BugpunchSdkErrorOverlay.reportThrowable("BugpunchReportingService", "writeGzipLogs", e);
             return null;
         }
     }
@@ -590,6 +592,7 @@ public final class BugpunchReportingService {
             return m.toString();
         } catch (JSONException e) {
             Log.w(TAG, "buildMetadataJson failed", e);
+            BugpunchSdkErrorOverlay.reportThrowable("BugpunchReportingService", "buildMetadataJson", e);
             return "{}";
         }
     }

@@ -377,6 +377,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 Debug.Log("[Bugpunch.BugpunchClient] Debug build — connecting Remote IDE via WebSocket");
                 Tunnel = new IdeTunnel(Config);
+                console.AttachTunnel(Tunnel);
                 Tunnel.OnConnected += () =>
                 {
                     Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel connected");
@@ -435,7 +436,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (Config == null || string.IsNullOrEmpty(Config.HttpBaseUrl) || string.IsNullOrEmpty(Config.apiKey))
                 yield break;
 
-            var url = Config.HttpBaseUrl + "/api/v1/chat/threads/mine";
+            // Single-thread-per-device API: GET /chat/thread returns
+            // { thread, messages } when a thread exists, 404 when none does.
+            // We only need to know if ANY message has Sender=qa AND
+            // ReadBySdkAt=null — if so, auto-open the board (subject to the
+            // suppression gate) and stop rechecking until the user clears it.
+            var url = Config.HttpBaseUrl + "/api/v1/chat/thread";
             using var req = UnityWebRequest.Get(url);
             req.SetRequestHeader("Authorization", "Bearer " + (Config.apiKey ?? ""));
             req.SetRequestHeader("X-Device-Id", DeviceIdentity.GetDeviceId() ?? "");
@@ -444,33 +450,43 @@ namespace ODDGames.Bugpunch.DeviceConnect
             yield return req.SendWebRequest();
 
             if (req.result != UnityWebRequest.Result.Success) yield break;
+            // 404 is the "no thread yet" sentinel — treat as zero unread and
+            // reset the popup guard so the next QA-originated message (if
+            // any) re-arms the auto-open.
+            if (req.responseCode == 404)
+            {
+                _chatReplyPopupShown = false;
+                yield break;
+            }
             if (req.responseCode < 200 || req.responseCode >= 300) yield break;
 
-            int unread = 0;
+            bool unread = false;
             try
             {
                 var body = req.downloadHandler != null ? req.downloadHandler.text : "";
                 var obj = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(body) ? "{}" : body);
-                var arr = obj["threads"] as Newtonsoft.Json.Linq.JArray;
+                var arr = obj["messages"] as Newtonsoft.Json.Linq.JArray;
                 if (arr != null)
                 {
-                    foreach (var t in arr)
+                    foreach (var m in arr)
                     {
-                        int n = (int?)t["UnreadCount"] ?? (int?)t["unreadCount"] ?? 0;
-                        if (n > 0) unread++;
+                        var sender = (string)m["Sender"] ?? (string)m["sender"];
+                        if (!string.Equals(sender, "qa", StringComparison.Ordinal)) continue;
+                        var readAt = (string)m["ReadBySdkAt"] ?? (string)m["readBySdkAt"];
+                        if (string.IsNullOrEmpty(readAt)) { unread = true; break; }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.BugpunchClient] ChatReplyHeartbeat parse failed: {ex.Message}");
+                BugpunchNative.ReportSdkError("BugpunchClient.ChatReplyHeartbeat", ex);
                 yield break;
             }
 
-            if (unread == 0)
+            if (!unread)
             {
-                // Server-side guard reset — when the user replies elsewhere
-                // or QA clears the queue, we re-arm the popup.
+                // Server-side guard reset — when the user catches up or QA
+                // clears the queue, we re-arm the popup.
                 _chatReplyPopupShown = false;
                 yield break;
             }
@@ -809,6 +825,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         void Update()
         {
             Tunnel?.ProcessMessages();
+            Router?.Console?.Tick();
         }
 
         // Android keeps half-open TCP sockets for 1–2 min after WiFi↔mobile swaps,
@@ -916,7 +933,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                             Tunnel?.SendResponse(rid, 200, answer, "application/json");
                         },
                         err => {
-                            Debug.LogError($"[Bugpunch.BugpunchClient] webrtc offer failed id={rid}: {err}");
+                            BugpunchNative.ReportSdkError("BugpunchClient.WebRTCOffer", $"webrtc offer failed id={rid}: {err}");
                             Tunnel?.SendResponse(rid, 500, $"{{\"error\":\"{err}\"}}", "application/json");
                         });
                 }
@@ -1080,7 +1097,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.BugpunchClient] OnPollScripts parse failed: {ex.Message}");
+                BugpunchNative.ReportSdkError("BugpunchClient.OnPollScripts", ex);
             }
         }
 
@@ -1128,6 +1145,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (Tunnel == null)
             {
                 Tunnel = new IdeTunnel(Config);
+                if (Router?.Console != null) Router.Console.AttachTunnel(Tunnel);
                 Tunnel.OnConnected += () =>
                 {
                     Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel connected (debug session)");
@@ -1140,7 +1158,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel disconnected");
                     OnDisconnected?.Invoke();
                 };
-                Tunnel.OnError += e => { Debug.LogError($"[Bugpunch.BugpunchClient] {e}"); OnError?.Invoke(e); };
+                Tunnel.OnError += e => { BugpunchNative.ReportSdkError("BugpunchClient.IdeTunnel", e); OnError?.Invoke(e); };
                 Tunnel.OnRequest += HandleRequest;
                 StartCoroutine(ConnectLoop());
             }
@@ -1187,7 +1205,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             catch (Exception ex)
             {
                 // WebRTC native lib failed to load — streaming unavailable but tunnel works
-                Debug.LogError($"[Bugpunch.BugpunchClient] InitializeStreamerLazy: WebRTC initialization failed — streaming unavailable: {ex.Message}");
+                BugpunchNative.ReportSdkError("BugpunchClient.InitializeStreamerLazy", ex);
                 Streamer = null;
                 Router.Streamer = null;
             }
@@ -1257,7 +1275,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.BugpunchClient] FetchIceServers: parse failed: {ex.Message}");
+                BugpunchNative.ReportSdkError("BugpunchClient.FetchIceServers", ex);
             }
         }
 

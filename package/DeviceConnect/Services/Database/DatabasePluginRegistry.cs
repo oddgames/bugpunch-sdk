@@ -49,7 +49,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
                         }
                         catch (Exception ex)
                         {
-                            Debug.LogWarning($"[Bugpunch.DatabasePluginRegistry] Failed to instantiate database plugin {type.Name}: {ex.Message}");
+                            BugpunchNative.ReportSdkError($"DatabasePluginRegistry.Instantiate({type.Name})", ex);
                         }
                     }
                 }
@@ -99,7 +99,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.DatabasePluginRegistry] Database plugin {providerId} parse error: {ex}");
+                BugpunchNative.ReportSdkError($"DatabasePluginRegistry.Parse({providerId})", ex);
                 return Error(ex.Message);
             }
         }

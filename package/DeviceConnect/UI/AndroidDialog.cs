@@ -19,19 +19,29 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
                 .GetStatic<AndroidJavaObject>("currentActivity");
 
+            // Pull labels via BugpunchStrings so a customer-supplied translation
+            // / re-branded copy applies here too. We can't theme the
+            // AlertDialog itself (system Activity theme) without subclassing,
+            // but the strings are the user-visible part.
+            var strings = BugpunchStrings.Current;
+            string title       = strings.Text("permissionTitle",       "Script Permission");
+            string allowOnce   = strings.Text("permissionAllowOnce",   "Allow Once");
+            string allowAlways = strings.Text("permissionAllowAlways", "Always Allow");
+            string deny        = strings.Text("permissionDeny",        "Deny");
+
             activity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
             {
                 using var builder = new AndroidJavaObject("android.app.AlertDialog$Builder", activity);
-                builder.Call<AndroidJavaObject>("setTitle", "Script Permission");
+                builder.Call<AndroidJavaObject>("setTitle", title);
                 builder.Call<AndroidJavaObject>("setMessage",
                     $"The server wants to run a script:\n\n{scriptName}\n\n{scriptDescription}");
                 builder.Call<AndroidJavaObject>("setCancelable", false);
 
-                builder.Call<AndroidJavaObject>("setPositiveButton", "Allow Once",
+                builder.Call<AndroidJavaObject>("setPositiveButton", allowOnce,
                     new DialogClickListener(() => MainThread.Enqueue(() => callback?.Invoke(PermissionResult.AllowOnce))));
-                builder.Call<AndroidJavaObject>("setNeutralButton", "Always Allow",
+                builder.Call<AndroidJavaObject>("setNeutralButton", allowAlways,
                     new DialogClickListener(() => MainThread.Enqueue(() => callback?.Invoke(PermissionResult.AllowAlways))));
-                builder.Call<AndroidJavaObject>("setNegativeButton", "Deny",
+                builder.Call<AndroidJavaObject>("setNegativeButton", deny,
                     new DialogClickListener(() => MainThread.Enqueue(() => callback?.Invoke(PermissionResult.Deny))));
 
                 builder.Call<AndroidJavaObject>("show");
@@ -43,6 +53,13 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
                 .GetStatic<AndroidJavaObject>("currentActivity");
 
+            var strings = BugpunchStrings.Current;
+            string formTitle  = strings.Text("reportFormTitle",       "Bug Report");
+            string titleHint  = strings.Text("reportFormTitleHint",   "Title — brief description");
+            string descHint   = strings.Text("reportFormDescHint",    "Description (optional)");
+            string submitText = strings.Text("reportFormSubmit",      "Submit");
+            string cancelText = strings.Text("reportFormCancel",      "Cancel");
+
             activity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
             {
                 using var context = activity;
@@ -52,23 +69,23 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 layout.Call("setPadding", pad, pad, pad, pad);
 
                 using var titleInput = new AndroidJavaObject("android.widget.EditText", context);
-                titleInput.Call("setHint", "Title — brief description");
+                titleInput.Call("setHint", titleHint);
                 titleInput.Call("setSingleLine", true);
                 layout.Call("addView", titleInput);
 
                 using var descInput = new AndroidJavaObject("android.widget.EditText", context);
-                descInput.Call("setHint", "Description (optional)");
+                descInput.Call("setHint", descHint);
                 descInput.Call("setMinLines", 3);
                 layout.Call("addView", descInput);
 
                 using var builder = new AndroidJavaObject("android.app.AlertDialog$Builder", context);
-                builder.Call<AndroidJavaObject>("setTitle", "Bug Report");
+                builder.Call<AndroidJavaObject>("setTitle", formTitle);
                 builder.Call<AndroidJavaObject>("setView", layout);
 
                 var tRef = titleInput;
                 var dRef = descInput;
 
-                builder.Call<AndroidJavaObject>("setPositiveButton", "Submit",
+                builder.Call<AndroidJavaObject>("setPositiveButton", submitText,
                     new DialogClickListener(() => MainThread.Enqueue(() =>
                         onSubmit?.Invoke(new BugReportData
                         {
@@ -79,7 +96,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                             includeLogs = true
                         }))));
 
-                builder.Call<AndroidJavaObject>("setNegativeButton", "Cancel",
+                builder.Call<AndroidJavaObject>("setNegativeButton", cancelText,
                     new DialogClickListener(() => MainThread.Enqueue(() => onCancel?.Invoke())));
 
                 builder.Call<AndroidJavaObject>("show");
@@ -325,6 +342,15 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         void OnRecordingBarFeedbackTapped(string message)
         {
             MainThread.Enqueue(() => BugpunchFeedbackBoard.Show());
+        }
+
+        // Native image picker (BugpunchImagePicker.java) reports back here.
+        // Payload is the absolute path on disk (empty / missing → user
+        // cancelled). Routed to BugpunchNative which forwards to whoever
+        // registered a PickImage callback.
+        void OnImagePicked(string message)
+        {
+            MainThread.Enqueue(() => BugpunchNative.DispatchImagePicked(message));
         }
     }
 

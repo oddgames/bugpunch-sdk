@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.42] - 2026-04-25
+
+### Fixed
+- **ANRs now ship logs.** The Android ANR watchdog (`BugpunchCrashHandler.AnrWatchdog.writeAnrReport`) and the iOS ANR writer (`BugpunchCrashHandler.mm` `write_anr_report`) only wrote screenshots + thread stacks to the `.crash` file; the `logs:` field that the native signal handler emits was missing, so the drain had nothing to attach. Both watchdogs now snapshot the rolling log buffer (`BugpunchLogReader.snapshotText` / `[BPLogReader snapshotText]`) into a sibling file and add a `logs:` line. iOS drain at `BugpunchDebugMode.mm` was also updated to read the new field and queue the file as a `text/plain` `logs` attachment alongside the existing screenshot. Crashes already had this — ANRs were the odd one out.
+
 ## [1.7.41] - 2026-04-24
 
 ### Added

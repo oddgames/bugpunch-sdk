@@ -10,6 +10,9 @@
 
 #import <UIKit/UIKit.h>
 
+#import "BugpunchTheme.h"
+#import "BugpunchStrings.h"
+
 // UnitySendMessage is provided by the Unity runtime (libiPhone-lib.a).
 // Declared here so the shortcut buttons on the recording overlay can
 // bounce taps back to C# without needing a C function pointer callback.
@@ -137,8 +140,10 @@ typedef NS_ENUM(NSInteger, BPShortcutKind) {
 
     // Accent-coloured circle fill
     UIColor *fill = (self.kind == BPShortcutChat)
-        ? [UIColor colorWithRed:0.20 green:0.38 blue:0.60 alpha:1.0]   // chat blue
-        : [UIColor colorWithRed:0.25 green:0.49 blue:0.30 alpha:1.0];  // feedback green
+        ? [BPTheme color:@"accentChat"
+                fallback:[UIColor colorWithRed:0.20 green:0.38 blue:0.60 alpha:1.0]]
+        : [BPTheme color:@"accentFeedback"
+                fallback:[UIColor colorWithRed:0.25 green:0.49 blue:0.30 alpha:1.0]];
     CGContextSetFillColorWithColor(ctx, fill.CGColor);
     CGContextFillEllipseInRect(ctx, CGRectMake(cx - r * 0.92f, cy - r * 0.92f,
                                                 r * 1.84f, r * 1.84f));
@@ -203,8 +208,10 @@ typedef NS_ENUM(NSInteger, BPShortcutKind) {
     CGFloat r = MIN(rect.size.width, rect.size.height) / 2.0f;
     CGFloat cx = CGRectGetMidX(rect), cy = CGRectGetMidY(rect);
 
-    // Red circle
-    CGContextSetFillColorWithColor(ctx, [UIColor colorWithRed:0.83 green:0.18 blue:0.18 alpha:1].CGColor);
+    // Accent-record circle
+    UIColor* recordColor = [BPTheme color:@"accentRecord"
+                                 fallback:[UIColor colorWithRed:0.83 green:0.18 blue:0.18 alpha:1]];
+    CGContextSetFillColorWithColor(ctx, recordColor.CGColor);
     CGContextFillEllipseInRect(ctx, CGRectMake(cx - r*0.9f, cy - r*0.9f, r*1.8f, r*1.8f));
 
     // White rounded square (stop icon)
@@ -214,6 +221,30 @@ typedef NS_ENUM(NSInteger, BPShortcutKind) {
                                                     cornerRadius:sq*0.2f];
     CGContextAddPath(ctx, stop.CGPath);
     CGContextFillPath(ctx);
+}
+@end
+
+// ── Request-Help responsive card ──
+//
+// The picker card re-layouts its option stack when the bounds cross the
+// 540pt breakpoint so a rotation from portrait → landscape on an iPad
+// (or similar split-screen resize) switches to the horizontal row layout
+// without having to rebuild the card.
+@interface BPRequestHelpCard : UIView
+@property(nonatomic, strong) UIStackView* optionStack;
+@property(nonatomic, assign) BOOL wasHorizontal;
+@end
+@implementation BPRequestHelpCard
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (!self.optionStack) return;
+    BOOL horiz = self.bounds.size.width >= 540;
+    if (horiz != self.wasHorizontal) {
+        self.optionStack.axis = horiz ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
+        self.optionStack.distribution = horiz ? UIStackViewDistributionFillEqually : UIStackViewDistributionFill;
+        self.optionStack.spacing = horiz ? 12 : 8;
+        self.wasHorizontal = horiz;
+    }
 }
 @end
 
@@ -270,20 +301,20 @@ static void UpdateTimer(void) {
 
 // ─── Request-Help Picker Helpers ────────────────────────────────
 
-static UIButton* BuildRequestHelpOption(int choice, NSString* title, NSString* caption, UIColor* accent, NSString* iconName) {
+// ── Vertical-stack option (legacy / narrow phones) ──
+// Icon-leading row with a chevron at the trailing edge. Kept for the
+// compact layout when card width < 540pt.
+static UIButton* BuildRequestHelpOptionRow(int choice, NSString* title, NSString* caption, UIColor* accent, NSString* iconName) {
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.tag = choice;
-    btn.backgroundColor = [UIColor colorWithWhite:0.17 alpha:1];
-    btn.layer.cornerRadius = 8;
+    btn.backgroundColor = [BPTheme color:@"cardBackground" fallback:[UIColor colorWithWhite:0.17 alpha:1]];
+    btn.layer.cornerRadius = [BPTheme radius:@"cardRadius" fallback:8];
     btn.layer.borderWidth = 1;
-    btn.layer.borderColor = [UIColor colorWithWhite:0.28 alpha:1].CGColor;
+    btn.layer.borderColor = [BPTheme color:@"cardBorder" fallback:[UIColor colorWithWhite:0.28 alpha:1]].CGColor;
     btn.translatesAutoresizingMaskIntoConstraints = NO;
     [btn addTarget:[BPOverlayActions class] action:@selector(onRequestHelpChoice:)
           forControlEvents:UIControlEventTouchUpInside];
 
-    // Leading icon — tries the packaged PNG first (auto-picks @2x/@3x via
-    // UIImage imageNamed:), falls back to an accent dot if the resource is
-    // missing from the app bundle.
     UIView *leading = nil;
     UIImage *iconImg = iconName ? [UIImage imageNamed:iconName] : nil;
     if (!iconImg && iconName) {
@@ -310,15 +341,15 @@ static UIButton* BuildRequestHelpOption(int choice, NSString* title, NSString* c
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.text = title;
     titleLabel.font = [UIFont boldSystemFontOfSize:15];
-    titleLabel.textColor = [UIColor whiteColor];
+    titleLabel.textColor = [BPTheme color:@"textPrimary" fallback:[UIColor whiteColor]];
     titleLabel.userInteractionEnabled = NO;
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [btn addSubview:titleLabel];
 
     UILabel *captionLabel = [[UILabel alloc] init];
     captionLabel.text = caption;
-    captionLabel.font = [UIFont systemFontOfSize:12];
-    captionLabel.textColor = [UIColor colorWithWhite:0.7 alpha:1];
+    captionLabel.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeCaption" fallback:12]];
+    captionLabel.textColor = [BPTheme color:@"textSecondary" fallback:[UIColor colorWithWhite:0.7 alpha:1]];
     captionLabel.numberOfLines = 0;
     captionLabel.userInteractionEnabled = NO;
     captionLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -327,7 +358,7 @@ static UIButton* BuildRequestHelpOption(int choice, NSString* title, NSString* c
     UILabel *chev = [[UILabel alloc] init];
     chev.text = @"›";
     chev.font = [UIFont boldSystemFontOfSize:20];
-    chev.textColor = [UIColor colorWithWhite:0.55 alpha:1];
+    chev.textColor = [BPTheme color:@"textMuted" fallback:[UIColor colorWithWhite:0.55 alpha:1]];
     chev.userInteractionEnabled = NO;
     chev.translatesAutoresizingMaskIntoConstraints = NO;
     [btn addSubview:chev];
@@ -359,6 +390,117 @@ static UIButton* BuildRequestHelpOption(int choice, NSString* title, NSString* c
     return btn;
 }
 
+// ── Stacked option panel (horizontal picker) ──
+//
+//   ┌────────────┐
+//   │   [icon]   │   64pt square centered
+//   │   Title    │   18pt bold
+//   │   caption  │   13pt, 2 lines
+//   │ ────────── │   2pt accent underline
+//   └────────────┘
+static UIButton* BuildRequestHelpOptionStacked(int choice, NSString* title, NSString* caption,
+                                               UIColor* accent, NSString* iconName) {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.tag = choice;
+    btn.backgroundColor = [BPTheme color:@"cardBackground" fallback:[UIColor colorWithWhite:0.17 alpha:1]];
+    btn.layer.cornerRadius = [BPTheme radius:@"cardRadius" fallback:10];
+    btn.layer.borderWidth = 1;
+    btn.layer.borderColor = [BPTheme color:@"cardBorder" fallback:[UIColor colorWithWhite:0.28 alpha:1]].CGColor;
+    btn.layer.masksToBounds = YES;
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    [btn addTarget:[BPOverlayActions class] action:@selector(onRequestHelpChoice:)
+          forControlEvents:UIControlEventTouchUpInside];
+
+    // Icon centered at the top.
+    UIView* iconView = nil;
+    UIImage *iconImg = iconName ? [UIImage imageNamed:iconName] : nil;
+    if (!iconImg && iconName) {
+        NSString *path = [[NSBundle mainBundle] pathForResource:iconName ofType:@"png"];
+        if (path) iconImg = [UIImage imageWithContentsOfFile:path];
+    }
+    if (iconImg) {
+        UIImageView *iv = [[UIImageView alloc] initWithImage:iconImg];
+        iv.contentMode = UIViewContentModeScaleAspectFit;
+        iv.userInteractionEnabled = NO;
+        iv.translatesAutoresizingMaskIntoConstraints = NO;
+        [btn addSubview:iv];
+        iconView = iv;
+    } else {
+        UIView *dot = [[UIView alloc] init];
+        dot.backgroundColor = accent;
+        dot.layer.cornerRadius = 8;
+        dot.userInteractionEnabled = NO;
+        dot.translatesAutoresizingMaskIntoConstraints = NO;
+        [btn addSubview:dot];
+        iconView = dot;
+    }
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.text = title;
+    titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    titleLabel.textColor = [BPTheme color:@"textPrimary" fallback:[UIColor whiteColor]];
+    titleLabel.textAlignment = NSTextAlignmentCenter;
+    titleLabel.userInteractionEnabled = NO;
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [btn addSubview:titleLabel];
+
+    UILabel *captionLabel = [[UILabel alloc] init];
+    captionLabel.text = caption;
+    captionLabel.font = [UIFont systemFontOfSize:13];
+    captionLabel.textColor = [BPTheme color:@"textSecondary" fallback:[UIColor colorWithWhite:0.7 alpha:1]];
+    captionLabel.textAlignment = NSTextAlignmentCenter;
+    captionLabel.numberOfLines = 2;
+    captionLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    captionLabel.userInteractionEnabled = NO;
+    captionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [btn addSubview:captionLabel];
+
+    // Accent bottom underline — flush with the card's rounded corners via
+    // the masksToBounds clip above.
+    UIView* underline = [[UIView alloc] init];
+    underline.backgroundColor = accent;
+    underline.userInteractionEnabled = NO;
+    underline.translatesAutoresizingMaskIntoConstraints = NO;
+    [btn addSubview:underline];
+
+    BOOL hasIcon = [iconView isKindOfClass:[UIImageView class]];
+    CGFloat iconSide = hasIcon ? 64 : 16;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [btn.heightAnchor constraintGreaterThanOrEqualToConstant:hasIcon ? 176 : 140],
+
+        [iconView.centerXAnchor constraintEqualToAnchor:btn.centerXAnchor],
+        [iconView.topAnchor constraintEqualToAnchor:btn.topAnchor constant:16],
+        [iconView.widthAnchor constraintEqualToConstant:iconSide],
+        [iconView.heightAnchor constraintEqualToConstant:iconSide],
+
+        [titleLabel.topAnchor constraintEqualToAnchor:iconView.bottomAnchor constant:12],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:btn.leadingAnchor constant:8],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:btn.trailingAnchor constant:-8],
+
+        [captionLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:6],
+        [captionLabel.leadingAnchor constraintEqualToAnchor:btn.leadingAnchor constant:10],
+        [captionLabel.trailingAnchor constraintEqualToAnchor:btn.trailingAnchor constant:-10],
+        [captionLabel.bottomAnchor constraintLessThanOrEqualToAnchor:underline.topAnchor constant:-12],
+
+        [underline.leadingAnchor constraintEqualToAnchor:btn.leadingAnchor],
+        [underline.trailingAnchor constraintEqualToAnchor:btn.trailingAnchor],
+        [underline.bottomAnchor constraintEqualToAnchor:btn.bottomAnchor],
+        [underline.heightAnchor constraintEqualToConstant:2],
+    ]];
+
+    return btn;
+}
+
+// Picker-wide entry point — caller indicates whether it wants the horizontal
+// (stacked) or vertical (row-with-chevron) layout.
+static UIButton* BuildRequestHelpOption(int choice, NSString* title, NSString* caption, UIColor* accent,
+                                         NSString* iconName, BOOL stacked) {
+    return stacked
+        ? BuildRequestHelpOptionStacked(choice, title, caption, accent, iconName)
+        : BuildRequestHelpOptionRow(choice, title, caption, accent, iconName);
+}
+
 // ─── C Bridge Functions ─────────────────────────────────────────
 
 extern "C" {
@@ -374,83 +516,115 @@ void Bugpunch_ShowRequestHelp(ReportOverlayChoiceCallback onChoice, ReportOverla
         if (!root) return;
 
         CGFloat pad = 24;
-        CGFloat cardW = 340;
+        // Decide layout once at build time. The responsive BPRequestHelpCard
+        // subclass will still re-toggle the axis on rotation, but this picks
+        // a sensible starting width so the card is proportioned correctly.
+        BOOL horizontal = root.bounds.size.width >= (540 + 48);
+        CGFloat cardW = horizontal ? 560 : 340;
 
-        // Backdrop — matches welcome card's black 0.6
+        // Backdrop — themed, tappable to cancel.
         sRequestHelpBackdrop = [[UIView alloc] initWithFrame:root.bounds];
-        sRequestHelpBackdrop.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
+        sRequestHelpBackdrop.backgroundColor = [BPTheme color:@"backdrop"
+            fallback:[[UIColor blackColor] colorWithAlphaComponent:0.6]];
         sRequestHelpBackdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [root addSubview:sRequestHelpBackdrop];
 
-        // Tap-outside-to-cancel — recognizer on backdrop; card cancels it via its own swallow view
         UITapGestureRecognizer *bgTap = [[UITapGestureRecognizer alloc]
             initWithTarget:[BPOverlayActions class] action:@selector(onRequestHelpBackdrop:)];
         [sRequestHelpBackdrop addGestureRecognizer:bgTap];
 
-        // Card
-        UIView *card = [[UIView alloc] init];
-        card.backgroundColor = [UIColor colorWithWhite:0.13 alpha:0.97];
-        card.layer.cornerRadius = 12;
+        // Card — BPRequestHelpCard re-axes its optionStack on bounds change.
+        BPRequestHelpCard *card = [[BPRequestHelpCard alloc] init];
+        card.backgroundColor = [BPTheme color:@"cardBackground"
+            fallback:[UIColor colorWithWhite:0.13 alpha:0.97]];
+        card.layer.cornerRadius = [BPTheme radius:@"cardRadius" fallback:12];
+        card.layer.borderWidth = 1;
+        card.layer.borderColor = [BPTheme color:@"cardBorder"
+            fallback:[UIColor colorWithWhite:0.28 alpha:1]].CGColor;
         card.translatesAutoresizingMaskIntoConstraints = NO;
-        // Swallow taps on card so the backdrop recognizer doesn't fire when
-        // the user taps on empty space inside the card.
+
         UITapGestureRecognizer *cardTap = [[UITapGestureRecognizer alloc] initWithTarget:nil action:NULL];
         cardTap.cancelsTouchesInView = YES;
         [card addGestureRecognizer:cardTap];
         [sRequestHelpBackdrop addSubview:card];
 
-        // Title
         UILabel *title = [[UILabel alloc] init];
-        title.text = @"What would you like to do?";
-        title.font = [UIFont boldSystemFontOfSize:20];
-        title.textColor = [UIColor whiteColor];
+        title.text = [BPStrings text:@"pickerTitle" fallback:@"What would you like to do?"];
+        title.font = [UIFont boldSystemFontOfSize:[BPTheme font:@"fontSizeTitle" fallback:20]];
+        title.textColor = [BPTheme color:@"textPrimary" fallback:[UIColor whiteColor]];
+        title.textAlignment = horizontal ? NSTextAlignmentCenter : NSTextAlignmentNatural;
         title.numberOfLines = 0;
         title.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:title];
 
-        // Subtitle
         UILabel *subtitle = [[UILabel alloc] init];
-        subtitle.text = @"Pick what fits — we'll only bother the dev team with what you send.";
-        subtitle.font = [UIFont systemFontOfSize:13];
-        subtitle.textColor = [UIColor colorWithWhite:0.72 alpha:1];
+        subtitle.text = [BPStrings text:@"pickerSubtitle"
+            fallback:@"Pick what fits — we'll only bother the dev team with what you send."];
+        subtitle.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeCaption" fallback:13]];
+        subtitle.textColor = [BPTheme color:@"textSecondary"
+            fallback:[UIColor colorWithWhite:0.72 alpha:1]];
+        subtitle.textAlignment = horizontal ? NSTextAlignmentCenter : NSTextAlignmentNatural;
         subtitle.numberOfLines = 0;
         subtitle.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:subtitle];
 
-        // Three options
-        UIButton *opt0 = BuildRequestHelpOption(0, @"Record a bug",
-            @"Capture a video + report a problem",
-            [UIColor colorWithRed:0.58 green:0.22 blue:0.22 alpha:1],
-            @"bugpunch-help-bug");
-        [card addSubview:opt0];
+        // Three options — stacked panels for horizontal, row-with-chevron for
+        // narrow. Bundled into a UIStackView so the BPRequestHelpCard can
+        // toggle the axis on rotation without rebuilding.
+        UIButton *opt0 = BuildRequestHelpOption(0,
+            [BPStrings text:@"pickerAskTitle" fallback:@"Ask for help"],
+            [BPStrings text:@"pickerAskCaption" fallback:@"Short question to the dev team"],
+            [BPTheme color:@"accentChat" fallback:[UIColor colorWithRed:0.20 green:0.38 blue:0.60 alpha:1]],
+            @"bugpunch-help-ask", horizontal);
+        UIButton *opt1 = BuildRequestHelpOption(1,
+            [BPStrings text:@"pickerBugTitle" fallback:@"Record a bug"],
+            [BPStrings text:@"pickerBugCaption" fallback:@"Capture a video + report a problem"],
+            [BPTheme color:@"accentBug" fallback:[UIColor colorWithRed:0.58 green:0.22 blue:0.22 alpha:1]],
+            @"bugpunch-help-bug", horizontal);
+        UIButton *opt2 = BuildRequestHelpOption(2,
+            [BPStrings text:@"pickerFeatureTitle" fallback:@"Request a feature"],
+            [BPStrings text:@"pickerFeatureCaption" fallback:@"Suggest / vote on improvements"],
+            [BPTheme color:@"accentFeedback" fallback:[UIColor colorWithRed:0.25 green:0.49 blue:0.30 alpha:1]],
+            @"bugpunch-help-feedback", horizontal);
 
-        UIButton *opt1 = BuildRequestHelpOption(1, @"Ask for help",
-            @"Short question to the dev team",
-            [UIColor colorWithRed:0.20 green:0.38 blue:0.60 alpha:1],
-            @"bugpunch-help-ask");
-        [card addSubview:opt1];
-
-        UIButton *opt2 = BuildRequestHelpOption(2, @"Send feedback",
-            @"Suggest / vote on features",
-            [UIColor colorWithRed:0.25 green:0.49 blue:0.30 alpha:1],
-            @"bugpunch-help-feedback");
-        [card addSubview:opt2];
+        UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[opt0, opt1, opt2]];
+        stack.axis = horizontal ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
+        stack.distribution = horizontal ? UIStackViewDistributionFillEqually : UIStackViewDistributionFill;
+        stack.alignment = UIStackViewAlignmentFill;
+        stack.spacing = horizontal ? 12 : 8;
+        stack.translatesAutoresizingMaskIntoConstraints = NO;
+        [card addSubview:stack];
+        card.optionStack = stack;
+        card.wasHorizontal = horizontal;
 
         // Cancel button
         UIButton *cancel = [UIButton buttonWithType:UIButtonTypeSystem];
-        [cancel setTitle:@"Cancel" forState:UIControlStateNormal];
-        [cancel setTitleColor:[UIColor colorWithWhite:0.6 alpha:1] forState:UIControlStateNormal];
-        cancel.titleLabel.font = [UIFont systemFontOfSize:14];
+        [cancel setTitle:[BPStrings text:@"pickerCancel" fallback:@"Cancel"]
+                forState:UIControlStateNormal];
+        [cancel setTitleColor:[BPTheme color:@"textMuted" fallback:[UIColor colorWithWhite:0.6 alpha:1]]
+                     forState:UIControlStateNormal];
+        cancel.titleLabel.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeBody" fallback:14]];
         cancel.translatesAutoresizingMaskIntoConstraints = NO;
         [cancel addTarget:[BPOverlayActions class] action:@selector(onRequestHelpCancel)
                  forControlEvents:UIControlEventTouchUpInside];
         [card addSubview:cancel];
 
-        // Layout
+        // Card width: prefer the horizontal 560 if we fit, otherwise fall
+        // back to the compact 340. We don't pin to a constant so rotation
+        // naturally lets the card resize (and the BPRequestHelpCard's
+        // layoutSubviews handler re-toggles axis when the bounds cross 540).
+        NSLayoutConstraint* maxWidth = [card.widthAnchor constraintLessThanOrEqualToConstant:cardW];
+        NSLayoutConstraint* preferredWidth = [card.widthAnchor constraintEqualToConstant:cardW];
+        preferredWidth.priority = UILayoutPriorityDefaultHigh;
+        NSLayoutConstraint* sideMargin = [card.leadingAnchor
+            constraintGreaterThanOrEqualToAnchor:sRequestHelpBackdrop.leadingAnchor constant:24];
+        NSLayoutConstraint* sideMargin2 = [card.trailingAnchor
+            constraintLessThanOrEqualToAnchor:sRequestHelpBackdrop.trailingAnchor constant:-24];
+
         [NSLayoutConstraint activateConstraints:@[
             [card.centerXAnchor constraintEqualToAnchor:sRequestHelpBackdrop.centerXAnchor],
             [card.centerYAnchor constraintEqualToAnchor:sRequestHelpBackdrop.centerYAnchor],
-            [card.widthAnchor constraintEqualToConstant:cardW],
+            maxWidth, preferredWidth, sideMargin, sideMargin2,
 
             [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:pad],
             [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
@@ -460,19 +634,11 @@ void Bugpunch_ShowRequestHelp(ReportOverlayChoiceCallback onChoice, ReportOverla
             [subtitle.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
             [subtitle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
 
-            [opt0.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:16],
-            [opt0.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
-            [opt0.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
+            [stack.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:16],
+            [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
+            [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
 
-            [opt1.topAnchor constraintEqualToAnchor:opt0.bottomAnchor constant:8],
-            [opt1.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
-            [opt1.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
-
-            [opt2.topAnchor constraintEqualToAnchor:opt1.bottomAnchor constant:8],
-            [opt2.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:pad],
-            [opt2.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-pad],
-
-            [cancel.topAnchor constraintEqualToAnchor:opt2.bottomAnchor constant:12],
+            [cancel.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:12],
             [cancel.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
             [cancel.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-(pad - 4)],
         ]];
@@ -499,16 +665,21 @@ void Bugpunch_ShowReportWelcome(ReportOverlayCallback onConfirm, ReportOverlayCa
         CGFloat pad = 24, padSmall = 12;
         CGFloat cardW = 300;
 
-        // Backdrop
+        // Backdrop — themed dim.
         sWelcomeBackdrop = [[UIView alloc] initWithFrame:root.bounds];
-        sWelcomeBackdrop.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
+        sWelcomeBackdrop.backgroundColor = [BPTheme color:@"backdrop"
+            fallback:[[UIColor blackColor] colorWithAlphaComponent:0.6]];
         sWelcomeBackdrop.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [root addSubview:sWelcomeBackdrop];
 
         // Card
         UIView *card = [[UIView alloc] init];
-        card.backgroundColor = [UIColor colorWithWhite:0.13 alpha:0.94];
-        card.layer.cornerRadius = 16;
+        card.backgroundColor = [BPTheme color:@"cardBackground"
+            fallback:[UIColor colorWithWhite:0.13 alpha:0.94]];
+        card.layer.cornerRadius = [BPTheme radius:@"cardRadius" fallback:16];
+        card.layer.borderWidth = 1;
+        card.layer.borderColor = [BPTheme color:@"cardBorder"
+            fallback:[UIColor colorWithWhite:0.28 alpha:1]].CGColor;
         card.translatesAutoresizingMaskIntoConstraints = NO;
         [sWelcomeBackdrop addSubview:card];
 
@@ -538,29 +709,33 @@ void Bugpunch_ShowReportWelcome(ReportOverlayCallback onConfirm, ReportOverlayCa
 
         // Title
         UILabel *title = [[UILabel alloc] init];
-        title.text = @"Report a Bug";
-        title.font = [UIFont boldSystemFontOfSize:20];
-        title.textColor = [UIColor whiteColor];
+        title.text = [BPStrings text:@"welcomeTitle" fallback:@"Report a Bug"];
+        title.font = [UIFont boldSystemFontOfSize:[BPTheme font:@"fontSizeTitle" fallback:20]];
+        title.textColor = [BPTheme color:@"textPrimary" fallback:[UIColor whiteColor]];
         title.textAlignment = NSTextAlignmentCenter;
         title.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:title];
 
         // Body
         UILabel *body = [[UILabel alloc] init];
-        body.text = @"We'll record your screen while you reproduce the issue.\n\nWhen you're ready, tap the report button to send us the details.";
-        body.font = [UIFont systemFontOfSize:14];
-        body.textColor = [UIColor colorWithWhite:0.73 alpha:1];
+        body.text = [BPStrings text:@"welcomeBody"
+            fallback:@"We'll record your screen while you reproduce the issue.\n\nWhen you're ready, tap the report button to send us the details."];
+        body.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeBody" fallback:14]];
+        body.textColor = [BPTheme color:@"textSecondary" fallback:[UIColor colorWithWhite:0.73 alpha:1]];
         body.textAlignment = NSTextAlignmentCenter;
         body.numberOfLines = 0;
         body.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:body];
 
-        // "Got it" button
+        // "Got it" button — primary accent
         UIButton *gotItBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        [gotItBtn setTitle:@"Got it" forState:UIControlStateNormal];
-        [gotItBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        [gotItBtn setTitle:[BPStrings text:@"welcomeConfirm" fallback:@"Got it"]
+                  forState:UIControlStateNormal];
+        [gotItBtn setTitleColor:[BPTheme color:@"textPrimary" fallback:[UIColor whiteColor]]
+                       forState:UIControlStateNormal];
         gotItBtn.titleLabel.font = [UIFont boldSystemFontOfSize:16];
-        gotItBtn.backgroundColor = [UIColor colorWithRed:0.18 green:0.49 blue:0.20 alpha:1];
+        gotItBtn.backgroundColor = [BPTheme color:@"accentPrimary"
+            fallback:[UIColor colorWithRed:0.18 green:0.49 blue:0.20 alpha:1]];
         gotItBtn.layer.cornerRadius = 8;
         gotItBtn.translatesAutoresizingMaskIntoConstraints = NO;
         [gotItBtn addTarget:[BPOverlayActions class] action:@selector(onWelcomeConfirm) forControlEvents:UIControlEventTouchUpInside];
@@ -568,9 +743,11 @@ void Bugpunch_ShowReportWelcome(ReportOverlayCallback onConfirm, ReportOverlayCa
 
         // Cancel link
         UIButton *cancelBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        [cancelBtn setTitle:@"Cancel" forState:UIControlStateNormal];
-        [cancelBtn setTitleColor:[UIColor colorWithWhite:0.53 alpha:1] forState:UIControlStateNormal];
-        cancelBtn.titleLabel.font = [UIFont systemFontOfSize:14];
+        [cancelBtn setTitle:[BPStrings text:@"welcomeCancel" fallback:@"Cancel"]
+                   forState:UIControlStateNormal];
+        [cancelBtn setTitleColor:[BPTheme color:@"textMuted" fallback:[UIColor colorWithWhite:0.53 alpha:1]]
+                        forState:UIControlStateNormal];
+        cancelBtn.titleLabel.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeBody" fallback:14]];
         cancelBtn.translatesAutoresizingMaskIntoConstraints = NO;
         [cancelBtn addTarget:[BPOverlayActions class] action:@selector(onWelcomeCancel) forControlEvents:UIControlEventTouchUpInside];
         [card addSubview:cancelBtn];
@@ -711,7 +888,7 @@ void Bugpunch_ShowRecordingOverlay(ReportOverlayCallback onReportTapped) {
         sTimerLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, recordY + btnSize + 4, contentW, 16)];
         sTimerLabel.text = @"0:00";
         sTimerLabel.font = [UIFont boldSystemFontOfSize:11];
-        sTimerLabel.textColor = [UIColor whiteColor];
+        sTimerLabel.textColor = [BPTheme color:@"textPrimary" fallback:[UIColor whiteColor]];
         sTimerLabel.textAlignment = NSTextAlignmentCenter;
         sTimerLabel.layer.shadowColor = [UIColor blackColor].CGColor;
         sTimerLabel.layer.shadowOffset = CGSizeMake(1, 1);

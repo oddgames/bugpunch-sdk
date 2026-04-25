@@ -15,9 +15,18 @@
 extern "C" {
 #endif
 void BPDirectives_OnUploadResponse(const char* url, const char* responseBody);
+// Defined in BugpunchSdkErrorOverlay.mm — surfaces SDK self-errors on the
+// on-screen diagnostic banner so swallowed failures don't leave the dev/QA in
+// the dark.
+void Bugpunch_ReportSdkError(const char* source, const char* message, const char* stack);
 #ifdef __cplusplus
 }
 #endif
+
+static inline void BPReportUploaderError(NSString* op, NSError* err) {
+    NSString* msg = [NSString stringWithFormat:@"%@: %@", op, err ? err.localizedDescription : @"(no error info)"];
+    Bugpunch_ReportSdkError("BugpunchUploader", msg.UTF8String, "");
+}
 
 static NSString* const kQueueDir = @"bugpunch_uploads";
 static const NSInteger kMaxAttempts = 10;
@@ -415,6 +424,7 @@ void Bugpunch_EnqueueReportWithContext(const char* url, const char* apiKey,
         NSData* data = [NSJSONSerialization dataWithJSONObject:m options:0 error:&err];
         if (!data) {
             NSLog(@"[BugpunchUploader] manifest serialize failed: %@", err);
+            BPReportUploaderError(@"manifest serialize", err);
             return;
         }
         NSString* dir = BPQueueDirPath();
@@ -422,6 +432,7 @@ void Bugpunch_EnqueueReportWithContext(const char* url, const char* apiKey,
             [NSString stringWithFormat:@"%@.upload.json", [[NSUUID UUID] UUIDString]]];
         if (![data writeToFile:path atomically:YES]) {
             NSLog(@"[BugpunchUploader] manifest write failed: %@", path);
+            BPReportUploaderError([NSString stringWithFormat:@"manifest write failed: %@", path], nil);
             return;
         }
         BPDrainQueueSync();
@@ -508,6 +519,7 @@ void Bugpunch_EnqueueReportFull(const char* url, const char* apiKey,
         NSData* data = [NSJSONSerialization dataWithJSONObject:m options:0 error:&err];
         if (!data) {
             NSLog(@"[BugpunchUploader] manifest serialize failed: %@", err);
+            BPReportUploaderError(@"manifest serialize", err);
             return;
         }
         NSString* dir = BPQueueDirPath();
@@ -515,6 +527,7 @@ void Bugpunch_EnqueueReportFull(const char* url, const char* apiKey,
             [NSString stringWithFormat:@"%@.upload.json", [[NSUUID UUID] UUIDString]]];
         if (![data writeToFile:path atomically:YES]) {
             NSLog(@"[BugpunchUploader] manifest write failed: %@", path);
+            BPReportUploaderError([NSString stringWithFormat:@"manifest write failed: %@", path], nil);
             return;
         }
         BPDrainQueueSync();
@@ -592,12 +605,13 @@ void Bugpunch_EnqueuePreflight(const char* preflightUrlC, const char* enrichUrlT
 
         NSError* err = nil;
         NSData* data = [NSJSONSerialization dataWithJSONObject:m options:0 error:&err];
-        if (!data) { NSLog(@"[BugpunchUploader] preflight serialize failed: %@", err); return; }
+        if (!data) { NSLog(@"[BugpunchUploader] preflight serialize failed: %@", err); BPReportUploaderError(@"preflight serialize", err); return; }
         NSString* dir = BPQueueDirPath();
         NSString* path = [dir stringByAppendingPathComponent:
             [NSString stringWithFormat:@"%@.upload.json", [[NSUUID UUID] UUIDString]]];
         if (![data writeToFile:path atomically:YES]) {
             NSLog(@"[BugpunchUploader] preflight manifest write failed: %@", path);
+            BPReportUploaderError([NSString stringWithFormat:@"preflight manifest write: %@", path], nil);
             return;
         }
         BPDrainQueueSync();
@@ -622,7 +636,7 @@ void BugpunchUploader_EnqueueJson(const char* urlC, const char* apiKeyC,
 
         NSError* err = nil;
         NSData* data = [NSJSONSerialization dataWithJSONObject:m options:0 error:&err];
-        if (!data) { NSLog(@"[BugpunchUploader] json manifest serialize failed: %@", err); return; }
+        if (!data) { NSLog(@"[BugpunchUploader] json manifest serialize failed: %@", err); BPReportUploaderError(@"json manifest serialize", err); return; }
         NSString* dir = BPQueueDirPath();
         NSString* path = [dir stringByAppendingPathComponent:
             [NSString stringWithFormat:@"%@.upload.json", [[NSUUID UUID] UUIDString]]];

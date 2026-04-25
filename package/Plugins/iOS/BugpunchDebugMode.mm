@@ -16,6 +16,7 @@
 
 // Symbols from sibling files
 extern "C" {
+    void Bugpunch_SetSdkErrorOverlay(int enabled);
     bool Bugpunch_InstallCrashHandlers(const char* crashDir);
     void Bugpunch_SetCrashMetadata(const char* appVersion, const char* bundleId,
         const char* unityVersion, const char* deviceModel,
@@ -535,6 +536,16 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
     // resolves its labels through BPStrings text:fallback: so a missing
     // / empty block falls back to the caller's hardcoded English.
     [BPStrings applyFromJson:cfg[@"strings"]];
+
+    // SDK self-diagnostic banner — visible on-screen pill that surfaces
+    // internal SDK failures so the dev/QA isn't in the dark when the SDK
+    // itself swallows an error. Default ON; disabled via
+    // BugpunchConfig.showSdkErrorOverlay or runtime SetSdkErrorOverlay.
+    {
+        id flag = cfg[@"sdkErrorOverlay"];
+        BOOL on = (flag == nil) ? YES : [flag boolValue];
+        Bugpunch_SetSdkErrorOverlay(on ? 1 : 0);
+    }
 
     NSDictionary* metaDict = cfg[@"metadata"];
     if ([metaDict isKindOfClass:[NSDictionary class]]) {

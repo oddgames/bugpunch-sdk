@@ -14,9 +14,18 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
     /// controller via <see cref="IOSDialog.ShowRequestHelp"/>) so the picker
     /// matches the rest of the SDK's native look. In the Editor and on
     /// standalone builds the UI Toolkit fallback below is used instead.
+    ///
+    /// Layout: on wide containers (&gt;= 540px) the three options render as a
+    /// horizontal row of equal-width cards; on narrow containers the row
+    /// collapses to a vertical stack via a <see cref="GeometryChangedEvent"/>
+    /// callback that swaps the container's flex direction.
     /// </summary>
     public static class BugpunchRequestHelpPicker
     {
+        // Breakpoint below which the 3 option cards stack vertically instead
+        // of sitting side-by-side. 540px covers most phone portrait widths.
+        const float NarrowBreakpoint = 540f;
+
         // ─── Public entry point ──────────────────────────────────────────
 
         /// <summary>
@@ -49,9 +58,9 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         {
             switch (choice)
             {
-                case 0: OnRecordBug(); break;
-                case 1: OnAskForHelp(); break;
-                case 2: OnSendFeedback(); break;
+                case 0: OnAskForHelp(); break;
+                case 1: OnRecordBug(); break;
+                case 2: OnRequestFeature(); break;
                 default:
                     Debug.LogWarning($"[Bugpunch.RequestHelp] Unknown picker choice: {choice}");
                     break;
@@ -79,7 +88,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             dialog.ShowChatBoard();
         }
 
-        static void OnSendFeedback()
+        static void OnRequestFeature()
         {
             BugpunchFeedbackBoard.Show();
         }
@@ -139,137 +148,187 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         static void BuildCard(VisualElement card, Action<int> pick, Action cancel)
         {
+            var theme = BugpunchTheme.Current;
+            var strings = BugpunchStrings.Current;
+
             // Title
-            var title = new Label("What would you like to do?");
-            title.style.color = Color.white;
-            title.style.fontSize = 20;
+            var title = new Label(strings.Text("pickerTitle", "What would you like to do?"));
+            title.style.color = theme.textPrimary;
+            title.style.fontSize = theme.fontSizeTitle;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
             title.style.marginBottom = 6;
             title.style.whiteSpace = WhiteSpace.Normal;
             card.Add(title);
 
-            var subtitle = new Label("Pick what fits — we'll only bother the dev team with what you send.");
-            subtitle.style.color = new Color(0.72f, 0.72f, 0.72f, 1);
-            subtitle.style.fontSize = 13;
+            var subtitle = new Label(strings.Text("pickerSubtitle",
+                "Pick what fits — we'll only bother the dev team with what you send."));
+            subtitle.style.color = theme.textSecondary;
+            subtitle.style.fontSize = theme.fontSizeCaption + 1; // 13px — a touch above caption
             subtitle.style.marginBottom = 16;
             subtitle.style.whiteSpace = WhiteSpace.Normal;
             card.Add(subtitle);
 
-            card.Add(CreatePickerButton(
-                "Record a bug",
-                "Capture a video + report a problem",
-                new Color(0.58f, 0.22f, 0.22f, 1),
-                "bugpunch-help-bug",
-                () => pick(0)));
+            // Horizontal row of 3 equal-width option cards. GeometryChangedEvent
+            // flips to Column when the container becomes narrower than the
+            // breakpoint so the same 3 children reflow without rebuild.
+            var options = new VisualElement();
+            options.style.flexDirection = FlexDirection.Row;
+            options.style.flexWrap = Wrap.NoWrap;
+            options.style.alignItems = Align.Stretch;
+            options.style.justifyContent = Justify.Center;
 
-            card.Add(CreatePickerButton(
-                "Ask for help",
-                "Short question to the dev team",
-                new Color(0.20f, 0.38f, 0.60f, 1),
-                "bugpunch-help-ask",
-                () => pick(1)));
+            var askCard      = CreateOptionCard(
+                strings.Text("pickerAskTitle",     "Ask for help"),
+                strings.Text("pickerAskCaption",   "Short question to the dev team"),
+                theme.accentChat,     "ask",      () => pick(0), theme);
+            var bugCard      = CreateOptionCard(
+                strings.Text("pickerBugTitle",     "Record a bug"),
+                strings.Text("pickerBugCaption",   "Capture a video + report a problem"),
+                theme.accentBug,      "bug",      () => pick(1), theme);
+            var featureCard  = CreateOptionCard(
+                strings.Text("pickerFeatureTitle",   "Request a feature"),
+                strings.Text("pickerFeatureCaption", "Suggest / vote on improvements"),
+                theme.accentFeedback, "feedback", () => pick(2), theme);
 
-            card.Add(CreatePickerButton(
-                "Send feedback",
-                "Suggest / vote on features",
-                new Color(0.25f, 0.49f, 0.30f, 1),
-                "bugpunch-help-feedback",
-                () => pick(2)));
+            options.Add(askCard);
+            options.Add(bugCard);
+            options.Add(featureCard);
+            card.Add(options);
+
+            // Breakpoint reflow: Row ↔ Column driven by the container's
+            // resolved width. We also swap each option's width/margin between
+            // the two modes so a column stack doesn't leave right-side gaps.
+            options.RegisterCallback<GeometryChangedEvent>(evt =>
+            {
+                ApplyPickerLayout(options, evt.newRect.width);
+            });
+            // Prime the layout — GeometryChangedEvent won't fire on an
+            // element with zero initial width reliably across editors.
+            options.schedule.Execute(() => ApplyPickerLayout(options, options.resolvedStyle.width)).StartingIn(16);
 
             // Close link
-            var closeBtn = new Button(() => cancel()) { text = "Cancel" };
+            var closeBtn = new Button(() => cancel()) { text = strings.Text("pickerCancel", "Cancel") };
             closeBtn.style.backgroundColor = Color.clear;
-            closeBtn.style.color = new Color(0.6f, 0.6f, 0.6f, 1);
-            closeBtn.style.marginTop = 12;
+            closeBtn.style.color = theme.textMuted;
+            closeBtn.style.marginTop = 14;
             closeBtn.style.paddingTop = 6; closeBtn.style.paddingBottom = 6;
             closeBtn.style.borderTopWidth = closeBtn.style.borderBottomWidth =
                 closeBtn.style.borderLeftWidth = closeBtn.style.borderRightWidth = 0;
-            closeBtn.style.fontSize = 13;
+            closeBtn.style.fontSize = theme.fontSizeCaption + 1;
             closeBtn.style.alignSelf = Align.Center;
             card.Add(closeBtn);
         }
 
-        static Button CreatePickerButton(string title, string caption, Color accent, string iconResource, Action onClick)
+        static void ApplyPickerLayout(VisualElement container, float width)
         {
-            var btn = new Button(onClick);
-            btn.style.flexDirection = FlexDirection.Row;
-            btn.style.alignItems = Align.Center;
-            btn.style.backgroundColor = new Color(0.17f, 0.17f, 0.17f, 1);
-            btn.style.borderTopColor = btn.style.borderBottomColor =
-                btn.style.borderLeftColor = btn.style.borderRightColor = new Color(0.28f, 0.28f, 0.28f, 1);
-            btn.style.borderTopWidth = btn.style.borderBottomWidth =
-                btn.style.borderLeftWidth = btn.style.borderRightWidth = 1;
-            btn.style.borderTopLeftRadius = btn.style.borderTopRightRadius =
-                btn.style.borderBottomLeftRadius = btn.style.borderBottomRightRadius = 8;
-            btn.style.paddingTop = 12; btn.style.paddingBottom = 12;
-            btn.style.paddingLeft = 14; btn.style.paddingRight = 14;
-            btn.style.marginTop = 0; btn.style.marginBottom = 8;
-            btn.style.marginLeft = 0; btn.style.marginRight = 0;
+            if (float.IsNaN(width) || width <= 0) return;
+            bool narrow = width < NarrowBreakpoint;
+            container.style.flexDirection = narrow ? FlexDirection.Column : FlexDirection.Row;
 
-            // Icon on the left. Falls back to the coloured accent dot if the
-            // Resources texture is missing (unusual, but avoids a broken row
-            // in downstream projects that strip the PNGs).
+            for (int i = 0; i < container.childCount; i++)
+            {
+                var c = container[i];
+                if (narrow)
+                {
+                    c.style.width = Length.Percent(100);
+                    c.style.marginLeft = 0;
+                    c.style.marginRight = 0;
+                    c.style.marginTop = i == 0 ? 0 : 10;
+                    c.style.marginBottom = 0;
+                }
+                else
+                {
+                    // Three equal-width columns with a 12px gap between them.
+                    c.style.width = Length.Percent(100f / 3f);
+                    c.style.marginLeft = i == 0 ? 0 : 6;
+                    c.style.marginRight = i == container.childCount - 1 ? 0 : 6;
+                    c.style.marginTop = 0;
+                    c.style.marginBottom = 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// One option card: centred 96px icon, title, caption, accent bottom
+        /// border. Entire card is tap-to-pick.
+        /// </summary>
+        static VisualElement CreateOptionCard(string title, string caption, Color accent, string iconSlot, Action onClick, BugpunchTheme theme)
+        {
+            var card = new VisualElement();
+            card.style.backgroundColor = theme.cardBackground;
+            card.style.borderTopColor = card.style.borderBottomColor =
+                card.style.borderLeftColor = card.style.borderRightColor = theme.cardBorder;
+            card.style.borderTopWidth = card.style.borderLeftWidth = card.style.borderRightWidth = 1;
+            // Accent bottom border (2px) — signals the follow-up action colour.
+            card.style.borderBottomWidth = 2;
+            card.style.borderBottomColor = accent;
+            card.style.borderTopLeftRadius = card.style.borderTopRightRadius =
+                card.style.borderBottomLeftRadius = card.style.borderBottomRightRadius = theme.cardRadius;
+            card.style.paddingTop = 16; card.style.paddingBottom = 16;
+            card.style.paddingLeft = 12; card.style.paddingRight = 12;
+            card.style.minHeight = 200;
+            card.style.alignItems = Align.Center;
+            card.style.justifyContent = Justify.FlexStart;
+            card.style.flexDirection = FlexDirection.Column;
+
+            // Whole card is the tap target.
+            card.RegisterCallback<PointerDownEvent>(e =>
+            {
+                onClick?.Invoke();
+                e.StopPropagation();
+            });
+
+            // Icon — 96px square, centred. Uses the theme's override texture
+            // when set, else the packaged Resources texture. Falls back to an
+            // accent dot if everything's missing (same pattern as the old picker).
             var icon = new VisualElement();
-            var tex = Resources.Load<Texture2D>(iconResource);
+            var tex = theme.ResolveIcon(iconSlot);
             if (tex != null)
             {
-                icon.style.width = 48; icon.style.height = 48;
+                icon.style.width = 96; icon.style.height = 96;
                 icon.style.backgroundImage = new StyleBackground(tex);
-                icon.style.marginRight = 12;
             }
             else
             {
-                icon.style.width = 10; icon.style.height = 10;
+                icon.style.width = 48; icon.style.height = 48;
                 icon.style.borderTopLeftRadius = icon.style.borderTopRightRadius =
-                    icon.style.borderBottomLeftRadius = icon.style.borderBottomRightRadius = 5;
+                    icon.style.borderBottomLeftRadius = icon.style.borderBottomRightRadius = 24;
                 icon.style.backgroundColor = accent;
-                icon.style.marginRight = 12;
             }
+            icon.style.marginBottom = 10;
             icon.pickingMode = PickingMode.Ignore;
-            btn.Add(icon);
-
-            var textCol = new VisualElement();
-            textCol.style.flexGrow = 1;
-            textCol.style.flexShrink = 1;
-            textCol.style.flexDirection = FlexDirection.Column;
-            textCol.pickingMode = PickingMode.Ignore;
+            card.Add(icon);
 
             var titleLabel = new Label(title);
-            titleLabel.style.color = Color.white;
-            titleLabel.style.fontSize = 15;
+            titleLabel.style.color = theme.textPrimary;
+            titleLabel.style.fontSize = 18;
             titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            titleLabel.style.marginBottom = 2;
+            titleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            titleLabel.style.whiteSpace = WhiteSpace.Normal;
+            titleLabel.style.marginBottom = 4;
             titleLabel.pickingMode = PickingMode.Ignore;
-            textCol.Add(titleLabel);
+            card.Add(titleLabel);
 
             var captionLabel = new Label(caption);
-            captionLabel.style.color = new Color(0.7f, 0.7f, 0.7f, 1);
-            captionLabel.style.fontSize = 12;
+            captionLabel.style.color = theme.textSecondary;
+            captionLabel.style.fontSize = 13;
             captionLabel.style.whiteSpace = WhiteSpace.Normal;
+            captionLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            captionLabel.style.maxWidth = Length.Percent(100);
             captionLabel.pickingMode = PickingMode.Ignore;
-            textCol.Add(captionLabel);
+            card.Add(captionLabel);
 
-            btn.Add(textCol);
-
-            // Right chevron
-            var chev = new Label(">");
-            chev.style.color = new Color(0.55f, 0.55f, 0.55f, 1);
-            chev.style.fontSize = 14;
-            chev.style.marginLeft = 8;
-            chev.style.unityFontStyleAndWeight = FontStyle.Bold;
-            chev.pickingMode = PickingMode.Ignore;
-            btn.Add(chev);
-
-            return btn;
+            return card;
         }
 
         static VisualElement CreateBackdrop(Action onClickOutside)
         {
+            var theme = BugpunchTheme.Current;
             var backdrop = new VisualElement();
             backdrop.style.position = Position.Absolute;
             backdrop.style.left = 0; backdrop.style.top = 0;
             backdrop.style.right = 0; backdrop.style.bottom = 0;
-            backdrop.style.backgroundColor = new Color(0, 0, 0, 0.65f);
+            backdrop.style.backgroundColor = theme.backdrop;
             backdrop.style.alignItems = Align.Center;
             backdrop.style.justifyContent = Justify.Center;
 
@@ -282,14 +341,22 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         static VisualElement CreateCard()
         {
+            var theme = BugpunchTheme.Current;
             var card = new VisualElement();
-            card.style.backgroundColor = new Color(0.13f, 0.13f, 0.13f, 0.97f);
+            card.style.backgroundColor = theme.cardBackground;
+            card.style.borderTopColor = card.style.borderBottomColor =
+                card.style.borderLeftColor = card.style.borderRightColor = theme.cardBorder;
+            card.style.borderTopWidth = card.style.borderBottomWidth =
+                card.style.borderLeftWidth = card.style.borderRightWidth = 1;
             card.style.borderTopLeftRadius = card.style.borderTopRightRadius =
-                card.style.borderBottomLeftRadius = card.style.borderBottomRightRadius = 12;
+                card.style.borderBottomLeftRadius = card.style.borderBottomRightRadius = theme.cardRadius;
             card.style.paddingTop = 24; card.style.paddingBottom = 20;
             card.style.paddingLeft = 24; card.style.paddingRight = 24;
-            card.style.maxWidth = 420;
+            // Wider than the old stack-of-rows layout so three cards fit
+            // side-by-side comfortably without squashing captions.
+            card.style.maxWidth = 640;
             card.style.minWidth = 320;
+            card.style.width = Length.Percent(92);
             card.RegisterCallback<PointerDownEvent>(e => e.StopPropagation());
             return card;
         }

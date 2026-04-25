@@ -47,7 +47,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
                 s_started = cls.CallStatic<bool>("start", activity, json);
             }
-            catch (Exception e) { Debug.LogError($"[Bugpunch.BugpunchNative] Android start failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.Start", e); }
             return s_started;
 #elif UNITY_IOS
             try
@@ -55,7 +55,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 s_started = Bugpunch_StartDebugMode(json);
                 if (s_started) Bugpunch_StartTunnel(json);
             }
-            catch (Exception e) { Debug.LogError($"[Bugpunch.BugpunchNative] iOS start failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.Start", e); }
             return s_started;
 #else
             s_started = true;
@@ -80,10 +80,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportingService");
                 cls.CallStatic("reportBug", type ?? "bug", title ?? "", description ?? "", extraJson ?? "");
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] reportBug failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.ReportBug", e); }
 #elif UNITY_IOS
             try { Bugpunch_ReportBug(type ?? "bug", title ?? "", description ?? "", extraJson ?? ""); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] reportBug failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.ReportBug", e); }
 #endif
         }
 
@@ -100,6 +100,79 @@ namespace ODDGames.Bugpunch.DeviceConnect
             catch { }
 #elif UNITY_IOS
             try { Bugpunch_SetCustomData(key, value); } catch { }
+#endif
+        }
+
+        // ── SDK self-diagnostic sink ──
+        // Routes internal SDK errors (silent catches that would otherwise just
+        // log) to the native overlay banner. Re-entrant calls are dropped via
+        // [ThreadStatic] guard — if reporting an SDK error itself fails we
+        // can't recurse into another error report.
+
+        [ThreadStatic] static bool t_inSdkError;
+
+        /// <summary>
+        /// Internal SDK self-diagnostic. Routes to a native banner that surfaces
+        /// the error on screen plus prints to the Unity console. Always safe to
+        /// call (no init required, never throws). Source is a short subsystem
+        /// label like <c>"BugpunchClient"</c>; <paramref name="message"/> is a
+        /// short human-readable description; <paramref name="stackTrace"/> is
+        /// optional and shown when the user taps the banner to expand it.
+        /// </summary>
+        public static void ReportSdkError(string source, string message, string stackTrace = null)
+        {
+            if (t_inSdkError) return;
+            t_inSdkError = true;
+            try
+            {
+                var src = string.IsNullOrEmpty(source) ? "Bugpunch" : source;
+                var msg = message ?? "";
+                Debug.LogError($"[Bugpunch.{src}] {msg}");
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+                try
+                {
+                    using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
+                    cls.CallStatic("reportSdkError", src, msg, stackTrace ?? "");
+                }
+                catch { /* native may not be loaded yet — already logged above */ }
+#elif UNITY_IOS
+                try { Bugpunch_ReportSdkError(src, msg, stackTrace ?? ""); }
+                catch { /* native may not be loaded yet — already logged above */ }
+#endif
+            }
+            catch { /* never throw out of the sink */ }
+            finally { t_inSdkError = false; }
+        }
+
+        /// <summary>
+        /// Convenience overload — pulls type + message + stack from an Exception.
+        /// </summary>
+        public static void ReportSdkError(string source, Exception ex)
+        {
+            if (ex == null) return;
+            var msg = ex.GetType().Name + ": " + (ex.Message ?? "");
+            ReportSdkError(source, msg, ex.StackTrace);
+        }
+
+        /// <summary>
+        /// Toggle the SDK error banner at runtime. Useful for hiding it during
+        /// player-facing demo flows without disabling collection. Errors still
+        /// log to the Unity console regardless.
+        /// </summary>
+        public static void SetSdkErrorOverlay(bool enabled)
+        {
+            if (!s_started) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
+                cls.CallStatic("setSdkErrorOverlay", enabled);
+            }
+            catch { }
+#elif UNITY_IOS
+            try { Bugpunch_SetSdkErrorOverlay(enabled ? 1 : 0); } catch { }
 #endif
         }
 
@@ -191,10 +264,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
                 cls.CallStatic("sendResponse", responseJson);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] TunnelSendResponse failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.TunnelSendResponse", e); }
 #elif UNITY_IOS
             try { Bugpunch_TunnelSendResponse(responseJson); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] TunnelSendResponse failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.TunnelSendResponse", e); }
 #endif
         }
 
@@ -269,10 +342,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchDebugMode");
                 cls.CallStatic("enter", activity, skipConsent);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] enterDebugMode failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.EnterDebugMode", e); }
 #elif UNITY_IOS
             try { Bugpunch_EnterDebugMode(skipConsent ? 1 : 0); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] enterDebugMode failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.EnterDebugMode", e); }
 #endif
         }
 
@@ -342,10 +415,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 // AndroidJavaObject.Call marshals the byte[] via JNI automatically.
                 inst.Call<bool>("queueFrame", nv12, ptsUs);
             }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[Bugpunch.BugpunchNative] QueueVideoFrame failed: {e.Message}");
-            }
+            catch (Exception e) { ReportSdkError("BugpunchNative.QueueVideoFrame", e); }
 #endif
         }
 
@@ -359,10 +429,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportingService");
                 cls.CallStatic("addTrace", label, tagsJson);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] Trace failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.Trace", e); }
 #elif UNITY_IOS
             try { Bugpunch_Trace(label, tagsJson); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] Trace failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.Trace", e); }
 #endif
         }
 
@@ -376,10 +446,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportingService");
                 cls.CallStatic("addTraceScreenshot", label, tagsJson);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] TraceScreenshot failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.TraceScreenshot", e); }
 #elif UNITY_IOS
             try { Bugpunch_TraceScreenshot(label, tagsJson); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] TraceScreenshot failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.TraceScreenshot", e); }
 #endif
         }
 
@@ -414,10 +484,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
                 cls.CallStatic("trackEvent", name, propertiesJson);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] TrackEvent failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.TrackEvent", e); }
 #elif UNITY_IOS
             try { Bugpunch_TrackEvent(name, propertiesJson); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] TrackEvent failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.TrackEvent", e); }
 #endif
         }
 
@@ -540,10 +610,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
                 cls.CallStatic("postDirectiveResult", directiveId, resultJson ?? "");
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] PostDirectiveResult failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.PostDirectiveResult", e); }
 #elif UNITY_IOS
             try { Bugpunch_PostDirectiveResult(directiveId, resultJson ?? ""); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] PostDirectiveResult failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.PostDirectiveResult", e); }
 #endif
         }
 
@@ -577,10 +647,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPoller");
                 cls.CallStatic("start", activity, perm, interval);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] StartPoll failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.StartPoll", e); }
 #elif UNITY_IOS
             try { Bugpunch_StartPoll(perm, interval); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] StartPoll failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.StartPoll", e); }
 #endif
         }
 
@@ -616,10 +686,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 cls.CallStatic("postScriptResult", scheduledScriptId, output ?? "",
                     errors ?? "", success, durationMs);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] PostScriptResult failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.PostScriptResult", e); }
 #elif UNITY_IOS
             try { Bugpunch_PostScriptResult(scheduledScriptId, output ?? "", errors ?? "", success, durationMs); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] PostScriptResult failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.PostScriptResult", e); }
 #endif
         }
 
@@ -639,11 +709,85 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchDirectives");
                 cls.CallStatic("onPollDirectives", pendingDirectivesJson);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] ProcessPollDirectives failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.ProcessPollDirectives", e); }
 #elif UNITY_IOS
             try { BPDirectives_OnPollDirectives(pendingDirectivesJson); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] ProcessPollDirectives failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.ProcessPollDirectives", e); }
 #endif
+        }
+
+        /// <summary>
+        /// Launch the platform-native image picker. The callback is invoked
+        /// with the absolute path of the picked file on disk, or null/empty
+        /// if the user cancelled. Callback is dispatched on the Unity main
+        /// thread by whichever native surface routes the UnitySendMessage.
+        ///
+        /// Android: uses <c>Intent.ACTION_PICK</c> with <c>image/*</c> via
+        /// <c>BugpunchImagePicker.java</c>, which copies the chosen URI's
+        /// bytes into the app's cache dir and sends the path back through
+        /// <c>UnitySendMessage("BugpunchReportCallback", "OnImagePicked",
+        /// path)</c>.
+        /// iOS: <c>Bugpunch_PickImage</c> wraps <c>PHPickerViewController</c>
+        /// and writes the selected image to a tmp file, returning the path
+        /// via the same C# callback hook.
+        /// Editor / other platforms: no-op (caller should show a fallback
+        /// toast).
+        /// </summary>
+        public static void PickImage(Action<string> callback)
+        {
+            if (callback == null) return;
+            // Only one pending pick at a time — replace any previous pending
+            // callback, since the user tapped the button again.
+            s_pendingImagePicked = callback;
+
+#if UNITY_EDITOR
+            // No native picker in editor — fire null back so UI can show a toast
+            // without the caller handling this platform separately.
+            callback.Invoke(null);
+            s_pendingImagePicked = null;
+#elif UNITY_ANDROID
+            try
+            {
+                using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+                using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchImagePicker");
+                cls.CallStatic("pick", activity);
+            }
+            catch (Exception e)
+            {
+                ReportSdkError("BugpunchNative.PickImage", e);
+                callback.Invoke(null);
+                s_pendingImagePicked = null;
+            }
+#elif UNITY_IOS
+            try { Bugpunch_PickImage(); }
+            catch (Exception e)
+            {
+                ReportSdkError("BugpunchNative.PickImage", e);
+                callback.Invoke(null);
+                s_pendingImagePicked = null;
+            }
+#else
+            callback.Invoke(null);
+            s_pendingImagePicked = null;
+#endif
+        }
+
+        static Action<string> s_pendingImagePicked;
+
+        /// <summary>
+        /// Native → managed dispatch for image-pick results. Called from the
+        /// Android / iOS UnitySendMessage receivers. Empty / null path means
+        /// the user cancelled; the registered callback still fires so the
+        /// caller can unblock its UI.
+        /// </summary>
+        internal static void DispatchImagePicked(string path)
+        {
+            var cb = s_pendingImagePicked;
+            s_pendingImagePicked = null;
+            if (cb == null) return;
+            try { cb.Invoke(string.IsNullOrEmpty(path) ? null : path); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.DispatchImagePicked", e); }
         }
 
         /// <summary>
@@ -664,10 +808,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPerfMonitor");
                 cls.CallStatic("start", configJson);
             }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] StartPerfMonitor failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.StartPerfMonitor", e); }
 #elif UNITY_IOS
             try { Bugpunch_StartPerfMonitor(configJson); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.BugpunchNative] StartPerfMonitor failed: {e.Message}"); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.StartPerfMonitor", e); }
 #endif
         }
 
@@ -697,6 +841,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_StopPoll();
         [DllImport("__Internal")] static extern void Bugpunch_PostScriptResult(string scheduledScriptId,
             string output, string errors, bool success, int durationMs);
+        [DllImport("__Internal")] static extern void Bugpunch_PickImage();
+        [DllImport("__Internal")] static extern void Bugpunch_ReportSdkError(string source, string message, string stackTrace);
+        [DllImport("__Internal")] static extern void Bugpunch_SetSdkErrorOverlay(int enabled);
 #endif
 
         // ── Build config JSON from BugpunchConfig ScriptableObject ──
@@ -738,6 +885,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Field(sb, "deviceTier", DeviceTier);           sb.Append(',');
             sb.Append("\"anrTimeoutMs\":").Append(c.anrTimeoutMs).Append(',');
             sb.Append("\"logBufferSize\":").Append(logBuffer).Append(',');
+            sb.Append("\"sdkErrorOverlay\":").Append(c.showSdkErrorOverlay ? "true" : "false").Append(',');
             sb.Append("\"autoReportCooldownSeconds\":30,");
             sb.Append("\"shake\":{\"enabled\":false,\"threshold\":2.5},");
             sb.Append("\"video\":{\"enabled\":true,\"bufferSeconds\":")
@@ -782,6 +930,35 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 sb.Append('}');
             }
             sb.Append(']');
+
+            // Strings — every user-facing label, drawn from BugpunchStrings.
+            // Same shape on every platform: { locale, defaults, translations }.
+            // BugpunchStrings.ToJson() handles the serialisation so callers
+            // don't have to know the field list.
+            var strings = c.Strings ?? new BugpunchStrings();
+            sb.Append(",\"strings\":").Append(strings.ToJson());
+
+            // Theme — shared schema consumed by both C# UIToolkit and native
+            // Android / iOS surfaces. Colours serialise via BugpunchTheme.ToHex
+            // (#RRGGBB when opaque, #RRGGBBAA otherwise); sizes go out as ints.
+            var theme = c.Theme ?? new BugpunchTheme();
+            sb.Append(",\"theme\":{");
+            Field(sb, "cardBackground", BugpunchTheme.ToHex(theme.cardBackground)); sb.Append(',');
+            Field(sb, "cardBorder",     BugpunchTheme.ToHex(theme.cardBorder));     sb.Append(',');
+            Field(sb, "backdrop",       BugpunchTheme.ToHex(theme.backdrop));       sb.Append(',');
+            sb.Append("\"cardRadius\":").Append(theme.cardRadius).Append(',');
+            Field(sb, "textPrimary",    BugpunchTheme.ToHex(theme.textPrimary));    sb.Append(',');
+            Field(sb, "textSecondary",  BugpunchTheme.ToHex(theme.textSecondary));  sb.Append(',');
+            Field(sb, "textMuted",      BugpunchTheme.ToHex(theme.textMuted));      sb.Append(',');
+            Field(sb, "accentPrimary",  BugpunchTheme.ToHex(theme.accentPrimary));  sb.Append(',');
+            Field(sb, "accentRecord",   BugpunchTheme.ToHex(theme.accentRecord));   sb.Append(',');
+            Field(sb, "accentChat",     BugpunchTheme.ToHex(theme.accentChat));     sb.Append(',');
+            Field(sb, "accentFeedback", BugpunchTheme.ToHex(theme.accentFeedback)); sb.Append(',');
+            Field(sb, "accentBug",      BugpunchTheme.ToHex(theme.accentBug));      sb.Append(',');
+            sb.Append("\"fontSizeTitle\":").Append(theme.fontSizeTitle).Append(',');
+            sb.Append("\"fontSizeBody\":").Append(theme.fontSizeBody).Append(',');
+            sb.Append("\"fontSizeCaption\":").Append(theme.fontSizeCaption);
+            sb.Append('}');
 
             // Unity-resolved storage paths for the native FileService. Native
             // /files/* handlers gate access to these roots — anything outside
@@ -905,10 +1082,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 };
                 Bugpunch.TrackEvent("scene_change", props);
             }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[Bugpunch] scene_change emit failed: {ex.Message}");
-            }
+            catch (Exception ex) { BugpunchNative.ReportSdkError("BugpunchSceneTick.scene_change", ex); }
         }
 
 #if !UNITY_EDITOR && UNITY_IOS
