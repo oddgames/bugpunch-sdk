@@ -82,9 +82,30 @@ public class BugpunchRuntime {
     private static volatile int sFps;
     private static long sFpsWindowStartNs;
 
-    // One id per process lifetime — stamped onto every analytics event so the
-    // server can count unique sessions without the SDK managing session state.
-    private static final String sSessionId = UUID.randomUUID().toString();
+    // The root session id minted at process launch — never changes for the
+    // life of the process. Resume sessions reference this as their parent so
+    // the dashboard can group every resume under a single launch.
+    private static final String sRootSessionId = UUID.randomUUID().toString();
+
+    // The currently active session id. Equal to sRootSessionId until the app
+    // is foregrounded after being in the background longer than RESUME_THRESHOLD_MS,
+    // at which point it rotates to a fresh UUID. Stamped onto every analytics
+    // event + log-sink frame.
+    private static volatile String sSessionId = sRootSessionId;
+
+    // Null on the root session; equal to sRootSessionId on every resume so
+    // the server can group them as one app launch. Read by the tunnel's log
+    // frame builder.
+    private static volatile String sParentSessionId = null;
+
+    // Background → foreground transitions count as a "resume" only if the app
+    // was backgrounded for at least this long. Below the threshold we treat it
+    // as a transient interruption (notification shade, multitasking glance) and
+    // keep streaming into the same session so logs remain coherent.
+    private static final long RESUME_THRESHOLD_MS = 30_000L;
+    private static volatile long sBackgroundedAtMs;
+    private static int sStartedActivityCount;
+    private static boolean sLifecycleHooked;
 
 
     /**
@@ -131,6 +152,15 @@ public class BugpunchRuntime {
                 String k = it.next();
                 sConfig.put(k, rich.get(k));
             }
+            // Theme + strings may have arrived in the richer config — reapply
+            // so later overlays pick up the new values. Safe to call repeatedly.
+            try { BugpunchTheme.apply(sConfig.optJSONObject("theme")); }
+            catch (Throwable t) { Log.w(TAG, "theme reapply failed", t); }
+            try { BugpunchStrings.apply(sConfig.optJSONObject("strings")); }
+            catch (Throwable t) { Log.w(TAG, "strings reapply failed", t); }
+            try { BugpunchSdkErrorOverlay.setOverlayEnabled(sConfig.optBoolean("sdkErrorOverlay", true)); }
+            catch (Throwable t) { Log.w(TAG, "sdkErrorOverlay reapply failed", t); }
+
             JSONObject meta = sConfig.optJSONObject("metadata");
             if (meta != null) {
                 for (java.util.Iterator<String> it = meta.keys(); it.hasNext(); ) {
@@ -176,6 +206,27 @@ public class BugpunchRuntime {
             Log.w(TAG, "bad config json, using defaults", e);
             sConfig = new JSONObject();
         }
+
+        // Apply the native-overlay theme from config.theme (colours, card
+        // radius, font sizes). Every surface built by BugpunchReportOverlay /
+        // BugpunchDebugMode consent / crash dialogs reads values through
+        // BugpunchTheme so a missing/empty block falls back to the schema
+        // defaults silently.
+        try { BugpunchTheme.apply(sConfig.optJSONObject("theme")); }
+        catch (Throwable t) { Log.w(TAG, "theme apply failed", t); }
+
+        // Apply user-visible strings + locale overrides from config.strings.
+        // BugpunchStrings.text(key, fallback) is the lookup every overlay
+        // uses so a missing/empty block falls back to the caller's hardcoded
+        // English fallback automatically.
+        try { BugpunchStrings.apply(sConfig.optJSONObject("strings")); }
+        catch (Throwable t) { Log.w(TAG, "strings apply failed", t); }
+
+        // SDK self-diagnostic banner toggle. Default ON — the dev/QA wants
+        // to see when the SDK itself fails. Production builds disable via
+        // BugpunchConfig.showSdkErrorOverlay (or runtime SetSdkErrorOverlay).
+        try { BugpunchSdkErrorOverlay.setOverlayEnabled(sConfig.optBoolean("sdkErrorOverlay", true)); }
+        catch (Throwable t) { Log.w(TAG, "sdkErrorOverlay apply failed", t); }
 
         // Seed metadata from config.
         JSONObject meta = sConfig.optJSONObject("metadata");
@@ -337,6 +388,12 @@ public class BugpunchRuntime {
             @Override public void run() { startFrameTick(); }
         });
 
+        // Track foreground/background transitions so the log session id
+        // rotates whenever the app comes back from a long enough background
+        // gap — see RESUME_THRESHOLD_MS. Idempotent across re-attaches.
+        try { hookLifecycle(activity); }
+        catch (Throwable t) { Log.w(TAG, "hookLifecycle failed", t); }
+
         sActivityAttached = true;
         sStarted = true;
         Log.i(TAG, "runtime activity attached");
@@ -352,6 +409,17 @@ public class BugpunchRuntime {
         } catch (Throwable t) {
             Log.w(TAG, "auto debug mode failed", t);
         }
+
+        // Cache-driven debug-mode auto-prompt. If the last roleConfig the
+        // server delivered was "internal", fire the consent sheet now —
+        // don't wait for the tunnel handshake to come back. The tunnel will
+        // tear down speculatively-started recordings if the server now says
+        // non-internal.
+        try {
+            BugpunchDebugMode.maybeAutoPromptOnLaunch(activity);
+        } catch (Throwable t) {
+            Log.w(TAG, "auto-prompt on launch failed", t);
+        }
     }
 
     /** Has {@link #start} been called successfully? */
@@ -360,11 +428,74 @@ public class BugpunchRuntime {
     /** Has Context-only early init run (from the ContentProvider)? */
     public static boolean isEarlyStarted() { return sEarlyStarted; }
 
-    /** Process-scoped session id — one per launch, stamped on analytics + log-sink frames. */
+    /**
+     * Currently active session id. Rotates when the app is foregrounded after
+     * being in the background longer than {@link #RESUME_THRESHOLD_MS} —
+     * resume sessions stamp {@link #getParentSessionId()} so the server can
+     * group them under the original launch.
+     */
     public static String getSessionId() { return sSessionId; }
+
+    /** Root (launch-time) session id. Pointed to by every resume session as its parent. */
+    public static String getRootSessionId() { return sRootSessionId; }
+
+    /** Parent of the current session, or null when the current session is the root. */
+    public static String getParentSessionId() { return sParentSessionId; }
+
+    /**
+     * Wire {@link android.app.Application.ActivityLifecycleCallbacks} so we
+     * notice when the app is backgrounded long enough to count as a separate
+     * play session. Idempotent.
+     */
+    private static void hookLifecycle(Activity activity) {
+        if (sLifecycleHooked) return;
+        if (activity == null || activity.getApplication() == null) return;
+        sLifecycleHooked = true;
+        activity.getApplication().registerActivityLifecycleCallbacks(
+            new android.app.Application.ActivityLifecycleCallbacks() {
+                @Override public void onActivityCreated(Activity a, android.os.Bundle s) {}
+                @Override public void onActivityStarted(Activity a) {
+                    int prev = sStartedActivityCount++;
+                    if (prev == 0) onForegrounded();
+                }
+                @Override public void onActivityResumed(Activity a) {}
+                @Override public void onActivityPaused(Activity a) {}
+                @Override public void onActivityStopped(Activity a) {
+                    if (sStartedActivityCount > 0) sStartedActivityCount--;
+                    if (sStartedActivityCount == 0) onBackgrounded();
+                }
+                @Override public void onActivitySaveInstanceState(Activity a, android.os.Bundle s) {}
+                @Override public void onActivityDestroyed(Activity a) {}
+            });
+    }
+
+    private static void onBackgrounded() {
+        sBackgroundedAtMs = android.os.SystemClock.elapsedRealtime();
+    }
+
+    private static void onForegrounded() {
+        long bg = sBackgroundedAtMs;
+        if (bg <= 0) return;        // first foreground after launch
+        long away = android.os.SystemClock.elapsedRealtime() - bg;
+        sBackgroundedAtMs = 0;
+        if (away < RESUME_THRESHOLD_MS) return;
+        // Rotate. Every resume points at the same root so the dashboard can
+        // collapse them under one launch regardless of how many times the
+        // user backgrounds during a play day.
+        sSessionId = UUID.randomUUID().toString();
+        sParentSessionId = sRootSessionId;
+        Log.i(TAG, "session resumed after " + (away / 1000) + "s background → " + sSessionId);
+    }
 
     /** Has the Activity-bound init completed? */
     public static boolean isActivityAttached() { return sActivityAttached; }
+
+    /**
+     * Currently attached Unity player Activity, or null if Activity-bound
+     * init hasn't run yet. Exposed for the debug-mode auto-prompt flow which
+     * needs to surface UI when the tunnel's roleConfig changes mid-session.
+     */
+    public static Activity getAttachedActivity() { return sAttachedActivity; }
 
     /** Raw config object (nullable until {@link #start} has run). */
     static JSONObject getConfig() { return sConfig; }
@@ -527,6 +658,30 @@ public class BugpunchRuntime {
     /** Snapshot of the current custom data map (for perf event tags). */
     public static Map<String, String> getCustomDataSnapshot() {
         return new ConcurrentHashMap<>(sCustomData);
+    }
+
+    // ── SDK self-diagnostic sink ─────────────────────────────────────────
+    //
+    // Bridge from C# (BugpunchNative.ReportSdkError) and from native catch
+    // blocks. Banner state lives in BugpunchSdkErrorOverlay; this just keeps
+    // the public entry points on Runtime so the C# side has one class to
+    // bind to.
+
+    /** Called from C# and from native catches when the SDK itself fails. */
+    public static void reportSdkError(String source, String message, String stackTrace) {
+        try {
+            BugpunchSdkErrorOverlay.report(source, message, stackTrace);
+        } catch (Throwable t) {
+            // Never let the diagnostic sink itself surface an error here —
+            // would loop. Plain logcat only.
+            Log.w(TAG, "reportSdkError failed", t);
+        }
+    }
+
+    /** Toggle the on-screen banner. Errors are still collected when off. */
+    public static void setSdkErrorOverlay(boolean enabled) {
+        try { BugpunchSdkErrorOverlay.setOverlayEnabled(enabled); }
+        catch (Throwable t) { Log.w(TAG, "setSdkErrorOverlay failed", t); }
     }
 
     /**

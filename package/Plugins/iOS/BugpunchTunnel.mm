@@ -37,35 +37,31 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
 static char* gLastPinConfigJson = NULL;
 static NSLock* gPinConfigLock;
 
-// N4: parsed pin state. Mirrored to Keychain (survives reinstall) so a cold
-// start enforces the last-known pins before the tunnel handshake completes.
-// Consent is the final gate — pins read false unless consent == "accepted".
-static NSString* const kBPPinsKeychainService = @"au.com.oddgames.bugpunch";
-static NSString* const kBPPinsKeychainAccount = @"pin_state_v1";
-static BOOL gPinAlwaysLog;
-static BOOL gPinAlwaysRemote;
-static BOOL gPinAlwaysDebug;
-static NSString* gConsent = @"unknown";
+// Tester role mirrored to Keychain so a cold start enforces the last-known
+// role before the tunnel handshake completes. Defaults to "public" → all
+// interactive features off until the server tells us otherwise.
+static NSString* const kBPRoleKeychainService = @"au.com.oddgames.bugpunch";
+static NSString* const kBPRoleKeychainAccount = @"role_state_v1";
+static NSString* gTesterRole = @"public";
 
-// ── Pin Keychain helpers ──
-//
-// Keychain survives app uninstall on iOS by default, matching
-// `stable_device_id` (Keychain UUID) and server-side consent keyed on it.
-// Stored as a JSON blob under (service=au.com.oddgames.bugpunch, account=pin_state_v1).
+static NSString* BPNormalizeRole(NSString* raw) {
+    if (![raw isKindOfClass:[NSString class]] || raw.length == 0) return @"public";
+    if ([raw isEqualToString:@"internal"] ||
+        [raw isEqualToString:@"admin"] ||      // legacy
+        [raw isEqualToString:@"developer"]) {  // legacy
+        return @"internal";
+    }
+    if ([raw isEqualToString:@"external"]) return @"external";
+    return @"public";
+}
 
-static void BPWritePinsKeychain(BOOL log, BOOL remote, BOOL debug, NSString* consent) {
-    NSDictionary* state = @{
-        @"alwaysLog":    @(log),
-        @"alwaysRemote": @(remote),
-        @"alwaysDebug":  @(debug),
-        @"consent":      consent ?: @"unknown",
-    };
-    NSData* data = [NSJSONSerialization dataWithJSONObject:state options:0 error:nil];
+static void BPWriteRoleKeychain(NSString* role) {
+    NSData* data = [(role ?: @"public") dataUsingEncoding:NSUTF8StringEncoding];
     if (!data) return;
     NSDictionary* attrs = @{
         (__bridge id)kSecClass:          (__bridge id)kSecClassGenericPassword,
-        (__bridge id)kSecAttrService:    kBPPinsKeychainService,
-        (__bridge id)kSecAttrAccount:    kBPPinsKeychainAccount,
+        (__bridge id)kSecAttrService:    kBPRoleKeychainService,
+        (__bridge id)kSecAttrAccount:    kBPRoleKeychainAccount,
         (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleAfterFirstUnlock,
         (__bridge id)kSecValueData:      data,
     };
@@ -73,19 +69,19 @@ static void BPWritePinsKeychain(BOOL log, BOOL remote, BOOL debug, NSString* con
     if (s == errSecDuplicateItem) {
         NSDictionary* q = @{
             (__bridge id)kSecClass:       (__bridge id)kSecClassGenericPassword,
-            (__bridge id)kSecAttrService: kBPPinsKeychainService,
-            (__bridge id)kSecAttrAccount: kBPPinsKeychainAccount,
+            (__bridge id)kSecAttrService: kBPRoleKeychainService,
+            (__bridge id)kSecAttrAccount: kBPRoleKeychainAccount,
         };
         SecItemUpdate((__bridge CFDictionaryRef)q,
             (__bridge CFDictionaryRef)@{ (__bridge id)kSecValueData: data });
     }
 }
 
-static void BPLoadPinsKeychain(void) {
+static void BPLoadRoleKeychain(void) {
     NSDictionary* q = @{
         (__bridge id)kSecClass:       (__bridge id)kSecClassGenericPassword,
-        (__bridge id)kSecAttrService: kBPPinsKeychainService,
-        (__bridge id)kSecAttrAccount: kBPPinsKeychainAccount,
+        (__bridge id)kSecAttrService: kBPRoleKeychainService,
+        (__bridge id)kSecAttrAccount: kBPRoleKeychainAccount,
         (__bridge id)kSecReturnData:  @YES,
         (__bridge id)kSecMatchLimit:  (__bridge id)kSecMatchLimitOne,
     };
@@ -93,13 +89,8 @@ static void BPLoadPinsKeychain(void) {
     OSStatus s = SecItemCopyMatching((__bridge CFDictionaryRef)q, &result);
     if (s != errSecSuccess || !result) return;
     NSData* data = (__bridge_transfer NSData*)result;
-    NSDictionary* state = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    if (![state isKindOfClass:[NSDictionary class]]) return;
-    gPinAlwaysLog    = [state[@"alwaysLog"]    boolValue];
-    gPinAlwaysRemote = [state[@"alwaysRemote"] boolValue];
-    gPinAlwaysDebug  = [state[@"alwaysDebug"]  boolValue];
-    id c = state[@"consent"];
-    gConsent = [c isKindOfClass:[NSString class]] ? c : @"unknown";
+    NSString* role = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    gTesterRole = BPNormalizeRole(role);
 }
 
 @interface BPTunnel : NSObject <NSURLSessionWebSocketDelegate>
@@ -118,7 +109,7 @@ static void BPLoadPinsKeychain(void) {
 @property (nonatomic, assign) NSTimeInterval backoffSeconds;
 + (instancetype)shared;
 - (void)startWithConfig:(NSDictionary*)config stableDeviceId:(NSString*)stableId;
-- (void)cachePinConfig:(NSDictionary*)pin;
+- (void)cacheRoleConfig:(NSDictionary*)cfg;
 - (void)stop;
 @end
 
@@ -153,6 +144,9 @@ static void BPLoadPinsKeychain(void) {
 }
 
 - (void)startWithConfig:(NSDictionary*)config stableDeviceId:(NSString*)stableId {
+    // Wire foreground/background rotation as soon as the tunnel turns on —
+    // notifications fire on the main thread, gSessionId is read under a lock.
+    BPHookSessionLifecycle();
     dispatch_async(self.queue, ^{
         if (self.task != nil) {
             [self updateConfig:config];
@@ -272,45 +266,67 @@ static void BPLoadPinsKeychain(void) {
     NSString* type = msg[@"type"] ?: @"";
 
     if ([type isEqualToString:@"registered"]) {
-        id pin = msg[@"pinConfig"];
-        if ([pin isKindOfClass:[NSDictionary class]]) [self cachePinConfig:pin];
-        NSLog(@"[BugpunchTunnel] registered (pinConfig=%@)", pin ? @"yes" : @"no");
-    } else if ([type isEqualToString:@"pinUpdate"]) {
-        id pin = msg[@"config"];
-        if ([pin isKindOfClass:[NSDictionary class]]) [self cachePinConfig:pin];
-        NSLog(@"[BugpunchTunnel] pinUpdate received");
+        id cfg = msg[@"roleConfig"];
+        if ([cfg isKindOfClass:[NSDictionary class]]) [self cacheRoleConfig:cfg];
+        NSLog(@"[BugpunchTunnel] registered (roleConfig=%@)", cfg ? @"yes" : @"no");
+    } else if ([type isEqualToString:@"roleUpdate"]) {
+        id cfg = msg[@"config"];
+        if ([cfg isKindOfClass:[NSDictionary class]]) [self cacheRoleConfig:cfg];
+        NSLog(@"[BugpunchTunnel] roleUpdate received");
     } else if ([type isEqualToString:@"pong"] || [type isEqualToString:@"heartbeat"]) {
         // no-op
     }
 }
 
-- (void)cachePinConfig:(NSDictionary*)pin {
+- (void)cacheRoleConfig:(NSDictionary*)cfg {
     NSError* err = nil;
-    NSData* data = [NSJSONSerialization dataWithJSONObject:pin options:0 error:&err];
-    if (!data) return;
-    NSString* json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    const char* c = [json UTF8String];
-    if (!c) return;
-    [gPinConfigLock lock];
-    if (gLastPinConfigJson) free(gLastPinConfigJson);
-    gLastPinConfigJson = strdup(c);
-    [gPinConfigLock unlock];
+    NSData* data = [NSJSONSerialization dataWithJSONObject:cfg options:0 error:&err];
+    if (data) {
+        NSString* json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        const char* c = [json UTF8String];
+        if (c) {
+            [gPinConfigLock lock];
+            if (gLastPinConfigJson) free(gLastPinConfigJson);
+            gLastPinConfigJson = strdup(c);
+            [gPinConfigLock unlock];
+        }
+    }
 
-    // N4: parse into typed state and mirror to Keychain. HMAC verification
-    // against the bundled pin_signing_secret is a follow-up (N4.2); until
-    // then we trust the tunnel (API-key + TLS).
-    NSDictionary* pins = pin[@"pins"];
-    BOOL log    = [pins isKindOfClass:[NSDictionary class]] && [pins[@"alwaysLog"]    boolValue];
-    BOOL remote = [pins isKindOfClass:[NSDictionary class]] && [pins[@"alwaysRemote"] boolValue];
-    BOOL debug  = [pins isKindOfClass:[NSDictionary class]] && [pins[@"alwaysDebug"]  boolValue];
-    NSString* consent = pin[@"consent"] ?: @"unknown";
-    if (![consent isKindOfClass:[NSString class]]) consent = @"unknown";
+    NSString* previous = gTesterRole;
+    NSString* role = BPNormalizeRole(cfg[@"role"]);
+    BOOL becameInternal = ![previous isEqualToString:@"internal"] &&
+                          [role isEqualToString:@"internal"];
+    BOOL leftInternal   =  [previous isEqualToString:@"internal"] &&
+                          ![role isEqualToString:@"internal"];
+    gTesterRole = role;
+    BPWriteRoleKeychain(role);
 
-    gPinAlwaysLog    = log;
-    gPinAlwaysRemote = remote;
-    gPinAlwaysDebug  = debug;
-    gConsent         = consent;
-    BPWritePinsKeychain(log, remote, debug, consent);
+    // Mirror the role to the cache-driven auto-prompt key (NSUserDefaults,
+    // separate from the keychain role state which is for the role gating
+    // itself). Pre-release: writing "external"/"user" verbatim — both
+    // behave the same (no auto-prompt) but readers can distinguish later.
+    extern void Bugpunch_WriteLastTesterRoleCache(const char*);
+    const char* normalized =
+        [role isEqualToString:@"internal"] ? "internal" :
+        [role isEqualToString:@"external"] ? "external" : "user";
+    Bugpunch_WriteLastTesterRoleCache(normalized);
+
+    // No live-replay on role flip: Unity logs flow over the C# IDE-tunnel
+    // push path (gated on RoleState.IsInternal there). The native log-reader
+    // buffer is now consulted only by snapshotText for crash / bug-report
+    // attachments, so there's nothing to live-replay through this tunnel.
+
+    // Cache-driven auto-prompt reconciliation.
+    //   - became internal & cache didn't already prompt → prompt now.
+    //   - left internal & ring is running from speculative cached prompt
+    //     → tear it down. Server's authoritative answer wins.
+    if (becameInternal) {
+        extern void Bugpunch_OnRoleBecameInternal(void);
+        Bugpunch_OnRoleBecameInternal();
+    } else if (leftInternal) {
+        extern void Bugpunch_OnRoleLeftInternal(void);
+        Bugpunch_OnRoleLeftInternal();
+    }
 }
 
 - (void)scheduleReconnect {
@@ -373,9 +389,9 @@ static void BPEnsureTunnelGlobals(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         gPinConfigLock = [NSLock new];
-        // Apply cached pins immediately so a cold start enforces last-known
+        // Apply cached role immediately so a cold start enforces last-known
         // state before the handshake completes.
-        BPLoadPinsKeychain();
+        BPLoadRoleKeychain();
     });
 }
 
@@ -392,39 +408,74 @@ extern "C" void Bugpunch_StartTunnel(const char* configJson) {
     }
 }
 
-extern "C" void Bugpunch_TunnelApplyPinConfig(const char* pinJson) {
+extern "C" void Bugpunch_TunnelApplyRoleConfig(const char* json) {
     BPEnsureTunnelGlobals();
-    if (!pinJson || *pinJson == 0) return;
+    if (!json || *json == 0) return;
     @autoreleasepool {
-        NSData* d = [[NSString stringWithUTF8String:pinJson] dataUsingEncoding:NSUTF8StringEncoding];
+        NSData* d = [[NSString stringWithUTF8String:json] dataUsingEncoding:NSUTF8StringEncoding];
         id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
         if (![obj isKindOfClass:[NSDictionary class]]) return;
-        [[BPTunnel shared] cachePinConfig:(NSDictionary*)obj];
+        [[BPTunnel shared] cacheRoleConfig:(NSDictionary*)obj];
     }
 }
 
-// ── N4: native pin state accessors ──
-// Pins only apply when consent == "accepted". Returns 0/1 to keep the
-// P/Invoke surface simple.
-
-extern "C" int Bugpunch_PinAlwaysLog(void) {
-    return ([gConsent isEqualToString:@"accepted"] && gPinAlwaysLog) ? 1 : 0;
-}
-extern "C" int Bugpunch_PinAlwaysRemote(void) {
-    return ([gConsent isEqualToString:@"accepted"] && gPinAlwaysRemote) ? 1 : 0;
-}
-extern "C" int Bugpunch_PinAlwaysDebug(void) {
-    return ([gConsent isEqualToString:@"accepted"] && gPinAlwaysDebug) ? 1 : 0;
-}
-extern "C" const char* Bugpunch_PinConsent(void) {
-    return gConsent ? [gConsent UTF8String] : "unknown";
+// Returns the current tester role: "internal" | "external" | "public".
+// Returned pointer is into a static NSString — do not free.
+extern "C" const char* Bugpunch_GetTesterRole(void) {
+    return gTesterRole ? [gTesterRole UTF8String] : "public";
 }
 
-// ── N5: log sink batcher ──
+// Forward declaration — BPLogReader lives in BugpunchDebugMode.mm; same iOS
+// plugin target so the symbol resolves at link time.
+@interface BPLogReader : NSObject
++ (void)appendLineLive:(NSString*)line;
+@end
+
+/// Public C ABI for native plugins (Obj-C / Swift via @_silgen_name) to
+/// contribute log lines. Same shape as Instabug's `+[IBGLog log:]` /
+/// Luciq's `+[LCQLog log:]`: explicit, developer-driven, no auto-capture.
+/// Routes through the report tunnel (live, gated on role==internal +
+/// connected) and the in-memory ring (always populated for crash dumps).
+///
+/// Levels: "Verbose" | "Info" | "Warning" | "Error" | "Assert" — matches
+/// the level vocabulary the server's log parser already understands. Any
+/// other string is treated as Info.
+extern "C" void Bugpunch_LogMessage(const char* level, const char* message) {
+    if (!message || *message == 0) return;
+    @autoreleasepool {
+        NSString* lvlIn = (level && *level) ? [NSString stringWithUTF8String:level] : @"Info";
+        NSString* msg = [NSString stringWithUTF8String:message] ?: @"";
+        NSString* lvl =
+            ([lvlIn caseInsensitiveCompare:@"Error"]   == NSOrderedSame ||
+             [lvlIn caseInsensitiveCompare:@"Fault"]   == NSOrderedSame) ? @"E" :
+            ([lvlIn caseInsensitiveCompare:@"Assert"]  == NSOrderedSame) ? @"F" :
+            ([lvlIn caseInsensitiveCompare:@"Warning"] == NSOrderedSame ||
+             [lvlIn caseInsensitiveCompare:@"Warn"]    == NSOrderedSame) ? @"W" :
+            ([lvlIn caseInsensitiveCompare:@"Verbose"] == NSOrderedSame ||
+             [lvlIn caseInsensitiveCompare:@"Debug"]   == NSOrderedSame) ? @"V" : @"I";
+        // Logcat-ish line shape so the server parser treats it identically
+        // to entries from the Unity P/Invoke push path and the on-demand
+        // OSLog snapshot. Tag is the iOS bundle id so dashboard filtering
+        // can group by plugin / app.
+        NSString* tag = [[NSBundle mainBundle] bundleIdentifier] ?: @"iOS";
+        NSDateFormatter* fmt = [[NSDateFormatter alloc] init];
+        fmt.dateFormat = @"MM-dd HH:mm:ss.SSS";
+        fmt.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
+        NSString* line = [NSString stringWithFormat:@"%@     0     0 %@ %@: %@",
+            [fmt stringFromDate:[NSDate date]], lvl, tag, msg];
+        [BPLogReader appendLineLive:line];
+    }
+}
+
+// ── Native log sink batcher ──
 //
-// BPLogReader tees every captured line here. We buffer and flush as a
-// single WebSocket frame on a 100 ms / 32 KB cadence. Server writes the
-// raw bytes to disk per session — zero parsing on the hot path.
+// Currently unused on iOS — Unity logs flow over the C# IDE-tunnel push
+// path, and native iOS framework chatter is captured on demand inside
+// BPLogReader.snapshotText for crash / bug-report attachments rather than
+// streamed live. Kept as a stable C ABI so future native plugins can push
+// their own log lines through the report tunnel without changes elsewhere.
+// Buffer + flush logic stays at 100 ms / 32 KB cadence with raw-bytes
+// passthrough to the server's log sink, matching the Android contract.
 
 static NSMutableString* gLogBuf;
 static NSLock* gLogBufLock;
@@ -477,11 +528,75 @@ static void BPCompileRedactionRules(NSDictionary* config) {
     gRedactionRules = out;
 }
 
-static NSString* BPSessionId(void) {
-    static NSString* sid;
+// ── Session ids — see hookSessionLifecycle below for rotation rules. ──
+//
+// gRootSessionId is minted once per process; gSessionId starts equal to it
+// and rotates whenever the app foregrounds after >RESUME_THRESHOLD_S in the
+// background. gParentSessionId is nil on root, set to gRootSessionId on every
+// resume so the dashboard can group resumes under a single launch.
+static NSString* gRootSessionId;
+static NSString* gSessionId;
+static NSString* gParentSessionId;
+static NSLock*   gSessionLock;
+static const NSTimeInterval RESUME_THRESHOLD_S = 30.0;
+static NSTimeInterval gBackgroundedAt;
+static BOOL gSessionLifecycleHooked;
+
+static void BPInitSessionIdsIfNeeded(void) {
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ sid = [[NSUUID UUID] UUIDString]; });
+    dispatch_once(&once, ^{
+        gSessionLock = [NSLock new];
+        gRootSessionId = [[NSUUID UUID] UUIDString];
+        gSessionId = gRootSessionId;
+    });
+}
+
+static NSString* BPSessionId(void) {
+    BPInitSessionIdsIfNeeded();
+    [gSessionLock lock];
+    NSString* sid = gSessionId;
+    [gSessionLock unlock];
     return sid;
+}
+
+static NSString* BPParentSessionId(void) {
+    BPInitSessionIdsIfNeeded();
+    [gSessionLock lock];
+    NSString* p = gParentSessionId;
+    [gSessionLock unlock];
+    return p;
+}
+
+// Hook the iOS app lifecycle so we can rotate the session id whenever the
+// app foregrounds after a long enough background gap. Idempotent.
+static void BPHookSessionLifecycle(void) {
+    if (gSessionLifecycleHooked) return;
+    gSessionLifecycleHooked = YES;
+    BPInitSessionIdsIfNeeded();
+
+    NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
+    [nc addObserverForName:UIApplicationDidEnterBackgroundNotification
+                    object:nil
+                     queue:nil
+                usingBlock:^(NSNotification* _) {
+        gBackgroundedAt = [NSDate timeIntervalSinceReferenceDate];
+    }];
+    [nc addObserverForName:UIApplicationWillEnterForegroundNotification
+                    object:nil
+                     queue:nil
+                usingBlock:^(NSNotification* _) {
+        NSTimeInterval bg = gBackgroundedAt;
+        if (bg <= 0) return;
+        NSTimeInterval away = [NSDate timeIntervalSinceReferenceDate] - bg;
+        gBackgroundedAt = 0;
+        if (away < RESUME_THRESHOLD_S) return;
+        [gSessionLock lock];
+        gSessionId = [[NSUUID UUID] UUIDString];
+        gParentSessionId = gRootSessionId;
+        [gSessionLock unlock];
+        NSLog(@"[BugpunchTunnel] session resumed after %.0fs background → %@",
+              away, gSessionId);
+    }];
 }
 
 static void BPLogFlushNow(void) {
@@ -499,7 +614,10 @@ static void BPLogFlushNow(void) {
     // Hand-built JSON envelope — minimum necessary escaping on the raw log
     // text. Server writes payload.text bytes verbatim to disk.
     NSMutableString* out = [NSMutableString stringWithCapacity:text.length + 128];
-    [out appendFormat:@"{\"type\":\"log\",\"sessionId\":\"%@\",\"text\":\"", BPSessionId()];
+    [out appendFormat:@"{\"type\":\"log\",\"sessionId\":\"%@\"", BPSessionId()];
+    NSString* parent = BPParentSessionId();
+    if (parent) [out appendFormat:@",\"parentSessionId\":\"%@\"", parent];
+    [out appendString:@",\"text\":\""];
     for (NSUInteger i = 0; i < text.length; i++) {
         unichar c = [text characterAtIndex:i];
         switch (c) {
@@ -531,7 +649,7 @@ extern "C" void Bugpunch_TunnelEnqueueLogLine(const char* line) {
 
     BPTunnel* t = [BPTunnel shared];
     if (!t.connected) return;
-    if (!(gPinAlwaysLog && [gConsent isEqualToString:@"accepted"])) return;
+    if (![gTesterRole isEqualToString:@"internal"]) return;
 
     @autoreleasepool {
         NSString* ns = [NSString stringWithUTF8String:line];

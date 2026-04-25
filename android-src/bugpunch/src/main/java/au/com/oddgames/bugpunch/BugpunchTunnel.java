@@ -184,6 +184,7 @@ public final class BugpunchTunnel {
             Log.i(TAG, "sendResponse SENT jsonLen=" + json.length());
         } catch (Exception e) {
             Log.e(TAG, "sendResponse EXCEPTION: " + e.getMessage());
+            BugpunchSdkErrorOverlay.reportThrowable("BugpunchTunnel", "sendResponse", e);
         }
     }
 
@@ -218,6 +219,7 @@ public final class BugpunchTunnel {
             Log.i(TAG, "sendEvent SENT event=" + event);
         } catch (Exception e) {
             Log.e(TAG, "sendEvent EXCEPTION event=" + event + " err=" + e.getMessage());
+            BugpunchSdkErrorOverlay.reportThrowable("BugpunchTunnel", "sendEvent(" + event + ")", e);
         }
     }
 
@@ -349,7 +351,12 @@ public final class BugpunchTunnel {
         StringBuilder out = new StringBuilder(text.length() + 128);
         out.append("{\"type\":\"log\",\"sessionId\":\"")
            .append(BugpunchRuntime.getSessionId())
-           .append("\",\"text\":\"");
+           .append('"');
+        String parent = BugpunchRuntime.getParentSessionId();
+        if (parent != null) {
+            out.append(",\"parentSessionId\":\"").append(parent).append('"');
+        }
+        out.append(",\"text\":\"");
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
             switch (c) {
@@ -389,17 +396,73 @@ public final class BugpunchTunnel {
      */
     private void applyRoleConfigInternal(JSONObject cfg) {
         String role = normalizeRole(cfg.optString("role", "public"));
+        String previous = mTesterRole;
+        boolean becameInternal = !"internal".equals(previous) && "internal".equals(role);
+        boolean leftInternal  =  "internal".equals(previous) && !"internal".equals(role);
         mTesterRole = role;
 
+        android.content.Context ctx = BugpunchRuntime.getAppContext();
+        if (ctx != null) {
+            try {
+                ctx.getSharedPreferences(PREFS_FILE, android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("role", role)
+                    .apply();
+            } catch (Throwable t) {
+                Log.w(TAG, "role cache write failed", t);
+            }
+            // Mirror the role to the auto-prompt cache file (separate file +
+            // key per the cache-driven launch flow spec). Pre-release: writing
+            // "external"/"user" verbatim — both behave the same (no auto-prompt)
+            // but readers can distinguish if needed later.
+            try {
+                String autoPromptValue = "internal".equals(role) ? "internal"
+                    : "external".equals(role) ? "external" : "user";
+                ctx.getSharedPreferences(PREFS_LAST_ROLE_FILE, android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(PREFS_LAST_ROLE_KEY, autoPromptValue)
+                    .apply();
+            } catch (Throwable t) {
+                Log.w(TAG, "last_tester_role cache write failed", t);
+            }
+        }
+
+        // Catch up the dashboard with anything captured between app start and
+        // the role arriving — without this, the first ~seconds of logs are
+        // invisible in the live viewer (they're still in the on-disk crash
+        // attachment, just not on the live tunnel).
+        if (becameInternal) flushBufferedLogs();
+
+        // Cache-driven auto-prompt reconciliation.
+        //   - new role == internal but we didn't auto-prompt (cache stale or
+        //     non-internal) → prompt now.
+        //   - new role != internal and the ring buffer is running from the
+        //     speculative cached prompt → tear it down. Server's authoritative
+        //     answer wins.
         try {
-            android.content.Context ctx = BugpunchRuntime.getAppContext();
-            if (ctx == null) return;
-            ctx.getSharedPreferences(PREFS_FILE, android.content.Context.MODE_PRIVATE)
-                .edit()
-                .putString("role", role)
-                .apply();
+            if (becameInternal) {
+                BugpunchDebugMode.onRoleBecameInternal();
+            } else if (leftInternal) {
+                BugpunchDebugMode.onRoleLeftInternal();
+            }
         } catch (Throwable t) {
-            Log.w(TAG, "role cache write failed", t);
+            Log.w(TAG, "role transition dispatch failed", t);
+        }
+    }
+
+    /**
+     * Tee BugpunchLogReader's startup + recent ring through the tunnel as a
+     * single batch. Called when the role flips to "internal" so the live
+     * viewer doesn't miss the pre-handshake window. Each line goes through
+     * {@link #enqueueLogLine} so it picks up redaction + framing for free.
+     */
+    private void flushBufferedLogs() {
+        String snap;
+        try { snap = BugpunchLogReader.snapshotText(); }
+        catch (Throwable t) { Log.w(TAG, "flushBufferedLogs snapshot failed", t); return; }
+        if (snap == null || snap.isEmpty()) return;
+        for (String line : snap.split("\n")) {
+            if (!line.isEmpty()) enqueueLogLine(line);
         }
     }
 
@@ -424,6 +487,32 @@ public final class BugpunchTunnel {
     // otherwise.
     private static final String PREFS_FILE = "bugpunch_role";
     private volatile String mTesterRole = "public";
+
+    // Cache-driven debug-mode auto-prompt key. Lives in a separate
+    // SharedPreferences file ("bugpunch") so a cold start of
+    // BugpunchDebugMode.maybeAutoPromptOnLaunch can read it without
+    // depending on the role-state cache. Values: "internal" |
+    // "external" | "user" | absent (no cache yet → wait for server).
+    static final String PREFS_LAST_ROLE_FILE = "bugpunch";
+    static final String PREFS_LAST_ROLE_KEY = "last_tester_role";
+
+    /**
+     * Read the last-known tester role from the cache used to drive the
+     * launch-time debug-mode auto-prompt. Returns null when there's no
+     * cached value (first ever launch — wait for server).
+     */
+    public static String readLastTesterRoleFromCache(android.content.Context ctx) {
+        if (ctx == null) return null;
+        try {
+            android.content.SharedPreferences prefs =
+                ctx.getSharedPreferences(PREFS_LAST_ROLE_FILE, android.content.Context.MODE_PRIVATE);
+            if (!prefs.contains(PREFS_LAST_ROLE_KEY)) return null;
+            return prefs.getString(PREFS_LAST_ROLE_KEY, null);
+        } catch (Throwable t) {
+            Log.w(TAG, "readLastTesterRoleFromCache failed", t);
+            return null;
+        }
+    }
 
     // N5: log sink batcher. BugpunchLogReader tees every line here when the
     // alwaysLog pin is active; flush every 100 ms or when the buffer hits
@@ -570,6 +659,7 @@ public final class BugpunchTunnel {
             Log.i(TAG, "connecting to " + wsUrl);
         } catch (java.io.IOException e) {
             Log.w(TAG, "connect failed: " + e.getMessage());
+            BugpunchSdkErrorOverlay.reportThrowable("BugpunchTunnel", "connect", e);
             scheduleReconnect();
         }
     }
@@ -724,6 +814,7 @@ public final class BugpunchTunnel {
 
         @Override public void onError(WebSocket ws, WebSocketException cause) {
             Log.w(TAG, "tunnel error: " + cause.getMessage());
+            BugpunchSdkErrorOverlay.reportThrowable("BugpunchTunnel", "websocket", cause);
             // Ensure state is reset; onDisconnected should handle scheduling reconnect
             mConnected = false;
             mSocket = null;
