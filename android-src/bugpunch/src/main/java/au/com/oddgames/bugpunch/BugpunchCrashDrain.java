@@ -239,14 +239,17 @@ final class BugpunchCrashDrain {
             body.put("category", "crash");
         }
 
-        // branch / changeset come from current runtime metadata rather than
-        // the crash file. These values don't change within a build so reading
-        // them at drain time (next launch) is equivalent to reading at crash
-        // time. Avoids a schema change in the NDK signal writer.
+        // branch / changeset / buildFingerprint come from current runtime
+        // metadata rather than the crash file. These values don't change
+        // within a build so reading them at drain time (next launch) is
+        // equivalent to reading at crash time. Avoids a schema change in
+        // the NDK signal writer.
         String branch = BugpunchRuntime.getMetadata("branch");
         if (branch != null && !branch.isEmpty()) body.put("branch", branch);
         String changeset = BugpunchRuntime.getMetadata("changeset");
         if (changeset != null && !changeset.isEmpty()) body.put("changeset", changeset);
+        String fingerprint = BugpunchRuntime.getMetadata("buildFingerprint");
+        if (fingerprint != null && !fingerprint.isEmpty()) body.put("buildFingerprint", fingerprint);
         return body;
     }
 

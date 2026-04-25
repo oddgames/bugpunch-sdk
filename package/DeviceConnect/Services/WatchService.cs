@@ -28,6 +28,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             public string gameObjectName;
             public string componentName;
             public string hierarchyPath;
+
+            // Declared-watch metadata — populated only for entries added via [Watch] attribute scan.
+            public bool isDeclared;
+            public string group;        // null when not specified
+            public float min;
+            public float max;
+            public string ownerName;
+            public int ownerInstanceId;
         }
 
         struct Sample
@@ -47,8 +55,35 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // Chain is the ordered list of MemberInfo walked from the component down.
         readonly Dictionary<string, (Component comp, MemberInfo[] chain)> _resolvedCache = new();
 
+        // Declared-watch tracking: IDs of entries added via [Watch] scan. Lets Rescan()
+        // clear stale declared entries without nuking user-pinned watches.
+        readonly HashSet<string> _declaredIds = new();
+
+        // Per-Type cache of [Watch]-marked members. Process-lifetime; recreated on domain reload.
+        static readonly Dictionary<Type, MemberInfo[]> _declaredMembersByType = new();
+
+        // Set on scene load/unload, consumed lazily by the next Rescan call.
+        bool _declaredDirty = true;
+
         const BindingFlags MemberFlags =
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase;
+
+        void Start()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+            UnityEngine.SceneManagement.SceneManager.sceneUnloaded += OnSceneUnloaded;
+            // Initial scan — picks up any [Watch] members in the boot scene.
+            Rescan();
+        }
+
+        void OnDestroy()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+            UnityEngine.SceneManagement.SceneManager.sceneUnloaded -= OnSceneUnloaded;
+        }
+
+        void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode) => _declaredDirty = true;
+        void OnSceneUnloaded(UnityEngine.SceneManagement.Scene scene) => _declaredDirty = true;
 
         void FixedUpdate()
         {
@@ -355,20 +390,149 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_watches.Remove(watchId))
             {
                 _resolvedCache.Remove(watchId);
+                _declaredIds.Remove(watchId);
                 return "{\"ok\":true}";
             }
             return "{\"ok\":false,\"error\":\"Watch not found\"}";
         }
 
         /// <summary>
-        /// Clear all watches.
+        /// Clear all watches. Declared watches are re-registered automatically
+        /// on the next poll/list call (the dirty flag triggers a rescan), so
+        /// this effectively wipes only user-pinned ones from the user's POV.
         /// </summary>
         public string ClearAll()
         {
             _watches.Clear();
             _resolvedCache.Clear();
+            _declaredIds.Clear();
             _sampleBuffer.Clear();
+            _declaredDirty = true;
             return "{\"ok\":true}";
+        }
+
+        /// <summary>
+        /// Re-scan all loaded scenes for fields/properties marked with <c>[Watch]</c>
+        /// and ensure they're registered as declared watches. Existing declared entries
+        /// are dropped and replaced; user-pinned watches are left untouched.
+        /// </summary>
+        public string Rescan()
+        {
+            // Drop previous declared entries.
+            foreach (var id in _declaredIds)
+            {
+                _watches.Remove(id);
+                _resolvedCache.Remove(id);
+            }
+            _declaredIds.Clear();
+
+            int added = 0;
+            for (int s = 0; s < UnityEngine.SceneManagement.SceneManager.sceneCount; s++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
+                if (!scene.isLoaded) continue;
+                foreach (var root in scene.GetRootGameObjects())
+                    ScanGameObject(root, ref added);
+            }
+
+            _declaredDirty = false;
+            return $"{{\"ok\":true,\"count\":{added}}}";
+        }
+
+        void ScanGameObject(GameObject go, ref int added)
+        {
+            var components = go.GetComponents<MonoBehaviour>();
+            foreach (var comp in components)
+            {
+                if (comp == null) continue;
+                var members = GetDeclaredMembers(comp.GetType());
+                if (members.Length == 0) continue;
+
+                foreach (var m in members)
+                {
+                    var attr = (WatchAttribute)Attribute.GetCustomAttribute(m, typeof(WatchAttribute));
+                    if (attr == null) continue;
+
+                    var (ownerGo, ownerName) = ResolveOwner(comp, attr.Owner);
+                    if (TryAddDeclared(go, comp, m, attr, ownerGo, ownerName))
+                        added++;
+                }
+            }
+
+            for (int i = 0; i < go.transform.childCount; i++)
+                ScanGameObject(go.transform.GetChild(i).gameObject, ref added);
+        }
+
+        static MemberInfo[] GetDeclaredMembers(Type t)
+        {
+            if (_declaredMembersByType.TryGetValue(t, out var cached)) return cached;
+
+            var list = new List<MemberInfo>();
+            foreach (var p in t.GetProperties(MemberFlags))
+            {
+                if (p.GetIndexParameters().Length > 0) continue;
+                if (Attribute.IsDefined(p, typeof(WatchAttribute))) list.Add(p);
+            }
+            foreach (var f in t.GetFields(MemberFlags))
+            {
+                if (Attribute.IsDefined(f, typeof(WatchAttribute))) list.Add(f);
+            }
+
+            var arr = list.ToArray();
+            _declaredMembersByType[t] = arr;
+            return arr;
+        }
+
+        static (GameObject ownerGo, string ownerName) ResolveOwner(Component comp, WatchOwner owner)
+        {
+            switch (owner)
+            {
+                case WatchOwner.Parent:
+                    var p = comp.transform.parent;
+                    if (p != null) return (p.gameObject, p.gameObject.name);
+                    return (comp.gameObject, comp.gameObject.name);
+                case WatchOwner.Root:
+                    var r = comp.transform.root.gameObject;
+                    return (r, r.name);
+                default:
+                    return (comp.gameObject, comp.gameObject.name);
+            }
+        }
+
+        bool TryAddDeclared(GameObject go, Component comp, MemberInfo member, WatchAttribute attr, GameObject ownerGo, string ownerName)
+        {
+            var fieldName = member.Name;
+            var segments = SplitPath(fieldName);
+            if (!TryBuildChain(comp.GetType(), segments, out var chain, out var terminalType))
+                return false;
+
+            bool isProperty = member is PropertyInfo;
+
+            var id = $"w{_nextId++}";
+            var entry = new WatchEntry
+            {
+                id = id,
+                instanceId = go.GetInstanceID(),
+                componentId = comp.GetInstanceID(),
+                fieldName = fieldName,
+                typeName = terminalType?.Name ?? "Unknown",
+                isProperty = isProperty,
+                gameObjectName = go.name,
+                componentName = comp.GetType().Name,
+                hierarchyPath = GetHierarchyPath(go),
+
+                isDeclared = true,
+                group = attr.Group,
+                min = attr.Min,
+                max = attr.Max,
+                ownerName = ownerName,
+                ownerInstanceId = ownerGo != null ? ownerGo.GetInstanceID() : go.GetInstanceID(),
+            };
+
+            _watches[id] = entry;
+            _resolvedCache[id] = (comp, chain);
+            _declaredIds.Add(id);
+            return true;
         }
 
         /// <summary>
@@ -395,6 +559,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 sb.Append($"\"gameObject\":\"{Esc(entry.gameObjectName)}\",");
                 sb.Append($"\"component\":\"{Esc(entry.componentName)}\",");
                 sb.Append($"\"path\":\"{Esc(entry.hierarchyPath)}\",");
+                if (entry.isDeclared)
+                {
+                    sb.Append("\"isDeclared\":true,");
+                    if (entry.group != null) sb.Append($"\"group\":\"{Esc(entry.group)}\",");
+                    sb.Append($"\"min\":{entry.min.ToString("G", System.Globalization.CultureInfo.InvariantCulture)},");
+                    sb.Append($"\"max\":{entry.max.ToString("G", System.Globalization.CultureInfo.InvariantCulture)},");
+                    sb.Append($"\"ownerName\":\"{Esc(entry.ownerName)}\",");
+                    sb.Append($"\"ownerInstanceId\":{entry.ownerInstanceId},");
+                }
                 sb.Append($"\"value\":{currentValue}");
                 sb.Append("}");
             }
@@ -408,6 +581,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         public string Poll()
         {
+            // Lazy rebuild after scene load — keeps the panel's view of declared
+            // watches consistent without forcing the client to call /watch/rescan.
+            if (_declaredDirty) Rescan();
+
             var sb = new StringBuilder();
             sb.Append("{\"samples\":[");
 

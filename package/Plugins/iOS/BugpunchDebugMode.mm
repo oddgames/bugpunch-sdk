@@ -259,14 +259,15 @@ static NSString* BPBuildMetadataJson(NSString* type, NSString* title,
         @"deviceId": d.metadata[@"deviceId"] ?: @"",
     };
     m[@"app"] = @{
-        @"version":       d.metadata[@"appVersion"] ?: @"",
-        @"bundleId":      d.metadata[@"bundleId"] ?: @"",
-        @"unityVersion":  d.metadata[@"unityVersion"] ?: @"",
-        @"branch":        d.metadata[@"branch"] ?: @"",
-        @"changeset":     d.metadata[@"changeset"] ?: @"",
-        @"scene":         d.metadata[@"scene"] ?: @"",
-        @"fps":           @(d.fps),
-        @"installerMode": d.metadata[@"installerMode"] ?: @"unknown",
+        @"version":          d.metadata[@"appVersion"] ?: @"",
+        @"bundleId":         d.metadata[@"bundleId"] ?: @"",
+        @"buildFingerprint": d.metadata[@"buildFingerprint"] ?: @"",
+        @"unityVersion":     d.metadata[@"unityVersion"] ?: @"",
+        @"branch":           d.metadata[@"branch"] ?: @"",
+        @"changeset":        d.metadata[@"changeset"] ?: @"",
+        @"scene":            d.metadata[@"scene"] ?: @"",
+        @"fps":              @(d.fps),
+        @"installerMode":    d.metadata[@"installerMode"] ?: @"unknown",
     };
     NSMutableDictionary* custom = [d.customData mutableCopy];
     if (extra) {
@@ -689,14 +690,17 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                         body[@"errorMessage"] = type ?: @"iOS crash";
                         body[@"category"] = @"crash";
                     }
-                    // branch / changeset aren't written into the crash file —
-                    // pull from current runtime metadata (they don't change
-                    // within a build's lifetime so drain-time == crash-time).
+                    // branch / changeset / buildFingerprint aren't written into
+                    // the crash file — pull from current runtime metadata (they
+                    // don't change within a build's lifetime so drain-time ==
+                    // crash-time).
                     BPDebugMode* cur = [BPDebugMode shared];
                     NSString* br = cur.metadata[@"branch"];
                     if (br.length) body[@"branch"] = br;
                     NSString* cs = cur.metadata[@"changeset"];
                     if (cs.length) body[@"changeset"] = cs;
+                    NSString* fp = cur.metadata[@"buildFingerprint"];
+                    if (fp.length) body[@"buildFingerprint"] = fp;
                     // Extract screenshot + logs paths for ANR reports.
                     NSString* shotPath = nil;
                     NSString* logsPath = nil;

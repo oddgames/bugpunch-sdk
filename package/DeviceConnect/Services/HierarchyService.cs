@@ -148,8 +148,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 for (int i = 0; i < roots.Length; i++)
                 {
                     if (i > 0) sb.Append(",");
-                    var go = roots[i];
-                    sb.Append($"{{\"id\":{go.GetInstanceID()},\"name\":\"{EscapeJson(go.name)}\",\"hasChildren\":{(go.transform.childCount > 0 ? "true" : "false")}}}");
+                    AppendChildNode(sb, roots[i]);
                 }
             }
             else
@@ -162,9 +161,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 for (int i = 0; i < t.childCount; i++)
                 {
                     if (i > 0) sb.Append(",");
-                    var child = t.GetChild(i);
-                    var childGo = child.gameObject;
-                    sb.Append($"{{\"id\":{childGo.GetInstanceID()},\"name\":\"{EscapeJson(childGo.name)}\",\"hasChildren\":{(child.childCount > 0 ? "true" : "false")}}}");
+                    AppendChildNode(sb, t.GetChild(i).gameObject);
                 }
             }
 
@@ -187,6 +184,94 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             Object.Destroy(go);
             return "{\"ok\":true}";
+        }
+
+        /// <summary>
+        /// Header info for the editor-style strip at the top of the Inspector:
+        /// active toggle, name, static flag, tag, layer.
+        /// </summary>
+        public string GetGameObject(string instanceIdStr)
+        {
+            if (!int.TryParse(instanceIdStr, out var id))
+                return "{\"error\":\"Invalid instance ID\"}";
+
+            var go = FastFindGameObject(id);
+            if (go == null) return "{\"error\":\"GameObject not found\"}";
+
+            var sb = new StringBuilder(256);
+            sb.Append("{");
+            sb.Append($"\"instanceId\":{go.GetInstanceID()},");
+            sb.Append($"\"name\":\"{EscapeJson(go.name)}\",");
+            sb.Append($"\"active\":{(go.activeSelf ? "true" : "false")},");
+            sb.Append($"\"activeInHierarchy\":{(go.activeInHierarchy ? "true" : "false")},");
+            sb.Append($"\"isStatic\":{(go.isStatic ? "true" : "false")},");
+            sb.Append($"\"tag\":\"{EscapeJson(go.tag)}\",");
+            sb.Append($"\"layer\":{go.layer},");
+            sb.Append($"\"layerName\":\"{EscapeJson(LayerMask.LayerToName(go.layer) ?? "")}\",");
+            sb.Append($"\"scene\":\"{EscapeJson(go.scene.name ?? "")}\"");
+            sb.Append("}");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Apply changes to GameObject header fields. Body fields are all
+        /// optional: name, active, isStatic, tag, layer.
+        /// </summary>
+        public string ApplyGameObject(string instanceIdStr, string body)
+        {
+            if (!int.TryParse(instanceIdStr, out var id))
+                return "{\"ok\":false,\"error\":\"Invalid instance ID\"}";
+
+            var go = FastFindGameObject(id);
+            if (go == null) return "{\"ok\":false,\"error\":\"GameObject not found\"}";
+
+            try
+            {
+                var name = RequestRouter.JsonVal(body, "name");
+                if (name != null) go.name = name;
+
+                var activeRaw = RequestRouter.JsonVal(body, "active");
+                if (activeRaw != null) go.SetActive(activeRaw == "true" || activeRaw == "True" || activeRaw == "1");
+
+                var staticRaw = RequestRouter.JsonVal(body, "isStatic");
+                if (staticRaw != null) go.isStatic = staticRaw == "true" || staticRaw == "True" || staticRaw == "1";
+
+                var tag = RequestRouter.JsonVal(body, "tag");
+                if (tag != null) go.tag = tag; // throws UnityException if tag is not registered
+
+                var layerRaw = RequestRouter.JsonVal(body, "layer");
+                if (layerRaw != null && int.TryParse(layerRaw, out var layer))
+                    go.layer = Mathf.Clamp(layer, 0, 31);
+
+                return "{\"ok\":true}";
+            }
+            catch (System.Exception ex)
+            {
+                return $"{{\"ok\":false,\"error\":\"{EscapeJson(ex.Message)}\"}}";
+            }
+        }
+
+        static void AppendChildNode(StringBuilder sb, GameObject go)
+        {
+            sb.Append("{");
+            sb.Append($"\"id\":{go.GetInstanceID()},");
+            sb.Append($"\"name\":\"{EscapeJson(go.name)}\",");
+            sb.Append($"\"hasChildren\":{(go.transform.childCount > 0 ? "true" : "false")},");
+
+            sb.Append("\"components\":[");
+            var components = go.GetComponents<Component>();
+            bool first = true;
+            for (int i = 0; i < components.Length; i++)
+            {
+                var c = components[i];
+                if (c == null) continue;
+                if (!first) sb.Append(",");
+                first = false;
+                sb.Append($"\"{EscapeJson(c.GetType().Name)}\"");
+            }
+            sb.Append("]");
+
+            sb.Append("}");
         }
 
         static MethodInfo _findMethod;

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.45] - 2026-04-25
+
+### Added
+- **`[Watch]` attribute drives the Watch panel.** New `WatchAttribute` (`sdk/package/WatchAttribute.cs`, global namespace) lets devs annotate any field/property on a `MonoBehaviour` with `[Watch]`, optional `group`, `min`/`max`, and a `WatchOwner` enum (`Self` / `Parent` / `Root`). `WatchService` scans loaded scenes on startup and after every `sceneLoaded`/`sceneUnloaded` event (rebuild is lazy on the next `/watch/poll` so there's no frame hitch on scene change), registering each annotated member as a "declared" watch entry. The Remote IDE Watch panel renders declared entries in collapsible sections grouped by `group ?? ownerName`, with sliders for ranged numerics and toggles for booleans, while user-pinned watches keep working below. New endpoint `POST /watch/rescan` for manual refresh; declared-watch metadata rides along the existing `/watch/poll` and `/watch/apply` pipelines so the polling cadence and write path are unchanged. `WatchAttribute` + `WatchOwner` are added to `link.xml` so IL2CPP doesn't strip them off user fields. `WatchService.ClearAll` now flags declared watches dirty so they reappear automatically on the next poll — clearing only wipes user-pinned entries from the user's POV.
+- **Shader / Material Profiler in the Remote IDE.** New `ShaderProfilerService` (`sdk/package/DeviceConnect/Services/ShaderProfilerService.cs`) registered on `RequestRouter` under `/shader-profile/*`. It enumerates every `Renderer` in the loaded scenes (incl. inactive + DontDestroyOnLoad), groups them by shader name (or material instance), then runs a coroutine sweep that — with `Time.timeScale = 0` and `AudioListener.pause = true` to freeze spawners/animation/physics so the snapshot stays valid — hides everything outside the current group, samples `Time.unscaledDeltaTime` for N seconds, and ranks each group by added avg/p99 ms vs a baseline measurement. Endpoints: `GET /shader-profile/groups`, `POST /shader-profile/start`, `GET /shader-profile/status`, `GET /shader-profile/result`, `POST /shader-profile/cancel`, `POST /shader-profile/spotlight`. Restoration of renderer states + timeScale + audio pause is done in a `finally` block, on `Cancel`, on error, and on `OnDestroy` so the device is never left in a partially-disabled state. The matching web panel lives in the bottom tabset alongside Console / Script / Watch and offers an automatic "Run Auto Sweep" button plus a per-group "Spotlight" toggle for manual eyeballing.
+
+### Changed
+- **Hierarchy children include component types.** `HierarchyService.GetChildren` now emits a `components` array (e.g. `["Transform","Camera","AudioListener"]`) on every child node so the Remote IDE Hierarchy panel can search by component type ("Camera", "Rigidbody") in addition to GameObject name. The web search box gains an inline ✕ clear button (Esc also clears) and a `Match: any | name | type` segmented selector below it — choose the scope explicitly; the choice persists in `localStorage`. Placeholder text and search semantics adapt to the selected mode. Older SDK builds that don't ship the `components` field continue to fall back to name-only matching.
+
 ## [1.7.43] - 2026-04-25
 
 ### Changed
@@ -300,7 +309,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Inspector Service** — improvements to component inspection.
-- **PaxScript Runner** — updates to script execution service.
+- **Script Runner** — updates to script execution service.
 - **Crash Handler** — Android crash handler improvements, iOS crash handler updates.
 - **Report Form** — updated native bug report form (Android BugpunchReportActivity, iOS BugpunchReportForm).
 - **Uploader** — Android and iOS uploader improvements.
@@ -349,14 +358,14 @@ All notable changes to this project will be documented in this file.
 ## [1.5.19] - 2026-04-15
 
 ### Added
-- **"Request More Info" crash directives** — QA can queue per-fingerprint data-gathering from the dashboard. Three action types: `attach_files` (native glob within a game-declared allow-list), `run_paxscript` (runtime diagnostics via the Mono/IL2CPP PaxScript runner), and `ask_user_for_help` (friendly post-upload consent dialog that auto-enables debug mode on accept and persists "never ask again" per fingerprint on decline). Directive output is POSTed to `/api/crashes/events/:id/enrich` via the existing retry/app-kill-resistant upload queue. Paxscript failures file a companion `DirectiveError:PaxScript` event under the same crash group so they surface in the issue detail.
+- **"Request More Info" crash directives** — QA can queue per-fingerprint data-gathering from the dashboard. Three action types: `attach_files` (native glob within a game-declared allow-list), `run_script` (runtime diagnostics via the IL2CPP-safe script runner), and `ask_user_for_help` (friendly post-upload consent dialog that auto-enables debug mode on accept and persists "never ask again" per fingerprint on decline). Directive output is POSTed to `/api/crashes/events/:id/enrich` via the existing retry/app-kill-resistant upload queue. Script failures file a companion `DirectiveError:Script` event under the same crash group so they surface in the issue detail.
 - **`BugpunchConfig.attachmentRules[]`** — Inspector-editable allow-list of files Bugpunch is permitted to read. Server directives can only reference paths that match a rule here, so games stay in control of what leaves the device. Supports Unity path tokens `[PersistentDataPath]`, `[TemporaryCachePath]`, `[DataPath]`.
 - **`Bugpunch.AddAttachmentRule(name, path, pattern, maxBytes)`** — runtime escape hatch for dynamic attachment paths; merged with config rules at startup.
 - **Per-(fingerprint, appVersion) sample budget** — crash group `SampleCountByVersion` tracks collection quota per app version so a v2.0 regression can't be masked by v1.x having already exhausted the global counter.
 
 ### Changed
 - **Android plugin now ships as a pre-built AAR.** Source moved from `package/Bugpunch/Plugins/Android/BugpunchPlugin.androidlib/` (which forced end-game builds to run Gradle + NDK) to `android-src/bugpunch/` (outside the UPM package). CI rebuilds `BugpunchPlugin.aar` on every push to `main` touching `android-src/**` and commits it back. Downstream games consume only the AAR — no JDK / Android SDK / NDK required during their player build. Local rebuild via `sdk/build-android.ps1` for devs with the toolchain; iOS stays as source (Xcode compiles per player build).
-- **Directive dispatch is native-heavy.** C# shrunk to one managed-only concern (PaxScript execution, which requires the Mono runtime). Native owns upload-response parsing, fingerprint matching, file globs, consent dialogs, and per-fingerprint denial prefs on both Android (`BugpunchDirectives.java` + `SharedPreferences`) and iOS (`BugpunchDirectives.mm` + `NSUserDefaults`).
+- **Directive dispatch is native-heavy.** C# shrunk to one managed-only concern (script execution, which requires the Mono/IL2CPP runtime). Native owns upload-response parsing, fingerprint matching, file globs, consent dialogs, and per-fingerprint denial prefs on both Android (`BugpunchDirectives.java` + `SharedPreferences`) and iOS (`BugpunchDirectives.mm` + `NSUserDefaults`).
 
 ## [1.5.18] - 2026-04-15
 
@@ -580,7 +589,7 @@ Major refactor: **native-first architecture**. Everything that doesn't strictly 
 
 ### Changed
 - **Inspector member enumeration includes inherited members** — properties, fields, and methods now use `BindingFlags.FlattenHierarchy`, deduped by name so overrides don't appear twice. Methods are grouped by name with an overload count (`(+N overloads)`) instead of listing every signature.
-- **PaxScript errors carry line numbers** — `PaxScriptRunner` returns structured `{line, message}` entries from `PaxScripter.Error_List` instead of a single blob string, so the script panel can underline the offending line.
+- **Script errors carry line numbers** — `ScriptRunner` returns structured `{line, message}` entries from the script engine's diagnostics instead of a single blob string, so the script panel can underline the offending line.
 
 ### Fixed
 - **Missing Android Plugins .meta files** — v1.4.0 shipped `BugpunchProjectionRequest.java`, `BugpunchProjectionService.java`, `BugpunchRecorder.java`, and `AndroidManifest.xml` without their folder `.meta` companions, so Unity dropped the entire `Plugins/Android` tree on package import in consumer projects.

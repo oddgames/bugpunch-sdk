@@ -560,6 +560,7 @@ public final class BugpunchReportingService {
             app.put("version", BugpunchRuntime.getMetadata("appVersion"));
             app.put("bundleId", BugpunchRuntime.getMetadata("bundleId"));
             app.put("buildCode", BugpunchRuntime.getMetadata("buildCode"));
+            app.put("buildFingerprint", BugpunchRuntime.getMetadata("buildFingerprint"));
             app.put("unityVersion", BugpunchRuntime.getMetadata("unityVersion"));
             app.put("branch", BugpunchRuntime.getMetadata("branch"));
             app.put("changeset", BugpunchRuntime.getMetadata("changeset"));

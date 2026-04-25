@@ -302,6 +302,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var materials = gameObject.AddComponent<MaterialService>();
             var memorySnapshots = new MemorySnapshotService();
             var playerPrefs = new PlayerPrefsService();
+            var shaderProfiler = gameObject.AddComponent<ShaderProfilerService>();
+            var settings = new SettingsService();
 
             // Create scene camera service
             SceneCamera = gameObject.AddComponent<SceneCameraService>();
@@ -327,6 +329,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Watch = watch,
                 MemorySnapshots = memorySnapshots,
                 PlayerPrefs = playerPrefs,
+                ShaderProfiler = shaderProfiler,
+                Settings = settings,
                 Streamer = null
             };
 
@@ -999,6 +1003,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var nx = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "x"), out var pxp) ? pxp : 0.5f);
                     var ny = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "y"), out var pyp) ? pyp : 0.5f);
                     var screenP = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
+                    Debug.Log($"[Bugpunch.BugpunchClient] /input/pointer action={action} norm=({nx:F3},{ny:F3}) screen=({screenP.x:F0},{screenP.y:F0}) screenWH=({Screen.width}x{Screen.height}) reqId={requestId} bodyLen={body?.Length ?? 0}");
                     Task t = action switch
                     {
                         "down"   => InputInjector.InjectPointerDown(screenP),

@@ -80,8 +80,60 @@ namespace ODDGames.Bugpunch.Editor
         }
     }
 
-    // No pre-build hook needed. TypeDB upload happens only after a successful
-    // build (see BugpunchPostBuildHook).
+    /// <summary>
+    /// Pre-build hook: stamps a fresh build fingerprint (32-char hex UUID) into
+    /// a Resources/ TextAsset so the runtime SDK can recover it via
+    /// Resources.Load and report it on every crash/exception/bug-report. The
+    /// post-build hook reads the same file and ships it as a multipart field
+    /// on the APK upload — same UUID on both ends gives the server a perfect
+    /// dedup key for "which compiled binary did this come from", regardless of
+    /// whether Application.version was bumped correctly.
+    /// </summary>
+    public class BugpunchBuildFingerprintHook : IPreprocessBuildWithReport
+    {
+        // Run early so the asset is in place before the Resources scanner picks it up.
+        public int callbackOrder => -1000;
+
+        // Public so the post-build hook + runtime helpers can locate the file.
+        public const string FingerprintFolder = "Assets/Bugpunch/Resources";
+        public const string FingerprintAssetPath = FingerprintFolder + "/BugpunchBuildInfo.txt";
+
+        public void OnPreprocessBuild(BuildReport report)
+        {
+            try
+            {
+                var fingerprint = Guid.NewGuid().ToString("N");
+                if (!Directory.Exists(FingerprintFolder)) Directory.CreateDirectory(FingerprintFolder);
+                File.WriteAllText(FingerprintAssetPath, fingerprint);
+                // Drop a .gitignore alongside so users don't churn the repo on every build.
+                var ignorePath = "Assets/Bugpunch/.gitignore";
+                if (!File.Exists(ignorePath)) File.WriteAllText(ignorePath, "*\n!.gitignore\n");
+                AssetDatabase.ImportAsset(FingerprintAssetPath, ImportAssetOptions.ForceUpdate);
+                Debug.Log($"[Bugpunch.BuildHooks] Stamped build fingerprint {fingerprint}");
+            }
+            catch (Exception ex)
+            {
+                // Don't fail the build over this — fingerprint is a quality-of-life
+                // dedup signal, not a correctness requirement.
+                Debug.LogWarning($"[Bugpunch.BuildHooks] Failed to stamp build fingerprint: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Read back the fingerprint stamped by the pre-build hook. Used by the
+        /// post-build artifact upload so the APK's multipart payload carries
+        /// the same UUID baked into the binary.
+        /// </summary>
+        public static string ReadStampedFingerprint()
+        {
+            try
+            {
+                if (!File.Exists(FingerprintAssetPath)) return "";
+                return File.ReadAllText(FingerprintAssetPath).Trim();
+            }
+            catch { return ""; }
+        }
+    }
 
     /// <summary>
     /// Post-build hook: uploads the build artifact to the server.
@@ -149,6 +201,7 @@ namespace ODDGames.Bugpunch.Editor
             var platform = GetPlatformString(report.summary.platform);
             var changeset = GetPlasticChangeset();
             var branch = GetPlasticBranch();
+            var buildFingerprint = BugpunchBuildFingerprintHook.ReadStampedFingerprint();
 
             // Batch mode (`-batchmode -quit`) exits as soon as the post-build
             // hook returns, so async upload would die mid-flight. Run sync
@@ -158,7 +211,7 @@ namespace ODDGames.Bugpunch.Editor
                 Debug.Log($"[Bugpunch.BuildHooks] Post-build (batch): uploading artifact {fileName}...");
                 try
                 {
-                    UploadArtifactSync(config, outputPath, fileName, platform, changeset, branch);
+                    UploadArtifactSync(config, outputPath, fileName, platform, changeset, branch, buildFingerprint);
                 }
                 catch (Exception ex)
                 {
@@ -173,7 +226,7 @@ namespace ODDGames.Bugpunch.Editor
                 // Kick off on delayCall so the post-build hook returns
                 // immediately and Unity's progress bar unfreezes.
                 EditorApplication.delayCall += () => StartArtifactUpload(
-                    config, outputPath, fileName, platform, changeset, branch);
+                    config, outputPath, fileName, platform, changeset, branch, buildFingerprint);
             }
             catch (Exception ex)
             {
@@ -194,10 +247,11 @@ namespace ODDGames.Bugpunch.Editor
         // StallTimeoutSeconds so CI jobs can't hang forever.
         static void UploadArtifactSync(
             ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config,
-            string filePath, string fileName, string platform, string changeset, string branch)
+            string filePath, string fileName, string platform, string changeset, string branch,
+            string buildFingerprint)
         {
             var bodyPath = BuildMultipartBody(
-                out var boundary, filePath, fileName, platform, changeset, branch);
+                out var boundary, filePath, fileName, platform, changeset, branch, buildFingerprint);
             if (bodyPath == null) return;
 
             var totalMb = new FileInfo(bodyPath).Length / 1048576.0;
@@ -276,7 +330,7 @@ namespace ODDGames.Bugpunch.Editor
         const int StagingCopyBufferBytes = 4 * 1024 * 1024;
         static string BuildMultipartBody(
             out string boundary, string filePath, string fileName,
-            string platform, string changeset, string branch)
+            string platform, string changeset, string branch, string buildFingerprint)
         {
             boundary = "----BugpunchBoundary" + Guid.NewGuid().ToString("N");
             var bodyPath = Path.Combine(Path.GetTempPath(), $"bp_artifact_{Guid.NewGuid():N}.bin");
@@ -287,6 +341,7 @@ namespace ODDGames.Bugpunch.Editor
                     StagingCopyBufferBytes, FileOptions.SequentialScan);
                 WriteField(body, boundary, "platform", platform);
                 WriteField(body, boundary, "appVersion", Application.version);
+                WriteField(body, boundary, "buildFingerprint", buildFingerprint ?? "");
                 WriteField(body, boundary, "branch", branch ?? "");
                 WriteField(body, boundary, "commit", changeset ?? "");
                 WriteField(body, boundary, "notes",
@@ -326,7 +381,8 @@ namespace ODDGames.Bugpunch.Editor
 
         static void StartArtifactUpload(
             ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config,
-            string filePath, string fileName, string platform, string changeset, string branch)
+            string filePath, string fileName, string platform, string changeset, string branch,
+            string buildFingerprint)
         {
             if (s_activeReq != null)
             {
@@ -341,7 +397,7 @@ namespace ODDGames.Bugpunch.Editor
             }
 
             var bodyPath = BuildMultipartBody(
-                out var boundary, filePath, fileName, platform, changeset, branch);
+                out var boundary, filePath, fileName, platform, changeset, branch, buildFingerprint);
             if (bodyPath == null) return;
 
             var req = new UnityWebRequest(ResolveUploadUrl(config), "POST");

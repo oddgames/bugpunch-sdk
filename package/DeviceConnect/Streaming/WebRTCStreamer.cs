@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Profiling;
 using Unity.WebRTC;
 using UnityEngine;
 
@@ -55,6 +56,20 @@ namespace ODDGames.Bugpunch.DeviceConnect
         float _nextBlitTimeUnscaled;
         float _nextMetadataTimeUnscaled;
         const float METADATA_INTERVAL_SECONDS = 0.1f; // 10 Hz is plenty for cursor/touch
+
+        // Game-side perf counters piggybacked on the metadata channel.
+        // ProfilerRecorder is the official zero-overhead path for these markers.
+        ProfilerRecorder _drawCallsRecorder;
+        ProfilerRecorder _batchesRecorder;
+        ProfilerRecorder _setPassRecorder;
+        ProfilerRecorder _trianglesRecorder;
+        ProfilerRecorder _verticesRecorder;
+        ProfilerRecorder _totalMemRecorder;
+        ProfilerRecorder _gcMemRecorder;
+        bool _perfRecordersStarted;
+        int _frameAccum;
+        float _frameAccumStart;
+        float _smoothedFps;
 
         /// <summary>
         /// Reference to the scene camera service for sending metadata via data channel.
@@ -533,9 +548,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             int aspectCheckCounter = 0;
             _nextBlitTimeUnscaled = 0f;
             _nextMetadataTimeUnscaled = 0f;
+            _frameAccum = 0;
+            _frameAccumStart = Time.unscaledTime;
             while (_streaming && _pc != null)
             {
                 yield return new WaitForEndOfFrame();
+                _frameAccum++;
                 if (_rt == null) continue;
 
                 float now = Time.unscaledTime;
@@ -568,6 +586,43 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var metaCam = _targetCamera ? _targetCamera : Camera.main;
                     string F(float v) => v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
+                    // FPS over the last metadata interval, EMA-smoothed so the
+                    // viewer sees a stable number rather than 10 Hz jitter.
+                    float dtAccum = now - _frameAccumStart;
+                    if (dtAccum > 0f && _frameAccum > 0)
+                    {
+                        float instantFps = _frameAccum / dtAccum;
+                        _smoothedFps = _smoothedFps <= 0f ? instantFps : _smoothedFps * 0.7f + instantFps * 0.3f;
+                    }
+                    _frameAccum = 0;
+                    _frameAccumStart = now;
+
+                    // Lazy-start the rendering recorders. ProfilerRecorder is
+                    // ~free and gives us live drawcalls/batches without a
+                    // profiler attached. Runs on all build types in Unity 2020.2+.
+                    if (!_perfRecordersStarted)
+                    {
+                        _perfRecordersStarted = true;
+                        try
+                        {
+                            _drawCallsRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Draw Calls Count");
+                            _batchesRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Batches Count");
+                            _setPassRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "SetPass Calls Count");
+                            _trianglesRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Triangles Count");
+                            _verticesRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Render, "Vertices Count");
+                            _totalMemRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "Total Used Memory");
+                            _gcMemRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Used Memory");
+                        }
+                        catch { /* unsupported platform — leave recorders invalid, fields will be omitted */ }
+                    }
+                    long dc = _drawCallsRecorder.Valid ? _drawCallsRecorder.LastValue : -1L;
+                    long batches = _batchesRecorder.Valid ? _batchesRecorder.LastValue : -1L;
+                    long setpass = _setPassRecorder.Valid ? _setPassRecorder.LastValue : -1L;
+                    long tris = _trianglesRecorder.Valid ? _trianglesRecorder.LastValue : -1L;
+                    long verts = _verticesRecorder.Valid ? _verticesRecorder.LastValue : -1L;
+                    long totalMem = _totalMemRecorder.Valid ? _totalMemRecorder.LastValue : -1L;
+                    long gcMem = _gcMemRecorder.Valid ? _gcMemRecorder.LastValue : -1L;
+
                     var sb = new System.Text.StringBuilder(256);
                     sb.Append('{');
                     if (metaCam != null)
@@ -577,6 +632,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         var cr = ct.eulerAngles;
                         sb.Append($"\"px\":{F(cp.x)},\"py\":{F(cp.y)},\"pz\":{F(cp.z)},\"rx\":{F(cr.x)},\"ry\":{F(cr.y)},\"rz\":{F(cr.z)},");
                     }
+                    sb.Append($"\"fps\":{F(_smoothedFps)},");
+                    if (dc >= 0) sb.Append($"\"dc\":{dc},");
+                    if (batches >= 0) sb.Append($"\"b\":{batches},");
+                    if (setpass >= 0) sb.Append($"\"sp\":{setpass},");
+                    if (tris >= 0) sb.Append($"\"tri\":{tris},");
+                    if (verts >= 0) sb.Append($"\"vrt\":{verts},");
+                    if (totalMem >= 0) sb.Append($"\"mem\":{totalMem},");
+                    if (gcMem >= 0) sb.Append($"\"gc\":{gcMem},");
                     var touchJson = RequestRouter.GetLiveTouchesForStream(500);
                     sb.Append(touchJson);
                     sb.Append('}');
@@ -623,6 +686,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _streaming = false;
             CleanupPeerConnection();
             CleanupRenderTexture();
+            if (_perfRecordersStarted)
+            {
+                if (_drawCallsRecorder.Valid) _drawCallsRecorder.Dispose();
+                if (_batchesRecorder.Valid) _batchesRecorder.Dispose();
+                if (_setPassRecorder.Valid) _setPassRecorder.Dispose();
+                if (_trianglesRecorder.Valid) _trianglesRecorder.Dispose();
+                if (_verticesRecorder.Valid) _verticesRecorder.Dispose();
+                if (_totalMemRecorder.Valid) _totalMemRecorder.Dispose();
+                if (_gcMemRecorder.Valid) _gcMemRecorder.Dispose();
+                _perfRecordersStarted = false;
+                _smoothedFps = 0f;
+            }
             lock (_pendingIceCandidates) { _pendingIceCandidates.Clear(); }
             Debug.Log("[Bugpunch.WebRTCStreamer] WebRTC: streaming stopped");
         }

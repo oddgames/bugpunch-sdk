@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using ODDGames.Bugpunch.DeviceConnect.Database;
@@ -28,6 +29,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public WatchService Watch;
         public MemorySnapshotService MemorySnapshots;
         public PlayerPrefsService PlayerPrefs;
+        public ShaderProfilerService ShaderProfiler;
+        public SettingsService Settings;
 
         public struct Response
         {
@@ -83,6 +86,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 {
                     var id = Q(path, "instanceid");
                     return Response.Json(Hierarchy?.DeleteGameObject(id) ?? "{\"ok\":false}");
+                }
+
+                // GameObject header (active / name / static / tag / layer)
+                if (path.StartsWith("/gameobject"))
+                {
+                    var id = Q(path, "instanceid");
+                    if (method == "POST")
+                        return Response.Json(Hierarchy?.ApplyGameObject(id, body) ?? "{\"ok\":false}");
+                    return Response.Json(Hierarchy?.GetGameObject(id) ?? "{}");
                 }
 
                 // Inspector
@@ -167,6 +179,92 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 // Performance
                 if (path == "/perf" || path.StartsWith("/perf?"))
                     return Response.Json(Performance?.GetMetrics() ?? "{}");
+
+                // Runtime settings (Time, Physics, Quality, Render, Audio, etc.)
+                if (path.StartsWith("/settings"))
+                {
+                    if (Settings == null)
+                        return Response.Error("Settings service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/settings" || subPath == "/settings/")
+                        return Response.Json(Settings.GetAll());
+
+                    // /settings/<group> — GET reads, POST applies
+                    if (subPath.StartsWith("/settings/"))
+                    {
+                        var group = subPath.Substring("/settings/".Length).TrimEnd('/');
+
+                        // Layer collision matrix toggle: POST /settings/layers/collision
+                        if (group == "layers/collision" && method == "POST")
+                            return Response.Json(Settings.ApplyLayers(body));
+
+                        if (method == "POST")
+                        {
+                            switch (group)
+                            {
+                                case "time":        return Response.Json(Settings.ApplyTime(body));
+                                case "physics":     return Response.Json(Settings.ApplyPhysics(body));
+                                case "physics2d":   return Response.Json(Settings.ApplyPhysics2D(body));
+                                case "quality":     return Response.Json(Settings.ApplyQuality(body));
+                                case "render":      return Response.Json(Settings.ApplyRender(body));
+                                case "audio":       return Response.Json(Settings.ApplyAudio(body));
+                                case "application": return Response.Json(Settings.ApplyApplication(body));
+                                case "shader":      return Response.Json(Settings.ApplyShader(body));
+                                default:            return Response.NotFound(path);
+                            }
+                        }
+
+                        return Response.Json(Settings.GetGroup(group));
+                    }
+
+                    return Response.NotFound(path);
+                }
+
+                // Shader / material profiler
+                if (path.StartsWith("/shader-profile"))
+                {
+                    if (ShaderProfiler == null)
+                        return Response.Error("Shader profiler service not available", 501);
+
+                    var subPath = path.Split('?')[0];
+
+                    if (subPath == "/shader-profile/groups")
+                    {
+                        var by = Q(path, "by") ?? "shader";
+                        return Response.Json(ShaderProfiler.ListGroups(by));
+                    }
+
+                    if (subPath == "/shader-profile/start" && method == "POST")
+                    {
+                        var by = JsonVal(body, "by") ?? "shader";
+                        var secs = float.TryParse(JsonVal(body, "secondsPerGroup"), NumberStyles.Float, CultureInfo.InvariantCulture, out var s) ? s : 3f;
+                        var warm = int.TryParse(JsonVal(body, "warmupFrames"), out var w) ? w : 30;
+                        var pauseStr = JsonVal(body, "pauseGame");
+                        bool pause = pauseStr == null || pauseStr.ToLowerInvariant() != "false";
+                        var keysCsv = JsonVal(body, "keysCsv");
+                        return Response.Json(ShaderProfiler.Start(by, secs, warm, pause, keysCsv));
+                    }
+
+                    if (subPath == "/shader-profile/status")
+                        return Response.Json(ShaderProfiler.GetStatus(Q(path, "jobId")));
+
+                    if (subPath == "/shader-profile/result")
+                        return Response.Json(ShaderProfiler.GetResult(Q(path, "jobId")));
+
+                    if (subPath == "/shader-profile/cancel" && method == "POST")
+                        return Response.Json(ShaderProfiler.Cancel(Q(path, "jobId") ?? JsonVal(body, "jobId")));
+
+                    if (subPath == "/shader-profile/spotlight" && method == "POST")
+                    {
+                        var by = JsonVal(body, "by") ?? "shader";
+                        var key = JsonVal(body, "key") ?? "";
+                        return Response.Json(ShaderProfiler.Spotlight(by, key));
+                    }
+
+                    return Response.NotFound(path);
+                }
 
                 // Console
                 if (path.StartsWith("/log"))
@@ -701,6 +799,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                     if (subPath == "/watch/poll")
                         return Response.Json(Watch.Poll());
+
+                    if (subPath == "/watch/rescan" && method == "POST")
+                        return Response.Json(Watch.Rescan());
 
                     if (subPath == "/watch/apply" && method == "POST")
                     {

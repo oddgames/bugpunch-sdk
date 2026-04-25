@@ -2,4 +2,10 @@
   <!-- Preserve WebRTC assembly — loaded via reflection, IL2CPP would strip it -->
   <assembly fullname="ODDGames.Bugpunch.WebRTC" preserve="all" ignoreIfMissing="1"/>
   <assembly fullname="Unity.WebRTC" preserve="all" ignoreIfMissing="1"/>
+  <!-- Preserve [Watch] attribute and enum so IL2CPP doesn't strip them off
+       user fields. Without this, declared-watch discovery silently finds nothing. -->
+  <assembly fullname="ODDGames.Bugpunch">
+    <type fullname="WatchAttribute" preserve="all"/>
+    <type fullname="WatchOwner" preserve="all"/>
+  </assembly>
 </linker>

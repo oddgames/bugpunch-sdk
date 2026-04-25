@@ -861,6 +861,29 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Debug.Log($"[Bugpunch.BugpunchNative] Device tier: {DeviceTier} (RAM={memMb}MB, cores={cores})");
         }
 
+        // Cached because Resources.Load is expensive and the value never changes
+        // for the lifetime of the process (it's compiled into the build).
+        static string s_buildFingerprint;
+        static bool s_buildFingerprintLoaded;
+
+        /// <summary>
+        /// Read the build fingerprint stamped at editor build time. Returns
+        /// "" when running in Editor or in a build that wasn't produced by a
+        /// SDK-aware editor (no Resources/BugpunchBuildInfo.txt).
+        /// </summary>
+        static string ReadBuildFingerprint()
+        {
+            if (s_buildFingerprintLoaded) return s_buildFingerprint;
+            s_buildFingerprintLoaded = true;
+            try
+            {
+                var ta = Resources.Load<TextAsset>("BugpunchBuildInfo");
+                s_buildFingerprint = ta != null ? (ta.text ?? "").Trim() : "";
+            }
+            catch { s_buildFingerprint = ""; }
+            return s_buildFingerprint;
+        }
+
         static string BuildConfigJson(BugpunchConfig c)
         {
             DetectDeviceTier();
@@ -900,6 +923,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Field(sb, "osVersion",    SystemInfo.operatingSystem);        sb.Append(',');
             Field(sb, "deviceId",     SystemInfo.deviceUniqueIdentifier); sb.Append(',');
             Field(sb, "gpu",          SystemInfo.graphicsDeviceName);     sb.Append(',');
+            // Build fingerprint — opaque UUID stamped into Resources by the
+            // editor pre-build hook. Same value on the APK upload, so the
+            // server can dedup builds even when Application.version is wrong.
+            // Empty in Editor + builds without the package's BuildHooks.
+            Field(sb, "buildFingerprint", ReadBuildFingerprint());        sb.Append(',');
             // Release labels — surfaces in Issues/Performance filters + groupBy so
             // you can slice by staging/beta/prod branch or by specific build SHA.
             // Empty strings are fine; native defaults to "" via getOrDefault.

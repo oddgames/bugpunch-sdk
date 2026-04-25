@@ -75,6 +75,24 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // Cap per-frame overlay draws so huge scenes don't tank the editor.
         const int WireframeMaxDrawsPerFrame = 1024;
 
+        // Collider wireframe overlay (Physics-Debugger style)
+        Material _colliderWireMaterial;
+        bool _collidersOverlayEnabled;
+        Mesh _unitBoxLines;
+        Mesh _unitSphereLines;
+        // Per-instance line meshes for capsule colliders (parameterized by radius/height/direction)
+        readonly Dictionary<int, (Mesh mesh, float r, float h, int dir)> _capsuleLineMeshes = new();
+        Collider[] _cachedColliders;
+        int _cachedCollidersFrame = -1000;
+        const int ColliderCacheValidForFrames = 30;
+        const int ColliderMaxDrawsPerFrame = 2048;
+        // Physics Debugger colour conventions
+        static readonly Color ColliderColorStatic    = new Color(0.55f, 0.85f, 0.55f, 1f); // green
+        static readonly Color ColliderColorKinematic = new Color(0.40f, 0.70f, 1.00f, 1f); // blue
+        static readonly Color ColliderColorDynamic   = new Color(1.00f, 0.55f, 0.30f, 1f); // orange
+        static readonly Color ColliderColorTrigger   = new Color(1.00f, 0.95f, 0.40f, 0.85f); // yellow, slightly translucent
+        static readonly int ShaderPropTintColor = Shader.PropertyToID("_TintColor");
+
         public void SetStreamer(IStreamer streamer)
         {
             _streamer = streamer;
@@ -129,6 +147,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             _sceneCamera = _sceneCameraGo.AddComponent<Camera>();
             _sceneCamera.depth = 100;
+            // Streamer is the sole renderer (manual Render() at WaitForEndOfFrame).
+            // With enabled=true + no targetTexture, Unity would auto-render this
+            // to the device display each frame, AND consume the wireframe
+            // overlay's queued Graphics.DrawMesh before the streamer's manual
+            // render reaches the RT — so wireframe would show on-device but not
+            // in the WebRTC stream. Disabling fixes both.
+            _sceneCamera.enabled = false;
 
             // Don't set targetTexture here — the WebRTC streamer manages the RT.
             // Just set the aspect ratio if dashboard sent viewport dimensions.
@@ -463,6 +488,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     shaderName = "Hidden/Bugpunch/Wireframe";
                     clearColorOverride = SceneViewClearColor;
                     break;
+                case "colliders":
+                    // Collider wireframe overlay — like Unity's Physics Debugger.
+                    // Scene renders shaded normally; collider geometry draws on
+                    // top via Graphics.DrawMesh from LateUpdate. Tier-coloured.
+                    shaderName = "Hidden/Bugpunch/ColliderWire";
+                    break;
                 case "normals":
                     shaderName = "Hidden/Bugpunch/Normals";
                     break;
@@ -493,6 +524,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 {
                     _wireframeMaterial = mat;
                     _wireframeEnabled = true;
+                }
+                else if (mode == "colliders")
+                {
+                    _colliderWireMaterial = mat;
+                    _collidersOverlayEnabled = true;
                 }
                 else
                 {
@@ -529,8 +565,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 Destroy(_wireframeMaterial);
                 _wireframeMaterial = null;
             }
+            if (_colliderWireMaterial != null)
+            {
+                Destroy(_colliderWireMaterial);
+                _colliderWireMaterial = null;
+            }
 
             _wireframeEnabled = false;
+            _collidersOverlayEnabled = false;
             GL.wireframe = false; // safety: clean state in case something else set it
 
             RestoreClearColor();
@@ -656,7 +698,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // -----------------------------------------------------------------
         void LateUpdate()
         {
-            if (!_wireframeEnabled || _sceneCamera == null || _wireframeMaterial == null) return;
+            if (_sceneCamera == null) return;
+            if (_collidersOverlayEnabled && _colliderWireMaterial != null)
+                DrawColliderOverlay();
+            if (!_wireframeEnabled || _wireframeMaterial == null) return;
 
             RefreshRendererCache();
             int drawn = 0;
@@ -754,10 +799,301 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _edgeMeshes.Clear();
         }
 
+        // -----------------------------------------------------------------
+        // Collider overlay — draws Box/Sphere/Capsule/Mesh wireframes for
+        // every collider in the scene on top of the rendered view, using
+        // Physics-Debugger style colours (static green / kinematic blue /
+        // dynamic orange / trigger yellow). Pipeline-agnostic: rendered via
+        // Graphics.DrawMesh on MeshTopology.Lines edge meshes, restricted to
+        // the scene camera so the main game view is unaffected.
+        // -----------------------------------------------------------------
+        void DrawColliderOverlay()
+        {
+            RefreshColliderCache();
+            EnsureUnitPrimitiveMeshes();
+
+            int drawn = 0;
+            var mpb = ColliderPropertyBlock;
+            for (int i = 0; i < _cachedColliders.Length; i++)
+            {
+                if (drawn >= ColliderMaxDrawsPerFrame) break;
+                var col = _cachedColliders[i];
+                if (col == null || !col.enabled || !col.gameObject.activeInHierarchy) continue;
+
+                int tier = ClassifyTier(col);
+                Color colour = col.isTrigger
+                    ? ColliderColorTrigger
+                    : tier == 0 ? ColliderColorStatic
+                    : tier == 1 ? ColliderColorKinematic
+                    : ColliderColorDynamic;
+
+                Mesh mesh;
+                Matrix4x4 matrix;
+                if (!TryBuildColliderDraw(col, out mesh, out matrix)) continue;
+
+                mpb.SetColor(ShaderPropTintColor, colour);
+                int layer = col.gameObject.layer;
+                Graphics.DrawMesh(mesh, matrix, _colliderWireMaterial, layer, _sceneCamera, 0, mpb);
+                drawn++;
+            }
+        }
+
+        MaterialPropertyBlock _colliderMpb;
+        MaterialPropertyBlock ColliderPropertyBlock => _colliderMpb ??= new MaterialPropertyBlock();
+
+        void RefreshColliderCache()
+        {
+            if (_cachedColliders != null && Time.frameCount - _cachedCollidersFrame < ColliderCacheValidForFrames) return;
+            _cachedColliders = UnityEngine.Object.FindObjectsByType<Collider>(FindObjectsSortMode.None);
+            _cachedCollidersFrame = Time.frameCount;
+        }
+
+        bool TryBuildColliderDraw(Collider col, out Mesh mesh, out Matrix4x4 matrix)
+        {
+            var t = col.transform;
+            if (col is BoxCollider box)
+            {
+                mesh = _unitBoxLines;
+                var ls = t.lossyScale;
+                var size = new Vector3(box.size.x * ls.x, box.size.y * ls.y, box.size.z * ls.z);
+                matrix = Matrix4x4.TRS(t.TransformPoint(box.center), t.rotation, size);
+                return true;
+            }
+            if (col is SphereCollider sphere)
+            {
+                mesh = _unitSphereLines;
+                var ls = t.lossyScale;
+                float maxScale = Mathf.Max(Mathf.Abs(ls.x), Mathf.Max(Mathf.Abs(ls.y), Mathf.Abs(ls.z)));
+                float r = sphere.radius * maxScale;
+                matrix = Matrix4x4.TRS(t.TransformPoint(sphere.center), t.rotation, new Vector3(r, r, r));
+                return true;
+            }
+            if (col is CapsuleCollider cap)
+            {
+                mesh = GetOrBuildCapsuleLineMesh(cap);
+                if (mesh == null) { matrix = default; return false; }
+                matrix = Matrix4x4.TRS(t.TransformPoint(cap.center), t.rotation, Vector3.one);
+                return true;
+            }
+            if (col is MeshCollider mc)
+            {
+                var src = mc.sharedMesh;
+                if (src == null) { mesh = null; matrix = default; return false; }
+                mesh = GetOrBuildEdgeMesh(src);
+                if (mesh == null) { matrix = default; return false; }
+                matrix = t.localToWorldMatrix;
+                return true;
+            }
+            // Unsupported collider type (TerrainCollider etc.) — skip.
+            mesh = null;
+            matrix = default;
+            return false;
+        }
+
+        void EnsureUnitPrimitiveMeshes()
+        {
+            if (_unitBoxLines == null) _unitBoxLines = BuildUnitBoxLineMesh();
+            if (_unitSphereLines == null) _unitSphereLines = BuildUnitSphereLineMesh();
+        }
+
+        static Mesh BuildUnitBoxLineMesh()
+        {
+            // Unit cube centred at origin with extents ±0.5
+            var verts = new Vector3[8];
+            int idx = 0;
+            for (int x = -1; x <= 1; x += 2)
+            for (int y = -1; y <= 1; y += 2)
+            for (int z = -1; z <= 1; z += 2)
+                verts[idx++] = new Vector3(x * 0.5f, y * 0.5f, z * 0.5f);
+
+            int Bit(int x, int y, int z) => ((x > 0 ? 1 : 0) << 2) | ((y > 0 ? 1 : 0) << 1) | (z > 0 ? 1 : 0);
+            var edges = new List<int>(24);
+            for (int x = -1; x <= 1; x += 2)
+            for (int y = -1; y <= 1; y += 2)
+                { edges.Add(Bit(x, y, -1)); edges.Add(Bit(x, y, 1)); }
+            for (int x = -1; x <= 1; x += 2)
+            for (int z = -1; z <= 1; z += 2)
+                { edges.Add(Bit(x, -1, z)); edges.Add(Bit(x, 1, z)); }
+            for (int y = -1; y <= 1; y += 2)
+            for (int z = -1; z <= 1; z += 2)
+                { edges.Add(Bit(-1, y, z)); edges.Add(Bit(1, y, z)); }
+
+            var m = new Mesh { name = "bp_unitBoxLines", hideFlags = HideFlags.HideAndDontSave };
+            m.vertices = verts;
+            m.SetIndices(edges.ToArray(), MeshTopology.Lines, 0);
+            m.bounds = new Bounds(Vector3.zero, Vector3.one);
+            return m;
+        }
+
+        static Mesh BuildUnitSphereLineMesh(int segments = 48)
+        {
+            // Three great circles in XY, XZ, YZ planes — radius 1.
+            var verts = new List<Vector3>(segments * 3);
+            var idx = new List<int>(segments * 6);
+            void Ring(Func<float, Vector3> f)
+            {
+                int baseI = verts.Count;
+                for (int i = 0; i < segments; i++)
+                {
+                    float a = (i / (float)segments) * Mathf.PI * 2f;
+                    verts.Add(f(a));
+                }
+                for (int i = 0; i < segments; i++)
+                {
+                    idx.Add(baseI + i);
+                    idx.Add(baseI + (i + 1) % segments);
+                }
+            }
+            Ring(a => new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f));
+            Ring(a => new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)));
+            Ring(a => new Vector3(0f, Mathf.Cos(a), Mathf.Sin(a)));
+
+            var m = new Mesh { name = "bp_unitSphereLines", hideFlags = HideFlags.HideAndDontSave };
+            m.vertices = verts.ToArray();
+            m.SetIndices(idx.ToArray(), MeshTopology.Lines, 0);
+            m.bounds = new Bounds(Vector3.zero, Vector3.one * 2f);
+            return m;
+        }
+
+        Mesh GetOrBuildCapsuleLineMesh(CapsuleCollider cap)
+        {
+            var t = cap.transform;
+            var ls = t.lossyScale;
+            // Unity scales capsule radius by max of the two lateral axes,
+            // height by the main-axis scale.
+            float radiusScale, heightScale;
+            switch (cap.direction)
+            {
+                case 0: // X
+                    radiusScale = Mathf.Max(Mathf.Abs(ls.y), Mathf.Abs(ls.z));
+                    heightScale = Mathf.Abs(ls.x);
+                    break;
+                case 2: // Z
+                    radiusScale = Mathf.Max(Mathf.Abs(ls.x), Mathf.Abs(ls.y));
+                    heightScale = Mathf.Abs(ls.z);
+                    break;
+                default: // Y
+                    radiusScale = Mathf.Max(Mathf.Abs(ls.x), Mathf.Abs(ls.z));
+                    heightScale = Mathf.Abs(ls.y);
+                    break;
+            }
+            float r = cap.radius * radiusScale;
+            float h = Mathf.Max(cap.height * heightScale, r * 2f);
+
+            int id = cap.GetInstanceID();
+            if (_capsuleLineMeshes.TryGetValue(id, out var entry))
+            {
+                if (entry.mesh != null
+                    && Mathf.Approximately(entry.r, r)
+                    && Mathf.Approximately(entry.h, h)
+                    && entry.dir == cap.direction)
+                {
+                    return entry.mesh;
+                }
+                if (entry.mesh != null) Destroy(entry.mesh);
+            }
+
+            var mesh = BuildCapsuleLineMesh(r, h, cap.direction);
+            _capsuleLineMeshes[id] = (mesh, r, h, cap.direction);
+            return mesh;
+        }
+
+        static Mesh BuildCapsuleLineMesh(float radius, float height, int direction, int segments = 32)
+        {
+            // Build along Y, then rotate to direction. Capsule = cylinder of
+            // length (height - 2r) with two hemispheres on top/bottom.
+            float halfCyl = Mathf.Max(0f, (height * 0.5f) - radius);
+
+            var verts = new List<Vector3>();
+            var idx = new List<int>();
+
+            void Ring(Vector3 centre, Vector3 axisA, Vector3 axisB)
+            {
+                int baseI = verts.Count;
+                for (int i = 0; i < segments; i++)
+                {
+                    float a = (i / (float)segments) * Mathf.PI * 2f;
+                    verts.Add(centre + (axisA * Mathf.Cos(a) + axisB * Mathf.Sin(a)) * radius);
+                }
+                for (int i = 0; i < segments; i++)
+                {
+                    idx.Add(baseI + i);
+                    idx.Add(baseI + (i + 1) % segments);
+                }
+            }
+
+            void HalfArc(Vector3 centre, Vector3 axisA, Vector3 axisB, bool positive)
+            {
+                int half = segments / 2;
+                int baseI = verts.Count;
+                for (int i = 0; i <= half; i++)
+                {
+                    float a = (i / (float)half) * Mathf.PI;
+                    float ya = positive ? Mathf.Sin(a) : -Mathf.Sin(a);
+                    verts.Add(centre + (axisA * Mathf.Cos(a)) * radius + axisB * ya * radius);
+                }
+                for (int i = 0; i < half; i++) { idx.Add(baseI + i); idx.Add(baseI + i + 1); }
+            }
+
+            Vector3 top = Vector3.up * halfCyl;
+            Vector3 bot = -top;
+
+            // Top + bottom rings (cylinder caps in XZ plane)
+            Ring(top, Vector3.right, Vector3.forward);
+            Ring(bot, Vector3.right, Vector3.forward);
+
+            // Cylinder side lines (4 around)
+            void Side(Vector3 dir)
+            {
+                int baseI = verts.Count;
+                verts.Add(top + dir * radius);
+                verts.Add(bot + dir * radius);
+                idx.Add(baseI); idx.Add(baseI + 1);
+            }
+            Side(Vector3.right);
+            Side(-Vector3.right);
+            Side(Vector3.forward);
+            Side(-Vector3.forward);
+
+            // Hemispheres — two arcs each (XY + ZY planes)
+            HalfArc(top, Vector3.right,   Vector3.up, true);
+            HalfArc(top, Vector3.forward, Vector3.up, true);
+            HalfArc(bot, Vector3.right,   Vector3.up, false);
+            HalfArc(bot, Vector3.forward, Vector3.up, false);
+
+            // Rotate from Y-axis canonical to requested direction
+            if (direction != 1)
+            {
+                Quaternion rot = direction == 0
+                    ? Quaternion.Euler(0f, 0f, -90f)   // Y → X
+                    : Quaternion.Euler(90f, 0f, 0f);   // Y → Z
+                for (int i = 0; i < verts.Count; i++) verts[i] = rot * verts[i];
+            }
+
+            var m = new Mesh { name = "bp_capsuleLines", hideFlags = HideFlags.HideAndDontSave };
+            m.vertices = verts.ToArray();
+            m.SetIndices(idx.ToArray(), MeshTopology.Lines, 0);
+            float halfBound = Mathf.Max(height * 0.5f, radius);
+            m.bounds = new Bounds(Vector3.zero, Vector3.one * (halfBound * 2f));
+            return m;
+        }
+
+        void ClearColliderPrimitiveCache()
+        {
+            if (_unitBoxLines != null) { Destroy(_unitBoxLines); _unitBoxLines = null; }
+            if (_unitSphereLines != null) { Destroy(_unitSphereLines); _unitSphereLines = null; }
+            foreach (var entry in _capsuleLineMeshes.Values)
+            {
+                if (entry.mesh != null) Destroy(entry.mesh);
+            }
+            _capsuleLineMeshes.Clear();
+        }
+
         void OnDestroy()
         {
             CleanupRenderMode();
             ClearEdgeMeshCache();
+            ClearColliderPrimitiveCache();
         }
 
         /// <summary>
