@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.UI;
 using Unity.Profiling.Memory;
 
 namespace ODDGames.Bugpunch.DeviceConnect
@@ -59,7 +63,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 _state = SnapshotState.Failed;
                 _error = ex.Message;
-                Debug.LogError($"[Bugpunch.MemorySnapshotService] Memory snapshot failed to start: {ex.Message}");
+                BugpunchNative.ReportSdkError("MemorySnapshotService.Start", ex);
                 return $"{{\"ok\":false,\"error\":\"{Esc(ex.Message)}\",\"state\":\"failed\"}}";
             }
         }
@@ -76,7 +80,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 _state = SnapshotState.Failed;
                 _error = success ? "File not found after snapshot" : "Snapshot capture failed";
-                Debug.LogError($"[Bugpunch.MemorySnapshotService] Memory snapshot failed: {_error}");
+                BugpunchNative.ReportSdkError("MemorySnapshotService.Complete", _error);
             }
         }
 
@@ -220,6 +224,441 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     $"\"materialsMB\":{matMem / (1024.0 * 1024.0):F1},\"materialCount\":{materials.Length}" +
                 $"}}" +
             $"}}";
+        }
+
+        // ------------------------------------------------------------------
+        // Asset drill-down: list textures/meshes/materials by memory size,
+        // and look up which scene objects reference a given asset.
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// List loaded assets in the given category sorted by runtime memory
+        /// size descending. type ∈ { "texture", "mesh", "material" }.
+        /// </summary>
+        public string ListAssets(string type, int limit)
+        {
+            if (limit <= 0) limit = 200;
+            switch (type)
+            {
+                case "texture": return ListTexturesByMemory(limit);
+                case "mesh": return ListMeshesByMemory(limit);
+                case "material": return ListMaterialsByMemory(limit);
+            }
+            return "[]";
+        }
+
+        /// <summary>
+        /// Return the scene objects (and shader properties / sprite slots) that
+        /// reference the asset with the given instanceId.
+        /// </summary>
+        public string GetAssetUsers(string type, int instanceId)
+        {
+            switch (type)
+            {
+                case "texture": return GetTextureUsers(instanceId);
+                case "mesh": return GetMeshUsers(instanceId);
+                case "material": return GetMaterialUsers(instanceId);
+            }
+            return "{\"users\":[]}";
+        }
+
+        string ListTexturesByMemory(int limit)
+        {
+            var all = Resources.FindObjectsOfTypeAll<Texture>();
+            var entries = new List<(int id, string name, long sz, int w, int h, string fmt, string typeName)>();
+            foreach (var t in all)
+            {
+                if (t == null) continue;
+                if (t.hideFlags.HasFlag(HideFlags.HideAndDontSave)) continue;
+                var sz = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(t);
+                var name = string.IsNullOrEmpty(t.name) ? "(unnamed)" : t.name;
+                var fmt = t is Texture2D t2 ? t2.format.ToString()
+                       : t is RenderTexture rt ? rt.format.ToString()
+                       : t is Cubemap cm ? cm.format.ToString()
+                       : "";
+                var typeName = t is RenderTexture ? "RenderTexture"
+                            : t is Cubemap ? "Cubemap"
+                            : t is Texture2DArray ? "Texture2DArray"
+                            : t is Texture3D ? "Texture3D"
+                            : t is Texture2D ? "Texture2D"
+                            : t.GetType().Name;
+                entries.Add((t.GetInstanceID(), name, sz, t.width, t.height, fmt, typeName));
+            }
+            entries.Sort((a, b) => b.sz.CompareTo(a.sz));
+
+            var sb = new StringBuilder();
+            sb.Append("[");
+            int n = Mathf.Min(limit, entries.Count);
+            for (int i = 0; i < n; i++)
+            {
+                var e = entries[i];
+                if (i > 0) sb.Append(",");
+                sb.Append("{");
+                sb.Append($"\"id\":{e.id}");
+                sb.Append($",\"name\":\"{Esc(e.name)}\"");
+                sb.Append($",\"sizeKB\":{(e.sz + 512) / 1024}");
+                sb.Append($",\"width\":{e.w}");
+                sb.Append($",\"height\":{e.h}");
+                sb.Append($",\"format\":\"{Esc(e.fmt)}\"");
+                sb.Append($",\"type\":\"{Esc(e.typeName)}\"");
+                sb.Append("}");
+            }
+            sb.Append("]");
+            return sb.ToString();
+        }
+
+        string ListMeshesByMemory(int limit)
+        {
+            var all = Resources.FindObjectsOfTypeAll<Mesh>();
+            var entries = new List<(int id, string name, long sz, int verts, int subs, int tris)>();
+            foreach (var m in all)
+            {
+                if (m == null) continue;
+                if (m.hideFlags.HasFlag(HideFlags.HideAndDontSave)) continue;
+                var sz = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(m);
+                var name = string.IsNullOrEmpty(m.name) ? "(unnamed)" : m.name;
+                int tris = 0;
+                try { tris = (int)(m.triangles != null ? m.triangles.Length / 3 : 0); }
+                catch { tris = 0; } // not readable
+                entries.Add((m.GetInstanceID(), name, sz, m.vertexCount, m.subMeshCount, tris));
+            }
+            entries.Sort((a, b) => b.sz.CompareTo(a.sz));
+
+            var sb = new StringBuilder();
+            sb.Append("[");
+            int n = Mathf.Min(limit, entries.Count);
+            for (int i = 0; i < n; i++)
+            {
+                var e = entries[i];
+                if (i > 0) sb.Append(",");
+                sb.Append("{");
+                sb.Append($"\"id\":{e.id}");
+                sb.Append($",\"name\":\"{Esc(e.name)}\"");
+                sb.Append($",\"sizeKB\":{(e.sz + 512) / 1024}");
+                sb.Append($",\"vertexCount\":{e.verts}");
+                sb.Append($",\"subMeshCount\":{e.subs}");
+                sb.Append($",\"triangleCount\":{e.tris}");
+                sb.Append("}");
+            }
+            sb.Append("]");
+            return sb.ToString();
+        }
+
+        string ListMaterialsByMemory(int limit)
+        {
+            var all = Resources.FindObjectsOfTypeAll<Material>();
+            var entries = new List<(int id, string name, long sz, string shader)>();
+            foreach (var m in all)
+            {
+                if (m == null) continue;
+                if (m.hideFlags != HideFlags.None) continue;
+                var sz = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(m);
+                var name = string.IsNullOrEmpty(m.name) ? "(unnamed)" : m.name;
+                entries.Add((m.GetInstanceID(), name, sz, m.shader != null ? m.shader.name : ""));
+            }
+            entries.Sort((a, b) => b.sz.CompareTo(a.sz));
+
+            var sb = new StringBuilder();
+            sb.Append("[");
+            int n = Mathf.Min(limit, entries.Count);
+            for (int i = 0; i < n; i++)
+            {
+                var e = entries[i];
+                if (i > 0) sb.Append(",");
+                sb.Append("{");
+                sb.Append($"\"id\":{e.id}");
+                sb.Append($",\"name\":\"{Esc(e.name)}\"");
+                sb.Append($",\"sizeKB\":{(e.sz + 512) / 1024}");
+                sb.Append($",\"shader\":\"{Esc(e.shader)}\"");
+                sb.Append("}");
+            }
+            sb.Append("]");
+            return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------
+        // Reverse lookups
+        // ------------------------------------------------------------------
+
+        struct UserEntry
+        {
+            public string Path;        // GameObject hierarchy path
+            public string Component;   // e.g. MeshRenderer, Image, Camera
+            public string Via;         // shader prop / material name / "sprite" / etc.
+        }
+
+        string GetTextureUsers(int instanceId)
+        {
+            var users = new List<UserEntry>();
+            string targetName = "";
+
+            // Pass 1: find all materials whose shader property bindings reference this texture.
+            // Map material instance ID → list of shader properties using this texture.
+            var matToProps = new Dictionary<int, List<string>>();
+            var allMats = Resources.FindObjectsOfTypeAll<Material>();
+            foreach (var m in allMats)
+            {
+                if (m == null) continue;
+                var shader = m.shader;
+                if (shader == null) continue;
+                int propCount = shader.GetPropertyCount();
+                for (int i = 0; i < propCount; i++)
+                {
+                    if (shader.GetPropertyType(i) != ShaderPropertyType.Texture) continue;
+                    var nameId = shader.GetPropertyNameId(i);
+                    var t = m.GetTexture(nameId);
+                    if (t == null) continue;
+                    if (t.GetInstanceID() == instanceId)
+                    {
+                        if (string.IsNullOrEmpty(targetName)) targetName = t.name ?? "";
+                        if (!matToProps.TryGetValue(m.GetInstanceID(), out var props))
+                        {
+                            props = new List<string>();
+                            matToProps[m.GetInstanceID()] = props;
+                        }
+                        var pn = shader.GetPropertyName(i);
+                        if (!props.Contains(pn)) props.Add(pn);
+                    }
+                }
+            }
+
+            // Pass 2: walk renderers; if any sharedMaterial is in the map, attribute usage to that GameObject.
+            var renderers = UnityEngine.Object.FindObjectsByType<Renderer>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var r in renderers)
+            {
+                if (r == null) continue;
+                foreach (var sm in r.sharedMaterials)
+                {
+                    if (sm == null) continue;
+                    if (matToProps.TryGetValue(sm.GetInstanceID(), out var props))
+                    {
+                        users.Add(new UserEntry
+                        {
+                            Path = GetPath(r.transform),
+                            Component = r.GetType().Name,
+                            Via = $"{sm.name} ({string.Join(",", props)})",
+                        });
+                    }
+                }
+            }
+
+            // UI: Image (sprite), RawImage (texture)
+            var images = UnityEngine.Object.FindObjectsByType<Image>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var img in images)
+            {
+                if (img == null) continue;
+                var sp = img.sprite;
+                if (sp != null && sp.texture != null && sp.texture.GetInstanceID() == instanceId)
+                {
+                    if (string.IsNullOrEmpty(targetName)) targetName = sp.texture.name ?? "";
+                    users.Add(new UserEntry
+                    {
+                        Path = GetPath(img.transform),
+                        Component = "Image",
+                        Via = $"sprite ({sp.name})",
+                    });
+                }
+            }
+            var rawImages = UnityEngine.Object.FindObjectsByType<RawImage>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var ri in rawImages)
+            {
+                if (ri == null || ri.texture == null) continue;
+                if (ri.texture.GetInstanceID() == instanceId)
+                {
+                    if (string.IsNullOrEmpty(targetName)) targetName = ri.texture.name ?? "";
+                    users.Add(new UserEntry
+                    {
+                        Path = GetPath(ri.transform),
+                        Component = "RawImage",
+                        Via = "texture",
+                    });
+                }
+            }
+
+            // Cameras with this as a target / replacement render target
+            var cameras = UnityEngine.Object.FindObjectsByType<Camera>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var cam in cameras)
+            {
+                if (cam == null || cam.targetTexture == null) continue;
+                if (cam.targetTexture.GetInstanceID() == instanceId)
+                {
+                    users.Add(new UserEntry
+                    {
+                        Path = GetPath(cam.transform),
+                        Component = "Camera",
+                        Via = "targetTexture",
+                    });
+                }
+            }
+
+            // Skybox
+            var sky = RenderSettings.skybox;
+            if (sky != null && sky.shader != null)
+            {
+                int propCount = sky.shader.GetPropertyCount();
+                for (int i = 0; i < propCount; i++)
+                {
+                    if (sky.shader.GetPropertyType(i) != ShaderPropertyType.Texture) continue;
+                    var t = sky.GetTexture(sky.shader.GetPropertyNameId(i));
+                    if (t != null && t.GetInstanceID() == instanceId)
+                    {
+                        users.Add(new UserEntry
+                        {
+                            Path = "(RenderSettings.skybox)",
+                            Component = "Skybox",
+                            Via = sky.name,
+                        });
+                        break;
+                    }
+                }
+            }
+
+            return BuildUsersJson(instanceId, targetName, users);
+        }
+
+        string GetMeshUsers(int instanceId)
+        {
+            var users = new List<UserEntry>();
+            string targetName = "";
+
+            var meshFilters = UnityEngine.Object.FindObjectsByType<MeshFilter>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var mf in meshFilters)
+            {
+                if (mf == null) continue;
+                var sm = mf.sharedMesh;
+                if (sm == null || sm.GetInstanceID() != instanceId) continue;
+                if (string.IsNullOrEmpty(targetName)) targetName = sm.name ?? "";
+                users.Add(new UserEntry
+                {
+                    Path = GetPath(mf.transform),
+                    Component = "MeshFilter",
+                    Via = "sharedMesh",
+                });
+            }
+
+            var skinned = UnityEngine.Object.FindObjectsByType<SkinnedMeshRenderer>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var s in skinned)
+            {
+                if (s == null) continue;
+                var sm = s.sharedMesh;
+                if (sm == null || sm.GetInstanceID() != instanceId) continue;
+                if (string.IsNullOrEmpty(targetName)) targetName = sm.name ?? "";
+                users.Add(new UserEntry
+                {
+                    Path = GetPath(s.transform),
+                    Component = "SkinnedMeshRenderer",
+                    Via = "sharedMesh",
+                });
+            }
+
+            var psRenderers = UnityEngine.Object.FindObjectsByType<ParticleSystemRenderer>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var p in psRenderers)
+            {
+                if (p == null) continue;
+                var meshes = new Mesh[p.meshCount];
+                int got = p.GetMeshes(meshes);
+                for (int i = 0; i < got; i++)
+                {
+                    var pm = meshes[i];
+                    if (pm == null || pm.GetInstanceID() != instanceId) continue;
+                    if (string.IsNullOrEmpty(targetName)) targetName = pm.name ?? "";
+                    users.Add(new UserEntry
+                    {
+                        Path = GetPath(p.transform),
+                        Component = "ParticleSystemRenderer",
+                        Via = $"mesh[{i}]",
+                    });
+                }
+            }
+
+            return BuildUsersJson(instanceId, targetName, users);
+        }
+
+        string GetMaterialUsers(int instanceId)
+        {
+            var users = new List<UserEntry>();
+            string targetName = "";
+
+            var renderers = UnityEngine.Object.FindObjectsByType<Renderer>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var r in renderers)
+            {
+                if (r == null) continue;
+                var sms = r.sharedMaterials;
+                for (int i = 0; i < sms.Length; i++)
+                {
+                    var sm = sms[i];
+                    if (sm == null || sm.GetInstanceID() != instanceId) continue;
+                    if (string.IsNullOrEmpty(targetName)) targetName = sm.name ?? "";
+                    users.Add(new UserEntry
+                    {
+                        Path = GetPath(r.transform),
+                        Component = r.GetType().Name,
+                        Via = $"sharedMaterials[{i}]",
+                    });
+                }
+            }
+
+            // UI Graphic (Image / RawImage / Text) — material override
+            var graphics = UnityEngine.Object.FindObjectsByType<Graphic>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var g in graphics)
+            {
+                if (g == null) continue;
+                var m = g.material;
+                if (m == null || m.GetInstanceID() != instanceId) continue;
+                if (string.IsNullOrEmpty(targetName)) targetName = m.name ?? "";
+                users.Add(new UserEntry
+                {
+                    Path = GetPath(g.transform),
+                    Component = g.GetType().Name,
+                    Via = "material",
+                });
+            }
+
+            return BuildUsersJson(instanceId, targetName, users);
+        }
+
+        static string BuildUsersJson(int id, string name, List<UserEntry> users)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{");
+            sb.Append($"\"id\":{id}");
+            sb.Append($",\"name\":\"{Esc(name)}\"");
+            sb.Append(",\"users\":[");
+            for (int i = 0; i < users.Count; i++)
+            {
+                var u = users[i];
+                if (i > 0) sb.Append(",");
+                sb.Append("{");
+                sb.Append($"\"path\":\"{Esc(u.Path)}\"");
+                sb.Append($",\"component\":\"{Esc(u.Component)}\"");
+                sb.Append($",\"via\":\"{Esc(u.Via)}\"");
+                sb.Append("}");
+            }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        static string GetPath(Transform t)
+        {
+            if (t == null) return "";
+            var sb = new StringBuilder(t.name);
+            var p = t.parent;
+            while (p != null)
+            {
+                sb.Insert(0, "/");
+                sb.Insert(0, p.name);
+                p = p.parent;
+            }
+            return sb.ToString();
         }
 
         static string Esc(string s) =>

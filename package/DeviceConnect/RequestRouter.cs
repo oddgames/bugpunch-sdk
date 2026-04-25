@@ -349,8 +349,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                     if (subPath == "/scene-camera/collider-transforms")
                     {
-                        var tier = int.TryParse(Q(path, "tier"), out var ct) ? ct : 2;
-                        return Response.Json(SceneCamera.GetColliderTransforms(tier));
+                        return Response.Json(SceneCamera.GetColliderTransforms());
                     }
 
                     if (subPath == "/scene-camera/raycast" && method == "POST")
@@ -426,6 +425,24 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                     if (subPath == "/memory/stats")
                         return Response.Json(MemorySnapshots.GetMemoryStats());
+
+                    if (subPath == "/memory/assets")
+                    {
+                        var assetType = Q(path, "type") ?? "texture";
+                        var limitStr = Q(path, "limit");
+                        int limit = 200;
+                        if (!string.IsNullOrEmpty(limitStr)) int.TryParse(limitStr, out limit);
+                        return Response.Json(MemorySnapshots.ListAssets(assetType, limit));
+                    }
+
+                    if (subPath == "/memory/users")
+                    {
+                        var assetType = Q(path, "type") ?? "texture";
+                        var idStr = Q(path, "id");
+                        int id = 0;
+                        if (!string.IsNullOrEmpty(idStr)) int.TryParse(idStr, out id);
+                        return Response.Json(MemorySnapshots.GetAssetUsers(assetType, id));
+                    }
 
                     return Response.NotFound(path);
                 }
@@ -721,7 +738,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.RequestRouter] Route error ({path}): {ex}");
+                BugpunchNative.ReportSdkError($"RequestRouter.Route({path})", ex);
                 return Response.Error(ex.Message);
             }
         }
@@ -734,7 +751,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var id = int.TryParse(Q(path, "id"), out var mid) ? mid : 0;
             var size = int.TryParse(Q(path, "size"), out var ms) ? ms : 128;
             var quality = int.TryParse(Q(path, "quality"), out var mq) ? mq : 80;
-            var jpeg = Materials?.RenderThumbnail(id, size, quality);
+            var shape = Q(path, "shape");
+            var jpeg = Materials?.RenderThumbnail(id, size, quality, shape);
             if (jpeg != null) return Response.Binary(jpeg, "image/jpeg");
             return Response.Error("Failed to render material thumbnail", 500);
         }
@@ -887,7 +905,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[Bugpunch.RequestRouter] getLiveTouches failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RequestRouter.getLiveTouches", e);
                 return $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
             }
 #elif UNITY_IOS
@@ -902,7 +920,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[Bugpunch.RequestRouter] getLiveTouches failed: {e.Message}");
+                BugpunchNative.ReportSdkError("RequestRouter.getLiveTouches", e);
                 return $"{{\"events\":[],\"w\":{Screen.width},\"h\":{Screen.height}}}";
             }
 #else
