@@ -367,10 +367,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         public string GetShader()
         {
-            var sb = new StringBuilder(128);
+            var sb = new StringBuilder(256);
             sb.Append("{");
             sb.Append("\"globalMaximumLOD\":").Append(Shader.globalMaximumLOD).Append(",");
-            sb.Append("\"globalRenderPipeline\":\"").Append(Esc(Shader.globalRenderPipeline ?? "")).Append("\"");
+            sb.Append("\"globalRenderPipeline\":\"").Append(Esc(Shader.globalRenderPipeline ?? "")).Append("\",");
+            sb.Append("\"wireframe\":").Append(GL.wireframe ? "true" : "false").Append(",");
+            sb.Append("\"srpBatching\":").Append(UnityEngine.Rendering.GraphicsSettings.useScriptableRenderPipelineBatching ? "true" : "false").Append(",");
+            sb.Append("\"lightsLinearIntensity\":").Append(UnityEngine.Rendering.GraphicsSettings.lightsUseLinearIntensity ? "true" : "false").Append(",");
+            sb.Append("\"lightsColorTemperature\":").Append(UnityEngine.Rendering.GraphicsSettings.lightsUseColorTemperature ? "true" : "false");
             sb.Append("}");
             return sb.ToString();
         }
@@ -381,6 +385,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (TryInt(body, "globalMaximumLOD", out var gml)) { Shader.globalMaximumLOD = Mathf.Max(0, gml); changed++; }
             var grp = JsonStr(body, "globalRenderPipeline");
             if (grp != null) { Shader.globalRenderPipeline = grp; changed++; }
+            if (TryBool(body, "wireframe", out var wf)) { GL.wireframe = wf; changed++; }
+            if (TryBool(body, "srpBatching", out var srp)) { UnityEngine.Rendering.GraphicsSettings.useScriptableRenderPipelineBatching = srp; changed++; }
+            if (TryBool(body, "lightsLinearIntensity", out var lli)) { UnityEngine.Rendering.GraphicsSettings.lightsUseLinearIntensity = lli; changed++; }
+            if (TryBool(body, "lightsColorTemperature", out var lct)) { UnityEngine.Rendering.GraphicsSettings.lightsUseColorTemperature = lct; changed++; }
             return Ok(changed);
         }
 
