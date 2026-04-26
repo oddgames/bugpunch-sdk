@@ -18,6 +18,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
     {
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+        // In-memory registry of global shader properties set via the dashboard.
+        // Unity has no enumeration API for globals, so we track them ourselves.
+        readonly System.Collections.Generic.Dictionary<string, (string type, string valueJson)>
+            _shaderGlobals = new System.Collections.Generic.Dictionary<string, (string, string)>();
+
         // ── Top-level: all groups in one payload ────────────────────────────
 
         public string GetAll()
@@ -367,14 +372,25 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         public string GetShader()
         {
-            var sb = new StringBuilder(256);
+            var sb = new StringBuilder(512);
             sb.Append("{");
             sb.Append("\"globalMaximumLOD\":").Append(Shader.globalMaximumLOD).Append(",");
             sb.Append("\"globalRenderPipeline\":\"").Append(Esc(Shader.globalRenderPipeline ?? "")).Append("\",");
             sb.Append("\"wireframe\":").Append(GL.wireframe ? "true" : "false").Append(",");
             sb.Append("\"srpBatching\":").Append(UnityEngine.Rendering.GraphicsSettings.useScriptableRenderPipelineBatching ? "true" : "false").Append(",");
             sb.Append("\"lightsLinearIntensity\":").Append(UnityEngine.Rendering.GraphicsSettings.lightsUseLinearIntensity ? "true" : "false").Append(",");
-            sb.Append("\"lightsColorTemperature\":").Append(UnityEngine.Rendering.GraphicsSettings.lightsUseColorTemperature ? "true" : "false");
+            sb.Append("\"lightsColorTemperature\":").Append(UnityEngine.Rendering.GraphicsSettings.lightsUseColorTemperature ? "true" : "false").Append(",");
+            sb.Append("\"globals\":[");
+            bool first = true;
+            foreach (var kv in _shaderGlobals)
+            {
+                if (!first) sb.Append(",");
+                sb.Append("{\"name\":\"").Append(Esc(kv.Key)).Append("\",");
+                sb.Append("\"type\":\"").Append(kv.Value.type).Append("\",");
+                sb.Append("\"value\":").Append(kv.Value.valueJson).Append("}");
+                first = false;
+            }
+            sb.Append("]");
             sb.Append("}");
             return sb.ToString();
         }
@@ -389,6 +405,65 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (TryBool(body, "srpBatching", out var srp)) { UnityEngine.Rendering.GraphicsSettings.useScriptableRenderPipelineBatching = srp; changed++; }
             if (TryBool(body, "lightsLinearIntensity", out var lli)) { UnityEngine.Rendering.GraphicsSettings.lightsUseLinearIntensity = lli; changed++; }
             if (TryBool(body, "lightsColorTemperature", out var lct)) { UnityEngine.Rendering.GraphicsSettings.lightsUseColorTemperature = lct; changed++; }
+
+            // setGlobal: {name, type, value} — set one global property
+            var sg = ExtractObject(body, "setGlobal");
+            if (sg != null)
+            {
+                var name = JsonStr(sg, "name");
+                var type = JsonStr(sg, "type");
+                if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(type))
+                {
+                    switch (type)
+                    {
+                        case "float":
+                            if (TryNum(sg, "value", out var fv))
+                            {
+                                Shader.SetGlobalFloat(name, fv);
+                                _shaderGlobals[name] = ("float", fv.ToString("R", Inv));
+                                changed++;
+                            }
+                            break;
+                        case "int":
+                            if (TryInt(sg, "value", out var iv))
+                            {
+                                Shader.SetGlobalInt(name, iv);
+                                _shaderGlobals[name] = ("int", iv.ToString(Inv));
+                                changed++;
+                            }
+                            break;
+                        case "color":
+                            if (TryColor(sg, "value", out var cv))
+                            {
+                                Shader.SetGlobalColor(name, cv);
+                                var cj = "{\"r\":" + cv.r.ToString("R", Inv) + ",\"g\":" + cv.g.ToString("R", Inv) +
+                                         ",\"b\":" + cv.b.ToString("R", Inv) + ",\"a\":" + cv.a.ToString("R", Inv) + "}";
+                                _shaderGlobals[name] = ("color", cj);
+                                changed++;
+                            }
+                            break;
+                        case "vector":
+                            if (TryVec4(sg, "value", out var vv))
+                            {
+                                Shader.SetGlobalVector(name, vv);
+                                var vj = "{\"x\":" + vv.x.ToString("R", Inv) + ",\"y\":" + vv.y.ToString("R", Inv) +
+                                         ",\"z\":" + vv.z.ToString("R", Inv) + ",\"w\":" + vv.w.ToString("R", Inv) + "}";
+                                _shaderGlobals[name] = ("vector", vj);
+                                changed++;
+                            }
+                            break;
+                    }
+                }
+            }
+
+            // removeGlobal: "name" — zero-out and stop tracking
+            var rem = JsonStr(body, "removeGlobal");
+            if (rem != null && _shaderGlobals.Remove(rem))
+            {
+                Shader.SetGlobalFloat(rem, 0f);
+                changed++;
+            }
+
             return Ok(changed);
         }
 
@@ -526,6 +601,19 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!TryNum(sub, "y", out var y)) return false;
             if (!TryNum(sub, "z", out var z)) return false;
             v = new Vector3(x, y, z);
+            return true;
+        }
+
+        static bool TryVec4(string body, string key, out Vector4 v)
+        {
+            v = default;
+            var sub = ExtractObject(body, key);
+            if (sub == null) return false;
+            if (!TryNum(sub, "x", out var x)) return false;
+            if (!TryNum(sub, "y", out var y)) return false;
+            if (!TryNum(sub, "z", out var z)) return false;
+            TryNum(sub, "w", out var w);
+            v = new Vector4(x, y, z, w);
             return true;
         }
 
