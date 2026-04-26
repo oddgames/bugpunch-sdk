@@ -129,7 +129,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void Js(StringBuilder sb, string key, string value, bool last = false)
         {
-            sb.Append($"\"{key}\":\"{Esc(value ?? "")}\"{(last ? "" : ",")}");
+            sb.Append($"\"{key}\":\"{BugpunchJson.Esc(value ?? "")}\"{(last ? "" : ",")}");
         }
 
         void Ji(StringBuilder sb, string key, int value, bool last = false)
@@ -163,7 +163,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

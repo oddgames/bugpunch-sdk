@@ -56,7 +56,7 @@ namespace ODDGames.Bugpunch.Editor
 
                 var jsonBytes = Encoding.UTF8.GetBytes(json);
                 var gzBytes = Gzip(jsonBytes);
-                Debug.Log($"[Bugpunch.TypeDatabaseExporter] Type database: {jsonBytes.Length / 1024}KB → {gzBytes.Length / 1024}KB gzipped ({db.types.Count} types)");
+                BugpunchLog.Info("TypeDatabaseExporter", $"Type database: {jsonBytes.Length / 1024}KB → {gzBytes.Length / 1024}KB gzipped ({db.types.Count} types)");
 
                 if (showProgress) EditorUtility.DisplayProgressBar("Bugpunch", "Uploading to server...", 0.8f);
                 if (UploadToServer(config, gzBytes, db))
@@ -251,7 +251,7 @@ namespace ODDGames.Bugpunch.Editor
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning($"[Bugpunch.TypeDatabaseExporter] Error scanning {assembly.GetName().Name}: {ex.Message}");
+                    BugpunchLog.Warn("TypeDatabaseExporter", $"Error scanning {assembly.GetName().Name}: {ex.Message}");
                 }
             }
 
@@ -284,7 +284,7 @@ namespace ODDGames.Bugpunch.Editor
             for (int i = 0; i < db.namespaces.Count; i++)
             {
                 if (i > 0) sb.Append(",");
-                sb.Append($"\"{Esc(db.namespaces[i])}\"");
+                sb.Append($"\"{BugpunchJson.Esc(db.namespaces[i])}\"");
             }
             sb.Append("],");
 
@@ -304,13 +304,13 @@ namespace ODDGames.Bugpunch.Editor
         static void SerializeType(TypeInfo t, StringBuilder sb)
         {
             sb.Append("{");
-            sb.Append($"\"n\":\"{Esc(t.name)}\",");
-            sb.Append($"\"f\":\"{Esc(t.fullName)}\",");
-            sb.Append($"\"ns\":\"{Esc(t.ns)}\",");
+            sb.Append($"\"n\":\"{BugpunchJson.Esc(t.name)}\",");
+            sb.Append($"\"f\":\"{BugpunchJson.Esc(t.fullName)}\",");
+            sb.Append($"\"ns\":\"{BugpunchJson.Esc(t.ns)}\",");
             sb.Append($"\"k\":\"{t.kind}\"");
 
             if (t.baseType != null)
-                sb.Append($",\"base\":\"{Esc(t.baseType)}\"");
+                sb.Append($",\"base\":\"{BugpunchJson.Esc(t.baseType)}\"");
 
             if (t.enumValues != null && t.enumValues.Count > 0)
             {
@@ -318,7 +318,7 @@ namespace ODDGames.Bugpunch.Editor
                 for (int i = 0; i < t.enumValues.Count; i++)
                 {
                     if (i > 0) sb.Append(",");
-                    sb.Append($"\"{Esc(t.enumValues[i])}\"");
+                    sb.Append($"\"{BugpunchJson.Esc(t.enumValues[i])}\"");
                 }
                 sb.Append("]");
             }
@@ -340,9 +340,9 @@ namespace ODDGames.Bugpunch.Editor
         static void SerializeMember(MemberInfo_ m, StringBuilder sb)
         {
             sb.Append("{");
-            sb.Append($"\"n\":\"{Esc(m.name)}\",\"k\":\"{m.kind}\",\"t\":\"{Esc(m.returnType)}\"");
+            sb.Append($"\"n\":\"{BugpunchJson.Esc(m.name)}\",\"k\":\"{m.kind}\",\"t\":\"{BugpunchJson.Esc(m.returnType)}\"");
             if (m.isStatic) sb.Append(",\"s\":true");
-            if (!string.IsNullOrEmpty(m.parameters)) sb.Append($",\"p\":\"{Esc(m.parameters)}\"");
+            if (!string.IsNullOrEmpty(m.parameters)) sb.Append($",\"p\":\"{BugpunchJson.Esc(m.parameters)}\"");
             sb.Append("}");
         }
 
@@ -370,15 +370,13 @@ namespace ODDGames.Bugpunch.Editor
 
             bool ok = request.result == UnityWebRequest.Result.Success;
             if (ok)
-                Debug.Log($"[Bugpunch.TypeDatabaseExporter] Type database uploaded to server ({gzBytes.Length / 1024}KB gzipped)");
+                BugpunchLog.Info("TypeDatabaseExporter", $"Type database uploaded to server ({gzBytes.Length / 1024}KB gzipped)");
             else
-                Debug.LogError($"[Bugpunch.TypeDatabaseExporter] Type database upload failed: {request.error} — {request.downloadHandler.text}");
+                BugpunchLog.Error("TypeDatabaseExporter", $"Type database upload failed: {request.error} — {request.downloadHandler.text}");
 
             request.Dispose();
             return ok;
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

@@ -69,7 +69,7 @@ namespace ODDGames.Bugpunch.Editor
 
             if (map.Count == 0)
             {
-                Debug.Log($"[Bugpunch.IL2CppMethodMapBuilder] IL2CPP method map: scanned {filesScanned} cpp files but found 0 source_info markers. " +
+                BugpunchLog.Info("IL2CppMethodMapBuilder", $"IL2CPP method map: scanned {filesScanned} cpp files but found 0 source_info markers. " +
                           "Was --emit-source-mapping applied? It takes effect on the NEXT build after enabling.");
                 return null;
             }
@@ -84,13 +84,13 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.IL2CppMethodMapBuilder] Failed to stage IL2CPP method map: {ex.Message}");
+                BugpunchLog.Warn("IL2CppMethodMapBuilder", $"Failed to stage IL2CPP method map: {ex.Message}");
                 try { if (File.Exists(outPath)) File.Delete(outPath); } catch { }
                 return null;
             }
 
             var sizeKb = new FileInfo(outPath).Length / 1024.0;
-            Debug.Log($"[Bugpunch.IL2CppMethodMapBuilder] IL2CPP method map: {map.Count} methods from {filesScanned} cpp files, {sizeKb:F1} KB gzipped.");
+            BugpunchLog.Info("IL2CppMethodMapBuilder", $"IL2CPP method map: {map.Count} methods from {filesScanned} cpp files, {sizeKb:F1} KB gzipped.");
             return outPath;
         }
 
@@ -140,7 +140,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.IL2CppMethodMapBuilder] IL2CPP cpp scan failed for {Path.GetFileName(path)}: {ex.Message}");
+                BugpunchLog.Warn("IL2CppMethodMapBuilder", $"IL2CPP cpp scan failed for {Path.GetFileName(path)}: {ex.Message}");
             }
         }
 

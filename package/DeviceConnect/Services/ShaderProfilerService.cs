@@ -123,7 +123,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// (e.g. "s:Standard,s:Sprites/Default") — when supplied, only those groups
         /// are profiled. The baseline always uses the full scene.
         /// </summary>
-        public string Start(string by, float secondsPerGroup, int warmupFrames, bool pauseGame, string keysCsv)
+        public string BeginProfile(string by, float secondsPerGroup, int warmupFrames, bool pauseGame, string keysCsv)
         {
             if (_activeJob != null && _activeJob.Stage != Stage.Done && _activeJob.Stage != Stage.Error && _activeJob.Stage != Stage.Cancelled)
                 return $"{{\"ok\":false,\"error\":\"A sweep is already running\",\"jobId\":\"{Esc(_activeJob.JobId)}\"}}";

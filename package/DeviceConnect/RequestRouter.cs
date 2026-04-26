@@ -244,7 +244,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         var pauseStr = JsonVal(body, "pauseGame");
                         bool pause = pauseStr == null || pauseStr.ToLowerInvariant() != "false";
                         var keysCsv = JsonVal(body, "keysCsv");
-                        return Response.Json(ShaderProfiler.Start(by, secs, warm, pause, keysCsv));
+                        return Response.Json(ShaderProfiler.BeginProfile(by, secs, warm, pause, keysCsv));
                     }
 
                     if (subPath == "/shader-profile/status")
@@ -892,7 +892,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                                 {
                                     method.Invoke(null, null);
                                     called++;
-                                    Debug.Log($"[Bugpunch.RequestRouter] TestReset: called {type.Name}.{method.Name}()");
+                                    BugpunchLog.Info("RequestRouter", $"TestReset: called {type.Name}.{method.Name}()");
                                 }
                                 catch (Exception ex)
                                 {

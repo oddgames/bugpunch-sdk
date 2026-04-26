@@ -39,6 +39,11 @@ public class BugpunchProjectionService extends Service {
     public static final String EXTRA_FPS = "fps";
     public static final String EXTRA_WINDOW_SECONDS = "windowSeconds";
     public static final String EXTRA_DPI = "dpi";
+    /** When non-null, the recorder is started in single-segment mode (chat
+     *  video, issue #30) and writes every encoded sample to this MP4 file
+     *  instead of stashing the rolling window. Mutually exclusive with the
+     *  legacy ring-buffer flow. */
+    public static final String EXTRA_SEGMENT_OUTPUT_PATH = "segmentOutputPath";
 
     /** Started flag so Unity can query whether the FG service is alive. */
     private static volatile boolean sRunning;
@@ -89,9 +94,20 @@ public class BugpunchProjectionService extends Service {
 
         BugpunchRecorder recorder = BugpunchRecorder.getInstance();
         recorder.configure(width, height, bitrate, fps, windowSeconds);
-        boolean ok = recorder.startFromService(this, resultCode, resultData, dpi);
+
+        // Branch on segment-mode (chat video) vs the legacy ring-buffer
+        // recorder. Both paths use the same FG service + MediaProjection
+        // token; the only difference is whether the recorder writes a live
+        // MP4 alongside the rolling window or only keeps the window.
+        String segmentPath = intent.getStringExtra(EXTRA_SEGMENT_OUTPUT_PATH);
+        boolean ok;
+        if (segmentPath != null && !segmentPath.isEmpty()) {
+            ok = recorder.startSegmentToPath(this, resultCode, resultData, dpi, segmentPath);
+        } else {
+            ok = recorder.startFromService(this, resultCode, resultData, dpi);
+        }
         if (!ok) {
-            Log.e(TAG, "recorder.startFromService failed, stopping service");
+            Log.e(TAG, "recorder.start failed, stopping service");
             stopSelf();
         }
         return START_NOT_STICKY;

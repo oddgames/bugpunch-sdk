@@ -437,7 +437,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogWarning($"[Bugpunch.ChatBoard] Poll parse failed: {ex.Message}");
+                        BugpunchLog.Warn("ChatBoard", $"Poll parse failed: {ex.Message}");
                     }
                 }
             }
@@ -483,7 +483,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.ChatBoard] Hours parse failed: {ex.Message}");
+                BugpunchLog.Warn("ChatBoard", $"Hours parse failed: {ex.Message}");
             }
         }
 
@@ -495,7 +495,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             if (!ok)
             {
                 // 404 = no thread yet — fine, composer creates it on first send.
-                if (status != 404) Debug.LogWarning($"[Bugpunch.ChatBoard] thread fetch HTTP {status}");
+                if (status != 404) BugpunchLog.Warn("ChatBoard", $"thread fetch HTTP {status}");
                 return;
             }
             try
@@ -514,7 +514,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.ChatBoard] thread parse failed: {ex.Message}");
+                BugpunchLog.Warn("ChatBoard", $"thread parse failed: {ex.Message}");
             }
         }
 
@@ -553,7 +553,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
             if (!ok)
             {
-                Debug.LogWarning($"[Bugpunch.ChatBoard] send failed HTTP {status}");
+                BugpunchLog.Warn("ChatBoard", $"send failed HTTP {status}");
                 return;
             }
 
@@ -585,7 +585,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.ChatBoard] send parse failed: {ex.Message}");
+                BugpunchLog.Warn("ChatBoard", $"send parse failed: {ex.Message}");
             }
 
             _composeField.value = "";
@@ -726,7 +726,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             var client = BugpunchClient.Instance;
             if (client == null || client.Config == null)
             {
-                Debug.LogWarning("[Bugpunch.ChatBoard] BugpunchClient not initialized — chat unavailable.");
+                BugpunchLog.Warn("ChatBoard", "BugpunchClient not initialized — chat unavailable.");
                 return false;
             }
             baseUrl = client.Config.HttpBaseUrl;

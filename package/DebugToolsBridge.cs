@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using ODDGames.Bugpunch;
 using UnityEngine;
 
 /// <summary>
@@ -212,11 +213,11 @@ public class DebugToolsBridge : MonoBehaviour
             if (i > 0) sb.Append(',');
             var t = _tools[i];
             sb.Append('{');
-            sb.Append($"\"id\":\"{Esc(t.id)}\",");
-            sb.Append($"\"name\":\"{Esc(t.name)}\",");
-            sb.Append($"\"category\":\"{Esc(t.category)}\",");
-            sb.Append($"\"description\":\"{Esc(t.description)}\",");
-            sb.Append($"\"icon\":\"{Esc(t.icon)}\",");
+            sb.Append($"\"id\":\"{BugpunchJson.Esc(t.id)}\",");
+            sb.Append($"\"name\":\"{BugpunchJson.Esc(t.name)}\",");
+            sb.Append($"\"category\":\"{BugpunchJson.Esc(t.category)}\",");
+            sb.Append($"\"description\":\"{BugpunchJson.Esc(t.description)}\",");
+            sb.Append($"\"icon\":\"{BugpunchJson.Esc(t.icon)}\",");
             sb.Append($"\"controlType\":\"{t.controlType}\",");
             sb.Append($"\"color\":\"{t.color}\",");
             sb.Append($"\"toggleValue\":{(t.toggleValue ? "true" : "false")},");
@@ -228,8 +229,6 @@ public class DebugToolsBridge : MonoBehaviour
         sb.Append(']');
         return sb.ToString();
     }
-
-    static string Esc(string s) => s?.Replace("\\", "\\\\").Replace("\"", "\\\"") ?? "";
 
     // ── Callback from native (UnitySendMessage) ──
 

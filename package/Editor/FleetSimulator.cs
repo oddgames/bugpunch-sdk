@@ -21,7 +21,7 @@ namespace ODDGames.Bugpunch.Editor
     /// useful data without standing up real fleets.
     ///
     /// <para>HTTP-only — uses the same /api/v1/analytics/events,
-    /// /api/v1/perf/events, /api/crashes endpoints the production SDK
+    /// /api/v1/perf/events, /api/issues/ingest endpoints the production SDK
     /// uses. Does NOT open a WebSocket tunnel, so simulated devices don't
     /// appear "online" on the Devices page; they only show up in event-
     /// driven views (Analytics, Performance, Issues).</para>
@@ -215,14 +215,14 @@ namespace ODDGames.Bugpunch.Editor
                 var dev = devices[i];
                 _ = Task.Run(() => RunDevice(dev, config, deadline, token), token);
             }
-            Debug.Log($"[Bugpunch.FleetSim] Started {devices.Count} devices for {_durationMinutes}m");
+            BugpunchLog.Info("FleetSim", $"Started {devices.Count} devices for {_durationMinutes}m");
         }
 
         void Stop()
         {
             try { _cts?.Cancel(); } catch { }
             _cts = null;
-            Debug.Log("[Bugpunch.FleetSim] Stopped");
+            BugpunchLog.Info("FleetSim", "Stopped");
         }
 
         // ── One device's lifetime ──
@@ -317,7 +317,7 @@ namespace ODDGames.Bugpunch.Editor
         async Task SendCrash(HttpClient http, BugpunchConfig config, SimDevice dev, CancellationToken token)
         {
             var json = BuildCrashJson(dev);
-            await PostJson(http, config.serverUrl + "/api/crashes", json, token,
+            await PostJson(http, config.serverUrl + "/api/issues/ingest", json, token,
                 onSuccess: _ => { lock (_statsLock) _crashesSent++; });
         }
 
@@ -444,7 +444,7 @@ namespace ODDGames.Bugpunch.Editor
             sb.Append('{');
             sb.Append("\"errorMessage\":\"").Append(EscapeJson(pick.err)).Append("\",");
             sb.Append("\"stackTrace\":\"").Append(EscapeJson(pick.stack)).Append("\",");
-            sb.Append("\"category\":\"exception\",");
+            sb.Append("\"type\":\"exception\",");
             sb.Append("\"buildVersion\":\"").Append(dev.AppVersion).Append("\",");
             sb.Append("\"platform\":\"").Append(dev.Platform.ToLowerInvariant()).Append("\",");
             sb.Append("\"deviceId\":\"").Append(dev.DeviceId).Append("\",");

@@ -26,8 +26,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// </summary>
     public class BugpunchSurfaceRecorder : MonoBehaviour
     {
-        const string TAG = "[Bugpunch.SurfaceRecorder]";
-
         // Capture cadence. 15 fps is plenty for bug-report video and gives
         // AsyncGPUReadback time to drain on lower-end GPUs.
         const float CAPTURE_FPS = 15f;
@@ -109,7 +107,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 {
                     _inflight = Math.Max(0, _inflight - 1);
                     if (!_running) return;
-                    if (req.hasError) { Debug.LogWarning($"{TAG} compute readback error"); return; }
+                    if (req.hasError) { BugpunchLog.Warn("SurfaceRecorder", "compute readback error"); return; }
                     var nv12Native = req.GetData<byte>();
                     var nv12 = new byte[nv12Native.Length];
                     nv12Native.CopyTo(nv12);
@@ -125,7 +123,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 {
                     _inflight = Math.Max(0, _inflight - 1);
                     if (!_running) return;
-                    if (req.hasError) { Debug.LogWarning($"{TAG} rgba readback error"); return; }
+                    if (req.hasError) { BugpunchLog.Warn("SurfaceRecorder", "rgba readback error"); return; }
                     var rgbaNative = req.GetData<byte>();
                     var rgba = new byte[rgbaNative.Length];
                     rgbaNative.CopyTo(rgba);
@@ -144,7 +142,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var (w, h) = BugpunchNative.GetVideoBufferSize();
             if (w <= 0 || h <= 0)
             {
-                Debug.LogWarning($"{TAG} native buffer size unknown — cannot start");
+                BugpunchLog.Warn("SurfaceRecorder", "native buffer size unknown — cannot start");
                 return;
             }
             // Encoder + NV12 both need even dimensions.
@@ -159,7 +157,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _sourceCamera = Camera.main;
             if (_sourceCamera == null)
             {
-                Debug.LogWarning($"{TAG} no Camera.main — cannot start");
+                BugpunchLog.Warn("SurfaceRecorder", "no Camera.main — cannot start");
                 return;
             }
 
@@ -177,14 +175,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _useCompute = TrySetupCompute(w, h);
             if (!_useCompute)
             {
-                Debug.LogWarning($"{TAG} compute shader unavailable — using CPU RGBA→NV12 fallback");
+                BugpunchLog.Warn("SurfaceRecorder", "compute shader unavailable — using CPU RGBA→NV12 fallback");
             }
 
             _startTimeNs = DateTime.UtcNow.Ticks * 100L;
             _captureCooldown = 0f;
             _inflight = 0;
             _running = true;
-            Debug.Log($"{TAG} started — {w}x{h} @ {CAPTURE_FPS}fps (compute={_useCompute})");
+            BugpunchLog.Info("SurfaceRecorder", $"started — {w}x{h} @ {CAPTURE_FPS}fps (compute={_useCompute})");
         }
 
         void StopCapture()
@@ -206,7 +204,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _nv12Buffer = null;
             _convertShader = null;
             _sourceCamera = null;
-            Debug.Log($"{TAG} stopped");
+            BugpunchLog.Info("SurfaceRecorder", "stopped");
         }
 
         void OnDestroy() { if (_running) StopCapture(); }

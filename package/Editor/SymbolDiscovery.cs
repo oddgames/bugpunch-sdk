@@ -186,7 +186,7 @@ namespace ODDGames.Bugpunch.Editor
                     // prebuilts ship this way. Either way the server can't index it,
                     // because crash reports identify modules by build-id. Frames in
                     // this lib will stay unresolved on the dashboard.
-                    Debug.Log($"[Bugpunch.SymbolUploader] {entry.FullName} has no GNU build-id — can't be symbolicated, skipping. " +
+                    BugpunchLog.Info("SymbolUploader", $"{entry.FullName} has no GNU build-id — can't be symbolicated, skipping. " +
                         "Common for vendor-prebuilt libs (e.g. libwebrtc, libjingle); harmless unless you crash inside it.");
                     try { File.Delete(tempPath); } catch { }
                     continue;

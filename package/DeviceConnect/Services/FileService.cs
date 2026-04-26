@@ -54,8 +54,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (i > 0) sb.Append(",");
                 var (name, path) = _roots[i];
                 sb.Append("{");
-                sb.Append($"\"name\":\"{Esc(name)}\",");
-                sb.Append($"\"path\":\"{Esc(path)}\",");
+                sb.Append($"\"name\":\"{BugpunchJson.Esc(name)}\",");
+                sb.Append($"\"path\":\"{BugpunchJson.Esc(path)}\",");
                 sb.Append($"\"exists\":{(Directory.Exists(path) ? "true" : "false")}");
                 sb.Append("}");
             }
@@ -91,7 +91,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     first = false;
                     var info = new DirectoryInfo(dir);
                     sb.Append("{");
-                    sb.Append($"\"name\":\"{Esc(info.Name)}\",");
+                    sb.Append($"\"name\":\"{BugpunchJson.Esc(info.Name)}\",");
                     sb.Append("\"isDirectory\":true,");
                     sb.Append("\"size\":0,");
                     sb.Append($"\"modified\":\"{info.LastWriteTimeUtc.ToString("o", CultureInfo.InvariantCulture)}\"");
@@ -105,7 +105,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     first = false;
                     var info = new FileInfo(file);
                     sb.Append("{");
-                    sb.Append($"\"name\":\"{Esc(info.Name)}\",");
+                    sb.Append($"\"name\":\"{BugpunchJson.Esc(info.Name)}\",");
                     sb.Append("\"isDirectory\":false,");
                     sb.Append(string.Format(CultureInfo.InvariantCulture, "\"size\":{0},", info.Length));
                     sb.Append($"\"modified\":\"{info.LastWriteTimeUtc.ToString("o", CultureInfo.InvariantCulture)}\"");
@@ -168,7 +168,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         var text = Encoding.UTF8.GetString(bytes);
                         var sb = new StringBuilder();
                         sb.Append("{\"ok\":true,");
-                        sb.Append($"\"content\":\"{Esc(text)}\",");
+                        sb.Append($"\"content\":\"{BugpunchJson.Esc(text)}\",");
                         sb.Append(string.Format(CultureInfo.InvariantCulture, "\"size\":{0},", size));
                         sb.Append($"\"truncated\":true,");
                         sb.Append(string.Format(CultureInfo.InvariantCulture, "\"readBytes\":{0},", maxBytes));
@@ -198,7 +198,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var text = Encoding.UTF8.GetString(allBytes);
                     var sb = new StringBuilder();
                     sb.Append("{\"ok\":true,");
-                    sb.Append($"\"content\":\"{Esc(text)}\",");
+                    sb.Append($"\"content\":\"{BugpunchJson.Esc(text)}\",");
                     sb.Append(string.Format(CultureInfo.InvariantCulture, "\"size\":{0},", size));
                     sb.Append("\"encoding\":\"utf-8\"}");
                     return sb.ToString();
@@ -350,8 +350,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var info = new DirectoryInfo(path);
                     var sb = new StringBuilder();
                     sb.Append("{\"ok\":true,");
-                    sb.Append($"\"name\":\"{Esc(info.Name)}\",");
-                    sb.Append($"\"path\":\"{Esc(info.FullName)}\",");
+                    sb.Append($"\"name\":\"{BugpunchJson.Esc(info.Name)}\",");
+                    sb.Append($"\"path\":\"{BugpunchJson.Esc(info.FullName)}\",");
                     sb.Append("\"isDirectory\":true,");
                     sb.Append("\"size\":0,");
                     sb.Append($"\"created\":\"{info.CreationTimeUtc.ToString("o", CultureInfo.InvariantCulture)}\",");
@@ -365,11 +365,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var info = new FileInfo(path);
                     var sb = new StringBuilder();
                     sb.Append("{\"ok\":true,");
-                    sb.Append($"\"name\":\"{Esc(info.Name)}\",");
-                    sb.Append($"\"path\":\"{Esc(info.FullName)}\",");
+                    sb.Append($"\"name\":\"{BugpunchJson.Esc(info.Name)}\",");
+                    sb.Append($"\"path\":\"{BugpunchJson.Esc(info.FullName)}\",");
                     sb.Append("\"isDirectory\":false,");
                     sb.Append(string.Format(CultureInfo.InvariantCulture, "\"size\":{0},", info.Length));
-                    sb.Append($"\"extension\":\"{Esc(info.Extension)}\",");
+                    sb.Append($"\"extension\":\"{BugpunchJson.Esc(info.Extension)}\",");
                     sb.Append($"\"created\":\"{info.CreationTimeUtc.ToString("o", CultureInfo.InvariantCulture)}\",");
                     sb.Append($"\"modified\":\"{info.LastWriteTimeUtc.ToString("o", CultureInfo.InvariantCulture)}\"");
                     sb.Append("}");
@@ -485,15 +485,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             var sb = new StringBuilder();
             sb.Append("{\"ok\":true,");
-            sb.Append($"\"jobId\":\"{Esc(job.JobId)}\",");
-            sb.Append($"\"stage\":\"{Esc(job.Stage)}\",");
+            sb.Append($"\"jobId\":\"{BugpunchJson.Esc(job.JobId)}\",");
+            sb.Append($"\"stage\":\"{BugpunchJson.Esc(job.Stage)}\",");
             sb.Append(string.Format(CultureInfo.InvariantCulture, "\"totalFiles\":{0},", job.TotalFiles));
             sb.Append(string.Format(CultureInfo.InvariantCulture, "\"processedFiles\":{0},", Interlocked.CompareExchange(ref job.ProcessedFiles, 0, 0)));
             sb.Append(string.Format(CultureInfo.InvariantCulture, "\"bytesWritten\":{0},", Interlocked.Read(ref job.BytesWritten)));
             sb.Append(string.Format(CultureInfo.InvariantCulture, "\"totalSize\":{0},", job.TotalSize));
             sb.Append($"\"done\":{(job.Stage == "done" ? "true" : "false")}");
             if (job.Error != null)
-                sb.Append($",\"error\":\"{Esc(job.Error)}\"");
+                sb.Append($",\"error\":\"{BugpunchJson.Esc(job.Error)}\"");
             sb.Append("}");
             return sb.ToString();
         }
@@ -755,9 +755,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         var floatVal = UnityEngine.PlayerPrefs.GetFloat(key, float.MinValue);
                         var strVal = UnityEngine.PlayerPrefs.GetString(key, null);
 
-                        sb.Append($"\"{Esc(key)}\":");
+                        sb.Append($"\"{BugpunchJson.Esc(key)}\":");
                         if (strVal != null)
-                            sb.Append($"{{\"type\":\"string\",\"value\":\"{Esc(strVal)}\"}}");
+                            sb.Append($"{{\"type\":\"string\",\"value\":\"{BugpunchJson.Esc(strVal)}\"}}");
                         else if (intVal != int.MinValue)
                             sb.Append($"{{\"type\":\"int\",\"value\":{intVal}}}");
                         else if (floatVal != float.MinValue)
@@ -875,10 +875,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         static string Error(string message)
         {
-            return $"{{\"ok\":false,\"error\":\"{Esc(message)}\"}}";
+            return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(message)}\"}}";
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
     }
 }

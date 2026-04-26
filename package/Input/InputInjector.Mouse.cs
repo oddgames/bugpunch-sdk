@@ -250,7 +250,7 @@ namespace ODDGames.Bugpunch
         public static Task InjectPointerDown(Vector2 screenPosition)
         {
             var useTouch = ShouldUseTouchInput();
-            Debug.Log($"[Bugpunch.InputInjector] PointerDown enter pos=({screenPosition.x:F0},{screenPosition.y:F0}) useTouch={useTouch} prevActive={s_pointerActive} frame={Time.frameCount}");
+            BugpunchLog.Info("InputInjector", $"PointerDown enter pos=({screenPosition.x:F0},{screenPosition.y:F0}) useTouch={useTouch} prevActive={s_pointerActive} frame={Time.frameCount}");
             s_pointerLastPos = screenPosition;
             s_pointerActive = true;
 #if ENABLE_INPUT_SYSTEM
@@ -258,7 +258,7 @@ namespace ODDGames.Bugpunch
             if (useTouch)
             {
                 var ts = GetTouchscreen();
-                Debug.Log($"[Bugpunch.InputInjector] PointerDown touch device={(ts == null ? "NULL" : ts.deviceId.ToString())}");
+                BugpunchLog.Info("InputInjector", $"PointerDown touch device={(ts == null ? "NULL" : ts.deviceId.ToString())}");
                 if (ts == null) return Task.CompletedTask;
                 InputSystem.QueueStateEvent(ts, new TouchState
                 {
@@ -268,12 +268,12 @@ namespace ODDGames.Bugpunch
                     phase = UnityEngine.InputSystem.TouchPhase.Began,
                     pressure = 1f,
                 });
-                Debug.Log($"[Bugpunch.InputInjector] PointerDown queued Began touchId={LifecycleTouchId}");
+                BugpunchLog.Info("InputInjector", $"PointerDown queued Began touchId={LifecycleTouchId}");
             }
             else
             {
                 var mouse = GetMouse();
-                Debug.Log($"[Bugpunch.InputInjector] PointerDown mouse device={(mouse == null ? "NULL" : mouse.deviceId.ToString())}");
+                BugpunchLog.Info("InputInjector", $"PointerDown mouse device={(mouse == null ? "NULL" : mouse.deviceId.ToString())}");
                 if (mouse == null) return Task.CompletedTask;
                 using (StateEvent.From(mouse, out var e))
                 {
@@ -282,7 +282,7 @@ namespace ODDGames.Bugpunch
                     mouse.leftButton.WriteValueIntoEvent(1f, e);
                     InputSystem.QueueEvent(e);
                 }
-                Debug.Log("[Bugpunch.InputInjector] PointerDown queued mouse press");
+                BugpunchLog.Info("InputInjector", "PointerDown queued mouse press");
             }
 #endif
             return Task.CompletedTask;
@@ -290,7 +290,7 @@ namespace ODDGames.Bugpunch
 
         public static Task InjectPointerMove(Vector2 screenPosition)
         {
-            Debug.Log($"[Bugpunch.InputInjector] PointerMove enter pos=({screenPosition.x:F0},{screenPosition.y:F0}) active={s_pointerActive} frame={Time.frameCount}");
+            BugpunchLog.Info("InputInjector", $"PointerMove enter pos=({screenPosition.x:F0},{screenPosition.y:F0}) active={s_pointerActive} frame={Time.frameCount}");
             if (!s_pointerActive) return Task.CompletedTask;
             var delta = screenPosition - s_pointerLastPos;
             s_pointerLastPos = screenPosition;
@@ -327,10 +327,10 @@ namespace ODDGames.Bugpunch
         public static Task InjectPointerUp(Vector2 screenPosition)
         {
             var useTouch = ShouldUseTouchInput();
-            Debug.Log($"[Bugpunch.InputInjector] PointerUp enter pos=({screenPosition.x:F0},{screenPosition.y:F0}) useTouch={useTouch} active={s_pointerActive} frame={Time.frameCount}");
+            BugpunchLog.Info("InputInjector", $"PointerUp enter pos=({screenPosition.x:F0},{screenPosition.y:F0}) useTouch={useTouch} active={s_pointerActive} frame={Time.frameCount}");
             if (!s_pointerActive)
             {
-                Debug.LogWarning("[Bugpunch.InputInjector] PointerUp early-return: s_pointerActive==false (no preceding Down)");
+                BugpunchLog.Warn("InputInjector", "PointerUp early-return: s_pointerActive==false (no preceding Down)");
                 return Task.CompletedTask;
             }
             s_pointerActive = false;
@@ -338,7 +338,7 @@ namespace ODDGames.Bugpunch
             if (useTouch)
             {
                 var ts = GetTouchscreen();
-                Debug.Log($"[Bugpunch.InputInjector] PointerUp touch device={(ts == null ? "NULL" : ts.deviceId.ToString())}");
+                BugpunchLog.Info("InputInjector", $"PointerUp touch device={(ts == null ? "NULL" : ts.deviceId.ToString())}");
                 if (ts == null) { InputVisualizer.RecordCursorEnd(); return Task.CompletedTask; }
                 InputSystem.QueueStateEvent(ts, new TouchState
                 {
@@ -348,12 +348,12 @@ namespace ODDGames.Bugpunch
                     phase = UnityEngine.InputSystem.TouchPhase.Ended,
                     pressure = 0f,
                 });
-                Debug.Log($"[Bugpunch.InputInjector] PointerUp queued Ended touchId={LifecycleTouchId}");
+                BugpunchLog.Info("InputInjector", $"PointerUp queued Ended touchId={LifecycleTouchId}");
             }
             else
             {
                 var mouse = GetMouse();
-                Debug.Log($"[Bugpunch.InputInjector] PointerUp mouse device={(mouse == null ? "NULL" : mouse.deviceId.ToString())}");
+                BugpunchLog.Info("InputInjector", $"PointerUp mouse device={(mouse == null ? "NULL" : mouse.deviceId.ToString())}");
                 if (mouse == null) { InputVisualizer.RecordCursorEnd(); return Task.CompletedTask; }
                 using (StateEvent.From(mouse, out var e))
                 {
@@ -362,17 +362,17 @@ namespace ODDGames.Bugpunch
                     mouse.leftButton.WriteValueIntoEvent(0f, e);
                     InputSystem.QueueEvent(e);
                 }
-                Debug.Log("[Bugpunch.InputInjector] PointerUp queued mouse release");
+                BugpunchLog.Info("InputInjector", "PointerUp queued mouse release");
             }
             InputVisualizer.RecordCursorEnd();
-            Debug.Log("[Bugpunch.InputInjector] PointerUp RecordCursorEnd called (hand should fade)");
+            BugpunchLog.Info("InputInjector", "PointerUp RecordCursorEnd called (hand should fade)");
 #endif
             return Task.CompletedTask;
         }
 
         public static Task InjectPointerCancel()
         {
-            Debug.Log($"[Bugpunch.InputInjector] PointerCancel active={s_pointerActive}");
+            BugpunchLog.Info("InputInjector", $"PointerCancel active={s_pointerActive}");
             return s_pointerActive ? InjectPointerUp(s_pointerLastPos) : Task.CompletedTask;
         }
 

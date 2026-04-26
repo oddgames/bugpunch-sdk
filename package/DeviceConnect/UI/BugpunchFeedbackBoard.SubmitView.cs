@@ -234,7 +234,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogWarning($"[Bugpunch.FeedbackBoard] Similarity parse failed: {ex.Message}");
+                        BugpunchLog.Warn("FeedbackBoard", $"Similarity parse failed: {ex.Message}");
                     }
 
                     if (top != null)

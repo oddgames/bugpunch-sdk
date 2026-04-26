@@ -927,15 +927,34 @@ void Bugpunch_ResetRecordingTimer(void) {
     });
 }
 
-// Native "shell" for the chat board. The actual UI is C# — iOS just
-// forwards to Unity via UnitySendMessage. Routed through the existing
-// "BugpunchReportCallback" GameObject so both platforms land on the same
-// ReportOverlayCallback MonoBehaviour — keeps the shell parity Android ↔
-// iOS without adding yet another UnitySendMessage target.
+// Native chat board entry point — Phase B of #29. The previous Unity
+// round-trip (UnitySendMessage("BugpunchReportCallback",
+// "OnShowChatBoardRequested")) bounced into the C# UI Toolkit
+// BugpunchChatBoard, which didn't render like a chat app and lived inside
+// the Unity surface instead of as a system overlay.
+//
+// Now points at the new BugpunchChatViewController (BugpunchChatViewController.mm),
+// a self-contained UIViewController that owns the bubble list, composer,
+// HTTP, and 5s polling natively. C# is no longer on this path on device.
+// The C# board still serves as the Editor / Standalone fallback.
+extern "C" void Bugpunch_PresentNativeChatViewController(void);
+
 void Bugpunch_ShowChatBoard(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UnitySendMessage("BugpunchReportCallback", "OnShowChatBoardRequested", "");
-    });
+    Bugpunch_PresentNativeChatViewController();
+}
+
+// Native feedback board entry point — Phase B part 2 of #29. Mirrors the
+// chat-board wiring above: previously the iOS `INativeDialog.ShowFeedbackBoard`
+// fell back to the C# UI Toolkit `BugpunchFeedbackBoard`, which rendered
+// inside the Unity surface and looked broken on device. Now points at
+// the new BugpunchFeedbackViewController (BugpunchFeedbackViewController.mm),
+// a self-contained UIViewController that owns the list / detail / submit
+// views, voting, similarity-check flow, comments and multipart upload
+// natively. The C# board still serves as the Editor / Standalone fallback.
+extern "C" void Bugpunch_PresentNativeFeedbackViewController(void);
+
+void Bugpunch_ShowFeedbackBoard(void) {
+    Bugpunch_PresentNativeFeedbackViewController();
 }
 
 } // extern "C"

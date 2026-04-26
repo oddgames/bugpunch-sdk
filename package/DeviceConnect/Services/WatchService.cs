@@ -72,8 +72,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
             UnityEngine.SceneManagement.SceneManager.sceneUnloaded += OnSceneUnloaded;
-            // Initial scan — picks up any [Watch] members in the boot scene.
-            Rescan();
+            // Initial scan is deferred — _declaredDirty defaults to true and
+            // Poll() rescans on first read. Walking the boot scene at startup
+            // (GetComponents on every GameObject + reflection per type) is
+            // 50–200ms on real devices and the first /watch/poll only fires
+            // when the dashboard opens the Watch panel.
         }
 
         void OnDestroy()
@@ -307,14 +310,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append("{");
             sb.Append($"\"instanceId\":{go.GetInstanceID()},");
             sb.Append($"\"componentId\":{comp.GetInstanceID()},");
-            sb.Append($"\"gameObject\":\"{Esc(go.name)}\",");
-            sb.Append($"\"component\":\"{Esc(comp.GetType().Name)}\",");
-            sb.Append($"\"field\":\"{Esc(fieldPath)}\",");
-            sb.Append($"\"type\":\"{Esc(typeName)}\",");
+            sb.Append($"\"gameObject\":\"{BugpunchJson.Esc(go.name)}\",");
+            sb.Append($"\"component\":\"{BugpunchJson.Esc(comp.GetType().Name)}\",");
+            sb.Append($"\"field\":\"{BugpunchJson.Esc(fieldPath)}\",");
+            sb.Append($"\"type\":\"{BugpunchJson.Esc(typeName)}\",");
             sb.Append($"\"isProperty\":{(isProperty ? "true" : "false")},");
             sb.Append($"\"canWrite\":{(canWrite ? "true" : "false")},");
             sb.Append($"\"value\":{SerializeValue(value)},");
-            sb.Append($"\"path\":\"{Esc(GetHierarchyPath(go))}\"");
+            sb.Append($"\"path\":\"{BugpunchJson.Esc(GetHierarchyPath(go))}\"");
             sb.Append("}");
         }
 
@@ -355,7 +358,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Validate path resolves against the component's type.
             var segments = SplitPath(fieldName);
             if (!TryBuildChain(comp.GetType(), segments, out var chain, out var terminalType))
-                return $"{{\"ok\":false,\"error\":\"Path not found: {Esc(fieldName)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"Path not found: {BugpunchJson.Esc(fieldName)}\"}}";
 
             var terminal = chain[chain.Length - 1];
             // Infer isProperty from the terminal member if the caller didn't pin it.
@@ -540,6 +543,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         public string GetWatchList()
         {
+            // Same lazy-rebuild trigger Poll uses — covers the case where the
+            // IDE hits /watch/list as its first call when opening the panel,
+            // which is the typical path on a fresh tunnel connection.
+            if (_declaredDirty) Rescan();
+
             var sb = new StringBuilder();
             sb.Append("[");
             bool first = true;
@@ -553,19 +561,19 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 sb.Append($"\"id\":\"{entry.id}\",");
                 sb.Append($"\"instanceId\":{entry.instanceId},");
                 sb.Append($"\"componentId\":{entry.componentId},");
-                sb.Append($"\"field\":\"{Esc(entry.fieldName)}\",");
-                sb.Append($"\"type\":\"{Esc(entry.typeName)}\",");
+                sb.Append($"\"field\":\"{BugpunchJson.Esc(entry.fieldName)}\",");
+                sb.Append($"\"type\":\"{BugpunchJson.Esc(entry.typeName)}\",");
                 sb.Append($"\"isProperty\":{(entry.isProperty ? "true" : "false")},");
-                sb.Append($"\"gameObject\":\"{Esc(entry.gameObjectName)}\",");
-                sb.Append($"\"component\":\"{Esc(entry.componentName)}\",");
-                sb.Append($"\"path\":\"{Esc(entry.hierarchyPath)}\",");
+                sb.Append($"\"gameObject\":\"{BugpunchJson.Esc(entry.gameObjectName)}\",");
+                sb.Append($"\"component\":\"{BugpunchJson.Esc(entry.componentName)}\",");
+                sb.Append($"\"path\":\"{BugpunchJson.Esc(entry.hierarchyPath)}\",");
                 if (entry.isDeclared)
                 {
                     sb.Append("\"isDeclared\":true,");
-                    if (entry.group != null) sb.Append($"\"group\":\"{Esc(entry.group)}\",");
+                    if (entry.group != null) sb.Append($"\"group\":\"{BugpunchJson.Esc(entry.group)}\",");
                     sb.Append($"\"min\":{entry.min.ToString("G", System.Globalization.CultureInfo.InvariantCulture)},");
                     sb.Append($"\"max\":{entry.max.ToString("G", System.Globalization.CultureInfo.InvariantCulture)},");
-                    sb.Append($"\"ownerName\":\"{Esc(entry.ownerName)}\",");
+                    sb.Append($"\"ownerName\":\"{BugpunchJson.Esc(entry.ownerName)}\",");
                     sb.Append($"\"ownerInstanceId\":{entry.ownerInstanceId},");
                 }
                 sb.Append($"\"value\":{currentValue}");
@@ -635,7 +643,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 var segments = SplitPath(fieldName);
                 if (!TryBuildChain(comp.GetType(), segments, out var chain, out var terminalType))
-                    return $"{{\"ok\":false,\"error\":\"Path not found: {Esc(fieldName)}\"}}";
+                    return $"{{\"ok\":false,\"error\":\"Path not found: {BugpunchJson.Esc(fieldName)}\"}}";
 
                 // Walk to penultimate
                 object parent = comp;
@@ -684,7 +692,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                return $"{{\"ok\":false,\"error\":\"{Esc(ex.Message)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(ex.Message)}\"}}";
             }
         }
 
@@ -724,12 +732,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
 
                 if (errors.Length > 0)
-                    return $"{{\"ok\":false,\"applied\":{applied},\"error\":\"{Esc(errors.ToString())}\"}}";
+                    return $"{{\"ok\":false,\"applied\":{applied},\"error\":\"{BugpunchJson.Esc(errors.ToString())}\"}}";
                 return $"{{\"ok\":true,\"applied\":{applied}}}";
             }
             catch (Exception ex)
             {
-                return $"{{\"ok\":false,\"error\":\"{Esc(ex.Message)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(ex.Message)}\"}}";
             }
         }
 
@@ -848,7 +856,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         static string SerializeValue(object value)
         {
             if (value == null) return "null";
-            if (value is string s) return $"\"{Esc(s)}\"";
+            if (value is string s) return $"\"{BugpunchJson.Esc(s)}\"";
             if (value is bool b) return b ? "true" : "false";
             if (value is int or float or double or long or short or byte or uint or ulong or ushort or sbyte)
                 return Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
@@ -861,9 +869,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (value is UnityEngine.Object uo)
             {
                 if (uo == null) return "null";
-                return $"\"{Esc(uo.name)} ({uo.GetType().Name})\"";
+                return $"\"{BugpunchJson.Esc(uo.name)} ({uo.GetType().Name})\"";
             }
-            try { return $"\"{Esc(value.ToString())}\""; }
+            try { return $"\"{BugpunchJson.Esc(value.ToString())}\""; }
             catch { return "\"(error)\""; }
         }
 
@@ -908,7 +916,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return Convert.ChangeType(jsonValue, targetType);
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
     }
 }

@@ -311,7 +311,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             while (!op.isDone) await System.Threading.Tasks.Task.Yield();
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning($"[Bugpunch.ChatBoard] image download failed: {req.error}");
+                BugpunchLog.Warn("ChatBoard", $"image download failed: {req.error}");
                 onDone?.Invoke(null);
                 return;
             }

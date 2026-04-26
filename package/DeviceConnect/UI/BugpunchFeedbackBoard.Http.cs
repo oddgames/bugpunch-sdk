@@ -40,7 +40,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Parse failed: {ex.Message}");
+                BugpunchLog.Warn("FeedbackBoard", $"Parse failed: {ex.Message}");
                 _listEmptyLabel.text = "Could not parse feedback list.";
                 return;
             }
@@ -52,12 +52,13 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         {
             if (!TryGetBaseUrl(out var baseUrl, out var apiKey)) return;
 
-            var url = baseUrl + "/api/feedback";
+            var url = baseUrl + "/api/issues/ingest";
 
             // Build payload manually — we need a JSON array for `attachments`
             // alongside the existing string fields, which the simple
             // Dictionary<string,string> BuildJson can't express.
             var sb = new StringBuilder("{");
+            sb.Append("\"type\":\"feedback_item\",");
             sb.Append("\"title\":").Append(JsonConvert.ToString(title ?? "")).Append(',');
             sb.Append("\"description\":").Append(JsonConvert.ToString(description ?? ""));
             if (bypassSimilarity) sb.Append(",\"bypassSimilarity\":true");
@@ -68,7 +69,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             var (ok, status, _) = await HttpRequest("POST", url, apiKey, body);
             if (!ok)
             {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Create failed (HTTP {status}).");
+                BugpunchLog.Warn("FeedbackBoard", $"Create failed (HTTP {status}).");
                 // Surface failure inline — lightweight toast on the card.
                 ShowInlineError("Could not submit feedback. Please try again.");
                 return;
@@ -84,7 +85,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         /// <summary>
         /// Serialize a list of <see cref="PendingAttachment"/> into the JSON
-        /// array shape the server expects on POST /api/feedback and POST
+        /// array shape the server expects on POST /api/issues/ingest and POST
         /// /api/feedback/:id/comments — matches the FeedbackAttachment type
         /// declared in <c>feedback.routes.ts</c>.
         /// </summary>
@@ -131,7 +132,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Vote parse failed: {ex.Message}");
+                BugpunchLog.Warn("FeedbackBoard", $"Vote parse failed: {ex.Message}");
             }
         }
 
@@ -180,7 +181,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Comments parse failed: {ex.Message}");
+                BugpunchLog.Warn("FeedbackBoard", $"Comments parse failed: {ex.Message}");
             }
 
             if (parsed.Count == 0)
@@ -233,7 +234,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 var (ok, status, _) = await HttpRequest("POST", url, apiKey, payload);
                 if (!ok)
                 {
-                    Debug.LogWarning($"[Bugpunch.FeedbackBoard] Comment POST failed (HTTP {status}).");
+                    BugpunchLog.Warn("FeedbackBoard", $"Comment POST failed (HTTP {status}).");
                     ShowInlineError("Could not post comment. Please try again.");
                     return;
                 }
@@ -294,7 +295,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             var client = BugpunchClient.Instance;
             if (client == null || client.Config == null)
             {
-                Debug.LogWarning("[Bugpunch.FeedbackBoard] BugpunchClient not initialized — feedback unavailable.");
+                BugpunchLog.Warn("FeedbackBoard", "BugpunchClient not initialized — feedback unavailable.");
                 return false;
             }
             baseUrl = client.Config.HttpBaseUrl;

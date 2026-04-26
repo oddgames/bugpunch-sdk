@@ -441,9 +441,9 @@ public final class BugpunchTunnel {
         //     answer wins.
         try {
             if (becameInternal) {
-                BugpunchDebugMode.onRoleBecameInternal();
+                BugpunchTesterRoleManager.onRoleBecameInternal();
             } else if (leftInternal) {
-                BugpunchDebugMode.onRoleLeftInternal();
+                BugpunchTesterRoleManager.onRoleLeftInternal();
             }
         } catch (Throwable t) {
             Log.w(TAG, "role transition dispatch failed", t);
@@ -490,7 +490,7 @@ public final class BugpunchTunnel {
 
     // Cache-driven debug-mode auto-prompt key. Lives in a separate
     // SharedPreferences file ("bugpunch") so a cold start of
-    // BugpunchDebugMode.maybeAutoPromptOnLaunch can read it without
+    // BugpunchDebugAutoPrompt.maybeShowOnLaunch can read it without
     // depending on the role-state cache. Values: "internal" |
     // "external" | "user" | absent (no cache yet → wait for server).
     static final String PREFS_LAST_ROLE_FILE = "bugpunch";

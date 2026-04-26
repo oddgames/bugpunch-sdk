@@ -350,25 +350,28 @@ public class BugpunchRuntime {
         // 3) Cache the SurfaceView for ANR screenshot capture.
         BugpunchScreenshot.cacheSurfaceView();
 
-        // 3a) Pull Android's ApplicationExitInfo (API 30+). For each OS-level
-        // exit we haven't seen, either merge the trace into a matching .crash
-        // file (our in-process report + OS trace = most info possible) or
-        // synthesize a standalone file for exits we missed entirely (low-mem
-        // kill before the watchdog fired, etc.). Must run BEFORE the drain so
-        // merges are included in the uploads.
-        try { BugpunchCrashHandler.scanApplicationExitInfo(activity); } catch (Throwable t) {
-            Log.w(TAG, "AEI scan failed", t);
-        }
+        // 3a) Previous-session work — AEI scan + crash drain. Both do disk I/O
+        // (file reads, JPEG encoding, system service calls) that used to
+        // synchronously block the host activity's onCreate, costing hundreds
+        // of ms on devices with pending crashes. Move both off the main
+        // thread; their order relative to each other is preserved (AEI scan
+        // first so its merges are picked up by the drain). The signal-handler
+        // raw frames the drain reads aren't touched by anything in this
+        // process until WE crash, so there's no race with the rolling buffer.
+        final Activity drainActivity = activity;
+        HandlerThread drainThread = new HandlerThread("bp-drain");
+        drainThread.start();
+        new Handler(drainThread.getLooper()).post(new Runnable() {
+            @Override public void run() {
+                try { BugpunchCrashHandler.scanApplicationExitInfo(drainActivity); }
+                catch (Throwable t) { Log.w(TAG, "AEI scan failed", t); }
+                try { BugpunchCrashDrain.drain(drainActivity); }
+                catch (Throwable t) { Log.w(TAG, "crash drain failed", t); }
+                drainThread.quitSafely();
+            }
+        });
 
-        // 3b) Drain previous-session crash files BEFORE starting the rolling
-        // buffer. The drain references frame_a/b.jpg from the previous
-        // process — once rolling resumes in *this* session the same paths get
-        // overwritten, so the drain must copy or queue first.
-        try { BugpunchCrashDrain.drain(activity); } catch (Throwable t) {
-            Log.w(TAG, "crash drain failed", t);
-        }
-
-        // 3c) Now start the rolling screenshot buffer — captures the GPU
+        // 3b) Start the rolling screenshot buffer — captures the GPU
         // surface via PixelCopy ~1/sec, writes a JPEG to the next slot, and
         // notifies native which slot is "at crash". Only activates on high-end
         // devices with enough RAM.
@@ -416,7 +419,7 @@ public class BugpunchRuntime {
         // tear down speculatively-started recordings if the server now says
         // non-internal.
         try {
-            BugpunchDebugMode.maybeAutoPromptOnLaunch(activity);
+            BugpunchDebugAutoPrompt.maybeShowOnLaunch(activity);
         } catch (Throwable t) {
             Log.w(TAG, "auto-prompt on launch failed", t);
         }

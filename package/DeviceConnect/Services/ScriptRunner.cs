@@ -36,12 +36,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var sb = new StringBuilder();
                 sb.Append("{\"ok\":false,\"errors\":[{");
                 AppendLocation(sb, rex.Location);
-                sb.Append($"\"message\":\"{Esc(rex.Message)}\"}}]}}");
+                sb.Append($"\"message\":\"{BugpunchJson.Esc(rex.Message)}\"}}]}}");
                 return sb.ToString();
             }
             catch (Exception ex)
             {
-                return $"{{\"ok\":false,\"errors\":[{{\"message\":\"{Esc(ex.Message)}\"}}]}}";
+                return $"{{\"ok\":false,\"errors\":[{{\"message\":\"{BugpunchJson.Esc(ex.Message)}\"}}]}}";
             }
         }
 
@@ -57,14 +57,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                return $"{{\"ok\":true,\"diagnostics\":[{{\"severity\":\"error\",\"message\":\"{Esc(ex.Message)}\"}}]}}";
+                return $"{{\"ok\":true,\"diagnostics\":[{{\"severity\":\"error\",\"message\":\"{BugpunchJson.Esc(ex.Message)}\"}}]}}";
             }
         }
 
         static string BuildSuccessResponse(object result)
         {
             var output = result == null ? "" : result.ToString();
-            return $"{{\"ok\":true,\"output\":\"{Esc(output)}\"}}";
+            return $"{{\"ok\":true,\"output\":\"{BugpunchJson.Esc(output)}\"}}";
         }
 
         static string BuildErrorResponse(System.Collections.Generic.IReadOnlyList<ScriptDiagnostic> diagnostics)
@@ -81,7 +81,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     first = false;
                     sb.Append('{');
                     AppendLocation(sb, d.Location);
-                    sb.Append($"\"message\":\"{Esc(d.Message)}\"}}");
+                    sb.Append($"\"message\":\"{BugpunchJson.Esc(d.Message)}\"}}");
                 }
             }
             if (first) sb.Append("{\"message\":\"compilation failed\"}");
@@ -103,8 +103,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     sb.Append('{');
                     AppendLocation(sb, d.Location);
                     sb.Append($"\"severity\":\"{SeverityName(d.Severity)}\",");
-                    if (!string.IsNullOrEmpty(d.Code)) sb.Append($"\"code\":\"{Esc(d.Code)}\",");
-                    sb.Append($"\"message\":\"{Esc(d.Message)}\"}}");
+                    if (!string.IsNullOrEmpty(d.Code)) sb.Append($"\"code\":\"{BugpunchJson.Esc(d.Code)}\",");
+                    sb.Append($"\"message\":\"{BugpunchJson.Esc(d.Message)}\"}}");
                 }
             }
             sb.Append("]}");
@@ -134,7 +134,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (loc.Length > 0) sb.Append($"\"length\":{loc.Length},");
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
     }
 }

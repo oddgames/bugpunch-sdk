@@ -47,6 +47,14 @@ public class BugpunchReportOverlay {
     private static long sRecordStartTime;
     private static Runnable sTimerRunnable;
 
+    // Unread-message badge — rendered top-right of the record button when
+    // the dev team has chat replies the player hasn't seen. Driven by the
+    // existing BugpunchPoller tick (see issue #32) — no second timer here.
+    // Held as a class-level reference so {@link #setUnreadCount(int)} can
+    // mutate it from any thread without re-walking the view tree.
+    private static TextView sUnreadBadge;
+    private static int sLastUnreadCount = -1;
+
     // ─── UnitySendMessage via reflection (avoids compile-time dep on UnityPlayer) ──
 
     private static void sendToUnity(String method, String message) {
@@ -597,27 +605,33 @@ public class BugpunchReportOverlay {
         });
     }
 
-    // ─── Chat Board (native shell) ────────────────────────────────
+    // ─── Chat Board (native) ──────────────────────────────────────
     //
-    // The full chat UI lives in C# (BugpunchChatBoard.cs) because it's a
-    // multi-view master-detail widget with polling and we don't want to
-    // reinvent a full chat client natively. This entry point exists so the
-    // SDK's public surface stays native-first: any caller that wants the
-    // chat board goes through INativeDialog.ShowChatBoard, which on Android
-    // reaches here, which bounces the request back into C#.
+    // The chat UI is now a real native Activity ({@link BugpunchChatActivity})
+    // — Messenger-style header / bubble list / composer, HTTP + polling all
+    // in Java. The previous version bounced back into Unity and rendered in
+    // C# UI Toolkit, which didn't look like a chat app and drew on top of
+    // the Unity surface (visible inside the Remote IDE, which is wrong).
     //
-    // Callback chain:
-    //   AndroidDialog.ShowChatBoard()
-    //     → BugpunchReportOverlay.showChatBoard(activity)
-    //       → UnitySendMessage("BugpunchClient", "OnShowChatBoardRequested", "")
-    //         → BugpunchClient.OnShowChatBoardRequested(...)
-    //           → BugpunchChatBoard.Show()
+    // INativeDialog.ShowChatBoard reaches here and we just launch the
+    // Activity. C# never sees the call again.
     public static void showChatBoard(final Activity activity) {
-        // No native UI to draw — just forward the request. Running on the
-        // UI thread keeps this consistent with the other overlay methods
-        // and gives us a single place to add a native pre-check later
-        // (e.g. offline snackbar) without callers needing to care.
-        activity.runOnUiThread(() -> sendToUnity("OnShowChatBoardRequested", ""));
+        activity.runOnUiThread(() -> BugpunchChatActivity.launch());
+    }
+
+    // ─── Feedback Board (native) ──────────────────────────────────
+    //
+    // Same architecture as showChatBoard above — the feedback UI ("Request a
+    // feature" with voting) is now a real native Activity ({@link
+    // BugpunchFeedbackActivity}). All HTTP, polling, similarity check, image
+    // attachments and the vote toggle live in Java. The previous flow used
+    // C# UI Toolkit on top of the Unity surface; the native version draws
+    // above it like the other Bugpunch overlays and matches the chat look.
+    //
+    // INativeDialog.ShowFeedbackBoard reaches here on Android and we just
+    // launch the Activity. C# is no longer on the path.
+    public static void showFeedbackBoard(final Activity activity) {
+        activity.runOnUiThread(() -> BugpunchFeedbackActivity.launch());
     }
 
     // ─── Recording Overlay (floating button) ───────────────────────
@@ -661,10 +675,50 @@ public class BugpunchReportOverlay {
             container.addView(feedbackBtn, feedbackLp);
             feedbackBtn.setOnClickListener(v -> sendToUnity("OnRecordingBarFeedbackTapped", ""));
 
-            // Red circle button with white square stop icon
+            // Red circle button with white square stop icon. Wrapped in a
+            // FrameLayout so the unread-message badge (#32) can hover in the
+            // top-right corner without disturbing the LinearLayout flow or
+            // affecting the drag/tap hit-test (the badge is non-clickable).
+            FrameLayout buttonWrap = new FrameLayout(ctx);
             RecordButton button = new RecordButton(ctx, btnSize);
             button.setClickable(true);
-            container.addView(button, new LinearLayout.LayoutParams(btnSize, btnSize));
+            buttonWrap.addView(button, new FrameLayout.LayoutParams(btnSize, btnSize));
+
+            // Unread-chat badge — accent circle with white centred count.
+            // Hidden by default; {@link #setUnreadCount(int)} toggles it.
+            sUnreadBadge = new TextView(ctx);
+            sUnreadBadge.setTextColor(Color.WHITE);
+            sUnreadBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            sUnreadBadge.setTypeface(Typeface.DEFAULT_BOLD);
+            sUnreadBadge.setGravity(Gravity.CENTER);
+            sUnreadBadge.setIncludeFontPadding(false);
+            sUnreadBadge.setClickable(false);
+            sUnreadBadge.setFocusable(false);
+            android.graphics.drawable.GradientDrawable badgeBg = new android.graphics.drawable.GradientDrawable();
+            badgeBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            badgeBg.setColor(BugpunchTheme.color("accentChat", 0xFF336199));
+            badgeBg.setStroke(dp(ctx, 2), Color.WHITE);
+            sUnreadBadge.setBackground(badgeBg);
+            int badgeSize = dp(ctx, 20);
+            int badgePad = dp(ctx, 4);
+            sUnreadBadge.setPadding(badgePad, 0, badgePad, 0);
+            sUnreadBadge.setMinWidth(badgeSize);
+            sUnreadBadge.setMinHeight(badgeSize);
+            sUnreadBadge.setVisibility(View.GONE);
+            FrameLayout.LayoutParams badgeLp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, badgeSize);
+            badgeLp.gravity = Gravity.TOP | Gravity.END;
+            // Tuck slightly into the button corner so it reads as a notification
+            // pip rather than floating off in the margin.
+            badgeLp.topMargin = -dp(ctx, 4);
+            badgeLp.rightMargin = -dp(ctx, 4);
+            buttonWrap.addView(sUnreadBadge, badgeLp);
+
+            // Re-apply any count that arrived before the overlay was attached
+            // (poller may have ticked before showRecordingOverlay ran).
+            if (sLastUnreadCount > 0) applyUnreadBadge(sLastUnreadCount);
+
+            container.addView(buttonWrap, new LinearLayout.LayoutParams(btnSize, btnSize));
 
             // Timer label
             sTimerLabel = new TextView(ctx);
@@ -739,7 +793,54 @@ public class BugpunchReportOverlay {
             }
             sRecordingView = null;
             sTimerLabel = null;
+            sUnreadBadge = null;
         });
+    }
+
+    /**
+     * Update the unread-chat badge on the floating record button. Safe to
+     * call from any thread — the actual view mutation hops onto the main
+     * thread. The badge is hidden when {@code count <= 0} and shows
+     * {@code "(N)"} (or {@code "99+"} for >= 100) otherwise.
+     *
+     * Driven by {@link BugpunchPoller}'s existing tick (issue #32) — do not
+     * spin a second timer to call this. The chat Activity also calls it with
+     * 0 right after {@code POST /api/v1/chat/read} so the badge clears
+     * immediately rather than waiting for the next poll.
+     */
+    public static void setUnreadCount(final int count) {
+        final int safe = Math.max(0, count);
+        sLastUnreadCount = safe;
+        Activity activity = BugpunchUnity.currentActivity();
+        if (activity == null) return;
+        activity.runOnUiThread(() -> applyUnreadBadge(safe));
+    }
+
+    /**
+     * Last unread count we received from the poller. -1 means the poller
+     * has never run yet (we only know it's not "0"). Used by
+     * {@link BugpunchChatActivity} to log whether the player tapped through
+     * with the badge visible.
+     */
+    public static int getLastUnreadCount() {
+        return Math.max(0, sLastUnreadCount);
+    }
+
+    private static void applyUnreadBadge(int count) {
+        if (sUnreadBadge == null) return;
+        if (count <= 0) {
+            if (sUnreadBadge.getVisibility() != View.GONE) {
+                sUnreadBadge.setVisibility(View.GONE);
+            }
+            return;
+        }
+        boolean wasHidden = sUnreadBadge.getVisibility() != View.VISIBLE;
+        String text = count >= 100 ? "99+" : Integer.toString(count);
+        sUnreadBadge.setText(text);
+        sUnreadBadge.setVisibility(View.VISIBLE);
+        if (wasHidden) {
+            Log.d(TAG, "unread badge shown: " + count);
+        }
     }
 
     /**

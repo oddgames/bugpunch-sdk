@@ -46,14 +46,14 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         public void ShowReportWelcome(Action onConfirm, Action onCancel)
         {
             // Desktop fallback: skip welcome, go straight to recording
-            Debug.Log("[Bugpunch.FallbackDialog] Report welcome not available on desktop, proceeding directly");
+            BugpunchLog.Info("FallbackDialog", "Report welcome not available on desktop, proceeding directly");
             onConfirm?.Invoke();
         }
 
         public void ShowRecordingOverlay(Action onStopRecording)
         {
             // Desktop fallback: no native overlay, log instruction
-            Debug.Log("[Bugpunch.FallbackDialog] Recording overlay not available on desktop. Press F12 again to submit report.");
+            BugpunchLog.Info("FallbackDialog", "Recording overlay not available on desktop. Press F12 again to submit report.");
         }
 
         public void HideRecordingOverlay()
@@ -72,8 +72,17 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         {
             // Same story as ShowRequestHelp — the chat board is a full
             // UIToolkit surface already, so the IMGUI fallback just forwards.
-            Debug.Log("[Bugpunch.FallbackDialog] ShowChatBoard — delegating to UIToolkit chat board");
+            BugpunchLog.Info("FallbackDialog", "ShowChatBoard — delegating to UIToolkit chat board");
             BugpunchChatBoard.Show();
+        }
+
+        public void ShowFeedbackBoard()
+        {
+            // Feedback board is full UIToolkit too — IMGUI fallback delegates
+            // straight through. The Android-native Activity is the only port
+            // for now (#29 phase A).
+            BugpunchLog.Info("FallbackDialog", "ShowFeedbackBoard — delegating to UIToolkit feedback board");
+            BugpunchFeedbackBoard.Show();
         }
     }
 

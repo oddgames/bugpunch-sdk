@@ -103,6 +103,31 @@ public class BugpunchRecorder {
     private final Deque<Sample> mBuffer = new ArrayDeque<>();
     private final Object mBufferLock = new Object();
 
+    // ─── Segment-mode (chat video — issue #30) ───────────────────────
+    //
+    // When the chat composer attaches a video, we want a single MP4 starting
+    // when the user tapped "Record" and ending when they tapped "Stop". The
+    // ring buffer doesn't help here (it'd cap the recording at windowSeconds)
+    // so we additively pipe every encoded sample straight into a MediaMuxer
+    // alongside the ring-buffer behaviour. This way the legacy bug-report
+    // dump path is untouched — it still reads the ring buffer.
+    //
+    // The muxer is created lazily once we know the output format (after the
+    // first INFO_OUTPUT_FORMAT_CHANGED). That callback fires on the encoder
+    // thread, which is also where {@code onOutputBufferAvailable} runs, so
+    // we don't need extra locking around mSegmentMuxer.
+    private volatile boolean mSegmentMode;
+    private volatile String mSegmentOutputPath;
+    private android.media.MediaMuxer mSegmentMuxer;
+    private int mSegmentTrackIdx = -1;
+    private boolean mSegmentMuxerStarted;
+    private long mSegmentBasePtsUs = -1;
+    private int mSegmentSamplesWritten;
+    /** Set true on a successful finalize — read by the chat caller to know
+     *  whether the file at mSegmentOutputPath is actually playable. */
+    private volatile boolean mLastSegmentValid;
+    private final Object mSegmentLock = new Object();
+
     private static class Sample {
         final byte[] data;
         final long ptsUs;       // presentation timestamp from the codec (monotonically increasing)
@@ -134,6 +159,46 @@ public class BugpunchRecorder {
     public synchronized boolean startFromService(Context serviceContext, int resultCode, Intent resultData, int dpi) {
         return startInternal(serviceContext, resultCode, resultData, dpi);
     }
+
+    /**
+     * Chat-video segment mode (issue #30). Same plumbing as
+     * {@link #startFromService} but additionally muxes every encoded sample
+     * straight into an MP4 at {@code outputPath}. On {@link #stop()} the
+     * muxer is finalised and the file becomes playable.
+     *
+     * Additive — the legacy ring-buffer path used by bug-report video is
+     * untouched. The first finished segment can be read at the supplied path
+     * on stop; the existing {@link #dump(String)} keeps working alongside
+     * for any caller that still wants the rolling window.
+     */
+    public synchronized boolean startSegmentToPath(Context serviceContext,
+                                                   int resultCode, Intent resultData,
+                                                   int dpi, String outputPath) {
+        if (outputPath == null || outputPath.isEmpty()) {
+            Log.e(TAG, "startSegmentToPath: outputPath required");
+            return false;
+        }
+        synchronized (mSegmentLock) {
+            mSegmentMode = true;
+            mSegmentOutputPath = outputPath;
+            mSegmentMuxer = null;
+            mSegmentTrackIdx = -1;
+            mSegmentMuxerStarted = false;
+            mSegmentBasePtsUs = -1;
+            mSegmentSamplesWritten = 0;
+            mLastSegmentValid = false;
+        }
+        boolean ok = startInternal(serviceContext, resultCode, resultData, dpi);
+        if (!ok) {
+            synchronized (mSegmentLock) { mSegmentMode = false; mSegmentOutputPath = null; }
+        }
+        return ok;
+    }
+
+    /** True once {@link #stop()} successfully finalised the segment MP4 at the
+     *  path passed to {@link #startSegmentToPath}. False if recording never
+     *  produced enough media samples to make a playable file. */
+    public boolean isLastSegmentValid() { return mLastSegmentValid; }
 
     /**
      * Start recording directly from an Activity — only safe on Android 13 and
@@ -281,6 +346,11 @@ public class BugpunchRecorder {
     public synchronized void stop() {
         if (!mRunning) return;
         mRunning = false;
+        // Finalize the chat-video segment muxer (if active) BEFORE teardown
+        // so the encoder thread is still alive while we close the muxer —
+        // any final pending writeSampleData calls have already drained
+        // through the encoder callback by the time mRunning flips false.
+        finalizeSegmentMuxer();
         teardown();
         // Best-effort: stop the foreground service if it's running. We use a
         // guard inside the service to avoid infinite recursion when the
@@ -449,6 +519,13 @@ public class BugpunchRecorder {
                                 mBuffer.pollFirst();
                             }
                         }
+
+                        // Segment-mode (#30) — also pipe to the live MP4 muxer
+                        // for the chat video flow. Skip until we've seen the
+                        // first keyframe so the file always plays from t=0.
+                        if (mSegmentMode) {
+                            writeSegmentSample(copy, info);
+                        }
                     }
                     // CODEC_CONFIG samples (SPS/PPS) are already embedded in the output MediaFormat
                     // once onOutputFormatChanged fires, so we don't need to stash them separately.
@@ -469,8 +546,98 @@ public class BugpunchRecorder {
         public void onOutputFormatChanged(MediaCodec codec, MediaFormat format) {
             mOutputFormat = format;
             Log.i(TAG, "output format: " + format);
+            // Segment-mode: build the muxer now that we know the output
+            // format (codec-config samples are embedded in csd-0/csd-1 of
+            // this MediaFormat, so we don't need to write them manually).
+            if (mSegmentMode) {
+                openSegmentMuxer(format);
+            }
         }
     };
+
+    // ─── Segment-mode helpers (#30) ──────────────────────────────────
+
+    private void openSegmentMuxer(MediaFormat format) {
+        synchronized (mSegmentLock) {
+            if (mSegmentMuxer != null) return;
+            String path = mSegmentOutputPath;
+            if (path == null || path.isEmpty()) return;
+            try {
+                mSegmentMuxer = new android.media.MediaMuxer(
+                    path, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+                mSegmentTrackIdx = mSegmentMuxer.addTrack(format);
+                mSegmentMuxer.start();
+                mSegmentMuxerStarted = true;
+                Log.i(TAG, "segment muxer opened: " + path);
+            } catch (Exception e) {
+                Log.e(TAG, "openSegmentMuxer failed", e);
+                try { if (mSegmentMuxer != null) mSegmentMuxer.release(); } catch (Exception ignored) {}
+                mSegmentMuxer = null;
+                mSegmentTrackIdx = -1;
+                mSegmentMuxerStarted = false;
+            }
+        }
+    }
+
+    private void writeSegmentSample(byte[] data, MediaCodec.BufferInfo info) {
+        synchronized (mSegmentLock) {
+            if (!mSegmentMuxerStarted || mSegmentMuxer == null || mSegmentTrackIdx < 0) return;
+            // Wait for the first keyframe so the file is decodable from t=0.
+            if (mSegmentBasePtsUs < 0) {
+                if ((info.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) == 0) return;
+                mSegmentBasePtsUs = info.presentationTimeUs;
+            }
+            try {
+                MediaCodec.BufferInfo out = new MediaCodec.BufferInfo();
+                out.offset = 0;
+                out.size = data.length;
+                out.presentationTimeUs = info.presentationTimeUs - mSegmentBasePtsUs;
+                out.flags = info.flags;
+                mSegmentMuxer.writeSampleData(mSegmentTrackIdx,
+                    java.nio.ByteBuffer.wrap(data), out);
+                mSegmentSamplesWritten++;
+            } catch (Exception e) {
+                Log.w(TAG, "segment writeSampleData failed", e);
+            }
+        }
+    }
+
+    private void finalizeSegmentMuxer() {
+        synchronized (mSegmentLock) {
+            if (mSegmentMuxer == null) {
+                mLastSegmentValid = false;
+                mSegmentMode = false;
+                mSegmentOutputPath = null;
+                return;
+            }
+            boolean ok = false;
+            try {
+                if (mSegmentMuxerStarted && mSegmentSamplesWritten > 0) {
+                    mSegmentMuxer.stop();
+                    ok = true;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "segment muxer.stop failed", e);
+            }
+            try { mSegmentMuxer.release(); } catch (Exception ignored) {}
+            mSegmentMuxer = null;
+            mSegmentTrackIdx = -1;
+            mSegmentMuxerStarted = false;
+            mLastSegmentValid = ok;
+            // Drop a 0-byte / unfinishable file so the chat caller can detect
+            // the failure cleanly via File.exists() / length() > 0 checks.
+            if (!ok && mSegmentOutputPath != null) {
+                try { new java.io.File(mSegmentOutputPath).delete(); } catch (Exception ignored) {}
+            }
+            Log.i(TAG, "segment muxer finalized: ok=" + ok
+                + " samples=" + mSegmentSamplesWritten
+                + " path=" + mSegmentOutputPath);
+            mSegmentMode = false;
+            mSegmentOutputPath = null;
+            mSegmentBasePtsUs = -1;
+            mSegmentSamplesWritten = 0;
+        }
+    }
 
     /** Must be called with mBufferLock held. */
     private boolean hasKeyframeAfter(long ptsUs) {

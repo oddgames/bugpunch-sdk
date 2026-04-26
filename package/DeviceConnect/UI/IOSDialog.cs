@@ -40,6 +40,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         [DllImport("__Internal")] static extern void Bugpunch_ResetRecordingTimer();
         [DllImport("__Internal")] static extern void Bugpunch_ShowRequestHelp(IntCallbackDelegate onChoice, VoidCallbackDelegate onCancel);
         [DllImport("__Internal")] static extern void Bugpunch_ShowChatBoard();
+        [DllImport("__Internal")] static extern void Bugpunch_ShowFeedbackBoard();
 
         public void ShowPermission(string scriptName, string scriptDescription, Action<PermissionResult> callback)
         {
@@ -198,6 +199,17 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             // Native shell — the heavy lifting lives in C# (BugpunchChatBoard)
             // so iOS just bounces a UnitySendMessage back into Unity.
             Bugpunch_ShowChatBoard();
+        }
+
+        public void ShowFeedbackBoard()
+        {
+            // Native feedback VC (BugpunchFeedbackViewController.mm) — three
+            // views switched in a single full-screen UIViewController, same
+            // shape as the iOS chat board and the Android Feedback Activity.
+            // The C# UIToolkit BugpunchFeedbackBoard is now Editor / Standalone
+            // only (this class is gated by UNITY_IOS so the bounce never
+            // reaches it on device).
+            Bugpunch_ShowFeedbackBoard();
         }
     }
 }

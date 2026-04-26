@@ -336,7 +336,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Detail vote parse failed: {ex.Message}");
+                BugpunchLog.Warn("FeedbackBoard", $"Detail vote parse failed: {ex.Message}");
             }
         }
 

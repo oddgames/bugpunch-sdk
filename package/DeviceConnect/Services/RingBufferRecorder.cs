@@ -74,7 +74,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public void StartRecording(int width, int height, int bitrate, int fps, int windowSeconds)
         {
 #if UNITY_EDITOR
-            Debug.Log("[Bugpunch.RingBufferRecorder] RingBufferRecorder: not available in editor");
+            BugpunchLog.Info("RingBufferRecorder", "RingBufferRecorder: not available in editor");
             OnStarted?.Invoke(false);
 
 #elif UNITY_ANDROID
@@ -100,7 +100,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 BugpunchRing_Configure(width, height, fps, bitrate, windowSeconds);
                 bool ok = BugpunchRing_Start();
                 IsRecording = ok;
-                Debug.Log($"[Bugpunch.RingBufferRecorder] RingBufferRecorder.StartRecording (iOS): {(ok ? "OK" : "FAILED")}");
+                BugpunchLog.Info("RingBufferRecorder", $"RingBufferRecorder.StartRecording (iOS): {(ok ? "OK" : "FAILED")}");
                 OnStarted?.Invoke(ok);
             }
             catch (Exception e)
@@ -110,7 +110,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
 
 #else
-            Debug.Log($"[Bugpunch.RingBufferRecorder] RingBufferRecorder: platform {Application.platform} not supported");
+            BugpunchLog.Info("RingBufferRecorder", $"RingBufferRecorder: platform {Application.platform} not supported");
             OnStarted?.Invoke(false);
 #endif
         }
@@ -272,7 +272,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         void OnNativeStartResult(string result)
         {
             IsRecording = result == "1";
-            Debug.Log($"[Bugpunch.RingBufferRecorder] Native recorder start result: {(IsRecording ? "OK" : "FAILED")}");
+            BugpunchLog.Info("RingBufferRecorder", $"Native recorder start result: {(IsRecording ? "OK" : "FAILED")}");
             OnStarted?.Invoke(IsRecording);
         }
     }

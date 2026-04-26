@@ -52,6 +52,11 @@ public final class BugpunchPoller {
     private static int sPollIntervalSeconds = 30;
     private static String sScriptPermission = "ask";
 
+    // Unread-chat badge piggybacks on the poll loop (issue #32). At the
+    // default 30s cadence we hit /chat/unread every other tick (≈ 60s) so
+    // the badge updates promptly without doubling our HTTP traffic.
+    private static int sUnreadTickCounter;
+
     /**
      * Start registering and polling. Safe to call multiple times — subsequent
      * calls are no-ops. Must be called AFTER BugpunchDebugMode.startDebugMode
@@ -218,8 +223,63 @@ public final class BugpunchPoller {
             if (scripts != null && scripts.length() > 0) {
                 BugpunchUnity.sendMessage("BugpunchClient", "OnPollScripts", scripts.toString());
             }
+
+            // 4) Unread-chat badge (issue #32). Piggybacks on the same tick
+            //    so we don't add a second timer. Every other tick at the
+            //    default 30s cadence keeps the chat-server load steady while
+            //    surfacing replies within ~60s.
+            sUnreadTickCounter++;
+            if ((sUnreadTickCounter & 1) == 0) {
+                pollUnreadChat();
+            }
         } catch (Throwable t) {
             Log.w(TAG, "poll error", t);
+        }
+    }
+
+    /**
+     * Hit {@code GET /api/v1/chat/unread} and push the count into the
+     * floating-button badge. Uses the SDK auth headers (Bearer + X-Device-Id),
+     * not the device-poll token, so the call hits the same chat router the
+     * native chat Activity uses. Failures are silent — the badge just keeps
+     * its previous value until the next successful tick.
+     */
+    private static void pollUnreadChat() {
+        String serverUrl = BugpunchRuntime.getServerUrl();
+        String apiKey = BugpunchRuntime.getApiKey();
+        if (serverUrl == null || serverUrl.isEmpty() || apiKey == null || apiKey.isEmpty()) return;
+
+        Activity activity = BugpunchUnity.currentActivity();
+        String deviceId = activity != null ? BugpunchIdentity.getStableDeviceId(activity) : null;
+        if (deviceId == null || deviceId.isEmpty()) return;
+
+        HttpURLConnection con = null;
+        try {
+            String url = serverUrl.replaceAll("/+$", "") + "/api/v1/chat/unread";
+            con = (HttpURLConnection) new URL(url).openConnection();
+            con.setRequestMethod("GET");
+            con.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            con.setReadTimeout(READ_TIMEOUT_MS);
+            con.setRequestProperty("Authorization", "Bearer " + apiKey);
+            con.setRequestProperty("X-Device-Id", deviceId);
+            con.setRequestProperty("Accept", "application/json");
+
+            int status = con.getResponseCode();
+            if (status < 200 || status >= 300) return;
+
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                    con.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+            }
+            JSONObject obj = new JSONObject(sb.toString());
+            int count = obj.optInt("count", 0);
+            BugpunchReportOverlay.setUnreadCount(count);
+        } catch (Throwable t) {
+            // Silent — the badge keeps its previous value.
+        } finally {
+            if (con != null) con.disconnect();
         }
     }
 

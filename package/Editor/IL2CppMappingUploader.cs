@@ -33,7 +33,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] IL2CPP method map build failed: {ex.Message}");
+                BugpunchLog.Warn("SymbolUploader", $"IL2CPP method map build failed: {ex.Message}");
                 return;
             }
             if (string.IsNullOrEmpty(mappingPath)) return;
@@ -59,7 +59,7 @@ namespace ODDGames.Bugpunch.Editor
                     else
                         mFailed++;
                 }
-                Debug.Log($"[Bugpunch.SymbolUploader] IL2CPP method map uploaded for {mUploaded}/{il2cppBuildIds.Count} libil2cpp build-id(s)" +
+                BugpunchLog.Info("SymbolUploader", $"IL2CPP method map uploaded for {mUploaded}/{il2cppBuildIds.Count} libil2cpp build-id(s)" +
                           (mFailed > 0 ? $" ({mFailed} failed)" : "") + ".");
             }
             finally
@@ -98,13 +98,13 @@ namespace ODDGames.Bugpunch.Editor
                 }
 
                 if (req.result == UnityWebRequest.Result.Success) return true;
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] IL2CPP map upload failed for {buildId}: " +
+                BugpunchLog.Warn("SymbolUploader", $"IL2CPP map upload failed for {buildId}: " +
                     $"{req.error} — {req.downloadHandler?.text}");
                 return false;
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] IL2CPP map upload threw for {buildId}: {ex.Message}");
+                BugpunchLog.Warn("SymbolUploader", $"IL2CPP map upload threw for {buildId}: {ex.Message}");
                 return false;
             }
             finally
@@ -136,7 +136,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.SymbolUploader] Failed to stage IL2CPP mapping body: {ex.Message}");
+                BugpunchLog.Error("SymbolUploader", $"Failed to stage IL2CPP mapping body: {ex.Message}");
                 try { if (File.Exists(bodyPath)) File.Delete(bodyPath); } catch { }
                 return null;
             }

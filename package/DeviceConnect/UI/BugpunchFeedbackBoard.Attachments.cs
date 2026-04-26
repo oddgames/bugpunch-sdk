@@ -73,7 +73,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             while (!op.isDone) await System.Threading.Tasks.Task.Yield();
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] image download failed: {req.error}");
+                BugpunchLog.Warn("FeedbackBoard", $"image download failed: {req.error}");
                 onDone?.Invoke(null);
                 return;
             }
@@ -112,7 +112,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             try { bytes = File.ReadAllBytes(localPath); }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] Read picked file failed: {ex.Message}");
+                BugpunchLog.Warn("FeedbackBoard", $"Read picked file failed: {ex.Message}");
                 return;
             }
             if (bytes.Length > 5 * 1024 * 1024)
@@ -166,7 +166,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.FeedbackBoard] upload parse failed: {ex.Message}");
+                BugpunchLog.Warn("FeedbackBoard", $"upload parse failed: {ex.Message}");
                 return;
             }
             if (string.IsNullOrEmpty(att.url)) return;

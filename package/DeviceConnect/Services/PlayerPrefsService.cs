@@ -36,10 +36,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (!first) sb.Append(",");
                     first = false;
                     sb.Append("{");
-                    sb.Append($"\"key\":\"{Esc(entry.Key)}\",");
+                    sb.Append($"\"key\":\"{BugpunchJson.Esc(entry.Key)}\",");
                     sb.Append($"\"type\":\"{entry.Type}\",");
                     if (entry.Type == "string")
-                        sb.Append($"\"value\":\"{Esc(entry.StringValue)}\"");
+                        sb.Append($"\"value\":\"{BugpunchJson.Esc(entry.StringValue)}\"");
                     else if (entry.Type == "float")
                         sb.Append($"\"value\":{entry.FloatValue.ToString("G9", CultureInfo.InvariantCulture)}");
                     else
@@ -53,7 +53,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             catch (Exception ex)
             {
                 BugpunchNative.ReportSdkError("PlayerPrefsService.Enumerate", ex);
-                return $"{{\"error\":\"{Esc(ex.Message)}\"}}";
+                return $"{{\"error\":\"{BugpunchJson.Esc(ex.Message)}\"}}";
             }
         }
 
@@ -84,7 +84,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                return $"{{\"ok\":false,\"error\":\"{Esc(ex.Message)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(ex.Message)}\"}}";
             }
         }
 
@@ -135,7 +135,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             EnumerateMacOS(entries);
 #else
             // Fallback: no enumeration available on this platform
-            Debug.LogWarning("[Bugpunch.PlayerPrefsService] PlayerPrefs enumeration not supported on this platform");
+            BugpunchLog.Warn("PlayerPrefsService", "PlayerPrefs enumeration not supported on this platform");
 #endif
             return entries;
         }
@@ -320,7 +320,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 catch
                 {
-                    Debug.LogWarning("[Bugpunch.PlayerPrefsService] Failed to enumerate PlayerPrefs on macOS");
+                    BugpunchLog.Warn("PlayerPrefsService", "Failed to enumerate PlayerPrefs on macOS");
                 }
                 return;
             }
@@ -401,7 +401,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return new PrefEntry { Key = key, Type = "string", StringValue = hasString ? strVal : "" };
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
     }
 }

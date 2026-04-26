@@ -152,14 +152,25 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         public void ShowChatBoard()
         {
-            // Native chat "shell" — the actual UI is C# (see BugpunchChatBoard)
-            // because the chat board is complex and we don't want to reinvent
-            // a full chat widget in Java. Native just forwards the request
-            // back into Unity via UnitySendMessage.
+            // Launches the native BugpunchChatActivity (Messenger-style full
+            // screen chat, HTTP + polling all in Java). C# is no longer on
+            // the chat path on Android — UnitySendMessage round-trip is gone.
             using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
                 .GetStatic<AndroidJavaObject>("currentActivity");
             using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
             overlayClass.CallStatic("showChatBoard", activity);
+        }
+
+        public void ShowFeedbackBoard()
+        {
+            // Launches the native BugpunchFeedbackActivity — list / detail /
+            // submit views with voting, similarity check, comments and image
+            // attachments all in Java. Mirrors the chat-board native port; C#
+            // is no longer on the feedback path on Android.
+            using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
+                .GetStatic<AndroidJavaObject>("currentActivity");
+            using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
+            overlayClass.CallStatic("showFeedbackBoard", activity);
         }
 
         public void ShowCrashReport(CrashReportContext context, Action<CrashReportResult> onSubmit, Action onDismiss)
@@ -341,7 +352,16 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         void OnRecordingBarFeedbackTapped(string message)
         {
-            MainThread.Enqueue(() => BugpunchFeedbackBoard.Show());
+            // Native recording-bar shortcut — route through the native
+            // BugpunchFeedbackActivity directly (no UnitySendMessage round
+            // trip). Mirrors the chat shortcut now that #29 phase A landed.
+            MainThread.Enqueue(() =>
+            {
+                using var activity = new AndroidJavaClass("com.unity3d.player.UnityPlayer")
+                    .GetStatic<AndroidJavaObject>("currentActivity");
+                using var overlayClass = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportOverlay");
+                overlayClass.CallStatic("showFeedbackBoard", activity);
+            });
         }
 
         // Native image picker (BugpunchImagePicker.java) reports back here.

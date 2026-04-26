@@ -56,7 +56,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             try
             {
                 MemoryProfiler.TakeSnapshot(_currentPath, OnSnapshotComplete);
-                Debug.Log($"[Bugpunch.MemorySnapshotService] Memory snapshot started → {_currentPath}");
+                BugpunchLog.Info("MemorySnapshotService", $"Memory snapshot started → {_currentPath}");
                 return $"{{\"ok\":true,\"state\":\"in_progress\",\"path\":\"{Esc(_currentPath)}\"}}";
             }
             catch (Exception ex)
@@ -74,7 +74,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 _fileSize = new FileInfo(path).Length;
                 _state = SnapshotState.Done;
-                Debug.Log($"[Bugpunch.MemorySnapshotService] Memory snapshot complete: {path} ({_fileSize / 1024}KB)");
+                BugpunchLog.Info("MemorySnapshotService", $"Memory snapshot complete: {path} ({_fileSize / 1024}KB)");
             }
             else
             {

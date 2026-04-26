@@ -252,9 +252,9 @@ public final class BugpunchReportingService {
 
     /**
      * Two-phase ingest for auto-reported exceptions / ANRs / native crashes.
-     * Phase 1 posts the lightweight metadata JSON to /api/crashes; server
+     * Phase 1 posts the lightweight metadata JSON to /api/issues/ingest; server
      * responds with eventId + collect[] naming which heavy fields it wants.
-     * Phase 2 posts those fields as multipart to /api/crashes/events/:id/enrich.
+     * Phase 2 posts those fields as multipart to /api/issues/events/:id/enrich.
      *
      * The uploader owns the full state machine — this method just builds the
      * attachment list with `requires` hints so the uploader can filter for
@@ -272,8 +272,8 @@ public final class BugpunchReportingService {
             return;
         }
         String base = serverUrl.replaceAll("/+$", "");
-        String preflightUrl = base + "/api/crashes";
-        String enrichTemplate = base + "/api/crashes/events/{id}/enrich";
+        String preflightUrl = base + "/api/issues/ingest";
+        String enrichTemplate = base + "/api/issues/events/{id}/enrich";
 
         List<BugpunchUploader.FileAttachment> files = new ArrayList<>();
         if (contextShotPath != null && !contextShotPath.isEmpty())
@@ -376,7 +376,7 @@ public final class BugpunchReportingService {
         String serverUrl = config.optString("serverUrl", "");
         String apiKey = config.optString("apiKey", "");
         if (serverUrl.isEmpty() || apiKey.isEmpty()) return;
-        String url = serverUrl.replaceAll("/+$", "") + "/api/reports/bug";
+        String url = serverUrl.replaceAll("/+$", "") + "/api/issues/ingest";
         List<BugpunchUploader.FileAttachment> files = new ArrayList<>();
         if (screenshotPath != null && !screenshotPath.isEmpty())
             files.add(BugpunchUploader.FileAttachment.jpeg("screenshot", screenshotPath));
@@ -501,9 +501,9 @@ public final class BugpunchReportingService {
     private static String endpointFor(String type) {
         // exception/crash/anr go through the two-phase preflight path and
         // never hit this function. Only user-initiated bug reports and
-        // feedback land here now.
-        if ("feedback".equals(type)) return "/api/reports/feedback";
-        return "/api/reports/bug";
+        // feedback land here now. Both route to the unified ingest endpoint;
+        // the `type` field in the metadata JSON acts as the discriminator.
+        return "/api/issues/ingest";
     }
 
     private static JSONObject parseOr(String json) {
@@ -539,7 +539,14 @@ public final class BugpunchReportingService {
                                             DumpResult dump) {
         try {
             JSONObject m = new JSONObject();
-            m.put("type", type != null ? type : "bug");
+            // Map internal type names to the /api/issues/ingest discriminator values.
+            // "bug" → "bug_report", "feedback" → "feedback_item";
+            // exception/crash/anr pass through unchanged.
+            String apiType;
+            if ("bug".equals(type)) apiType = "bug_report";
+            else if ("feedback".equals(type)) apiType = "feedback_item";
+            else apiType = type != null ? type : "bug_report";
+            m.put("type", apiType);
             if (title != null) m.put("title", title);
             if (description != null) m.put("description", description);
             if (reporterEmail != null && !reporterEmail.isEmpty())

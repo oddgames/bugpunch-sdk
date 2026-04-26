@@ -244,7 +244,7 @@ static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
             if (ok) {
                 NSLog(@"[BugpunchUploader] uploaded %@", urlStr);
                 if (isPreflight) {
-                    // Phase-1 /api/crashes response carries matchedDirectives[]
+                    // Phase-1 /api/issues/ingest response carries matchedDirectives[]
                     // + eventId + collect[]. Dispatch directives now, then
                     // transition the manifest to phase 2.
                     if (d.length > 0) {
@@ -543,7 +543,7 @@ void Bugpunch_DrainUploadQueue(void) {
 
 /**
  * Two-phase preflight + enrich. Phase 1 posts `jsonBody` to `preflightUrl`
- * (/api/crashes); server response returns `eventId` + `collect[]`. On
+ * (/api/issues/ingest); server response returns `eventId` + `collect[]`. On
  * success the uploader rewrites the manifest to phase 2: multipart POST to
  * `enrichUrlTemplate` (with {id} substituted) carrying only the attachments
  * whose `requires` key appears in `collect`. Empty collect = skip phase 2

@@ -211,7 +211,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (config == null) return;
             if (!config.autoStart)
             {
-                Debug.Log("[Bugpunch.BugpunchClient] Auto-start disabled in config; call BugpunchClient.StartConnection() manually.");
+                BugpunchLog.Info("BugpunchClient", "Auto-start disabled in config; call BugpunchClient.StartConnection() manually.");
                 return;
             }
             if (string.IsNullOrEmpty(config.serverUrl) || string.IsNullOrEmpty(config.apiKey)) return;
@@ -221,7 +221,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Prevents remote connections to developers while they're working.
             if (!UnityEditor.EditorPrefs.GetBool("Bugpunch_Enabled", false))
             {
-                Debug.Log("[Bugpunch.BugpunchClient] Disabled in Editor (enable via Bugpunch > Enable Connection in toolbar)");
+                BugpunchLog.Info("BugpunchClient", "Disabled in Editor (enable via Bugpunch > Enable Connection in toolbar)");
                 return;
             }
 #endif
@@ -243,12 +243,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var config = BugpunchConfig.Load();
             if (config == null)
             {
-                Debug.LogWarning("[Bugpunch.BugpunchClient] StartConnection: no BugpunchConfig found in Resources");
+                BugpunchLog.Warn("BugpunchClient", "StartConnection: no BugpunchConfig found in Resources");
                 return null;
             }
             if (string.IsNullOrEmpty(config.serverUrl) || string.IsNullOrEmpty(config.apiKey))
             {
-                Debug.LogWarning("[Bugpunch.BugpunchClient] StartConnection: config is missing serverUrl or apiKey");
+                BugpunchLog.Warn("BugpunchClient", "StartConnection: config is missing serverUrl or apiKey");
                 return null;
             }
             return Initialize(config);
@@ -261,7 +261,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public static BugpunchClient StartConnection(BugpunchConfig config)
         {
             if (Instance != null) return Instance;
-            if (config == null) { Debug.LogWarning("[Bugpunch.BugpunchClient] StartConnection: config is null"); return null; }
+            if (config == null) { BugpunchLog.Warn("BugpunchClient", "StartConnection: config is null"); return null; }
             return Initialize(config);
         }
 
@@ -269,7 +269,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             if (Instance != null)
             {
-                Debug.LogWarning("[Bugpunch.BugpunchClient] Already initialized");
+                BugpunchLog.Warn("BugpunchClient", "Already initialized");
                 return Instance;
             }
 
@@ -283,62 +283,46 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return client;
         }
 
+        // Setup runs in three phases — see CLAUDE.md "SDK activation contract":
+        //   1. Always-on init  — must run at boot to be useful.
+        //   2. Lazy services   — instantiated cheaply, no work until the
+        //                        router routes a request to their endpoint.
+        //   3. Connection mode — debug builds open IDE WebSocket; release
+        //                        builds run native HTTP poll until upgraded.
         void Setup()
         {
-            Debug.Log($"[Bugpunch.BugpunchClient] Initializing — server: {Config.serverUrl}");
+            BugpunchLog.Info("BugpunchClient", $"Initializing — server: {Config.serverUrl}");
 
-            // Create services
-            var hierarchy = new HierarchyService();
-            var console = new ConsoleService();
-            var screenCapture = gameObject.AddComponent<ScreenCaptureService>();
-            var inspector = new InspectorService();
-            var perf = new PerformanceService();
-            var files = new FileService();
-            var deviceInfo = new DeviceInfoService();
-            var dbPlugins = new DatabasePluginRegistry();
-            dbPlugins.ScanIfNeeded();
-            IScriptRunner scriptRunner = new ScriptRunner();
-            var textures = new TextureService();
-            var materials = gameObject.AddComponent<MaterialService>();
-            var memorySnapshots = new MemorySnapshotService();
-            var playerPrefs = new PlayerPrefsService();
-            var shaderProfiler = gameObject.AddComponent<ShaderProfilerService>();
-            var settings = new SettingsService();
+            InitAlwaysOn();
+            BuildLazyServices();
+            StartConnectionMode();
 
-            // Create scene camera service
-            SceneCamera = gameObject.AddComponent<SceneCameraService>();
+            // QA → player chat reply heartbeat. Cheap poll every 30s; if a
+            // thread has unread QA messages AND we're not suppressed, surface
+            // the chat board. Guarded so we don't re-pop every 30s if the
+            // user dismisses without replying (guard resets server-side when
+            // the unread count drops to 0).
+            StartCoroutine(ChatReplyHeartbeat());
+        }
 
-            // Create watch service (MonoBehaviour — samples in FixedUpdate)
-            var watch = gameObject.AddComponent<WatchService>();
-
-            // Create router — Streamer starts null, set when debug session starts
-            Router = new RequestRouter
-            {
-                Hierarchy = hierarchy,
-                Console = console,
-                ScreenCapture = screenCapture,
-                Inspector = inspector,
-                Performance = perf,
-                ScriptRunner = scriptRunner,
-                SceneCamera = SceneCamera,
-                Files = files,
-                DeviceInfo = deviceInfo,
-                DatabasePlugins = dbPlugins,
-                Textures = textures,
-                Materials = materials,
-                Watch = watch,
-                MemorySnapshots = memorySnapshots,
-                PlayerPrefs = playerPrefs,
-                ShaderProfiler = shaderProfiler,
-                Settings = settings,
-                Streamer = null
-            };
-
-            // Start native debug mode — owns crash handlers, log capture,
-            // shake detection, screenshot, video ring buffer, upload queue.
+        // ── Phase 1 — always-on init ───────────────────────────────────────
+        //
+        // Everything here MUST be eager. Either it hooks an event source the
+        // SDK can't replay (logs, exceptions, scene changes) or it owns
+        // process-wide state native depends on (config, custom data, FPS).
+        // If you find yourself adding to this method, double-check the work
+        // can't move into Phase 2's lazy services.
+        void InitAlwaysOn()
+        {
+            // Native runtime — owns crash handlers, log capture, shake
+            // detection, screenshot ring, video ring buffer, upload queue.
             // C# just pushes scene/fps and forwards managed exceptions.
             BugpunchNative.Start(Config);
+
+            // Scene name push + scene_change analytics events. Native can
+            // measure FPS itself but it can't see SceneManager.
             gameObject.AddComponent<BugpunchSceneTick>();
+
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Fallback video source for when MediaProjection consent is denied —
             // the native recorder switches to buffer mode and this component
@@ -346,14 +330,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // it polls native state and stays idle until buffer mode activates.
             gameObject.AddComponent<BugpunchSurfaceRecorder>();
 #endif
-            // Managed-side script bridge for server "Request More Info"
-            // directives. Everything else (directive fetching, caching,
-            // queue matching, file globs, dialogs, denial prefs) lives
-            // natively — this component just exists so native has a
-            // UnitySendMessage target named "BugpunchClient".
-            gameObject.AddComponent<CrashDirectiveHandler>().Init();
 
-            // C# managed exception catcher — forwards to native ReportBug.
+            // UnitySendMessage receiver for native "Request More Info" directives.
+            // The component itself is the target — no Init() needed; Awake binds
+            // the singleton.
+            gameObject.AddComponent<CrashDirectiveHandler>();
+
+            // Managed exception forwarder — must hook AppDomain events at boot
+            // to catch exceptions thrown before any IDE session opens.
             if (Config.enableNativeCrashHandler)
             {
                 // Ensure exception logs include stack traces. Default in
@@ -362,52 +346,140 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 // game has explicitly set Full.
                 if (Application.GetStackTraceLogType(LogType.Exception) == StackTraceLogType.None)
                     Application.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
-
                 UnityExceptionForwarder.Install();
             }
 
-            // Fetch unified game config from server (perf thresholds, variables,
-            // overrides). Non-blocking — game runs normally if fetch fails.
+            // Game config (perf thresholds, variables, overrides). Game code
+            // can call Bugpunch.GetVariable at any time, so the fetch has to
+            // start at boot rather than wait for an IDE session. Non-blocking
+            // — game runs normally if the fetch fails.
             StartCoroutine(FetchGameConfig());
+        }
 
-            // NOTE: WebRTCStreamer is NOT created here. It is initialized lazily
-            // when a debug session starts (or WebSocket connects). This avoids
-            // loading the Unity.WebRTC assembly (and native libwebrtc.so) at startup.
+        // ── Phase 2 — lazy services ────────────────────────────────────────
+        //
+        // Construction is cheap: no field beyond defaults, no scene scans, no
+        // event subscriptions. The first request the router routes to a
+        // service triggers any heavy init that service needs (see e.g.
+        // DatabasePluginRegistry.ScanIfNeeded, WatchService._declaredDirty).
+        // ConsoleService is the one exception — it eagerly hooks
+        // logMessageReceivedThreaded in its ctor because logs emitted before
+        // the IDE connects would otherwise be lost.
+        void BuildLazyServices()
+        {
+            var hierarchy        = new HierarchyService();
+            var console          = new ConsoleService();
+            var inspector        = new InspectorService();
+            var perf             = new PerformanceService();
+            var files            = new FileService();
+            var deviceInfo       = new DeviceInfoService();
+            var dbPlugins        = new DatabasePluginRegistry();
+            IScriptRunner runner = new ScriptRunner();
+            var textures         = new TextureService();
+            var memorySnapshots  = new MemorySnapshotService();
+            var playerPrefs      = new PlayerPrefsService();
+            var settings         = new SettingsService();
 
-            // Debug builds (editor + development builds): connect via WebSocket directly
-            // for immediate Remote IDE access. WebRTC still lazy-loaded.
-            // Release builds: lightweight HTTP poll, upgrade to WebSocket on demand.
+            var screenCapture    = gameObject.AddComponent<ScreenCaptureService>();
+            var materials        = gameObject.AddComponent<MaterialService>();
+            var shaderProfiler   = gameObject.AddComponent<ShaderProfilerService>();
+            var watch            = gameObject.AddComponent<WatchService>();
+            SceneCamera          = gameObject.AddComponent<SceneCameraService>();
+
+            // Streamer is null until a debug session is requested — the
+            // Unity.WebRTC assembly + libwebrtc.so are heavy to load and most
+            // sessions never need them.
+            Router = new RequestRouter
+            {
+                Hierarchy        = hierarchy,
+                Console          = console,
+                ScreenCapture    = screenCapture,
+                Inspector        = inspector,
+                Performance      = perf,
+                ScriptRunner     = runner,
+                SceneCamera      = SceneCamera,
+                Files            = files,
+                DeviceInfo       = deviceInfo,
+                DatabasePlugins  = dbPlugins,
+                Textures         = textures,
+                Materials        = materials,
+                Watch            = watch,
+                MemorySnapshots  = memorySnapshots,
+                PlayerPrefs      = playerPrefs,
+                ShaderProfiler   = shaderProfiler,
+                Settings         = settings,
+                Streamer         = null,
+            };
+        }
+
+        // ── Phase 3 — connection mode ──────────────────────────────────────
+        //
+        // Debug + editor builds open the IDE WebSocket immediately so devs
+        // get a Remote IDE session as soon as the dashboard connects. Release
+        // builds run a cheap native HTTP poll instead and only spin up the
+        // WebSocket when the server flips upgradeToWebSocket on a poll
+        // response (see HandleUpgradeToWebSocket).
+        void StartConnectionMode()
+        {
             if (Debug.isDebugBuild || Application.isEditor)
             {
-                Debug.Log("[Bugpunch.BugpunchClient] Debug build — connecting Remote IDE via WebSocket");
-                Tunnel = new IdeTunnel(Config);
-                console.AttachTunnel(Tunnel);
-                Tunnel.OnConnected += () =>
-                {
-                    Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel connected");
-                    _debugSessionActive = true;
-                    // WebRTC is NOT initialized here — only when the dashboard
-                    // requests streaming (first webrtc-offer triggers lazy init)
-                    OnConnected?.Invoke();
-                    OnAnyConnected?.Invoke();
-                };
-                Tunnel.OnDisconnected += () => { OnDisconnected?.Invoke(); };
-                Tunnel.OnRequest += HandleRequest;
-                StartCoroutine(ConnectLoop());
+                BugpunchLog.Info("BugpunchClient", "Debug build — connecting Remote IDE via WebSocket");
+                SpinUpIdeTunnel(eagerInitStreamer: false);
             }
             else
             {
-                Debug.Log("[Bugpunch.BugpunchClient] Release build — starting native poll mode");
-                BugpunchNative.StartPoll(Config.scriptPermission.ToString().ToLower(), Mathf.Max(5, (int)Config.pollInterval));
-                PollActive = true;
+                BugpunchLog.Info("BugpunchClient", "Release build — starting native poll mode");
+                StartPollMode();
             }
+        }
 
-            // QA → player chat reply heartbeat. Cheap poll every 30s; if a
-            // thread has unread QA messages AND we're not suppressed, surface
-            // the chat board. Guarded so we don't re-pop every 30s if the
-            // user dismisses without replying (guard resets server-side when
-            // the unread count drops to 0).
-            StartCoroutine(ChatReplyHeartbeat());
+        // ── Connection helpers (used by Phase 3 + upgrade / teardown) ──────
+
+        /// <summary>
+        /// Stand up the IDE WebSocket, attach the console log sink, wire all
+        /// callbacks, and kick the reconnect loop. Single source of truth so
+        /// boot-path connect (release: never; debug: always) and
+        /// poll-upgrade connect stay identical. <paramref name="eagerInitStreamer"/>
+        /// initializes the WebRTC streamer as soon as the tunnel connects;
+        /// the cold path leaves it null and waits for the first webrtc-offer.
+        /// </summary>
+        void SpinUpIdeTunnel(bool eagerInitStreamer)
+        {
+            Tunnel = new IdeTunnel(Config);
+            Router?.Console?.AttachTunnel(Tunnel);
+            Tunnel.OnConnected += () =>
+            {
+                BugpunchLog.Info("BugpunchClient", "IDE tunnel connected");
+                _debugSessionActive = true;
+                if (eagerInitStreamer) InitializeStreamerLazy();
+                OnConnected?.Invoke();
+                OnAnyConnected?.Invoke();
+            };
+            Tunnel.OnDisconnected += () =>
+            {
+                BugpunchLog.Info("BugpunchClient", "IDE tunnel disconnected");
+                OnDisconnected?.Invoke();
+            };
+            Tunnel.OnError += e =>
+            {
+                BugpunchNative.ReportSdkError("BugpunchClient.IdeTunnel", e);
+                OnError?.Invoke(e);
+            };
+            Tunnel.OnRequest += HandleRequest;
+            StartCoroutine(ConnectLoop());
+        }
+
+        /// <summary>
+        /// Hand the native poller the script-permission setting and poll
+        /// interval, then mark the client as live. Used by both initial
+        /// release-build setup and EndDebugSession's return-to-poll path.
+        /// </summary>
+        void StartPollMode()
+        {
+            BugpunchNative.StartPoll(
+                Config.scriptPermission.ToString().ToLower(),
+                Mathf.Max(5, (int)Config.pollInterval));
+            PollActive = true;
         }
 
         // ─── Chat reply heartbeat ───────────────────────────────────────
@@ -527,18 +599,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.Log($"[Bugpunch.BugpunchClient] Game config fetch failed ({req.error}) — using defaults");
+                BugpunchLog.Info("BugpunchClient", $"Game config fetch failed ({req.error}) — using defaults");
                 yield break;
             }
 
             var json = req.downloadHandler.text;
             if (string.IsNullOrEmpty(json))
             {
-                Debug.Log("[Bugpunch.BugpunchClient] Game config empty — using defaults");
+                BugpunchLog.Info("BugpunchClient", "Game config empty — using defaults");
                 yield break;
             }
 
-            Debug.Log("[Bugpunch.BugpunchClient] Game config fetched");
+            BugpunchLog.Info("BugpunchClient", "Game config fetched");
 
             // Parse variables + overrides and resolve for this device
             ResolveVariables(json);
@@ -613,7 +685,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
 
             if (pairs.Count > 0)
-                Debug.Log($"[Bugpunch.BugpunchClient] Resolved {pairs.Count} game config variable(s)");
+                BugpunchLog.Info("BugpunchClient", $"Resolved {pairs.Count} game config variable(s)");
         }
 
         /// <summary>
@@ -919,21 +991,21 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (response == null && path.StartsWith("/webrtc-"))
             {
                 var type = path.Split('?')[0].TrimStart('/');
-                Debug.Log($"[Bugpunch.BugpunchClient] webrtc request: {type} id={requestId} bodyLen={body?.Length ?? 0}");
+                BugpunchLog.Info("BugpunchClient", $"webrtc request: {type} id={requestId} bodyLen={body?.Length ?? 0}");
                 // Lazy-init WebRTC on first offer from the dashboard
                 if (type == "webrtc-offer" && Streamer == null)
                 {
-                    Debug.Log("[Bugpunch.BugpunchClient] webrtc-offer but Streamer null — initializing lazy");
+                    BugpunchLog.Info("BugpunchClient", "webrtc-offer but Streamer null — initializing lazy");
                     InitializeStreamerLazy();
                 }
                 if (type == "webrtc-offer" && Streamer != null)
                 {
-                    Debug.Log($"[Bugpunch.BugpunchClient] handling webrtc-offer, answer will be async id={requestId}");
+                    BugpunchLog.Info("BugpunchClient", $"handling webrtc-offer, answer will be async id={requestId}");
                     // Handle offer — response sent asynchronously via tunnel when answer is ready
                     var rid = requestId;
                     Streamer.HandleOfferAsync(body,
                         answer => {
-                            Debug.Log($"[Bugpunch.BugpunchClient] webrtc answer ready id={rid} len={answer?.Length ?? 0}");
+                            BugpunchLog.Info("BugpunchClient", $"webrtc answer ready id={rid} len={answer?.Length ?? 0}");
                             Tunnel?.SendResponse(rid, 200, answer, "application/json");
                         },
                         err => {
@@ -943,13 +1015,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 else if (Streamer != null)
                 {
-                    Debug.Log($"[Bugpunch.BugpunchClient] webrtc signal: {type} id={requestId}");
+                    BugpunchLog.Info("BugpunchClient", $"webrtc signal: {type} id={requestId}");
                     Streamer.HandleSignalingMessage(type, requestId, body);
                     Tunnel?.SendResponse(requestId, 200, "{\"ok\":true}", "application/json");
                 }
                 else
                 {
-                    Debug.LogWarning($"[Bugpunch.BugpunchClient] webrtc-{type} but Streamer unavailable — returning 501 id={requestId}");
+                    BugpunchLog.Warn("BugpunchClient", $"webrtc-{type} but Streamer unavailable — returning 501 id={requestId}");
                     Tunnel?.SendResponse(requestId, 501, "{\"error\":\"Streaming unavailable — WebRTC not initialized\"}", "application/json");
                 }
                 yield break;
@@ -1003,7 +1075,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var nx = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "x"), out var pxp) ? pxp : 0.5f);
                     var ny = Mathf.Clamp01(float.TryParse(RequestRouter.JsonVal(body, "y"), out var pyp) ? pyp : 0.5f);
                     var screenP = new Vector2(nx * Screen.width, (1f - ny) * Screen.height);
-                    Debug.Log($"[Bugpunch.BugpunchClient] /input/pointer action={action} norm=({nx:F3},{ny:F3}) screen=({screenP.x:F0},{screenP.y:F0}) screenWH=({Screen.width}x{Screen.height}) reqId={requestId} bodyLen={body?.Length ?? 0}");
+                    BugpunchLog.Info("BugpunchClient", $"/input/pointer action={action} norm=({nx:F3},{ny:F3}) screen=({screenP.x:F0},{screenP.y:F0}) screenWH=({Screen.width}x{Screen.height}) reqId={requestId} bodyLen={body?.Length ?? 0}");
                     Task t = action switch
                     {
                         "down"   => InputInjector.InjectPointerDown(screenP),
@@ -1045,12 +1117,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         /// <summary>
-        /// UnitySendMessage receiver. Fired by the native chat "shell" (Android
-        /// <c>BugpunchReportOverlay.showChatBoard</c> / iOS
-        /// <c>Bugpunch_ShowChatBoard</c>) so native stays native-first while
-        /// the actual chat UI lives in C#. Also used by the recording-bar chat
-        /// shortcut and (eventually) any other native surface that needs to
-        /// surface the chat board.
+        /// UnitySendMessage receiver. On Android the chat board is now a
+        /// native Activity (BugpunchChatActivity) and never routes here.
+        /// iOS still bounces through this until the iOS port lands; Editor
+        /// / Standalone fallback also reaches the C# UI Toolkit chat board
+        /// via this entry point.
         /// </summary>
         public void OnShowChatBoardRequested(string _)
         {
@@ -1070,11 +1141,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         /// <summary>
         /// UnitySendMessage receiver. Fired by the native recording bar's
-        /// feedback icon — routes into the feedback board.
+        /// feedback icon — routes through the dialog factory so Android lands
+        /// on the native <c>BugpunchFeedbackActivity</c> and iOS / Editor
+        /// fall back to the C# UIToolkit feedback board.
         /// </summary>
         public void OnRecordingBarFeedbackTapped(string _)
         {
-            UI.BugpunchFeedbackBoard.Show();
+            var dialog = UI.NativeDialogFactory.Create();
+            if (dialog != null && dialog.IsSupported) dialog.ShowFeedbackBoard();
+            else UI.BugpunchFeedbackBoard.Show();
         }
 
         /// <summary>
@@ -1111,7 +1186,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         void RunScheduledScript(PollScript script)
         {
-            Debug.Log($"[Bugpunch.BugpunchClient] Running scheduled script: {script.Name}");
+            BugpunchLog.Info("BugpunchClient", $"Running scheduled script: {script.Name}");
             var started = DateTime.UtcNow;
             string envelope = "";
             string errorsOut = "";
@@ -1130,42 +1205,151 @@ namespace ODDGames.Bugpunch.DeviceConnect
             BugpunchNative.PostScriptResult(script.Id, envelope, errorsOut, ok, durationMs);
         }
 
+        // ─── Approved chat scriptRequest / dataRequest receivers ─────────
+        //
+        // Native chat (Android BugpunchChatActivity / iOS
+        // BugpunchChatViewController) handles the Approve / Decline tap
+        // and posts the answer to /api/v1/chat/request/answer itself.
+        // For an approved scriptRequest / dataRequest, native bounces the
+        // body up here as "<messageId>|<base64-utf8(body)>" so this end
+        // can run it through ODDGames.Scripting and POST the result as a
+        // follow-up chat message. Pipe + base64 keeps newlines / quotes /
+        // pipes inside the source from corrupting the UnitySendMessage
+        // string round-trip.
+
+        /// <summary>
+        /// UnitySendMessage receiver. Fired by native chat when the user
+        /// approves a scriptRequest bubble. Decodes the body, runs it via
+        /// <see cref="ScriptRunner"/>, and POSTs the JSON envelope back as
+        /// a chat reply linked to the source request.
+        /// </summary>
+        public void OnApprovedScriptRequest(string payload)
+        {
+            if (!TryParseApprovedPayload(payload, out var messageId, out var source)) return;
+            _ = ApprovedScriptRequestAsync(messageId, source);
+        }
+
+        /// <summary>
+        /// UnitySendMessage receiver. Fired by native chat when the user
+        /// approves a dataRequest bubble. v1 just acknowledges so the
+        /// approve flow completes end-to-end — the tunnel-based collector
+        /// pipeline is the next slice (#31 follow-up).
+        /// </summary>
+        public void OnApprovedDataRequest(string payload)
+        {
+            if (!TryParseApprovedPayload(payload, out var messageId, out var source)) return;
+            _ = ApprovedDataRequestAsync(messageId, source);
+        }
+
+        static bool TryParseApprovedPayload(string payload, out string messageId, out string body)
+        {
+            messageId = null; body = null;
+            if (string.IsNullOrEmpty(payload)) return false;
+            var pipe = payload.IndexOf('|');
+            if (pipe <= 0) return false;
+            messageId = payload.Substring(0, pipe);
+            try
+            {
+                var b64 = payload.Substring(pipe + 1);
+                body = string.IsNullOrEmpty(b64) ? "" : Encoding.UTF8.GetString(Convert.FromBase64String(b64));
+                return !string.IsNullOrEmpty(messageId);
+            }
+            catch (Exception ex)
+            {
+                BugpunchNative.ReportSdkError("BugpunchClient.TryParseApprovedPayload", ex);
+                return false;
+            }
+        }
+
+        async Task ApprovedScriptRequestAsync(string messageId, string source)
+        {
+            string envelope;
+            try
+            {
+                envelope = new ScriptRunner().Execute(source ?? "") ?? "";
+            }
+            catch (Exception ex)
+            {
+                BugpunchNative.ReportSdkError("BugpunchClient.ApprovedScriptRequest", ex);
+                envelope = "{\"ok\":false,\"errors\":[{\"message\":\"" + RequestRouter.EscapeJson(ex.Message) + "\"}]}";
+            }
+            await PostChatReplyAsync(messageId, envelope);
+        }
+
+        async Task ApprovedDataRequestAsync(string messageId, string source)
+        {
+            // v1 stub — tunnel-based data collectors are the next slice.
+            // Keep the shape identical to scriptRequest so the dashboard
+            // can render the reply uniformly.
+            var preview = string.IsNullOrEmpty(source) ? "" : source.Trim();
+            if (preview.Length > 200) preview = preview.Substring(0, 200) + "…";
+            var body = string.IsNullOrEmpty(preview)
+                ? "Got your data request — tunnel-based collectors are next."
+                : "Got your data request: " + preview + "\n\nTunnel-based collectors are next.";
+            await PostChatReplyAsync(messageId, body);
+        }
+
+        /// <summary>
+        /// POST a chat message linked to the source request via
+        /// <c>inReplyTo</c>. Mirrors the helper in
+        /// <see cref="UI.BugpunchChatBoard"/> but lives here so the
+        /// approved-request path doesn't depend on the chat board class
+        /// being open.
+        /// </summary>
+        async Task PostChatReplyAsync(string inReplyToMessageId, string body)
+        {
+            if (Config == null || string.IsNullOrEmpty(Config.HttpBaseUrl) || string.IsNullOrEmpty(Config.apiKey))
+                return;
+
+            var payload = new Newtonsoft.Json.Linq.JObject
+            {
+                ["body"] = body ?? "",
+                ["inReplyTo"] = inReplyToMessageId ?? "",
+            };
+            var json = payload.ToString(Newtonsoft.Json.Formatting.None);
+
+            var url = Config.HttpBaseUrl + "/api/v1/chat/message";
+            using var req = new UnityWebRequest(url, "POST");
+            var bytes = Encoding.UTF8.GetBytes(json);
+            req.uploadHandler = new UploadHandlerRaw(bytes) { contentType = "application/json" };
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.SetRequestHeader("Authorization", "Bearer " + (Config.apiKey ?? ""));
+            req.SetRequestHeader("X-Device-Id", DeviceIdentity.GetDeviceId() ?? "");
+            req.SetRequestHeader("Accept", "application/json");
+            req.timeout = 15;
+
+            var op = req.SendWebRequest();
+            while (!op.isDone) await Task.Yield();
+
+            if (req.result != UnityWebRequest.Result.Success || req.responseCode < 200 || req.responseCode >= 300)
+            {
+                BugpunchLog.Warn("BugpunchClient", $"PostChatReply failed: HTTP {req.responseCode} {req.error}");
+            }
+        }
+
         void HandleUpgradeToWebSocket()
         {
             if (SuppressInteractions)
             {
-                Debug.Log("[Bugpunch.BugpunchClient] Debug session requested but SuppressInteractions is true — declining");
+                BugpunchLog.Info("BugpunchClient", "Debug session requested but SuppressInteractions is true — declining");
                 // TODO: respond "busy" to server via poll endpoint
                 return;
             }
 
-            Debug.Log("[Bugpunch.BugpunchClient] Upgrading from poll to WebSocket debug mode");
+            BugpunchLog.Info("BugpunchClient", "Upgrading from poll to WebSocket debug mode");
             _debugSessionActive = true;
             BugpunchNative.StopPoll();
             PollActive = false;
 
-            // Spin up the managed IDE tunnel if it's not already alive from
-            // the Debug-build boot path. WebRTC initializes lazily on the
-            // first webrtc-offer that arrives.
+            // First-time upgrade — open the IDE tunnel, eager-init the
+            // streamer once it connects so the dashboard's webrtc-offer
+            // doesn't have to wait. If the tunnel is already alive (debug
+            // build that's already connected), just promote the existing
+            // session to streaming.
             if (Tunnel == null)
             {
-                Tunnel = new IdeTunnel(Config);
-                if (Router?.Console != null) Router.Console.AttachTunnel(Tunnel);
-                Tunnel.OnConnected += () =>
-                {
-                    Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel connected (debug session)");
-                    InitializeStreamerLazy();
-                    OnConnected?.Invoke();
-                    OnAnyConnected?.Invoke();
-                };
-                Tunnel.OnDisconnected += () =>
-                {
-                    Debug.Log("[Bugpunch.BugpunchClient] IDE tunnel disconnected");
-                    OnDisconnected?.Invoke();
-                };
-                Tunnel.OnError += e => { BugpunchNative.ReportSdkError("BugpunchClient.IdeTunnel", e); OnError?.Invoke(e); };
-                Tunnel.OnRequest += HandleRequest;
-                StartCoroutine(ConnectLoop());
+                SpinUpIdeTunnel(eagerInitStreamer: true);
             }
             else
             {
@@ -1187,10 +1371,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
         void InitializeStreamerLazy()
         {
             if (Streamer != null) return;
-            Debug.Log("[Bugpunch.BugpunchClient] InitializeStreamerLazy: starting");
+            BugpunchLog.Info("BugpunchClient", "InitializeStreamerLazy: starting");
             try
             {
-                Debug.Log("[Bugpunch.BugpunchClient] InitializeStreamerLazy: adding WebRTCStreamer component");
+                BugpunchLog.Info("BugpunchClient", "InitializeStreamerLazy: adding WebRTCStreamer component");
                 var streamer = gameObject.AddComponent<WebRTCStreamer>();
                 Streamer = streamer;
 
@@ -1201,11 +1385,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var w = Config.captureScale > 0 ? (int)(1920 * Config.captureScale) : 1280;
                 var h = Config.captureScale > 0 ? (int)(1080 * Config.captureScale) : 720;
                 var fps = Config.streamFps;
-                Debug.Log($"[Bugpunch.BugpunchClient] InitializeStreamerLazy: calling Streamer.Initialize({w}x{h}@{fps}fps)");
+                BugpunchLog.Info("BugpunchClient", $"InitializeStreamerLazy: calling Streamer.Initialize({w}x{h}@{fps}fps)");
                 Streamer.Initialize(w, h, fps);
 
                 StartCoroutine(FetchIceServers());
-                Debug.Log("[Bugpunch.BugpunchClient] InitializeStreamerLazy: WebRTCStreamer component added and initialized");
+                BugpunchLog.Info("BugpunchClient", "InitializeStreamerLazy: WebRTCStreamer component added and initialized");
             }
             catch (Exception ex)
             {
@@ -1224,7 +1408,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!_debugSessionActive) return;
             _debugSessionActive = false;
 
-            Debug.Log("[Bugpunch.BugpunchClient] Ending debug session, returning to poll mode");
+            BugpunchLog.Info("BugpunchClient", "Ending debug session, returning to poll mode");
 
             // Tear down WebRTC
             if (Streamer != null)
@@ -1243,9 +1427,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Tunnel?.Disconnect();
             Tunnel = null;
 
-            // Resume native polling
-            BugpunchNative.StartPoll(Config.scriptPermission.ToString().ToLower(), Mathf.Max(5, (int)Config.pollInterval));
-            PollActive = true;
+            StartPollMode();
         }
 
         /// <summary>
@@ -1258,25 +1440,25 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (Streamer == null) yield break;
 
             var url = Config.HttpBaseUrl + "/api/devices/ice-servers";
-            Debug.Log($"[Bugpunch.BugpunchClient] FetchIceServers: fetching from {url}");
+            BugpunchLog.Info("BugpunchClient", $"FetchIceServers: fetching from {url}");
             using var req = UnityWebRequest.Get(url);
             req.SetRequestHeader("X-API-Key", Config.apiKey);
             yield return req.SendWebRequest();
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning($"[Bugpunch.BugpunchClient] FetchIceServers: failed ({req.error}) — using default STUN");
+                BugpunchLog.Warn("BugpunchClient", $"FetchIceServers: failed ({req.error}) — using default STUN");
                 yield break;
             }
 
             var json = req.downloadHandler.text;
-            Debug.Log($"[Bugpunch.BugpunchClient] FetchIceServers: received {json}");
+            BugpunchLog.Info("BugpunchClient", $"FetchIceServers: received {json}");
             try
             {
                 // Pass the raw JSON to the streamer — it handles parsing and
                 // creating RTCIceServer instances so we don't reference Unity.WebRTC here.
                 Streamer.SetIceServersFromJson(json);
-                Debug.Log("[Bugpunch.BugpunchClient] FetchIceServers: passed JSON to streamer");
+                BugpunchLog.Info("BugpunchClient", "FetchIceServers: passed JSON to streamer");
             }
             catch (Exception ex)
             {
@@ -1287,7 +1469,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// <summary>Disconnect and destroy the Bugpunch client.</summary>
         public void Disconnect()
         {
-            Debug.Log("[Bugpunch.BugpunchClient] Disconnecting...");
+            BugpunchLog.Info("BugpunchClient", "Disconnecting...");
             Destroy(gameObject);
         }
 

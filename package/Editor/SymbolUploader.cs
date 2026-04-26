@@ -48,18 +48,18 @@ namespace ODDGames.Bugpunch.Editor
             var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
             if (config == null || string.IsNullOrEmpty(config.apiKey))
             {
-                Debug.Log("[Bugpunch.SymbolUploader] Skipping symbol upload — no config / API key.");
+                BugpunchLog.Info("SymbolUploader", "Skipping symbol upload — no config / API key.");
                 return;
             }
             if (!config.symbolUploadEnabled)
             {
-                Debug.Log("[Bugpunch.SymbolUploader] symbolUploadEnabled=false — skipping symbol upload.");
+                BugpunchLog.Info("SymbolUploader", "symbolUploadEnabled=false — skipping symbol upload.");
                 return;
             }
             if (string.IsNullOrWhiteSpace(config.serverUrl) ||
                 !Uri.TryCreate(NormalizeBaseUrl(config.serverUrl), UriKind.Absolute, out _))
             {
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] Invalid serverUrl '{config.serverUrl}' — skipping symbol upload.");
+                BugpunchLog.Warn("SymbolUploader", $"Invalid serverUrl '{config.serverUrl}' — skipping symbol upload.");
                 return;
             }
 
@@ -82,14 +82,14 @@ namespace ODDGames.Bugpunch.Editor
             if (symLevel != Unity.Android.Types.DebugSymbolLevel.SymbolTable &&
                 symLevel != Unity.Android.Types.DebugSymbolLevel.Full)
             {
-                Debug.Log($"[Bugpunch.SymbolUploader] Android Symbols level is '{symLevel}' — skipping upload. " +
+                BugpunchLog.Info("SymbolUploader", $"Android Symbols level is '{symLevel}' — skipping upload. " +
                           "Set Player Settings → Publishing Settings → Symbols to 'Public' (SymbolTable) " +
                           "or 'Debugging' (Full) to enable symbol upload.");
                 return;
             }
             if (symLevel == Unity.Android.Types.DebugSymbolLevel.Full)
             {
-                Debug.Log("[Bugpunch.SymbolUploader] Android Symbols level is 'Debugging' (Full DWARF) — uploading. " +
+                BugpunchLog.Info("SymbolUploader", "Android Symbols level is 'Debugging' (Full DWARF) — uploading. " +
                           "Expect 1-2 GB per ABI for libil2cpp; resolution will be per-instruction.");
             }
 
@@ -111,14 +111,14 @@ namespace ODDGames.Bugpunch.Editor
                     SymbolDiscovery.FindAndroidSymbols(outputPath, projectRoot, found, cts.Token, null);
                     if (found.Count == 0)
                     {
-                        Debug.Log("[Bugpunch.SymbolUploader] No Android symbol files found.");
+                        BugpunchLog.Info("SymbolUploader", "No Android symbol files found.");
                         return;
                     }
                     SymbolUploadClient.UploadSymbols(config, found, projectRoot, interactive: false, cts);
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[Bugpunch.SymbolUploader] Symbol upload failed: {ex.Message}\n{ex.StackTrace}");
+                    BugpunchLog.Error("SymbolUploader", $"Symbol upload failed: {ex.Message}\n{ex.StackTrace}");
                 }
                 finally { CleanupTempFiles(found); }
                 return;
@@ -152,7 +152,7 @@ namespace ODDGames.Bugpunch.Editor
         {
             if (s_pendingTask != null)
             {
-                Debug.LogWarning("[Bugpunch.SymbolUploader] Symbol upload already in progress — skipping second kickoff.");
+                BugpunchLog.Warn("SymbolUploader", "Symbol upload already in progress — skipping second kickoff.");
                 return;
             }
             s_pendingCts = new CancellationTokenSource();
@@ -198,11 +198,11 @@ namespace ODDGames.Bugpunch.Editor
                 try { task.GetAwaiter().GetResult(); }
                 catch (OperationCanceledException)
                 {
-                    Debug.LogWarning("[Bugpunch.SymbolUploader] Symbol upload cancelled.");
+                    BugpunchLog.Warn("SymbolUploader", "Symbol upload cancelled.");
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[Bugpunch.SymbolUploader] Symbol upload failed: {ex.Message}\n{ex.StackTrace}");
+                    BugpunchLog.Error("SymbolUploader", $"Symbol upload failed: {ex.Message}\n{ex.StackTrace}");
                 }
                 finally
                 {
@@ -210,7 +210,7 @@ namespace ODDGames.Bugpunch.Editor
                     try { cts?.Dispose(); } catch { /* already disposed */ }
                     if (found.Count == 0 && !cts.IsCancellationRequested)
                     {
-                        Debug.Log("[Bugpunch.SymbolUploader] No Android symbol files found. " +
+                        BugpunchLog.Info("SymbolUploader", "No Android symbol files found. " +
                             "Enable Player Settings → Publishing Settings → Symbols " +
                             "(Public/Debugging) to produce symbols.zip alongside builds.");
                     }

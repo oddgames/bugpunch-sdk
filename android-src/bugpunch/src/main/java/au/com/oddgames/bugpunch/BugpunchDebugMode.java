@@ -38,6 +38,18 @@ import org.json.JSONObject;
  *       a video dump via {@link #dumpRingIfRunning(Activity)} — cheap
  *       no-op if recording was never consented to.</li>
  * </ol>
+ *
+ * <p>Two side-concerns that used to live here have moved out:
+ * <ul>
+ *   <li>{@link BugpunchDebugAutoPrompt} — cache-driven launch-time consent
+ *       auto-prompt.</li>
+ *   <li>{@link BugpunchTesterRoleManager} — server roleConfig
+ *       reconciliation (prompt when flipped to internal, tear down a
+ *       speculative recording when flipped away).</li>
+ * </ul>
+ * Both call back into this class for the shared static flags below
+ * ({@code sStartedFromCachedPrompt}, {@code sAutoPromptShown}) and for
+ * {@link #showConsentDialog(Activity)}.
  */
 public class BugpunchDebugMode {
     private static final String TAG = "[Bugpunch.DebugMode]";
@@ -46,13 +58,29 @@ public class BugpunchDebugMode {
     // cache-driven launch auto-prompt. The role-transition dispatch path
     // uses this so it only tears down a recording the cache itself triggered
     // — never one the user explicitly opted into via Bugpunch.EnterDebugMode().
+    //
+    // Lives here (rather than in BugpunchDebugAutoPrompt) because enter()
+    // also clears it on a manual opt-in, and BugpunchTesterRoleManager
+    // reads/clears it when the server flips us out of "internal".
     private static volatile boolean sStartedFromCachedPrompt;
 
     // Set true once the launch-time auto-prompt has been shown for this
     // process so a roleConfig that arrives during the same session doesn't
     // re-prompt (and so onRoleBecameInternal can see whether the cache
     // already covered it).
+    //
+    // Lives here for the same cross-concern reason — both
+    // BugpunchDebugAutoPrompt and BugpunchTesterRoleManager set it true
+    // when they fire a consent prompt.
     private static volatile boolean sAutoPromptShown;
+
+    // ── Package-private state accessors for the two split-out concerns ──
+
+    static boolean isAutoPromptShown() { return sAutoPromptShown; }
+    static void setAutoPromptShown(boolean v) { sAutoPromptShown = v; }
+
+    static boolean isStartedFromCachedPrompt() { return sStartedFromCachedPrompt; }
+    static void setStartedFromCachedPrompt(boolean v) { sStartedFromCachedPrompt = v; }
 
     /**
      * Enable debug recording. With {@code skipConsent=false} (default) shows
@@ -70,81 +98,6 @@ public class BugpunchDebugMode {
             @Override public void run() {
                 if (skipConsent) startRecordingFromConfig(activity);
                 else             showConsentDialog(activity);
-            }
-        });
-    }
-
-    /**
-     * Cache-driven launch flow. If the last-known tester role was
-     * "internal", show the consent sheet immediately so the video ring
-     * buffer can come up before the tunnel handshake returns. Other cached
-     * values (and an empty cache) wait for the server.
-     *
-     * Called once from {@link BugpunchRuntime#attachActivity(Activity)}
-     * after Activity-bound init completes.
-     */
-    public static void maybeAutoPromptOnLaunch(final Activity activity) {
-        if (activity == null) return;
-        if (sAutoPromptShown) return;
-        if (!BugpunchRuntime.isStarted()) return;
-        if (BugpunchRecorder.getInstance().isRunning()) return;
-
-        String cached = BugpunchTunnel.readLastTesterRoleFromCache(
-            activity.getApplicationContext());
-        if (!"internal".equals(cached)) {
-            // First-ever launch (null) or last-known non-internal: no
-            // speculative prompt. Wait for the server's roleConfig.
-            return;
-        }
-        sAutoPromptShown = true;
-        Log.i(TAG, "cached role=internal — auto-prompting consent on launch");
-        activity.runOnUiThread(new Runnable() {
-            @Override public void run() {
-                sStartedFromCachedPrompt = true;
-                showConsentDialog(activity);
-            }
-        });
-    }
-
-    /**
-     * Called from {@link BugpunchTunnel#applyRoleConfigInternal} when the
-     * server's roleConfig flips us TO "internal". If the cached path didn't
-     * already prompt (cache was missing or non-internal), prompt now.
-     */
-    static void onRoleBecameInternal() {
-        if (sAutoPromptShown) return;
-        Activity activity = BugpunchRuntime.getAttachedActivity();
-        if (activity == null) return;
-        if (!BugpunchRuntime.isStarted()) return;
-        if (BugpunchRecorder.getInstance().isRunning()) return;
-        sAutoPromptShown = true;
-        Log.i(TAG, "role flipped to internal — prompting consent mid-session");
-        activity.runOnUiThread(new Runnable() {
-            @Override public void run() {
-                sStartedFromCachedPrompt = true;
-                showConsentDialog(activity);
-            }
-        });
-    }
-
-    /**
-     * Called from {@link BugpunchTunnel#applyRoleConfigInternal} when the
-     * server's roleConfig flips us AWAY from "internal". If a recording is
-     * running because of the speculative cached prompt, tear it down — the
-     * server's authoritative answer wins. Manual {@code Bugpunch.EnterDebugMode}
-     * recordings are left alone.
-     */
-    static void onRoleLeftInternal() {
-        if (!sStartedFromCachedPrompt) return;
-        Activity activity = BugpunchRuntime.getAttachedActivity();
-        if (activity == null) return;
-        Log.i(TAG, "role left internal — tearing down speculative recording");
-        sStartedFromCachedPrompt = false;
-        activity.runOnUiThread(new Runnable() {
-            @Override public void run() {
-                try { BugpunchRecorder.getInstance().stop(); } catch (Throwable ignore) {}
-                try { BugpunchTouchRecorder.stop(); } catch (Throwable ignore) {}
-                try { BugpunchDebugWidget.hide(); } catch (Throwable ignore) {}
             }
         });
     }
@@ -196,8 +149,11 @@ public class BugpunchDebugMode {
      * Show a consent dialog for screen recording. On Accept we kick off the
      * MediaProjection flow (which brings up its own OS-level consent dialog);
      * on Cancel nothing happens.
+     *
+     * <p>Package-private so {@link BugpunchDebugAutoPrompt} and
+     * {@link BugpunchTesterRoleManager} can route through the same UI.
      */
-    private static void showConsentDialog(final Activity activity) {
+    static void showConsentDialog(final Activity activity) {
         final Dialog dialog = new Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar);
         Window window = dialog.getWindow();
         if (window != null) {

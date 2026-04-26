@@ -22,7 +22,7 @@ namespace ODDGames.Bugpunch.Editor
         static void Toggle()
         {
             IsEnabled = !IsEnabled;
-            Debug.Log($"[Bugpunch.BugpunchEditorToggle] Connection {(IsEnabled ? "ENABLED" : "DISABLED")}");
+            BugpunchLog.Info("BugpunchEditorToggle", $"Connection {(IsEnabled ? "ENABLED" : "DISABLED")}");
 
             // Actively connect or disconnect if in Play mode
             if (Application.isPlaying)

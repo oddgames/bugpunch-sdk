@@ -3,9 +3,9 @@
 // directives. Mirrors the Android BugpunchDirectives class.
 //
 // Two entry points:
-//   1. BPDirectives_OnUploadResponse  - fires after a successful /api/crashes
+//   1. BPDirectives_OnUploadResponse  - fires after a successful /api/issues/ingest
 //      POST. Server response carries eventId + matchedDirectives[]. Result of
-//      each action is POSTed to /api/crashes/events/{eventId}/enrich.
+//      each action is POSTed to /api/issues/events/{eventId}/enrich.
 //   2. BPDirectives_OnPollDirectives  - fires from the native poll loop when
 //      /api/device-poll returns pendingDirectives[]. No crash context.
 //      Action results are POSTed to /api/directives/{directiveId}/result.
@@ -73,7 +73,7 @@ static NSString* BPTrimTrailingSlash(NSString* s) {
 static NSString* BPEnrichUrl(NSString* eventId) {
     NSString* server = BPTrimTrailingSlash(BPServerUrl());
     if (server.length == 0 || eventId.length == 0) return @"";
-    return [NSString stringWithFormat:@"%@/api/crashes/events/%@/enrich", server, eventId];
+    return [NSString stringWithFormat:@"%@/api/issues/events/%@/enrich", server, eventId];
 }
 
 static NSString* BPDirectiveResultUrl(NSString* directiveId) {
@@ -273,12 +273,12 @@ static void BPApplyAction(NSString* resultUrl, NSString* fingerprint,
 
 // -- Entry points --
 
-/** Crash-path directives: invoked after POST /api/crashes succeeds. */
+/** Crash-path directives: invoked after POST /api/issues/ingest succeeds. */
 extern "C" void BPDirectives_OnUploadResponse(const char* urlC, const char* bodyC) {
     if (!urlC || !bodyC) return;
     NSString* url = [NSString stringWithUTF8String:urlC];
     NSString* body = [NSString stringWithUTF8String:bodyC];
-    if (![url hasSuffix:@"/api/crashes"]) return;
+    if (![url hasSuffix:@"/api/issues/ingest"]) return;
     if (body.length == 0) return;
 
     NSData* data = [body dataUsingEncoding:NSUTF8StringEncoding];

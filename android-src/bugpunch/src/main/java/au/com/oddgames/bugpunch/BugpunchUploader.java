@@ -33,7 +33,7 @@ import java.util.UUID;
  *
  * Manifest JSON schema:
  *   {
- *     "url":      "https://.../api/reports/crash",
+ *     "url":      "https://.../api/issues/ingest",
  *     "headers":  { "X-Api-Key": "..." },
  *     "fields":   { "metadata": "<json string>" },
  *     "files":    [ { "field": "screenshot", "filename": "...", "contentType": "image/jpeg", "path": "/..." } ],

@@ -872,5 +872,14 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             // based on server state (threads exist vs empty vs disabled).
             BugpunchChatBoard.Show();
         }
+
+        public void ShowFeedbackBoard()
+        {
+            // Feedback board owns its own UIDocument host (same pattern as
+            // the chat board) so direct dispatch is safe in the Editor /
+            // standalone fallback. The Android-native Activity replaces this
+            // path on phone — see AndroidDialog.ShowFeedbackBoard.
+            BugpunchFeedbackBoard.Show();
+        }
     }
 }

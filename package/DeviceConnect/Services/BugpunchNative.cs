@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
@@ -31,6 +32,60 @@ namespace ODDGames.Bugpunch.DeviceConnect
     {
         static bool s_started;
 
+#if !UNITY_EDITOR && UNITY_ANDROID
+        // ── Cached AndroidJavaClass refs ──
+        // Each `new AndroidJavaClass(name)` allocates a JNI global ref that has
+        // to be released — doing that on every call costs an attach/detach pair
+        // per call. We cache the wrappers for the lifetime of the process.
+        // Caller threads can include AppDomain.UnhandledException / TaskScheduler
+        // (background threads), so dictionary access is locked.
+        static readonly Dictionary<string, AndroidJavaClass> s_javaClasses = new();
+
+        static AndroidJavaClass JavaClass(string name)
+        {
+            lock (s_javaClasses)
+            {
+                if (!s_javaClasses.TryGetValue(name, out var cls))
+                {
+                    cls = new AndroidJavaClass(name);
+                    s_javaClasses[name] = cls;
+                }
+                return cls;
+            }
+        }
+
+        // UnityPlayer is cached; the activity instance is NOT (Unity may swap
+        // it across activity recreation, so we resolve fresh every call).
+        static AndroidJavaObject CurrentActivity()
+            => JavaClass("com.unity3d.player.UnityPlayer").GetStatic<AndroidJavaObject>("currentActivity");
+
+        static void CallStatic(string cls, string method, string sourceLabel, params object[] args)
+        {
+            try { JavaClass(cls).CallStatic(method, args); }
+            catch (Exception e) { ReportSdkError(sourceLabel, e); }
+        }
+
+        // Silent variant — used where the original code had `catch { }` (best-
+        // effort fire-and-forget paths that mustn't recurse into ReportSdkError).
+        static void CallStaticSilent(string cls, string method, params object[] args)
+        {
+            try { JavaClass(cls).CallStatic(method, args); }
+            catch { /* best-effort */ }
+        }
+
+        static T CallStatic<T>(string cls, string method, T fallback, string sourceLabel, params object[] args)
+        {
+            try { return JavaClass(cls).CallStatic<T>(method, args); }
+            catch (Exception e) { ReportSdkError(sourceLabel, e); return fallback; }
+        }
+
+        static T CallStaticSilent<T>(string cls, string method, T fallback, params object[] args)
+        {
+            try { return JavaClass(cls).CallStatic<T>(method, args); }
+            catch { return fallback; }
+        }
+#endif
+
         public static bool Start(BugpunchConfig config)
         {
             if (s_started || config == null) return s_started;
@@ -42,10 +97,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #elif UNITY_ANDROID
             try
             {
-                using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-                using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                s_started = cls.CallStatic<bool>("start", activity, json);
+                s_started = JavaClass("au.com.oddgames.bugpunch.BugpunchRuntime")
+                    .CallStatic<bool>("start", CurrentActivity(), json);
             }
             catch (Exception e) { ReportSdkError("BugpunchNative.Start", e); }
             return s_started;
@@ -75,12 +128,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportingService");
-                cls.CallStatic("reportBug", type ?? "bug", title ?? "", description ?? "", extraJson ?? "");
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.ReportBug", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchReportingService", "reportBug",
+                "BugpunchNative.ReportBug",
+                type ?? "bug", title ?? "", description ?? "", extraJson ?? "");
 #elif UNITY_IOS
             try { Bugpunch_ReportBug(type ?? "bug", title ?? "", description ?? "", extraJson ?? ""); }
             catch (Exception e) { ReportSdkError("BugpunchNative.ReportBug", e); }
@@ -92,12 +142,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(key)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                cls.CallStatic("setCustomData", key, value);
-            }
-            catch { }
+            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchRuntime", "setCustomData", key, value);
 #elif UNITY_IOS
             try { Bugpunch_SetCustomData(key, value); } catch { }
 #endif
@@ -127,14 +172,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 var src = string.IsNullOrEmpty(source) ? "Bugpunch" : source;
                 var msg = message ?? "";
-                Debug.LogError($"[Bugpunch.{src}] {msg}");
+                BugpunchLog.Error("{src}", $"{msg}");
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-                try
-                {
-                    using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                    cls.CallStatic("reportSdkError", src, msg, stackTrace ?? "");
-                }
+                // Direct call — must not route through CallStatic because that
+                // would recurse back into ReportSdkError on failure.
+                try { JavaClass("au.com.oddgames.bugpunch.BugpunchRuntime")
+                        .CallStatic("reportSdkError", src, msg, stackTrace ?? ""); }
                 catch { /* native may not be loaded yet — already logged above */ }
 #elif UNITY_IOS
                 try { Bugpunch_ReportSdkError(src, msg, stackTrace ?? ""); }
@@ -165,12 +209,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                cls.CallStatic("setSdkErrorOverlay", enabled);
-            }
-            catch { }
+            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchRuntime", "setSdkErrorOverlay", enabled);
 #elif UNITY_IOS
             try { Bugpunch_SetSdkErrorOverlay(enabled ? 1 : 0); } catch { }
 #endif
@@ -187,12 +226,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #if UNITY_EDITOR
             return false;
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
-                return cls.CallStatic<bool>("isConnected");
-            }
-            catch { return false; }
+            return CallStaticSilent<bool>("au.com.oddgames.bugpunch.BugpunchTunnel", "isConnected", false);
 #elif UNITY_IOS
             try { return Bugpunch_TunnelIsConnected(); }
             catch { return false; }
@@ -206,12 +240,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #if UNITY_EDITOR
             return "";
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
-                return cls.CallStatic<string>("getDeviceId") ?? "";
-            }
-            catch { return ""; }
+            return CallStaticSilent<string>("au.com.oddgames.bugpunch.BugpunchTunnel", "getDeviceId", "") ?? "";
 #elif UNITY_IOS
             try { return Bugpunch_TunnelDeviceId() ?? ""; }
             catch { return ""; }
@@ -234,12 +263,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #if UNITY_EDITOR
             return "public";
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
-                return cls.CallStatic<string>("getTesterRole") ?? "public";
-            }
-            catch { return "public"; }
+            return CallStaticSilent<string>("au.com.oddgames.bugpunch.BugpunchTunnel", "getTesterRole", "public") ?? "public";
 #elif UNITY_IOS
             try { return Bugpunch_GetTesterRole() ?? "public"; }
             catch { return "public"; }
@@ -259,12 +283,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (string.IsNullOrEmpty(responseJson)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchTunnel");
-                cls.CallStatic("sendResponse", responseJson);
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.TunnelSendResponse", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchTunnel", "sendResponse",
+                "BugpunchNative.TunnelSendResponse", responseJson);
 #elif UNITY_IOS
             try { Bugpunch_TunnelSendResponse(responseJson); }
             catch (Exception e) { ReportSdkError("BugpunchNative.TunnelSendResponse", e); }
@@ -283,10 +303,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #elif UNITY_ANDROID
             try
             {
-                using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-                using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchIdentity");
-                return cls.CallStatic<string>("getStableDeviceId", activity) ?? "";
+                return JavaClass("au.com.oddgames.bugpunch.BugpunchIdentity")
+                    .CallStatic<string>("getStableDeviceId", CurrentActivity()) ?? "";
             }
             catch { return ""; }
 #elif UNITY_IOS
@@ -310,12 +328,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #if UNITY_EDITOR
             return "editor";
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                return cls.CallStatic<string>("getMetadata", "installerMode") ?? "unknown";
-            }
-            catch { return "unknown"; }
+            return CallStaticSilent<string>("au.com.oddgames.bugpunch.BugpunchRuntime", "getMetadata", "unknown", "installerMode") ?? "unknown";
 #elif UNITY_IOS
             try { return Bugpunch_GetInstallerMode() ?? "unknown"; }
             catch { return "unknown"; }
@@ -337,10 +350,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #elif UNITY_ANDROID
             try
             {
-                using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-                using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchDebugMode");
-                cls.CallStatic("enter", activity, skipConsent);
+                JavaClass("au.com.oddgames.bugpunch.BugpunchDebugMode")
+                    .CallStatic("enter", CurrentActivity(), skipConsent);
             }
             catch (Exception e) { ReportSdkError("BugpunchNative.EnterDebugMode", e); }
 #elif UNITY_IOS
@@ -363,8 +374,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #elif UNITY_ANDROID
             try
             {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRecorder");
-                using var inst = cls.CallStatic<AndroidJavaObject>("getInstance");
+                using var inst = JavaClass("au.com.oddgames.bugpunch.BugpunchRecorder")
+                    .CallStatic<AndroidJavaObject>("getInstance");
                 return inst != null && inst.Call<bool>("isBufferMode");
             }
             catch { return false; }
@@ -385,8 +396,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #if UNITY_ANDROID && !UNITY_EDITOR
             try
             {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRecorder");
-                using var inst = cls.CallStatic<AndroidJavaObject>("getInstance");
+                using var inst = JavaClass("au.com.oddgames.bugpunch.BugpunchRecorder")
+                    .CallStatic<AndroidJavaObject>("getInstance");
                 if (inst == null) return (0, 0);
                 int w = inst.Call<int>("getWidth");
                 int h = inst.Call<int>("getHeight");
@@ -409,8 +420,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #if UNITY_ANDROID && !UNITY_EDITOR
             try
             {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRecorder");
-                using var inst = cls.CallStatic<AndroidJavaObject>("getInstance");
+                using var inst = JavaClass("au.com.oddgames.bugpunch.BugpunchRecorder")
+                    .CallStatic<AndroidJavaObject>("getInstance");
                 if (inst == null) return;
                 // AndroidJavaObject.Call marshals the byte[] via JNI automatically.
                 inst.Call<bool>("queueFrame", nv12, ptsUs);
@@ -424,12 +435,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(label)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportingService");
-                cls.CallStatic("addTrace", label, tagsJson);
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.Trace", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchReportingService", "addTrace",
+                "BugpunchNative.Trace", label, tagsJson);
 #elif UNITY_IOS
             try { Bugpunch_Trace(label, tagsJson); }
             catch (Exception e) { ReportSdkError("BugpunchNative.Trace", e); }
@@ -441,12 +448,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(label)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchReportingService");
-                cls.CallStatic("addTraceScreenshot", label, tagsJson);
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.TraceScreenshot", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchReportingService", "addTraceScreenshot",
+                "BugpunchNative.TraceScreenshot", label, tagsJson);
 #elif UNITY_IOS
             try { Bugpunch_TraceScreenshot(label, tagsJson); }
             catch (Exception e) { ReportSdkError("BugpunchNative.TraceScreenshot", e); }
@@ -458,12 +461,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                cls.CallStatic("updateScene", scene ?? "");
-            }
-            catch { }
+            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchRuntime", "updateScene", scene ?? "");
 #elif UNITY_IOS
             try { Bugpunch_UpdateScene(scene ?? ""); } catch { }
 #endif
@@ -479,12 +477,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(name)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                cls.CallStatic("trackEvent", name, propertiesJson);
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.TrackEvent", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchRuntime", "trackEvent",
+                "BugpunchNative.TrackEvent", name, propertiesJson);
 #elif UNITY_IOS
             try { Bugpunch_TrackEvent(name, propertiesJson); }
             catch (Exception e) { ReportSdkError("BugpunchNative.TrackEvent", e); }
@@ -517,12 +511,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             long t = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchInput");
-                cls.CallStatic("pushTouch", type, t, x, y, path ?? "", scene ?? "", label ?? "");
-            }
-            catch { }
+            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchInput", "pushTouch",
+                type, t, x, y, path ?? "", scene ?? "", label ?? "");
 #elif UNITY_IOS
             // iOS parity — implement Bugpunch_PushInputTouch when we port.
 #endif
@@ -534,12 +524,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             long t = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchInput");
-                cls.CallStatic("pushKey", type, t, keyCode, scene ?? "");
-            }
-            catch { }
+            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchInput", "pushKey",
+                type, t, keyCode, scene ?? "");
 #endif
         }
 
@@ -549,12 +535,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             long t = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchInput");
-                cls.CallStatic("pushSceneChange", t, scene ?? "");
-            }
-            catch { }
+            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchInput", "pushSceneChange",
+                t, scene ?? "");
 #endif
         }
 
@@ -569,12 +551,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchInput");
-                cls.CallStatic("pushCustom", t, category ?? "", message ?? "", scene ?? "");
-            }
-            catch { }
+            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchInput", "pushCustom",
+                t, category ?? "", message ?? "", scene ?? "");
 #endif
         }
 
@@ -594,7 +572,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// <summary>
         /// Callback from <see cref="CrashDirectiveHandler"/> back into native after
         /// the script finishes. Native posts the result to the server's
-        /// <c>POST /api/crashes/events/:id/enrich</c> endpoint via its upload
+        /// <c>POST /api/issues/events/:id/enrich</c> endpoint via its upload
         /// queue, keyed by the pending directive + event ids stored when the
         /// directive match was received.
         /// (Distinct from <c>PostScriptResult</c> which serves the poll-scheduled
@@ -605,12 +583,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(directiveId)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchRuntime");
-                cls.CallStatic("postDirectiveResult", directiveId, resultJson ?? "");
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.PostDirectiveResult", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchRuntime", "postDirectiveResult",
+                "BugpunchNative.PostDirectiveResult", directiveId, resultJson ?? "");
 #elif UNITY_IOS
             try { Bugpunch_PostDirectiveResult(directiveId, resultJson ?? ""); }
             catch (Exception e) { ReportSdkError("BugpunchNative.PostDirectiveResult", e); }
@@ -638,14 +612,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             string perm = string.IsNullOrEmpty(scriptPermission) ? "ask" : scriptPermission;
             int interval = Math.Max(5, pollIntervalSeconds);
 #if UNITY_EDITOR
-            Debug.Log("[Bugpunch.BugpunchNative] StartPoll: no-op in Editor");
+            BugpunchLog.Info("BugpunchNative", "StartPoll: no-op in Editor");
 #elif UNITY_ANDROID
             try
             {
-                using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-                using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPoller");
-                cls.CallStatic("start", activity, perm, interval);
+                JavaClass("au.com.oddgames.bugpunch.BugpunchPoller")
+                    .CallStatic("start", CurrentActivity(), perm, interval);
             }
             catch (Exception e) { ReportSdkError("BugpunchNative.StartPoll", e); }
 #elif UNITY_IOS
@@ -658,12 +630,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPoller");
-                cls.CallStatic("stop");
-            }
-            catch { /* best-effort */ }
+            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchPoller", "stop");
 #elif UNITY_IOS
             try { Bugpunch_StopPoll(); } catch { /* best-effort */ }
 #endif
@@ -680,13 +647,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(scheduledScriptId)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPoller");
-                cls.CallStatic("postScriptResult", scheduledScriptId, output ?? "",
-                    errors ?? "", success, durationMs);
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.PostScriptResult", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchPoller", "postScriptResult",
+                "BugpunchNative.PostScriptResult",
+                scheduledScriptId, output ?? "", errors ?? "", success, durationMs);
 #elif UNITY_IOS
             try { Bugpunch_PostScriptResult(scheduledScriptId, output ?? "", errors ?? "", success, durationMs); }
             catch (Exception e) { ReportSdkError("BugpunchNative.PostScriptResult", e); }
@@ -704,12 +667,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(pendingDirectivesJson)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchDirectives");
-                cls.CallStatic("onPollDirectives", pendingDirectivesJson);
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.ProcessPollDirectives", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchDirectives", "onPollDirectives",
+                "BugpunchNative.ProcessPollDirectives", pendingDirectivesJson);
 #elif UNITY_IOS
             try { BPDirectives_OnPollDirectives(pendingDirectivesJson); }
             catch (Exception e) { ReportSdkError("BugpunchNative.ProcessPollDirectives", e); }
@@ -748,10 +707,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #elif UNITY_ANDROID
             try
             {
-                using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-                using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchImagePicker");
-                cls.CallStatic("pick", activity);
+                JavaClass("au.com.oddgames.bugpunch.BugpunchImagePicker")
+                    .CallStatic("pick", CurrentActivity());
             }
             catch (Exception e)
             {
@@ -801,14 +758,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             if (!s_started || string.IsNullOrEmpty(configJson)) return;
 #if UNITY_EDITOR
-            Debug.Log("[Bugpunch.BugpunchNative] Perf monitor: no-op in Editor");
+            BugpunchLog.Info("BugpunchNative", "Perf monitor: no-op in Editor");
 #elif UNITY_ANDROID
-            try
-            {
-                using var cls = new AndroidJavaClass("au.com.oddgames.bugpunch.BugpunchPerfMonitor");
-                cls.CallStatic("start", configJson);
-            }
-            catch (Exception e) { ReportSdkError("BugpunchNative.StartPerfMonitor", e); }
+            CallStatic("au.com.oddgames.bugpunch.BugpunchPerfMonitor", "start",
+                "BugpunchNative.StartPerfMonitor", configJson);
 #elif UNITY_IOS
             try { Bugpunch_StartPerfMonitor(configJson); }
             catch (Exception e) { ReportSdkError("BugpunchNative.StartPerfMonitor", e); }
@@ -858,7 +811,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             int cores = SystemInfo.processorCount;
             DeviceTier = (memMb >= 6144 && cores >= 6) ? "high"
                        : (memMb >= 3072 && cores >= 4) ? "mid" : "low";
-            Debug.Log($"[Bugpunch.BugpunchNative] Device tier: {DeviceTier} (RAM={memMb}MB, cores={cores})");
+            BugpunchLog.Info("BugpunchNative", $"Device tier: {DeviceTier} (RAM={memMb}MB, cores={cores})");
         }
 
         // Cached because Resources.Load is expensive and the value never changes

@@ -23,10 +23,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
     {
         public static CrashDirectiveHandler Instance { get; private set; }
 
-        public void Init()
-        {
-            Instance = this;
-        }
+        void Awake() => Instance = this;
 
         /// <summary>
         /// Invoked from native via UnitySendMessage. Payload shape:

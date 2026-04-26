@@ -287,32 +287,32 @@ namespace ODDGames.Bugpunch.Editor
                 var sourcesJson = "[" + string.Join(",", sources.Select(s =>
                 {
                     if (s.type == "local")
-                        return $"{{\"type\":\"local\",\"machineId\":\"{Esc(s.machineId)}\",\"path\":\"{Esc(s.path)}\"}}";
+                        return $"{{\"type\":\"local\",\"machineId\":\"{BugpunchJson.Esc(s.machineId)}\",\"path\":\"{BugpunchJson.Esc(s.path)}\"}}";
                     else
-                        return $"{{\"type\":\"gdrive\",\"url\":\"{Esc(s.url)}\"}}";
+                        return $"{{\"type\":\"gdrive\",\"url\":\"{BugpunchJson.Esc(s.url)}\"}}";
                 })) + "]";
 
-                var packagesJson = "{" + string.Join(",", packages.Select(p => $"\"{Esc(p.Key)}\":\"{Esc(p.Value)}\"")) + "}";
-                var definesJson = "[" + string.Join(",", (scriptingDefines ?? new string[0]).Select(d => $"\"{Esc(d)}\"")) + "]";
+                var packagesJson = "{" + string.Join(",", packages.Select(p => $"\"{BugpunchJson.Esc(p.Key)}\":\"{BugpunchJson.Esc(p.Value)}\"")) + "}";
+                var definesJson = "[" + string.Join(",", (scriptingDefines ?? new string[0]).Select(d => $"\"{BugpunchJson.Esc(d)}\"")) + "]";
 
                 var body = $@"{{
-                    ""platform"":""{Esc(platform)}"",
-                    ""buildConfig"":""{Esc(buildConfig)}"",
-                    ""appVersion"":""{Esc(appVersion)}"",
-                    ""changeset"":""{Esc(changeset)}"",
-                    ""branch"":""{Esc(branch)}"",
-                    ""notes"":""{Esc(notes)}"",
+                    ""platform"":""{BugpunchJson.Esc(platform)}"",
+                    ""buildConfig"":""{BugpunchJson.Esc(buildConfig)}"",
+                    ""appVersion"":""{BugpunchJson.Esc(appVersion)}"",
+                    ""changeset"":""{BugpunchJson.Esc(changeset)}"",
+                    ""branch"":""{BugpunchJson.Esc(branch)}"",
+                    ""notes"":""{BugpunchJson.Esc(notes)}"",
                     ""sources"":{sourcesJson},
                     ""buildMeta"":{{
                         ""fileSize"":{fileSize},
-                        ""bundleId"":""{Esc(bundleId)}"",
-                        ""buildMachine"":""{Esc(SystemInfo.deviceName)}"",
+                        ""bundleId"":""{BugpunchJson.Esc(bundleId)}"",
+                        ""buildMachine"":""{BugpunchJson.Esc(SystemInfo.deviceName)}"",
                         ""buildTimestamp"":""{DateTime.UtcNow:O}"",
                         ""unity"":{{
-                            ""version"":""{Esc(unityVersion)}"",
-                            ""scriptingBackend"":""{Esc(scriptingBackend)}"",
-                            ""il2cppCompilerConfig"":""{Esc(il2cppConfig)}"",
-                            ""managedStripping"":""{Esc(managedStripping)}"",
+                            ""version"":""{BugpunchJson.Esc(unityVersion)}"",
+                            ""scriptingBackend"":""{BugpunchJson.Esc(scriptingBackend)}"",
+                            ""il2cppCompilerConfig"":""{BugpunchJson.Esc(il2cppConfig)}"",
+                            ""managedStripping"":""{BugpunchJson.Esc(managedStripping)}"",
                             ""incrementalGC"":{(incrementalGC ? "true" : "false")}
                         }},
                         ""android"":{{
@@ -336,7 +336,7 @@ namespace ODDGames.Bugpunch.Editor
                 if (request.result == UnityWebRequest.Result.Success)
                 {
                     statusMessage = $"Build registered! {platform} {appVersion} ({buildConfig})";
-                    Debug.Log($"[Bugpunch.BuildRegistrationWindow] Build registered: {request.downloadHandler.text}");
+                    BugpunchLog.Info("BuildRegistrationWindow", $"Build registered: {request.downloadHandler.text}");
                 }
                 else
                 {
@@ -397,7 +397,5 @@ namespace ODDGames.Bugpunch.Editor
             catch { return null; }
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

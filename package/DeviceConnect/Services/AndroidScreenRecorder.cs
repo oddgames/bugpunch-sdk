@@ -55,7 +55,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 OnStarted?.Invoke(false);
             }
 #else
-            Debug.Log("[Bugpunch.AndroidScreenRecorder] AndroidScreenRecorder: not Android, no-op");
+            BugpunchLog.Info("AndroidScreenRecorder", "AndroidScreenRecorder: not Android, no-op");
             OnStarted?.Invoke(false);
 #endif
         }
@@ -131,7 +131,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         void OnNativeStartResult(string result)
         {
             IsRecording = result == "1";
-            Debug.Log($"[Bugpunch.AndroidScreenRecorder] Native recorder start result: {(IsRecording ? "OK" : "FAILED")}");
+            BugpunchLog.Info("AndroidScreenRecorder", $"Native recorder start result: {(IsRecording ? "OK" : "FAILED")}");
             OnStarted?.Invoke(IsRecording);
         }
     }

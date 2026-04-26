@@ -12,8 +12,12 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 
 @interface BPDebugWidget : UIView
 @property (nonatomic, strong) UIView* recDot;
+// Unread-chat badge (issue #32) — accent circle at top-right of the widget.
+// Shown when the dev team has chat messages the player hasn't seen.
+@property (nonatomic, strong) UILabel* unreadBadge;
 @property (nonatomic, assign) CGPoint dragStart;
 @property (nonatomic, assign) CGPoint originStart;
+- (void)applyUnreadCount:(NSInteger)count;
 @end
 
 @implementation BPDebugWidget
@@ -83,6 +87,23 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
     [tools addTarget:self action:@selector(toolsTapped) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:tools];
 
+    // Unread-chat badge (issue #32) — pinned to the widget's top-right.
+    // Hidden until the poller sees a non-zero count; shows N or "99+".
+    UIColor* colAccent = [BPTheme color:@"accentChat"
+        fallback:[UIColor colorWithRed:0.20 green:0.38 blue:0.60 alpha:1]];
+    _unreadBadge = [[UILabel alloc] initWithFrame:CGRectMake(self.bounds.size.width - 18, -8, 22, 22)];
+    _unreadBadge.backgroundColor = colAccent;
+    _unreadBadge.textColor = [UIColor whiteColor];
+    _unreadBadge.textAlignment = NSTextAlignmentCenter;
+    _unreadBadge.font = [UIFont boldSystemFontOfSize:11];
+    _unreadBadge.layer.cornerRadius = 11;
+    _unreadBadge.layer.masksToBounds = YES;
+    _unreadBadge.layer.borderColor = [UIColor whiteColor].CGColor;
+    _unreadBadge.layer.borderWidth = 1.5;
+    _unreadBadge.hidden = YES;
+    _unreadBadge.userInteractionEnabled = NO;
+    [self addSubview:_unreadBadge];
+
     // Pan gesture for dragging
     UIPanGestureRecognizer* pan = [[UIPanGestureRecognizer alloc]
         initWithTarget:self action:@selector(handlePan:)];
@@ -128,6 +149,23 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
     BugpunchUnity_SendMessage("BugpunchToolsBridge", "OnShowTools", "");
 }
 
+- (void)applyUnreadCount:(NSInteger)count {
+    if (count <= 0) {
+        if (!self.unreadBadge.hidden) self.unreadBadge.hidden = YES;
+        return;
+    }
+    BOOL wasHidden = self.unreadBadge.hidden;
+    NSString* text = count >= 100 ? @"99+" : [NSString stringWithFormat:@"%ld", (long)count];
+    self.unreadBadge.text = text;
+    // Auto-widen for two/three-digit counts so "99+" doesn't clip.
+    CGFloat w = count >= 100 ? 30 : (count >= 10 ? 26 : 22);
+    self.unreadBadge.frame = CGRectMake(self.bounds.size.width - w + 4, -8, w, 22);
+    self.unreadBadge.hidden = NO;
+    if (wasHidden) {
+        NSLog(@"[Bugpunch.DebugWidget] unread badge shown: %ld", (long)count);
+    }
+}
+
 - (void)removeFromSuperview {
     [_recDot.layer removeAllAnimations];
     [super removeFromSuperview];
@@ -138,6 +176,9 @@ extern void BugpunchUnity_SendMessage(const char*, const char*, const char*);
 // ── Singleton access ──
 
 static BPDebugWidget* sWidget = nil;
+// Last unread count from the poller. Cached so a count that lands before
+// the widget is shown is re-applied at attach time. -1 = never set.
+static NSInteger sLastUnreadCount = -1;
 
 extern "C" {
 
@@ -165,6 +206,9 @@ void Bugpunch_ShowDebugWidget(void) {
         if (!window) return;
         sWidget = [[BPDebugWidget alloc] init];
         [window addSubview:sWidget];
+        // Re-apply any unread count that arrived before the widget existed
+        // (the poller may have ticked already on a slow startup).
+        if (sLastUnreadCount > 0) [sWidget applyUnreadCount:sLastUnreadCount];
     });
 }
 
@@ -177,6 +221,23 @@ void Bugpunch_HideDebugWidget(void) {
 
 bool Bugpunch_IsDebugWidgetShowing(void) {
     return sWidget != nil;
+}
+
+// Set the unread-chat badge count on the floating debug widget (issue #32).
+// Called from the iOS poller every other tick, and from the chat VC's
+// markRead path with 0 to clear the badge immediately.
+void Bugpunch_SetUnreadCount(int count) {
+    NSInteger safe = count < 0 ? 0 : (NSInteger)count;
+    sLastUnreadCount = safe;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (sWidget) [sWidget applyUnreadCount:safe];
+    });
+}
+
+// Read the last unread count (or 0 if the poller has not run). Used by the
+// chat VC to log whether it was opened with the badge visible.
+int Bugpunch_LastUnreadCount(void) {
+    return sLastUnreadCount > 0 ? (int)sLastUnreadCount : 0;
 }
 
 }

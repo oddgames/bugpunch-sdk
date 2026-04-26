@@ -71,7 +71,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     _cts = new CancellationTokenSource();
 
                     var uri = new Uri(_config.IdeTunnelUrl);
-                    Debug.Log($"[Bugpunch.IdeTunnel] Connecting to {uri}...");
+                    BugpunchLog.Info("IdeTunnel", $"Connecting to {uri}...");
 
                     await _ws.ConnectAsync(uri, _cts.Token);
 
@@ -102,7 +102,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 {
                     var inner = ex.InnerException;
                     var innerStr = inner != null ? $" — inner {inner.GetType().Name}: {inner.Message}" : "";
-                    Debug.LogWarning($"[Bugpunch.IdeTunnel] Connect/reconnect failed: {ex.GetType().Name}: {ex.Message}{innerStr}");
+                    BugpunchLog.Warn("IdeTunnel", $"Connect/reconnect failed: {ex.GetType().Name}: {ex.Message}{innerStr}");
                     _mainThreadQueue.Enqueue(() => OnError?.Invoke(ex.Message));
                 }
 
@@ -139,7 +139,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             while (_mainThreadQueue.TryDequeue(out var action))
             {
                 try { action(); }
-                catch (Exception ex) { Debug.LogError($"[Bugpunch.IdeTunnel] Queue error: {ex}"); }
+                catch (Exception ex) { BugpunchLog.Error("IdeTunnel", $"Queue error: {ex}"); }
             }
         }
 
@@ -217,7 +217,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.IdeTunnel] Send error: {ex.Message}");
+                BugpunchLog.Error("IdeTunnel", $"Send error: {ex.Message}");
             }
             finally
             {
@@ -268,7 +268,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 else if (json.Contains("\"type\":\"registered\"") || json.Contains("\"type\": \"registered\""))
                 {
-                    Debug.Log("[Bugpunch.IdeTunnel] Device registered with server");
+                    BugpunchLog.Info("IdeTunnel", "Device registered with server");
                     var cfg = ExtractRoleConfig(json);
                     if (!string.IsNullOrEmpty(cfg))
                         _mainThreadQueue.Enqueue(() => RoleState.ApplyFromJson(cfg));
@@ -277,7 +277,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.IdeTunnel] Message parse error: {ex.Message}\n{json}");
+                BugpunchLog.Error("IdeTunnel", $"Message parse error: {ex.Message}\n{json}");
             }
         }
 

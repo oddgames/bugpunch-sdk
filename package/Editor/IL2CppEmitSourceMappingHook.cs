@@ -44,7 +44,7 @@ namespace ODDGames.Bugpunch.Editor
                 {
                     var next = string.IsNullOrWhiteSpace(current) ? FLAG : (current.TrimEnd() + " " + FLAG);
                     PlayerSettings.SetAdditionalIl2CppArgs(next);
-                    Debug.Log("[Bugpunch.IL2CppEmitSourceMappingHook] Added --emit-source-mapping to IL2CPP args for this build (will restore after).");
+                    BugpunchLog.Info("IL2CppEmitSourceMappingHook", "Added --emit-source-mapping to IL2CPP args for this build (will restore after).");
                 }
             }
         }

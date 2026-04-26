@@ -22,9 +22,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Two entry points:
  * <ol>
- *   <li>{@link #onUploadResponse} - fires after a successful /api/crashes
+ *   <li>{@link #onUploadResponse} - fires after a successful /api/issues/ingest
  *       POST. Server response carries {@code eventId} + {@code matchedDirectives[]}.
- *       Action results are POSTed to {@code /api/crashes/events/{eventId}/enrich}.</li>
+ *       Action results are POSTed to {@code /api/issues/events/{eventId}/enrich}.</li>
  *   <li>{@link #onPollDirectives} - fires from the native poll loop when
  *       /api/device-poll returns {@code pendingDirectives[]}. No crash
  *       context. Action results are POSTed to
@@ -47,7 +47,7 @@ public class BugpunchDirectives {
     private static final Map<String, String> sPendingScripts = new ConcurrentHashMap<>();
 
     /**
-     * Called from {@link BugpunchUploader} after a successful /api/crashes
+     * Called from {@link BugpunchUploader} after a successful /api/issues/ingest
      * POST. Parses the server response and fans out the directive actions.
      */
     public static void onUploadResponse(JSONObject manifest, String responseBody) {
@@ -350,7 +350,7 @@ public class BugpunchDirectives {
     private static String enrichUrl(String eventId) {
         String serverUrl = BugpunchRuntime.getServerUrl();
         if (serverUrl == null || serverUrl.isEmpty() || eventId == null || eventId.isEmpty()) return null;
-        return serverUrl.replaceAll("/+$", "") + "/api/crashes/events/" + eventId + "/enrich";
+        return serverUrl.replaceAll("/+$", "") + "/api/issues/events/" + eventId + "/enrich";
     }
 
     private static String directiveResultUrl(String directiveId) {

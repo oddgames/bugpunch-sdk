@@ -87,7 +87,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             PlayerPrefs.SetString(PP_ROLE, roleStr);
             PlayerPrefs.Save();
             try { OnChanged?.Invoke(); }
-            catch (Exception e) { Debug.LogWarning($"[Bugpunch.RoleState] OnChanged handler failed: {e.Message}"); }
+            catch (Exception e) { BugpunchLog.Warn("RoleState", $"OnChanged handler failed: {e.Message}"); }
 #else
             // On device the native tunnel owns state. Ignore.
 #endif

@@ -62,7 +62,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
                 case 1: OnRecordBug(); break;
                 case 2: OnRequestFeature(); break;
                 default:
-                    Debug.LogWarning($"[Bugpunch.RequestHelp] Unknown picker choice: {choice}");
+                    BugpunchLog.Warn("RequestHelp", $"Unknown picker choice: {choice}");
                     break;
             }
         }
@@ -81,7 +81,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             var dialog = NativeDialogFactory.Create();
             if (dialog == null || !dialog.IsSupported)
             {
-                Debug.LogWarning("[Bugpunch.RequestHelp] No dialog surface available — falling back to UIToolkit chat board.");
+                BugpunchLog.Warn("RequestHelp", "No dialog surface available — falling back to UIToolkit chat board.");
                 BugpunchChatBoard.Show();
                 return;
             }
@@ -90,7 +90,18 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
 
         static void OnRequestFeature()
         {
-            BugpunchFeedbackBoard.Show();
+            // v2 routes "Request a feature" through the dialog factory so
+            // Android can land on the native BugpunchFeedbackActivity (HTTP,
+            // similarity, voting, comments all in Java). iOS / Editor /
+            // Standalone fall back to the C# UIToolkit feedback board.
+            var dialog = NativeDialogFactory.Create();
+            if (dialog == null || !dialog.IsSupported)
+            {
+                BugpunchLog.Warn("RequestHelp", "No dialog surface available — falling back to UIToolkit feedback board.");
+                BugpunchFeedbackBoard.Show();
+                return;
+            }
+            dialog.ShowFeedbackBoard();
         }
 
         // ─── UI Toolkit fallback (Editor + Standalone) ────────────────────

@@ -445,7 +445,7 @@ namespace ODDGames.Bugpunch
         static bool EnsureStarted()
         {
             if (BugpunchClient.Instance != null) return true;
-            Debug.LogWarning("[Bugpunch.Bugpunch] BugpunchClient not initialized. Call BugpunchClient.StartConnection() first.");
+            BugpunchLog.Warn("Bugpunch", "BugpunchClient not initialized. Call BugpunchClient.StartConnection() first.");
             return false;
         }
     }

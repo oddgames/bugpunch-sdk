@@ -217,7 +217,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             var config = Resources.Load<BugpunchConfig>("BugpunchConfig");
             if (config == null)
-                Debug.LogWarning("[Bugpunch.BugpunchConfig] No BugpunchConfig found in Resources/. Create one via Assets > Create > ODD Games > Bugpunch Config");
+                BugpunchLog.Warn("BugpunchConfig", "No BugpunchConfig found in Resources/. Create one via Assets > Create > ODD Games > Bugpunch Config");
             return config;
         }
 

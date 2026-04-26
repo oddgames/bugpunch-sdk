@@ -62,7 +62,7 @@ namespace ODDGames.Bugpunch.Editor
             if (Application.isBatchMode)
             {
                 try { FindAndUpload(config, outputPath, projectRoot, bundleId, version, buildCode, gitSha, interactive: false); }
-                catch (Exception ex) { Debug.LogError($"[Bugpunch.MappingUploader] Mapping upload failed: {ex.Message}"); }
+                catch (Exception ex) { BugpunchLog.Error("MappingUploader", $"Mapping upload failed: {ex.Message}"); }
                 return;
             }
 
@@ -70,7 +70,7 @@ namespace ODDGames.Bugpunch.Editor
             EditorApplication.delayCall += () =>
             {
                 try { FindAndUpload(config, outputPath, projectRoot, bundleId, version, buildCode, gitSha, interactive: true); }
-                catch (Exception ex) { Debug.LogError($"[Bugpunch.MappingUploader] Mapping upload failed: {ex.Message}"); }
+                catch (Exception ex) { BugpunchLog.Error("MappingUploader", $"Mapping upload failed: {ex.Message}"); }
                 finally { EditorUtility.ClearProgressBar(); }
             };
         }
@@ -121,12 +121,12 @@ namespace ODDGames.Bugpunch.Editor
                 var size = new FileInfo(mappingPath).Length;
                 if (size <= 0)
                 {
-                    Debug.LogWarning($"[Bugpunch.MappingUploader] mapping.txt at {mappingPath} is empty — skipping.");
+                    BugpunchLog.Warn("MappingUploader", $"mapping.txt at {mappingPath} is empty — skipping.");
                     return;
                 }
                 if (size > MaxMappingBytes)
                 {
-                    Debug.LogWarning($"[Bugpunch.MappingUploader] mapping.txt is {size / 1048576.0:F1} MB — exceeds server limit; skipping.");
+                    BugpunchLog.Warn("MappingUploader", $"mapping.txt is {size / 1048576.0:F1} MB — exceeds server limit; skipping.");
                     return;
                 }
 
@@ -219,16 +219,16 @@ namespace ODDGames.Bugpunch.Editor
 
                 if (req.result == UnityWebRequest.Result.Success)
                 {
-                    Debug.Log($"[Bugpunch.MappingUploader] mapping.txt uploaded for {bundleId} v{version} ({buildCode}).");
+                    BugpunchLog.Info("MappingUploader", $"mapping.txt uploaded for {bundleId} v{version} ({buildCode}).");
                 }
                 else
                 {
-                    Debug.LogWarning($"[Bugpunch.MappingUploader] mapping.txt upload failed: {req.error} — {req.downloadHandler?.text}");
+                    BugpunchLog.Warn("MappingUploader", $"mapping.txt upload failed: {req.error} — {req.downloadHandler?.text}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.MappingUploader] mapping.txt upload threw: {ex.Message}");
+                BugpunchLog.Warn("MappingUploader", $"mapping.txt upload threw: {ex.Message}");
             }
             finally
             {
@@ -266,7 +266,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.MappingUploader] Failed to stage mapping upload body: {ex.Message}");
+                BugpunchLog.Warn("MappingUploader", $"Failed to stage mapping upload body: {ex.Message}");
                 try { if (File.Exists(bodyPath)) File.Delete(bodyPath); } catch { }
                 return null;
             }

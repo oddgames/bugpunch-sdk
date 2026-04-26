@@ -81,7 +81,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
                 // Collection → rows
                 var elemType = list[0]?.GetType() ?? typeof(object);
                 var members = GetReadableMembers(elemType);
-                sb.Append("{\"name\":\"").Append(Esc(elemType.Name)).Append("\",\"columns\":[");
+                sb.Append("{\"name\":\"").Append(BugpunchJson.Esc(elemType.Name)).Append("\",\"columns\":[");
                 AppendColumns(sb, members);
                 sb.Append("],\"rows\":[");
 
@@ -121,7 +121,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
             {
                 // Single object → one-row table
                 var members = GetReadableMembers(objType);
-                sb.Append("{\"name\":\"").Append(Esc(objType.Name)).Append("\",\"columns\":[");
+                sb.Append("{\"name\":\"").Append(BugpunchJson.Esc(objType.Name)).Append("\",\"columns\":[");
                 AppendColumns(sb, members);
                 sb.Append("],\"rows\":[");
                 AppendRow(sb, deserialized, members);
@@ -163,8 +163,8 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
                 if (i > 0) sb.Append(",");
                 var m = members[i];
                 var t = m is FieldInfo fi ? fi.FieldType : ((PropertyInfo)m).PropertyType;
-                sb.Append("{\"name\":\"").Append(Esc(m.Name))
-                  .Append("\",\"type\":\"").Append(Esc(TypeName(t)))
+                sb.Append("{\"name\":\"").Append(BugpunchJson.Esc(m.Name))
+                  .Append("\",\"type\":\"").Append(BugpunchJson.Esc(TypeName(t)))
                   .Append("\",\"nullable\":true}");
             }
         }
@@ -179,7 +179,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
                 object val = null;
                 try { val = m is FieldInfo fi ? fi.GetValue(obj) : ((PropertyInfo)m).GetValue(obj); }
                 catch { }
-                sb.Append("\"").Append(Esc(m.Name)).Append("\":");
+                sb.Append("\"").Append(BugpunchJson.Esc(m.Name)).Append("\":");
                 AppendJsonValue(sb, val);
             }
             sb.Append("}");
@@ -197,7 +197,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
             { sb.Append(d.ToString(System.Globalization.CultureInfo.InvariantCulture)); return; }
             if (val is decimal dec)
             { sb.Append(dec.ToString(System.Globalization.CultureInfo.InvariantCulture)); return; }
-            sb.Append("\"").Append(Esc(val.ToString())).Append("\"");
+            sb.Append("\"").Append(BugpunchJson.Esc(val.ToString())).Append("\"");
         }
 
         static string TypeName(Type t)
@@ -212,10 +212,6 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
         }
 
         static string Error(string msg) =>
-            $"{{\"ok\":false,\"error\":\"{Esc(msg)}\"}}";
-
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"")
-              .Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
+            $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(msg)}\"}}";
     }
 }

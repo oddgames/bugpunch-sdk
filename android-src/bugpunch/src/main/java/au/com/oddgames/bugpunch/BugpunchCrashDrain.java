@@ -17,7 +17,7 @@ import java.util.List;
  *
  * <p>Picks up every {@code .crash} file the native signal handler / ANR
  * watchdog wrote on a previous launch, wraps the raw text as a
- * {@code /api/crashes} JSON payload, snapshots any attachments (screenshots,
+ * {@code /api/issues/ingest} JSON payload, snapshots any attachments (screenshots,
  * logs, breadcrumbs, ANR screenshot burst) into the uploader's cache dir,
  * enqueues through {@link BugpunchUploader} (so a failed POST resumes on the
  * next launch), and deletes the local file.
@@ -34,7 +34,7 @@ final class BugpunchCrashDrain {
 
     /**
      * Pick up every .crash file the native handler / ANR watchdog wrote on
-     * a previous launch, wrap the raw text as a /api/crashes JSON payload,
+     * a previous launch, wrap the raw text as a /api/issues/ingest JSON payload,
      * enqueue via the durable uploader (so a failed POST resumes on the
      * next launch), and delete the local file.
      */
@@ -50,8 +50,8 @@ final class BugpunchCrashDrain {
             return;
         }
         String base = serverUrl.replaceAll("/+$", "");
-        String preflightUrl = base + "/api/crashes";
-        String enrichTemplate = base + "/api/crashes/events/{id}/enrich";
+        String preflightUrl = base + "/api/issues/ingest";
+        String enrichTemplate = base + "/api/issues/events/{id}/enrich";
 
         for (String path : paths) {
             String raw = BugpunchCrashHandler.readCrashFile(path);
@@ -150,7 +150,7 @@ final class BugpunchCrashDrain {
                         "context_screenshot", snapCtx, "context_screenshot"));
                 }
                 // Logs mirror — raw logcat text (not JSON). Multipart field
-                // name `logs` matches /api/crashes/events/:id/enrich server-side
+                // name `logs` matches /api/issues/events/:id/enrich server-side
                 // expectation; middleware detects text vs JSON from the
                 // payload's first char.
                 if (snapLogs != null) {
@@ -226,17 +226,22 @@ final class BugpunchCrashDrain {
 
         // errorMessage is what the dashboard lists as the one-line summary.
         // category controls the Issues page tab (crash / exception / anr).
+        // type is the /api/issues/ingest discriminator — must be one of
+        // "crash", "exception", or "anr".
         if ("NATIVE_SIGNAL".equals(type)) {
             body.put("errorMessage",
                 (signal != null ? signal : "NATIVE") +
                 (faultAddr != null ? " at " + faultAddr : ""));
             body.put("category", "crash");
+            body.put("type", "crash");
         } else if ("ANR".equals(type)) {
             body.put("errorMessage", "ANR — main thread unresponsive");
             body.put("category", "anr");
+            body.put("type", "anr");
         } else {
             body.put("errorMessage", type != null ? type : "Native crash");
             body.put("category", "crash");
+            body.put("type", "crash");
         }
 
         // branch / changeset / buildFingerprint come from current runtime

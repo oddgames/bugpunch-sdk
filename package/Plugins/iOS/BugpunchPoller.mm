@@ -46,6 +46,15 @@ static NSInteger gPollIntervalSeconds = 30;
 static NSString* gScriptPermission = @"ask";
 static NSURLSession* gSession = nil;
 
+// Unread-chat tick counter (issue #32). Piggybacks on the existing poll
+// loop — every other tick we hit /api/v1/chat/unread to update the
+// floating-widget badge.
+static NSInteger gUnreadTickCounter = 0;
+
+// Bridges to the debug widget that owns the badge. Lives in
+// BugpunchDebugWidget.mm.
+extern "C" void Bugpunch_SetUnreadCount(int count);
+
 // -- Helpers ------------------------------------------------------------------
 
 static NSString* BPServerUrl(void) {
@@ -175,6 +184,57 @@ static void BPEnsureRegistered(void) {
         });
 }
 
+// -- Unread-chat poll (issue #32) --------------------------------------------
+//
+// Cheap GET /api/v1/chat/unread that the chat router added for the floating-
+// button badge. Uses SDK auth (Bearer + X-Device-Id), not the device-poll
+// token, so it talks to the same /api/v1/chat/* router the chat VC uses.
+// Failures are silent — the badge keeps its previous value until we get a
+// successful tick.
+
+static void BPPollUnreadChat(void) {
+    NSString* serverUrl = BPServerUrl();
+    NSString* apiKey = BPApiKey();
+    if (serverUrl.length == 0 || apiKey.length == 0) return;
+
+    NSString* deviceId = BPCString(Bugpunch_GetStableDeviceId());
+    if (deviceId.length == 0) return;
+
+    if (!gSession) {
+        NSURLSessionConfiguration* cfg = [NSURLSessionConfiguration defaultSessionConfiguration];
+        cfg.timeoutIntervalForRequest = 15.0;
+        cfg.timeoutIntervalForResource = 15.0;
+        gSession = [NSURLSession sessionWithConfiguration:cfg];
+    }
+
+    NSString* url = [serverUrl stringByAppendingString:@"/api/v1/chat/unread"];
+    NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
+    req.HTTPMethod = @"GET";
+    [req setValue:[@"Bearer " stringByAppendingString:apiKey] forHTTPHeaderField:@"Authorization"];
+    [req setValue:deviceId forHTTPHeaderField:@"X-Device-Id"];
+    [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    NSURLSessionDataTask* task = [gSession dataTaskWithRequest:req
+        completionHandler:^(NSData* data, NSURLResponse* resp, NSError* error) {
+            if (error || !data) { dispatch_semaphore_signal(sem); return; }
+            NSHTTPURLResponse* httpResp = (NSHTTPURLResponse*)resp;
+            if (httpResp.statusCode < 200 || httpResp.statusCode >= 300) {
+                dispatch_semaphore_signal(sem); return;
+            }
+            id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            if ([parsed isKindOfClass:[NSDictionary class]]) {
+                id n = parsed[@"count"];
+                if ([n isKindOfClass:[NSNumber class]]) {
+                    Bugpunch_SetUnreadCount([n intValue]);
+                }
+            }
+            dispatch_semaphore_signal(sem);
+        }];
+    [task resume];
+    dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+}
+
 // -- Poll ---------------------------------------------------------------------
 
 static void BPDoPoll(void) {
@@ -249,6 +309,14 @@ static void BPDoPoll(void) {
                 UnitySendMessage("BugpunchClient", "OnPollScripts", [sJson UTF8String]);
             }
         });
+
+    // 4) Unread-chat badge (issue #32). Piggybacks on the same tick so we
+    // don't add a second timer. Every other tick at the default 30s cadence
+    // keeps chat-server load steady while surfacing replies within ~60s.
+    gUnreadTickCounter++;
+    if ((gUnreadTickCounter & 1) == 0) {
+        BPPollUnreadChat();
+    }
 }
 
 // -- Entry points -------------------------------------------------------------

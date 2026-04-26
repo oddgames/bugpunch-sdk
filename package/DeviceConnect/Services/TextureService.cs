@@ -54,11 +54,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 sb.Append("{");
                 sb.Append($"\"id\":{tex.GetInstanceID()},");
-                sb.Append($"\"name\":\"{Esc(name)}\",");
+                sb.Append($"\"name\":\"{BugpunchJson.Esc(name)}\",");
                 sb.Append($"\"type\":\"{typeName}\",");
                 sb.Append($"\"width\":{w},");
                 sb.Append($"\"height\":{h},");
-                sb.Append($"\"format\":\"{Esc(format)}\",");
+                sb.Append($"\"format\":\"{BugpunchJson.Esc(format)}\",");
                 sb.Append($"\"memoryKB\":{memKB},");
                 sb.Append($"\"filterMode\":\"{tex.filterMode}\",");
                 sb.Append($"\"wrapMode\":\"{tex.wrapMode}\",");
@@ -197,11 +197,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var sb = new StringBuilder();
             sb.Append("{");
             sb.Append($"\"id\":{tex.GetInstanceID()},");
-            sb.Append($"\"name\":\"{Esc(name)}\",");
+            sb.Append($"\"name\":\"{BugpunchJson.Esc(name)}\",");
             sb.Append($"\"type\":\"{typeName}\",");
             sb.Append($"\"width\":{tex.width},");
             sb.Append($"\"height\":{tex.height},");
-            sb.Append($"\"format\":\"{Esc(format)}\",");
+            sb.Append($"\"format\":\"{BugpunchJson.Esc(format)}\",");
             sb.Append($"\"memoryKB\":{memKB},");
             sb.Append($"\"filterMode\":\"{tex.filterMode}\",");
             sb.Append($"\"wrapMode\":\"{tex.wrapMode}\",");
@@ -256,7 +256,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return tex is RenderTexture;
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

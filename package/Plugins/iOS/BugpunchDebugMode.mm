@@ -225,8 +225,10 @@ static NSArray* BPPrepareTraceAttachments(void) {
 static NSString* BPEndpointFor(NSString* type) {
     // exception/crash/anr go through the two-phase preflight path and never
     // hit this function. Only user-initiated bug reports and feedback do.
-    if ([type isEqualToString:@"feedback"]) return @"/api/reports/feedback";
-    return @"/api/reports/bug";
+    // Both post to the unified ingest endpoint; the `type` field in the
+    // metadata JSON acts as the discriminator (feedback_item / bug_report).
+    (void)type;
+    return @"/api/issues/ingest";
 }
 
 static NSString* BPJsonEscape(NSString* s) {
@@ -244,7 +246,12 @@ static NSString* BPBuildMetadataJson(NSString* type, NSString* title,
                                      NSString* reporterEmail, NSString* severity) {
     BPDebugMode* d = [BPDebugMode shared];
     NSMutableDictionary* m = [NSMutableDictionary dictionary];
-    m[@"type"] = type ?: @"bug";
+    // Normalise the type string to the discriminator values expected by the
+    // unified /api/issues/ingest endpoint.
+    NSString* ingestType = type ?: @"bug_report";
+    if ([ingestType isEqualToString:@"bug"])      ingestType = @"bug_report";
+    if ([ingestType isEqualToString:@"feedback"]) ingestType = @"feedback_item";
+    m[@"type"] = ingestType;
     if (title) m[@"title"] = title;
     if (description) m[@"description"] = description;
     if (reporterEmail.length) m[@"reporterEmail"] = reporterEmail;
@@ -435,8 +442,8 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
     NSArray<NSString*>* traceShots = traceAttach ? (NSArray*)traceAttach[1] : nil;
 
     // Exception / crash / ANR go through the two-phase preflight path. Phase
-    // 1 POSTs the lightweight metadata JSON to /api/crashes; server replies
-    // with eventId + collect[] naming which heavy attachments it wants.
+    // 1 POSTs the lightweight metadata JSON to /api/issues/ingest; server
+    // replies with eventId + collect[] naming which heavy attachments it wants.
     // Phase 2 multipart-POSTs those attachments to .../events/:id/enrich.
     // bug / feedback keep the existing single-phase multipart since they're
     // user-initiated and rare.
@@ -445,9 +452,9 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
         || [type isEqualToString:@"anr"];
 
     if (useTwoPhase) {
-        NSString* preflightUrl = [serverUrl stringByAppendingString:@"/api/crashes"];
+        NSString* preflightUrl = [serverUrl stringByAppendingString:@"/api/issues/ingest"];
         NSString* enrichTemplate = [serverUrl
-            stringByAppendingString:@"/api/crashes/events/{id}/enrich"];
+            stringByAppendingString:@"/api/issues/events/{id}/enrich"];
         NSMutableArray* attach = [NSMutableArray array];
         if (ctxShotPath) {
             [attach addObject:@{ @"field": @"context_screenshot",
@@ -638,9 +645,9 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         if (srv.length > 0 && key.length > 0) {
             NSString* base = [srv stringByTrimmingCharactersInSet:
                 [NSCharacterSet characterSetWithCharactersInString:@"/"]];
-            NSString* preflightUrl = [base stringByAppendingString:@"/api/crashes"];
+            NSString* preflightUrl = [base stringByAppendingString:@"/api/issues/ingest"];
             NSString* enrichTemplate = [base
-                stringByAppendingString:@"/api/crashes/events/{id}/enrich"];
+                stringByAppendingString:@"/api/issues/events/{id}/enrich"];
             extern const char* Bugpunch_GetPendingCrashFiles(void);
             extern const char* Bugpunch_ReadCrashFile(const char*);
             extern bool Bugpunch_DeleteCrashFile(const char*);
@@ -680,15 +687,19 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                         body[@"errorMessage"] = [NSString stringWithFormat:@"%@%@",
                             signal ?: @"NATIVE", faultAddr ? [@" at " stringByAppendingString:faultAddr] : @""];
                         body[@"category"] = @"crash";
+                        body[@"type"] = @"crash";
                     } else if ([type isEqualToString:@"MACH_EXCEPTION"]) {
                         body[@"errorMessage"] = @"Mach exception";
                         body[@"category"] = @"crash";
+                        body[@"type"] = @"crash";
                     } else if ([type isEqualToString:@"ANR"]) {
                         body[@"errorMessage"] = @"ANR — main thread unresponsive";
                         body[@"category"] = @"anr";
+                        body[@"type"] = @"anr";
                     } else {
                         body[@"errorMessage"] = type ?: @"iOS crash";
                         body[@"category"] = @"crash";
+                        body[@"type"] = @"crash";
                     }
                     // branch / changeset / buildFingerprint aren't written into
                     // the crash file — pull from current runtime metadata (they
@@ -977,7 +988,7 @@ void Bugpunch_SubmitReport(const char* title, const char* description,
     if (serverUrl.length == 0 || apiKey.length == 0) return;
     while ([serverUrl hasSuffix:@"/"])
         serverUrl = [serverUrl substringToIndex:serverUrl.length - 1];
-    NSString* url = [serverUrl stringByAppendingString:@"/api/reports/bug"];
+    NSString* url = [serverUrl stringByAppendingString:@"/api/issues/ingest"];
 
     NSString* nsTitle = title ? [NSString stringWithUTF8String:title] : nil;
     NSString* nsDesc = description ? [NSString stringWithUTF8String:description] : nil;

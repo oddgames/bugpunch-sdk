@@ -17,23 +17,49 @@ namespace ODDGames.Bugpunch.Editor
     [InitializeOnLoad]
     public static class BuildHooks
     {
+        // Once-per-Editor-session guard. The IDE tunnel comes up on every Play
+        // in the Editor (Application.isEditor → SpinUpIdeTunnel), which fires
+        // OnAnyConnected each time. Without this guard we'd hammer the TypeDB
+        // upload endpoint on every Play and eat a 403 ("Dashboard session
+        // required") because there's no JWT context — pure noise. We only
+        // need to refresh once per Editor process: the first time a connect
+        // happens, push fresh types in case a developer opens Remote IDE
+        // during this session. Subsequent Plays/connects do nothing here;
+        // builds still upload via the post-build hook below.
+        static bool s_typeDbUploadedThisSession;
+        static bool s_inspectorSchemaRefreshedThisSession;
+
         static BuildHooks()
         {
             // TypeDB upload triggers:
-            //   1. On client connect during play mode (OnAnyConnected below) — ensures the
-            //      server has fresh types as soon as the editor connects.
+            //   1. First IDE tunnel connect of the Editor session (OnAnyConnected
+            //      below, gated by s_typeDbUploadedThisSession) — ensures the
+            //      server has fresh types when a developer opens Remote IDE.
             //   2. After a successful Player build (BugpunchPostBuildHook).
             // We intentionally do NOT hook compilationFinished: it fires on every
             // editor recompile including ones cascading from a failed Player build,
-            // which would waste bandwidth on a DB the user can't use.
+            // which would waste bandwidth on a DB the user can't use. We also
+            // intentionally do NOT fire on every Play: the connect event fires
+            // on every Play in the Editor regardless of whether a Remote IDE is
+            // actually attached, so blasting the upload each time is wasteful.
             ODDGames.Bugpunch.DeviceConnect.BugpunchClient.OnAnyConnected += OnClientConnected;
         }
 
         static void OnClientConnected()
         {
             // The event may fire on a background thread — hop to the main thread.
-            EditorApplication.delayCall += TryUploadTypeDatabaseQuiet;
-            EditorApplication.delayCall += TryRefreshInspectorSchemaQuiet;
+            // Each branch is gated by its own once-per-session flag so repeat
+            // connects (every Play in the Editor) are no-ops.
+            if (!s_typeDbUploadedThisSession)
+            {
+                s_typeDbUploadedThisSession = true;
+                EditorApplication.delayCall += TryUploadTypeDatabaseQuiet;
+            }
+            if (!s_inspectorSchemaRefreshedThisSession)
+            {
+                s_inspectorSchemaRefreshedThisSession = true;
+                EditorApplication.delayCall += TryRefreshInspectorSchemaQuiet;
+            }
         }
 
         static void TryUploadTypeDatabaseQuiet()
@@ -44,7 +70,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.BuildHooks] TypeDB auto-upload failed: {ex.Message}");
+                BugpunchLog.Error("BuildHooks", $"TypeDB auto-upload failed: {ex.Message}");
             }
         }
 
@@ -60,7 +86,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.BuildHooks] Inspector schema async refresh failed: {ex.Message}");
+                BugpunchLog.Error("BuildHooks", $"Inspector schema async refresh failed: {ex.Message}");
             }
         }
 
@@ -75,7 +101,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.BuildHooks] TypeDB upload failed: {ex.Message}");
+                BugpunchLog.Error("BuildHooks", $"TypeDB upload failed: {ex.Message}");
             }
         }
     }
@@ -109,13 +135,13 @@ namespace ODDGames.Bugpunch.Editor
                 var ignorePath = "Assets/Bugpunch/.gitignore";
                 if (!File.Exists(ignorePath)) File.WriteAllText(ignorePath, "*\n!.gitignore\n");
                 AssetDatabase.ImportAsset(FingerprintAssetPath, ImportAssetOptions.ForceUpdate);
-                Debug.Log($"[Bugpunch.BuildHooks] Stamped build fingerprint {fingerprint}");
+                BugpunchLog.Info("BuildHooks", $"Stamped build fingerprint {fingerprint}");
             }
             catch (Exception ex)
             {
                 // Don't fail the build over this — fingerprint is a quality-of-life
                 // dedup signal, not a correctness requirement.
-                Debug.LogWarning($"[Bugpunch.BuildHooks] Failed to stamp build fingerprint: {ex.Message}");
+                BugpunchLog.Warn("BuildHooks", $"Failed to stamp build fingerprint: {ex.Message}");
             }
         }
 
@@ -149,8 +175,8 @@ namespace ODDGames.Bugpunch.Editor
         {
             var n = ++s_invocationCounter;
             var s = report.summary;
-            Debug.Log(
-                $"[Bugpunch.BuildHooks][diag] PostprocessBuild #{n} " +
+            BugpunchLog.Info("BuildHooks",
+                $"[diag] PostprocessBuild #{n} " +
                 $"result={s.result} platform={s.platform} " +
                 $"outputPath='{s.outputPath}' " +
                 $"totalErrors={s.totalErrors} totalWarnings={s.totalWarnings} " +
@@ -165,7 +191,7 @@ namespace ODDGames.Bugpunch.Editor
             if (report.summary.result == BuildResult.Failed ||
                 report.summary.result == BuildResult.Cancelled)
             {
-                Debug.Log($"[Bugpunch.BuildHooks] Build {report.summary.result} — skipping artifact + type DB upload");
+                BugpunchLog.Info("BuildHooks", $"Build {report.summary.result} — skipping artifact + type DB upload");
                 return;
             }
 
@@ -176,7 +202,7 @@ namespace ODDGames.Bugpunch.Editor
             // immediately (same pattern as the artifact upload below).
             if (Application.isBatchMode)
             {
-                Debug.Log("[Bugpunch.BuildHooks] Post-build: uploading type database...");
+                BugpunchLog.Info("BuildHooks", "Post-build: uploading type database...");
                 BuildHooks.UploadTypeDatabase();
             }
             else
@@ -186,14 +212,14 @@ namespace ODDGames.Bugpunch.Editor
 
             if (!config.buildUploadEnabled)
             {
-                Debug.Log("[Bugpunch.BuildHooks] buildUploadEnabled=false — skipping artifact upload.");
+                BugpunchLog.Info("BuildHooks", "buildUploadEnabled=false — skipping artifact upload.");
                 return;
             }
 
             var outputPath = report.summary.outputPath;
             if (!File.Exists(outputPath))
             {
-                Debug.LogWarning($"[Bugpunch.BuildHooks] Build output not found: {outputPath}");
+                BugpunchLog.Warn("BuildHooks", $"Build output not found: {outputPath}");
                 return;
             }
 
@@ -208,19 +234,19 @@ namespace ODDGames.Bugpunch.Editor
             // with console-log progress so CI captures transfer rate.
             if (Application.isBatchMode)
             {
-                Debug.Log($"[Bugpunch.BuildHooks] Post-build (batch): uploading artifact {fileName}...");
+                BugpunchLog.Info("BuildHooks", $"Post-build (batch): uploading artifact {fileName}...");
                 try
                 {
                     UploadArtifactSync(config, outputPath, fileName, platform, changeset, branch, buildFingerprint);
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[Bugpunch.BuildHooks] Artifact upload failed: {ex.Message}");
+                    BugpunchLog.Error("BuildHooks", $"Artifact upload failed: {ex.Message}");
                 }
                 return;
             }
 
-            Debug.Log($"[Bugpunch.BuildHooks] Post-build: queueing artifact upload {fileName}...");
+            BugpunchLog.Info("BuildHooks", $"Post-build: queueing artifact upload {fileName}...");
             try
             {
                 // Kick off on delayCall so the post-build hook returns
@@ -230,7 +256,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.BuildHooks] Artifact upload scheduling failed: {ex.Message}");
+                BugpunchLog.Error("BuildHooks", $"Artifact upload scheduling failed: {ex.Message}");
             }
         }
 
@@ -283,7 +309,7 @@ namespace ODDGames.Bugpunch.Editor
                     }
                     else if ((nowUtc - lastProgress).TotalSeconds > StallTimeoutSeconds)
                     {
-                        Debug.LogError($"[Bugpunch.BuildHooks] Artifact upload stalled for {StallTimeoutSeconds:F0}s — aborting.");
+                        BugpunchLog.Error("BuildHooks", $"Artifact upload stalled for {StallTimeoutSeconds:F0}s — aborting.");
                         req.Abort();
                         stalled = true;
                         break;
@@ -292,7 +318,7 @@ namespace ODDGames.Bugpunch.Editor
                     var dt = (nowUtc - lastLog).TotalSeconds;
                     if (dt < 1.0) continue;
                     var mbs = (uploaded - lastBytes) / 1048576.0 / dt;
-                    Debug.Log($"[Bugpunch.BuildHooks] Upload {uploaded / 1048576.0:F1} / {totalMb:F1} MB @ {mbs:F2} MB/s");
+                    BugpunchLog.Info("BuildHooks", $"Upload {uploaded / 1048576.0:F1} / {totalMb:F1} MB @ {mbs:F2} MB/s");
                     lastBytes = uploaded;
                     lastLog = nowUtc;
                 }
@@ -302,12 +328,12 @@ namespace ODDGames.Bugpunch.Editor
                 var elapsed = (DateTime.UtcNow - start).TotalSeconds;
                 if (req.result == UnityWebRequest.Result.Success)
                 {
-                    Debug.Log($"[Bugpunch.BuildHooks] Build artifact uploaded: {fileName} " +
+                    BugpunchLog.Info("BuildHooks", $"Build artifact uploaded: {fileName} " +
                               $"({totalMb:F1}MB in {elapsed:F1}s, avg {totalMb / Math.Max(0.01, elapsed):F2} MB/s)");
                 }
                 else
                 {
-                    Debug.LogError($"[Bugpunch.BuildHooks] Artifact upload failed: {req.error} — {req.downloadHandler?.text}");
+                    BugpunchLog.Error("BuildHooks", $"Artifact upload failed: {req.error} — {req.downloadHandler?.text}");
                 }
             }
             finally
@@ -358,7 +384,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.BuildHooks] Failed to stage artifact upload body: {ex.Message}");
+                BugpunchLog.Error("BuildHooks", $"Failed to stage artifact upload body: {ex.Message}");
                 TryDelete(bodyPath);
                 return null;
             }
@@ -386,13 +412,13 @@ namespace ODDGames.Bugpunch.Editor
         {
             if (s_activeReq != null)
             {
-                Debug.LogWarning("[Bugpunch.BuildHooks] Another artifact upload is already in progress — skipping.");
+                BugpunchLog.Warn("BuildHooks", "Another artifact upload is already in progress — skipping.");
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(config.serverUrl))
             {
-                Debug.LogWarning("[Bugpunch.BuildHooks] serverUrl is empty — skipping artifact upload.");
+                BugpunchLog.Warn("BuildHooks", "serverUrl is empty — skipping artifact upload.");
                 return;
             }
 
@@ -448,12 +474,12 @@ namespace ODDGames.Bugpunch.Editor
 
                 if (req.result == UnityWebRequest.Result.Success)
                 {
-                    Debug.Log($"[Bugpunch.BuildHooks] Build artifact uploaded: {s_activeFileName} " +
+                    BugpunchLog.Info("BuildHooks", $"Build artifact uploaded: {s_activeFileName} " +
                               $"({totalMb:F1}MB in {elapsed:F1}s, avg {avgMbs:F2} MB/s)");
                 }
                 else
                 {
-                    Debug.LogError($"[Bugpunch.BuildHooks] Artifact upload failed: {req.error} — {req.downloadHandler?.text}");
+                    BugpunchLog.Error("BuildHooks", $"Artifact upload failed: {req.error} — {req.downloadHandler?.text}");
                 }
 
                 req.Dispose();
@@ -474,7 +500,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             else if (now - s_lastProgressTime > StallTimeoutSeconds)
             {
-                Debug.LogError($"[Bugpunch.BuildHooks] Artifact upload stalled for {StallTimeoutSeconds:F0}s at " +
+                BugpunchLog.Error("BuildHooks", $"Artifact upload stalled for {StallTimeoutSeconds:F0}s at " +
                     $"{uploaded / 1048576.0:F1}/{s_activeTotalBytes / 1048576.0:F1} MB — aborting.");
                 AbortActiveUpload();
                 return;
@@ -498,7 +524,7 @@ namespace ODDGames.Bugpunch.Editor
 
             if (EditorUtility.DisplayCancelableProgressBar("Bugpunch: uploading build", msg, pct))
             {
-                Debug.LogWarning($"[Bugpunch.BuildHooks] Artifact upload cancelled by user: {s_activeFileName}");
+                BugpunchLog.Warn("BuildHooks", $"Artifact upload cancelled by user: {s_activeFileName}");
                 AbortActiveUpload();
                 return;
             }

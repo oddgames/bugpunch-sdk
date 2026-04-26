@@ -186,7 +186,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_streamer != null)
                 _streamer.SetCamera(_sceneCamera);
 
-            Debug.Log($"[Bugpunch.SceneCameraService] Scene camera started ({viewportWidth}x{viewportHeight})");
+            BugpunchLog.Info("SceneCameraService", $"Scene camera started ({viewportWidth}x{viewportHeight})");
             return $"{{\"ok\":true,\"width\":{viewportWidth},\"height\":{viewportHeight}}}";
         }
 
@@ -210,7 +210,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (_streamer != null)
                 _streamer.SetCamera(null);
 
-            Debug.Log("[Bugpunch.SceneCameraService] Scene camera stopped");
+            BugpunchLog.Info("SceneCameraService", "Scene camera stopped");
             return "{\"ok\":true}";
         }
 
@@ -545,7 +545,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 HookRenderCallbacks();
 
             _currentRenderMode = mode;
-            Debug.Log($"[Bugpunch.SceneCameraService] Scene camera render mode: {_currentRenderMode}");
+            BugpunchLog.Info("SceneCameraService", $"Scene camera render mode: {_currentRenderMode}");
             return $"{{\"ok\":true,\"mode\":\"{_currentRenderMode}\"}}";
         }
 

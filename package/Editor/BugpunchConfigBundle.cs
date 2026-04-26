@@ -74,14 +74,14 @@ namespace ODDGames.Bugpunch.Editor
                 if (!File.Exists(AndroidLibProjectProps))
                     File.WriteAllText(AndroidLibProjectProps, AndroidLibProjectPropsText, utf8);
                 File.WriteAllText(AndroidLibAssetPath, json, utf8);
-                Debug.Log($"[Bugpunch.BugpunchConfigBundle] Bundled config → {AndroidLibAssetPath}");
+                BugpunchLog.Info("BugpunchConfigBundle", $"Bundled config → {AndroidLibAssetPath}");
             }
             else if (target == BuildTarget.iOS)
             {
                 if (!Directory.Exists(IosStagingDir))
                     Directory.CreateDirectory(IosStagingDir);
                 File.WriteAllText(IosStagingFile, json, new UTF8Encoding(false));
-                Debug.Log($"[Bugpunch.BugpunchConfigBundle] Staged iOS config → {IosStagingFile}");
+                BugpunchLog.Info("BugpunchConfigBundle", $"Staged iOS config → {IosStagingFile}");
             }
         }
 
@@ -120,7 +120,7 @@ namespace ODDGames.Bugpunch.Editor
         {
             if (!File.Exists(IosStagingFile))
             {
-                Debug.LogWarning("[Bugpunch.BugpunchConfigBundle] iOS staging config missing — bundle skipped");
+                BugpunchLog.Warn("BugpunchConfigBundle", "iOS staging config missing — bundle skipped");
                 return;
             }
 
@@ -146,7 +146,7 @@ namespace ODDGames.Bugpunch.Editor
             catch { /* not all projects have a framework target */ }
 
             pbx.WriteToFile(pbxPath);
-            Debug.Log($"[Bugpunch.BugpunchConfigBundle] Bundled config → {dstPath} (added to Xcode main target)");
+            BugpunchLog.Info("BugpunchConfigBundle", $"Bundled config → {dstPath} (added to Xcode main target)");
         }
 #endif
 
@@ -234,29 +234,7 @@ namespace ODDGames.Bugpunch.Editor
 
         static void Field(StringBuilder sb, string k, string v)
         {
-            sb.Append('"').Append(Esc(k)).Append("\":\"").Append(Esc(v)).Append('"');
-        }
-
-        static string Esc(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            var sb = new StringBuilder(s.Length + 8);
-            foreach (var ch in s)
-            {
-                switch (ch)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"':  sb.Append("\\\""); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (ch < 0x20) sb.AppendFormat("\\u{0:X4}", (int)ch);
-                        else sb.Append(ch);
-                        break;
-                }
-            }
-            return sb.ToString();
+            sb.Append('"').Append(BugpunchJson.Esc(k)).Append("\":\"").Append(BugpunchJson.Esc(v)).Append('"');
         }
 
         static string HttpBase(string serverUrl)
@@ -292,7 +270,7 @@ namespace ODDGames.Bugpunch.Editor
         {
             if (string.IsNullOrEmpty(c.serverUrl) || string.IsNullOrEmpty(c.apiKey))
             {
-                Debug.LogWarning("[Bugpunch.BugpunchConfigBundle] pin-signing secret fetch skipped: serverUrl or apiKey missing");
+                BugpunchLog.Warn("BugpunchConfigBundle", "pin-signing secret fetch skipped: serverUrl or apiKey missing");
                 return "";
             }
 
@@ -308,7 +286,7 @@ namespace ODDGames.Bugpunch.Editor
 
             if (!req.isDone || req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning($"[Bugpunch.BugpunchConfigBundle] pin-signing secret fetch failed: {req.error ?? "timeout"}. " +
+                BugpunchLog.Warn("BugpunchConfigBundle", $"pin-signing secret fetch failed: {req.error ?? "timeout"}. " +
                                  "Pin configs will not be applied on device until the next build.");
                 return "";
             }
@@ -324,12 +302,12 @@ namespace ODDGames.Bugpunch.Editor
                 int end = body.IndexOf('"', i);
                 if (end < 0) return "";
                 var secret = body.Substring(i, end - i);
-                Debug.Log("[Bugpunch.BugpunchConfigBundle] pin-signing secret fetched and bundled.");
+                BugpunchLog.Info("BugpunchConfigBundle", "pin-signing secret fetched and bundled.");
                 return secret;
             }
             catch (System.Exception e)
             {
-                Debug.LogWarning($"[Bugpunch.BugpunchConfigBundle] pin-signing secret parse failed: {e.Message}");
+                BugpunchLog.Warn("BugpunchConfigBundle", $"pin-signing secret parse failed: {e.Message}");
                 return "";
             }
         }

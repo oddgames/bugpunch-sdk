@@ -57,17 +57,17 @@ namespace ODDGames.Bugpunch.Editor
             try { missing = QueryMissing(baseUrl, config.apiKey, files, cts, interactive); }
             catch (OperationCanceledException)
             {
-                Debug.LogWarning("[Bugpunch.SymbolUploader] Symbol check cancelled.");
+                BugpunchLog.Warn("SymbolUploader", "Symbol check cancelled.");
                 return;
             }
             if (missing == null) // user cancelled during poll
             {
-                Debug.LogWarning("[Bugpunch.SymbolUploader] Symbol check cancelled.");
+                BugpunchLog.Warn("SymbolUploader", "Symbol check cancelled.");
                 return;
             }
             if (missing.Count == 0)
             {
-                Debug.Log($"[Bugpunch.SymbolUploader] Symbol store already has all {files.Count} files. Nothing to upload.");
+                BugpunchLog.Info("SymbolUploader", $"Symbol store already has all {files.Count} files. Nothing to upload.");
                 return;
             }
 
@@ -92,11 +92,11 @@ namespace ODDGames.Bugpunch.Editor
             var (uploaded, failed, totalBytes) = UploadFilesParallel(
                 uploadBaseUrl, config.apiKey, toUpload, concurrency, interactive, cts);
 
-            var summary = $"[Bugpunch.SymbolUploader] Uploaded {uploaded}/{missing.Count} missing symbol files " +
+            var summary = $"Uploaded {uploaded}/{missing.Count} missing symbol files " +
                 $"({totalBytes / 1024 / 1024}MB). {files.Count - missing.Count} already on server.";
             if (failed > 0) summary += $" {failed} failed.";
             if (cts.IsCancellationRequested) summary += " Batch cancelled.";
-            Debug.Log(summary);
+            BugpunchLog.Info("SymbolUploader", summary);
 
             // Phase 2 — IL2CPP source-line enrichment.
             // The mapping is derived from the cpp source tree (ABI-independent),
@@ -316,7 +316,7 @@ namespace ODDGames.Bugpunch.Editor
         {
             if (!File.Exists(f.TempPath))
             {
-                Debug.LogError($"[Bugpunch.SymbolUploader] Symbol temp file missing before upload: {f.TempPath}");
+                BugpunchLog.Error("SymbolUploader", $"Symbol temp file missing before upload: {f.TempPath}");
                 return UploadResult.Failed;
             }
 
@@ -327,7 +327,7 @@ namespace ODDGames.Bugpunch.Editor
             try { sha256 = ComputeSha256Hex(f.TempPath); }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.SymbolUploader] SHA-256 failed for {f.Filename}: {ex.Message}");
+                BugpunchLog.Error("SymbolUploader", $"SHA-256 failed for {f.Filename}: {ex.Message}");
                 return UploadResult.Failed;
             }
             var totalBytes = new FileInfo(f.TempPath).Length;
@@ -342,7 +342,7 @@ namespace ODDGames.Bugpunch.Editor
                 if (!retryable || attempt == MaxUploadAttempts) return result;
 
                 var backoffMs = 1000 * (1 << (attempt - 1));
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] Direct upload attempt {attempt}/{MaxUploadAttempts} failed for {f.Filename}; " +
+                BugpunchLog.Warn("SymbolUploader", $"Direct upload attempt {attempt}/{MaxUploadAttempts} failed for {f.Filename}; " +
                                  $"retrying in {backoffMs}ms");
                 var waited = 0;
                 while (waited < backoffMs)
@@ -392,7 +392,7 @@ namespace ODDGames.Bugpunch.Editor
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[Bugpunch.SymbolUploader] /upload-direct/init failed for {f.Filename}: {ex.Message}");
+                    BugpunchLog.Error("SymbolUploader", $"/upload-direct/init failed for {f.Filename}: {ex.Message}");
                     return (UploadResult.Failed, true);
                 }
                 if (init == null) return (UploadResult.Cancelled, false);
@@ -445,7 +445,7 @@ namespace ODDGames.Bugpunch.Editor
                 if (cts.IsCancellationRequested) return (UploadResult.Cancelled, false);
                 if (etags.Count != init.Parts.Count)
                 {
-                    Debug.LogError($"[Bugpunch.SymbolUploader] {f.Filename}: {failedParts.Count} of {init.Parts.Count} parts failed to upload to S3.");
+                    BugpunchLog.Error("SymbolUploader", $"{f.Filename}: {failedParts.Count} of {init.Parts.Count} parts failed to upload to S3.");
                     return (UploadResult.Failed, true);
                 }
 
@@ -461,7 +461,7 @@ namespace ODDGames.Bugpunch.Editor
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[Bugpunch.SymbolUploader] /upload-direct/complete failed for {f.Filename}: {ex.Message}");
+                    BugpunchLog.Error("SymbolUploader", $"/upload-direct/complete failed for {f.Filename}: {ex.Message}");
                     return (UploadResult.Failed, true);
                 }
             }
@@ -470,7 +470,7 @@ namespace ODDGames.Bugpunch.Editor
                 // Defensive — anything unexpected (OOM staging part bytes,
                 // file gone mid-read, threadpool starvation throwing inside
                 // Task.WaitAll) lands here so the finally still runs.
-                Debug.LogError($"[Bugpunch.SymbolUploader] Direct upload threw for {f.Filename}: {ex.Message}");
+                BugpunchLog.Error("SymbolUploader", $"Direct upload threw for {f.Filename}: {ex.Message}");
                 return (UploadResult.Failed, true);
             }
             finally
@@ -667,7 +667,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] failed to read part bytes: {ex.Message}");
+                BugpunchLog.Warn("SymbolUploader", $"failed to read part bytes: {ex.Message}");
                 return null;
             }
 
@@ -701,12 +701,12 @@ namespace ODDGames.Bugpunch.Editor
             catch (OperationCanceledException)
             {
                 if (cts.IsCancellationRequested) return null;
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] S3 part timed out after {S3PartTimeoutSeconds:F0}s.");
+                BugpunchLog.Warn("SymbolUploader", $"S3 part timed out after {S3PartTimeoutSeconds:F0}s.");
                 return null;
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] S3 PUT threw: {ex.Message}");
+                BugpunchLog.Warn("SymbolUploader", $"S3 PUT threw: {ex.Message}");
                 return null;
             }
         }
@@ -759,7 +759,7 @@ namespace ODDGames.Bugpunch.Editor
             catch (OperationCanceledException) { return false; }
 
             if (resp.IsSuccessStatusCode) return true;
-            Debug.LogError($"[Bugpunch.SymbolUploader] /complete HTTP {(int)resp.StatusCode} — {text}");
+            BugpunchLog.Error("SymbolUploader", $"/complete HTTP {(int)resp.StatusCode} — {text}");
             return false;
         }
 
@@ -784,7 +784,7 @@ namespace ODDGames.Bugpunch.Editor
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.SymbolUploader] /abort failed (non-fatal): {ex.Message}");
+                BugpunchLog.Warn("SymbolUploader", $"/abort failed (non-fatal): {ex.Message}");
             }
         }
 

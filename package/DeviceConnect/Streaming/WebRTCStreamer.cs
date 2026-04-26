@@ -83,11 +83,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public void SetIceServers(RTCIceServer[] servers)
         {
             _iceServers = servers;
-            Debug.Log($"[Bugpunch.WebRTCStreamer] SetIceServers: configured {servers?.Length ?? 0} ICE server(s)");
+            BugpunchLog.Info("WebRTCStreamer", $"SetIceServers: configured {servers?.Length ?? 0} ICE server(s)");
             if (servers != null)
             {
                 foreach (var s in servers)
-                    Debug.Log($"[Bugpunch.WebRTCStreamer]   ICE: {s.urls}");
+                    BugpunchLog.Info("WebRTCStreamer", $"  ICE: {s.urls}");
             }
         }
 
@@ -98,11 +98,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// </summary>
         public void SetIceServersFromJson(string json)
         {
-            Debug.Log($"[Bugpunch.WebRTCStreamer] SetIceServersFromJson: received {json?.Length ?? 0} chars");
+            BugpunchLog.Info("WebRTCStreamer", $"SetIceServersFromJson: received {json?.Length ?? 0} chars");
             var response = JsonUtility.FromJson<IceServersResponse>(json);
             if (response.iceServers == null || response.iceServers.Length == 0)
             {
-                Debug.Log("[Bugpunch.WebRTCStreamer] SetIceServersFromJson: no ICE servers, using default STUN");
+                BugpunchLog.Info("WebRTCStreamer", "SetIceServersFromJson: no ICE servers, using default STUN");
                 return;
             }
 
@@ -148,7 +148,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _reqMaxEdge = Mathf.Clamp(Mathf.Max(width, height), 160, 3840);
             _fps = Mathf.Clamp(fps, 1, 60);
             RecomputeDimensions();
-            Debug.Log($"[Bugpunch.WebRTCStreamer] WebRTC: quality set to budget={_reqMaxEdge}px @ {_fps}fps → {_width}x{_height}");
+            BugpunchLog.Info("WebRTCStreamer", $"WebRTC: quality set to budget={_reqMaxEdge}px @ {_fps}fps → {_width}x{_height}");
 
             if (_streaming)
                 ResizeRenderTarget();
@@ -214,7 +214,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public void SetCamera(Camera cam)
         {
             _targetCamera = cam;
-            Debug.Log($"[Bugpunch.WebRTCStreamer] WebRTC: SetCamera → {(cam != null ? cam.name : "null (game view)")} streaming={_streaming}");
+            BugpunchLog.Info("WebRTCStreamer", $"WebRTC: SetCamera → {(cam != null ? cam.name : "null (game view)")} streaming={_streaming}");
             if (cam == null && (_overrideAspectW != 0 || _overrideAspectH != 0))
             {
                 _overrideAspectW = 0;
@@ -254,7 +254,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             lock (_pendingIceCandidates)
             {
                 if (_pendingIceCandidates.Count == 0) return "[]";
-                Debug.Log($"[Bugpunch.WebRTCStreamer] DrainIceCandidates: returning {_pendingIceCandidates.Count} candidates");
+                BugpunchLog.Info("WebRTCStreamer", $"DrainIceCandidates: returning {_pendingIceCandidates.Count} candidates");
                 var sb = new System.Text.StringBuilder();
                 sb.Append("[");
                 for (int i = 0; i < _pendingIceCandidates.Count; i++)
@@ -286,38 +286,38 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             if (_streaming)
             {
-                Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: was streaming, stopping first");
+                BugpunchLog.Info("WebRTCStreamer", "HandleOffer: was streaming, stopping first");
                 StopStreaming();
             }
 
-            Debug.Log($"[Bugpunch.WebRTCStreamer] HandleOffer: received offer sdpLen={sdpJson?.Length ?? 0}");
+            BugpunchLog.Info("WebRTCStreamer", $"HandleOffer: received offer sdpLen={sdpJson?.Length ?? 0}");
             float deadline = Time.realtimeSinceStartup + 30f;
 
             SdpMessage offerData;
             try
             {
-                Debug.Log($"[Bugpunch.WebRTCStreamer] HandleOffer: parsing SDP, first 80 chars: {sdpJson?.Substring(0, Math.Min(80, sdpJson?.Length ?? 0))}");
+                BugpunchLog.Info("WebRTCStreamer", $"HandleOffer: parsing SDP, first 80 chars: {sdpJson?.Substring(0, Math.Min(80, sdpJson?.Length ?? 0))}");
                 offerData = JsonUtility.FromJson<SdpMessage>(sdpJson);
                 if (string.IsNullOrEmpty(offerData.sdp))
                 {
-                    Debug.LogError("[Bugpunch.WebRTCStreamer] HandleOffer: empty SDP, rejecting");
+                    BugpunchLog.Error("WebRTCStreamer", "HandleOffer: empty SDP, rejecting");
                     onError?.Invoke("Empty SDP in offer");
                     yield break;
                 }
-                Debug.Log($"[Bugpunch.WebRTCStreamer] HandleOffer: parsed SDP, sdpLen={offerData.sdp.Length}");
+                BugpunchLog.Info("WebRTCStreamer", $"HandleOffer: parsed SDP, sdpLen={offerData.sdp.Length}");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Bugpunch.WebRTCStreamer] HandleOffer: parse failed: {ex.Message}");
+                BugpunchLog.Error("WebRTCStreamer", $"HandleOffer: parse failed: {ex.Message}");
                 onError?.Invoke($"Failed to parse offer: {ex.Message}");
                 yield break;
             }
 
-            Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: cleaning up old peer connection");
+            BugpunchLog.Info("WebRTCStreamer", "HandleOffer: cleaning up old peer connection");
             CleanupPeerConnection();
 
             // Create peer connection — use custom ICE servers if set, otherwise fallback to STUN
-            Debug.Log($"[Bugpunch.WebRTCStreamer] HandleOffer: creating RTCPeerConnection with {_iceServers?.Length ?? 0} ICE servers");
+            BugpunchLog.Info("WebRTCStreamer", $"HandleOffer: creating RTCPeerConnection with {_iceServers?.Length ?? 0} ICE servers");
             var config = new RTCConfiguration
             {
                 iceServers = _iceServers ?? new[]
@@ -328,10 +328,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             _pc = new RTCPeerConnection(ref config);
             var thisPC = _pc;
-            Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: RTCPeerConnection created");
+            BugpunchLog.Info("WebRTCStreamer", "HandleOffer: RTCPeerConnection created");
 
             // Create data channel for per-frame camera metadata
-            Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: creating data channel 'camera-metadata'");
+            BugpunchLog.Info("WebRTCStreamer", "HandleOffer: creating data channel 'camera-metadata'");
             _metadataChannel = _pc.CreateDataChannel("camera-metadata", new RTCDataChannelInit());
 
             // ICE candidate handler — queue candidates for browser to poll
@@ -347,12 +347,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         sdpMLineIndex = candidate.SdpMLineIndex ?? 0
                     });
                 }
-                Debug.Log($"[Bugpunch.WebRTCStreamer] HandleOffer: ICE candidate queued, sdpMid={candidate.SdpMid} lineIdx={candidate.SdpMLineIndex}");
+                BugpunchLog.Info("WebRTCStreamer", $"HandleOffer: ICE candidate queued, sdpMid={candidate.SdpMid} lineIdx={candidate.SdpMLineIndex}");
             };
 
             _pc.OnConnectionStateChange = state =>
             {
-                Debug.Log($"[Bugpunch.WebRTCStreamer] HandleOffer: connection state changed to {state}");
+                BugpunchLog.Info("WebRTCStreamer", $"HandleOffer: connection state changed to {state}");
                 // `Disconnected` is transient per the WebRTC spec — ICE keepalives
                 // can recover without intervention (and often do after a camera
                 // swap or brief main-thread hang). Don't tear the session down
@@ -386,7 +386,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             SetVideoMaxBitrate(2_500_000, 30);
 
             // Set remote description (the offer)
-            Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: setting remote description (offer)...");
+            BugpunchLog.Info("WebRTCStreamer", "HandleOffer: setting remote description (offer)...");
             var offerDesc = new RTCSessionDescription
             {
                 type = RTCSdpType.Offer,
@@ -395,62 +395,62 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var setRemoteOp = _pc.SetRemoteDescription(ref offerDesc);
             yield return setRemoteOp;
 
-            if (Time.realtimeSinceStartup > deadline) { Debug.LogError("[Bugpunch.WebRTCStreamer] HandleOffer: SetRemoteDescription timed out"); onError?.Invoke("Offer handling timed out"); yield break; }
+            if (Time.realtimeSinceStartup > deadline) { BugpunchLog.Error("WebRTCStreamer", "HandleOffer: SetRemoteDescription timed out"); onError?.Invoke("Offer handling timed out"); yield break; }
             if (setRemoteOp.IsError)
             {
-                Debug.LogError($"[Bugpunch.WebRTCStreamer] HandleOffer: SetRemoteDescription failed: {setRemoteOp.Error.message}");
+                BugpunchLog.Error("WebRTCStreamer", $"HandleOffer: SetRemoteDescription failed: {setRemoteOp.Error.message}");
                 onError?.Invoke(setRemoteOp.Error.message);
                 yield break;
             }
-            if (_pc != thisPC) { Debug.LogError("[Bugpunch.WebRTCStreamer] HandleOffer: peer connection replaced during SetRemoteDescription"); onError?.Invoke("Replaced by new offer"); yield break; }
-            Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: remote description set, creating answer...");
+            if (_pc != thisPC) { BugpunchLog.Error("WebRTCStreamer", "HandleOffer: peer connection replaced during SetRemoteDescription"); onError?.Invoke("Replaced by new offer"); yield break; }
+            BugpunchLog.Info("WebRTCStreamer", "HandleOffer: remote description set, creating answer...");
 
             // Create answer
             var answerOp = _pc.CreateAnswer();
             yield return answerOp;
 
-            if (Time.realtimeSinceStartup > deadline) { Debug.LogError("[Bugpunch.WebRTCStreamer] HandleOffer: CreateAnswer timed out"); onError?.Invoke("Offer handling timed out"); yield break; }
+            if (Time.realtimeSinceStartup > deadline) { BugpunchLog.Error("WebRTCStreamer", "HandleOffer: CreateAnswer timed out"); onError?.Invoke("Offer handling timed out"); yield break; }
             if (answerOp.IsError)
             {
-                Debug.LogError($"[Bugpunch.WebRTCStreamer] HandleOffer: CreateAnswer failed: {answerOp.Error.message}");
+                BugpunchLog.Error("WebRTCStreamer", $"HandleOffer: CreateAnswer failed: {answerOp.Error.message}");
                 onError?.Invoke(answerOp.Error.message);
                 yield break;
             }
-            if (_pc != thisPC) { Debug.LogError("[Bugpunch.WebRTCStreamer] HandleOffer: peer connection replaced during CreateAnswer"); onError?.Invoke("Replaced by new offer"); yield break; }
-            Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: answer created, setting local description...");
+            if (_pc != thisPC) { BugpunchLog.Error("WebRTCStreamer", "HandleOffer: peer connection replaced during CreateAnswer"); onError?.Invoke("Replaced by new offer"); yield break; }
+            BugpunchLog.Info("WebRTCStreamer", "HandleOffer: answer created, setting local description...");
 
             var answer = answerOp.Desc;
             var setLocalOp = _pc.SetLocalDescription(ref answer);
             yield return setLocalOp;
 
-            if (Time.realtimeSinceStartup > deadline) { Debug.LogError("[Bugpunch.WebRTCStreamer] HandleOffer: SetLocalDescription timed out"); onError?.Invoke("Offer handling timed out"); yield break; }
+            if (Time.realtimeSinceStartup > deadline) { BugpunchLog.Error("WebRTCStreamer", "HandleOffer: SetLocalDescription timed out"); onError?.Invoke("Offer handling timed out"); yield break; }
             if (setLocalOp.IsError)
             {
-                Debug.LogError($"[Bugpunch.WebRTCStreamer] HandleOffer: SetLocalDescription failed: {setLocalOp.Error.message}");
+                BugpunchLog.Error("WebRTCStreamer", $"HandleOffer: SetLocalDescription failed: {setLocalOp.Error.message}");
                 onError?.Invoke(setLocalOp.Error.message);
                 yield break;
             }
-            if (_pc != thisPC) { Debug.LogError("[Bugpunch.WebRTCStreamer] HandleOffer: peer connection replaced during SetLocalDescription"); onError?.Invoke("Replaced by new offer"); yield break; }
+            if (_pc != thisPC) { BugpunchLog.Error("WebRTCStreamer", "HandleOffer: peer connection replaced during SetLocalDescription"); onError?.Invoke("Replaced by new offer"); yield break; }
 
             // Return answer to caller
-            Debug.Log($"[Bugpunch.WebRTCStreamer] HandleOffer: local desc set, sending answer sdpLen={answer.sdp.Length}");
+            BugpunchLog.Info("WebRTCStreamer", $"HandleOffer: local desc set, sending answer sdpLen={answer.sdp.Length}");
             var answerJson = JsonUtility.ToJson(new SdpMessage { sdp = answer.sdp, type = "answer" });
             onAnswer?.Invoke(answerJson);
 
             _streaming = true;
             StartCoroutine(RenderLoop());
 
-            Debug.Log("[Bugpunch.WebRTCStreamer] HandleOffer: streaming started successfully");
+            BugpunchLog.Info("WebRTCStreamer", "HandleOffer: streaming started successfully");
         }
 
         void HandleIceCandidate(string iceJson)
         {
-            Debug.Log($"[Bugpunch.WebRTCStreamer] HandleIceCandidate: received {iceJson?.Length ?? 0} chars");
-            if (_pc == null) { Debug.LogWarning("[Bugpunch.WebRTCStreamer] HandleIceCandidate: _pc is null, ignoring"); return; }
+            BugpunchLog.Info("WebRTCStreamer", $"HandleIceCandidate: received {iceJson?.Length ?? 0} chars");
+            if (_pc == null) { BugpunchLog.Warn("WebRTCStreamer", "HandleIceCandidate: _pc is null, ignoring"); return; }
 
             var ice = JsonUtility.FromJson<IceMessage>(iceJson);
             var candPreview = ice.candidate != null ? ice.candidate.Substring(0, Math.Min(50, ice.candidate.Length)) : "null";
-            Debug.Log($"[Bugpunch.WebRTCStreamer] HandleIceCandidate: candidate={candPreview} sdpMid={ice.sdpMid} lineIdx={ice.sdpMLineIndex}");
+            BugpunchLog.Info("WebRTCStreamer", $"HandleIceCandidate: candidate={candPreview} sdpMid={ice.sdpMid} lineIdx={ice.sdpMLineIndex}");
             var candidate = new RTCIceCandidate(new RTCIceCandidateInit
             {
                 candidate = ice.candidate,
@@ -485,7 +485,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var newRt = new RenderTexture(_width, _height, 24, format);
             if (!newRt.Create())
             {
-                Debug.LogWarning("[Bugpunch.WebRTCStreamer] ResizeRenderTarget: RT.Create() failed");
+                BugpunchLog.Warn("WebRTCStreamer", "ResizeRenderTarget: RT.Create() failed");
                 Destroy(newRt);
                 return;
             }
@@ -494,7 +494,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             try { newTrack = new VideoStreamTrack(newRt); }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.WebRTCStreamer] ResizeRenderTarget: new VideoStreamTrack failed: {ex.Message}");
+                BugpunchLog.Warn("WebRTCStreamer", $"ResizeRenderTarget: new VideoStreamTrack failed: {ex.Message}");
                 newRt.Release(); Destroy(newRt);
                 return;
             }
@@ -512,7 +512,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             if (!replaced)
             {
-                Debug.LogWarning("[Bugpunch.WebRTCStreamer] ResizeRenderTarget: ReplaceTrack failed — keeping old RT");
+                BugpunchLog.Warn("WebRTCStreamer", "ResizeRenderTarget: ReplaceTrack failed — keeping old RT");
                 newTrack.Dispose();
                 newRt.Release(); Destroy(newRt);
                 return;
@@ -536,7 +536,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // track swap.
             SetVideoMaxBitrate(2_500_000, (uint)_fps);
 
-            Debug.Log($"[Bugpunch.WebRTCStreamer] ResizeRenderTarget: hot-swapped to {_width}x{_height}");
+            BugpunchLog.Info("WebRTCStreamer", $"ResizeRenderTarget: hot-swapped to {_width}x{_height}");
         }
 
         /// <summary>
@@ -699,7 +699,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 _smoothedFps = 0f;
             }
             lock (_pendingIceCandidates) { _pendingIceCandidates.Clear(); }
-            Debug.Log("[Bugpunch.WebRTCStreamer] WebRTC: streaming stopped");
+            BugpunchLog.Info("WebRTCStreamer", "WebRTC: streaming stopped");
         }
 
         void CleanupPeerConnection()
@@ -754,9 +754,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
                 var err = sender.SetParameters(parameters);
                 if (err.errorType != RTCErrorType.None)
-                    Debug.LogWarning($"[Bugpunch.WebRTCStreamer] WebRTC: SetParameters failed: {err.message}");
+                    BugpunchLog.Warn("WebRTCStreamer", $"WebRTC: SetParameters failed: {err.message}");
                 else
-                    Debug.Log($"[Bugpunch.WebRTCStreamer] WebRTC: video cap → {bps / 1000} kbps, {maxFps} fps");
+                    BugpunchLog.Info("WebRTCStreamer", $"WebRTC: video cap → {bps / 1000} kbps, {maxFps} fps");
             }
         }
 

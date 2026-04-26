@@ -40,11 +40,11 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
                             if (plugin.IsAvailable())
                             {
                                 _plugins[plugin.ProviderId] = plugin;
-                                Debug.Log($"[Bugpunch.DatabasePluginRegistry] Database plugin registered: {plugin.DisplayName} ({plugin.ProviderId})");
+                                BugpunchLog.Info("DatabasePluginRegistry", $"Database plugin registered: {plugin.DisplayName} ({plugin.ProviderId})");
                             }
                             else
                             {
-                                Debug.Log($"[Bugpunch.DatabasePluginRegistry] Database plugin skipped (library not found): {plugin.DisplayName}");
+                                BugpunchLog.Info("DatabasePluginRegistry", $"Database plugin skipped (library not found): {plugin.DisplayName}");
                             }
                         }
                         catch (Exception ex)
@@ -70,13 +70,13 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
             {
                 if (!first) sb.Append(",");
                 first = false;
-                sb.Append("{\"id\":\"").Append(Esc(p.ProviderId));
-                sb.Append("\",\"displayName\":\"").Append(Esc(p.DisplayName));
+                sb.Append("{\"id\":\"").Append(BugpunchJson.Esc(p.ProviderId));
+                sb.Append("\",\"displayName\":\"").Append(BugpunchJson.Esc(p.DisplayName));
                 sb.Append("\",\"extensions\":[");
                 for (int i = 0; i < p.Extensions.Length; i++)
                 {
                     if (i > 0) sb.Append(",");
-                    sb.Append("\"").Append(Esc(p.Extensions[i])).Append("\"");
+                    sb.Append("\"").Append(BugpunchJson.Esc(p.Extensions[i])).Append("\"");
                 }
                 sb.Append("],\"available\":true}");
             }
@@ -105,10 +105,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
         }
 
         static string Error(string msg) =>
-            $"{{\"ok\":false,\"error\":\"{Esc(msg)}\"}}";
+            $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(msg)}\"}}";
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"")
-              .Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
     }
 }

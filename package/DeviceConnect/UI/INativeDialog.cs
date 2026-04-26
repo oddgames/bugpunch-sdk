@@ -90,6 +90,16 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         /// </summary>
         void ShowChatBoard();
 
+        /// <summary>
+        /// Surface the feedback board (list / detail / submit views with
+        /// voting + similarity check). On Android this launches the native
+        /// <c>BugpunchFeedbackActivity</c> (HTTP, polling, similarity, image
+        /// attachments and vote toggle all in Java — C# is no longer on the
+        /// path). iOS / Editor / Standalone fall back to
+        /// <see cref="UI.BugpunchFeedbackBoard.Show"/>.
+        /// </summary>
+        void ShowFeedbackBoard();
+
         bool IsSupported { get; }
     }
 }

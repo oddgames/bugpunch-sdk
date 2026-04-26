@@ -232,7 +232,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.ChatBoard] Read picked file failed: {ex.Message}");
+                BugpunchLog.Warn("ChatBoard", $"Read picked file failed: {ex.Message}");
                 return;
             }
 
@@ -293,7 +293,7 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.ChatBoard] upload parse failed: {ex.Message}");
+                BugpunchLog.Warn("ChatBoard", $"upload parse failed: {ex.Message}");
             }
         }
 

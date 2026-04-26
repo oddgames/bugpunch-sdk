@@ -88,7 +88,7 @@ namespace ODDGames.Bugpunch.Editor
                             {
                                 WriteSchemaAsset(json);
                                 EditorPrefs.SetString(HashPrefKey, hash);
-                                Debug.Log($"[Bugpunch.InspectorSchemaExporter] Inspector schema refreshed ({count} user types)");
+                                BugpunchLog.Info("InspectorSchemaExporter", $"Inspector schema refreshed ({count} user types)");
                             }
                             tcs.TrySetResult(true);
                         }
@@ -100,7 +100,7 @@ namespace ODDGames.Bugpunch.Editor
                     // Back to main thread for logging.
                     EditorApplication.delayCall += () =>
                     {
-                        Debug.LogWarning($"[Bugpunch.InspectorSchemaExporter] Inspector schema async export failed: {ex.Message}");
+                        BugpunchLog.Warn("InspectorSchemaExporter", $"Inspector schema async export failed: {ex.Message}");
                         tcs.TrySetException(ex);
                     };
                 }
@@ -239,11 +239,11 @@ namespace ODDGames.Bugpunch.Editor
             try
             {
                 var count = InspectorSchemaExporter.ExportIfEnabled();
-                if (count > 0) Debug.Log($"[Bugpunch.InspectorSchemaExporter] Inspector schema refreshed ({count} user types)");
+                if (count > 0) BugpunchLog.Info("InspectorSchemaExporter", $"Inspector schema refreshed ({count} user types)");
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[Bugpunch.InspectorSchemaExporter] Inspector schema export failed: {ex.Message}");
+                BugpunchLog.Warn("InspectorSchemaExporter", $"Inspector schema export failed: {ex.Message}");
             }
         }
     }
