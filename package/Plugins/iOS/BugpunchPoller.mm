@@ -10,11 +10,13 @@
 //       * scripts            -> UnitySendMessage("BugpunchClient", "OnPollScripts", scriptsJson)
 //
 // Config (serverUrl, apiKey, deviceId, platform, appVersion, installerMode)
-// is read from [BPDebugMode shared].config / .metadata which are populated
-// when Bugpunch_StartDebugMode runs.
+// is read from [BPRuntime shared].config / .metadata which are populated
+// when Bugpunch_StartDebugMode runs. The cross-lane rule is: BugpunchPoller
+// only depends on BugpunchRuntime, never on BugpunchDebugMode.
 // =============================================================================
 
 #import <Foundation/Foundation.h>
+#import "BugpunchRuntime.h"
 
 // Bridge into the directive dispatcher (poll path).
 extern "C" void BPDirectives_OnPollDirectives(const char* jsonC);
@@ -26,13 +28,6 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
 
 // UnitySendMessage lives in libiPhone-lib.a.
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg);
-
-// Shared config/metadata, lives in BugpunchDebugMode.mm.
-@interface BPDebugMode : NSObject
-@property (nonatomic, strong) NSDictionary* config;
-@property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* metadata;
-+ (instancetype)shared;
-@end
 
 static NSString* const kBPTokenKey = @"bugpunch.poll.device_token";
 
@@ -74,19 +69,19 @@ extern "C" void Bugpunch_TopBanner_HideChat(void);
 // -- Helpers ------------------------------------------------------------------
 
 static NSString* BPServerUrl(void) {
-    NSString* s = [BPDebugMode shared].config[@"serverUrl"];
+    NSString* s = [BPRuntime shared].config[@"serverUrl"];
     if (![s isKindOfClass:[NSString class]]) return @"";
     while ([s hasSuffix:@"/"]) s = [s substringToIndex:s.length - 1];
     return s;
 }
 
 static NSString* BPApiKey(void) {
-    NSString* s = [BPDebugMode shared].config[@"apiKey"];
+    NSString* s = [BPRuntime shared].config[@"apiKey"];
     return [s isKindOfClass:[NSString class]] ? s : @"";
 }
 
 static NSString* BPMeta(NSString* key) {
-    NSString* v = [BPDebugMode shared].metadata[key];
+    NSString* v = [BPRuntime shared].metadata[key];
     return v ? v : @"";
 }
 
@@ -162,7 +157,7 @@ static void BPEnsureRegistered(void) {
     NSString* tunnelDeviceId = BPCString(Bugpunch_TunnelDeviceId());
     NSString* deviceId = tunnelDeviceId.length > 0 ? tunnelDeviceId : BPMeta(@"deviceId");
     NSString* stableDeviceId = BPCString(Bugpunch_GetStableDeviceId());
-    NSString* buildChannel = [BPDebugMode shared].config[@"buildChannel"];
+    NSString* buildChannel = [BPRuntime shared].config[@"buildChannel"];
     if (![buildChannel isKindOfClass:[NSString class]]) buildChannel = @"unknown";
 
     NSDictionary* body = @{
@@ -366,7 +361,7 @@ static void BPDoPoll(void) {
                 BOOL shouldConnect = accepted && [pins isKindOfClass:[NSDictionary class]]
                     && ([pins[@"alwaysLog"] boolValue] || [pins[@"alwaysRemote"] boolValue] || [pins[@"alwaysDebug"] boolValue]);
                 if (shouldConnect && !Bugpunch_TunnelIsConnected()) {
-                    NSMutableDictionary* cfg = [[BPDebugMode shared].config mutableCopy] ?: [NSMutableDictionary dictionary];
+                    NSMutableDictionary* cfg = [[BPRuntime shared].config mutableCopy] ?: [NSMutableDictionary dictionary];
                     cfg[@"useNativeTunnel"] = @YES;
                     NSData* cfgData = [NSJSONSerialization dataWithJSONObject:cfg options:0 error:nil];
                     NSString* cfgJson = cfgData ? [[NSString alloc] initWithData:cfgData encoding:NSUTF8StringEncoding] : nil;

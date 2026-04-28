@@ -24,14 +24,9 @@ extern "C" {
         const char* jsonBody);
 }
 
-// Access BPDebugMode from BugpunchDebugMode.mm
-@interface BPDebugMode : NSObject
-@property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* metadata;
-@property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* customData;
-@property (nonatomic, strong) NSDictionary* config;
-@property (nonatomic, assign) int fps;
-+ (instancetype)shared;
-@end
+// Cross-lane state — config / metadata / customData / fps live on BPRuntime
+// (mirrors BugpunchRuntime.java + BugpunchRuntime.cs).
+#import "BugpunchRuntime.h"
 
 // ── State ──
 
@@ -130,20 +125,20 @@ static float BPComputeP5(void) {
 // ── Event building ──
 
 static NSString* BPBuildEventJson(NSString* trigger) {
-    BPDebugMode* d = [BPDebugMode shared];
+    BPRuntime* r = [BPRuntime shared];
     NSMutableDictionary* event = [NSMutableDictionary dictionary];
 
     event[@"trigger"] = trigger;
     event[@"scene"] = sCurrentScene ?: @"unknown";
-    event[@"buildVersion"] = d.metadata[@"appVersion"] ?: @"";
-    event[@"branch"] = d.metadata[@"branch"] ?: @"";
-    event[@"changeset"] = d.metadata[@"changeset"] ?: @"";
+    event[@"buildVersion"] = r.metadata[@"appVersion"] ?: @"";
+    event[@"branch"] = r.metadata[@"branch"] ?: @"";
+    event[@"changeset"] = r.metadata[@"changeset"] ?: @"";
     event[@"platform"] = @"iOS";
     event[@"deviceId"] = [[[UIDevice currentDevice] identifierForVendor] UUIDString] ?: @"";
     event[@"deviceName"] = [UIDevice currentDevice].name ?: @"";
-    event[@"deviceModel"] = d.metadata[@"deviceModel"] ?: @"";
+    event[@"deviceModel"] = r.metadata[@"deviceModel"] ?: @"";
     event[@"deviceTier"] = BPDeviceTier();
-    event[@"gpu"] = d.metadata[@"gpu"] ?: @"";
+    event[@"gpu"] = r.metadata[@"gpu"] ?: @"";
 
     CGSize screenSize = [UIScreen mainScreen].bounds.size;
     CGFloat scale = [UIScreen mainScreen].scale;
@@ -165,17 +160,17 @@ static NSString* BPBuildEventJson(NSString* trigger) {
     event[@"thermalState"] = BPThermalState();
 
     // Tags from custom data
-    if (d.customData.count > 0)
-        event[@"tags"] = [d.customData copy];
+    if (r.customData.count > 0)
+        event[@"tags"] = [r.customData copy];
 
     NSData* data = [NSJSONSerialization dataWithJSONObject:event options:0 error:nil];
     return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
 }
 
 static void BPUploadEvent(NSString* jsonStr, NSString* screenshotPath) {
-    BPDebugMode* d = [BPDebugMode shared];
-    NSString* serverUrl = d.config[@"serverUrl"];
-    NSString* apiKey = d.config[@"apiKey"];
+    BPRuntime* r = [BPRuntime shared];
+    NSString* serverUrl = r.config[@"serverUrl"];
+    NSString* apiKey = r.config[@"apiKey"];
     if (!serverUrl || !apiKey) return;
 
     NSString* url = [NSString stringWithFormat:@"%@/api/v1/perf/events", serverUrl];
@@ -213,9 +208,9 @@ static void BPFirePerfEvent(NSString* trigger, BOOL withScreenshot) {
 
 static void BPDoSample(void) {
     if (!sPerfStarted) return;
-    BPDebugMode* d = [BPDebugMode shared];
+    BPRuntime* r = [BPRuntime shared];
 
-    float fps = (float)d.fps;
+    float fps = (float)r.fps;
     float memMB = BPGetUsedMemoryMB();
 
     // Update rolling window

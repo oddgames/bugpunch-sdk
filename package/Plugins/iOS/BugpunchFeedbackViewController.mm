@@ -23,7 +23,7 @@
 //              > 0.85 the inline similarity prompt offers Vote-for-existing
 //              or Post-mine-anyway before creating the duplicate.
 //
-// Endpoints (all relative to BPDebugMode.shared.config[@"serverUrl"]):
+// Endpoints (all relative to BPRuntime.shared.config[@"serverUrl"]):
 //   GET  /api/feedback?sort=votes
 //   POST /api/feedback                          { title, description, attachments, bypassSimilarity? }
 //   POST /api/feedback/similarity               { title, description }
@@ -58,26 +58,21 @@ typedef void (*BugpunchScreenshotCallback)(const char* requestId, int success, c
 extern "C" void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
                                            int quality, BugpunchScreenshotCallback cb);
 
-// Shared coordinator config dict (serverUrl / apiKey). Lives in
-// BugpunchDebugMode.mm. Forward-declared the same way every other plugin
-// file in this folder reads config (BugpunchPoller.mm,
-// BugpunchChatViewController.mm, BugpunchDirectives.mm).
-@interface BPDebugMode : NSObject
-@property (nonatomic, strong) NSDictionary* config;
-+ (instancetype)shared;
-@end
+// Shared coordinator config — read from BPRuntime, the cross-lane state
+// holder (mirrors BugpunchRuntime.java + BugpunchRuntime.cs).
+#import "BugpunchRuntime.h"
 
 // ── Helpers ─────────────────────────────────────────────────────
 
 static NSString* BPFbServerUrl(void) {
-    NSString* s = [BPDebugMode shared].config[@"serverUrl"];
+    NSString* s = [BPRuntime shared].config[@"serverUrl"];
     if (![s isKindOfClass:[NSString class]]) return @"";
     while ([s hasSuffix:@"/"]) s = [s substringToIndex:s.length - 1];
     return s;
 }
 
 static NSString* BPFbApiKey(void) {
-    NSString* s = [BPDebugMode shared].config[@"apiKey"];
+    NSString* s = [BPRuntime shared].config[@"apiKey"];
     return [s isKindOfClass:[NSString class]] ? s : @"";
 }
 

@@ -16,7 +16,7 @@
 // decline bubbles for scriptRequest / dataRequest. HTTP + 5s polling live
 // here directly — no Unity round-trip.
 //
-// Endpoints (all relative to BPDebugMode.shared.config[@"serverUrl"]):
+// Endpoints (all relative to BPRuntime.shared.config[@"serverUrl"]):
 //   GET  /api/v1/chat/hours
 //   GET  /api/v1/chat/thread
 //   GET  /api/v1/chat/messages?since=<iso>
@@ -66,14 +66,11 @@ extern "C" void ODDRecorder_Start(const char* outputPath, int width, int height,
 extern "C" void ODDRecorder_Stop(char* outPath, int outPathLen);
 extern "C" bool ODDRecorder_IsRecording(void);
 
-// Shared coordinator config dict (serverUrl / apiKey). Lives in
-// BugpunchDebugMode.mm. Forward-declared the same way every other plugin
-// file in this folder reads config (BugpunchPoller.mm,
-// BugpunchDirectives.mm, BugpunchPerfMonitor.mm).
-@interface BPDebugMode : NSObject
-@property (nonatomic, strong) NSDictionary* config;
-+ (instancetype)shared;
-@end
+// Shared coordinator config — read from BPRuntime, not BPDebugMode.
+// BPRuntime is the cross-lane state holder (mirrors BugpunchRuntime.java
+// and BugpunchRuntime.cs); BPDebugMode owns only the opt-in consent /
+// recording flow.
+#import "BugpunchRuntime.h"
 
 // ── Forward decls ───────────────────────────────────────────────
 
@@ -91,14 +88,14 @@ extern "C" bool ODDRecorder_IsRecording(void);
 // ── Helpers ─────────────────────────────────────────────────────
 
 static NSString* BPChatServerUrl(void) {
-    NSString* s = [BPDebugMode shared].config[@"serverUrl"];
+    NSString* s = [BPRuntime shared].config[@"serverUrl"];
     if (![s isKindOfClass:[NSString class]]) return @"";
     while ([s hasSuffix:@"/"]) s = [s substringToIndex:s.length - 1];
     return s;
 }
 
 static NSString* BPChatApiKey(void) {
-    NSString* s = [BPDebugMode shared].config[@"apiKey"];
+    NSString* s = [BPRuntime shared].config[@"apiKey"];
     return [s isKindOfClass:[NSString class]] ? s : @"";
 }
 

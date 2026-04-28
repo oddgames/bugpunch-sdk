@@ -30,6 +30,7 @@
 #import "BugpunchStrings.h"
 #import "BugpunchLogReader.h"
 #import "BugpunchShake.h"
+#import "BugpunchRuntime.h"
 
 // Symbols from sibling files
 extern "C" {
@@ -228,19 +229,12 @@ static void BPAttachStoryboardFromCrashFile(NSString* rawStr, NSMutableDictionar
     [[NSFileManager defaultManager] removeItemAtPath:binPath error:nil];
 }
 
+// BPDebugMode now holds only the opt-in debug-mode (consent + ring recorder)
+// state. Process-wide runtime state (config / metadata / custom data / fps /
+// started / lastAutoReport / reportInProgress) lives on BPRuntime — see
+// BugpunchRuntime.h. This split mirrors the Java side: BugpunchRuntime.java
+// holds the always-on state, BugpunchDebugMode.java holds the consent flow.
 @interface BPDebugMode : NSObject
-@property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* metadata;
-@property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* customData;
-@property (nonatomic, strong) NSDictionary* config;
-@property (nonatomic, assign) NSTimeInterval lastAutoReport;
-@property (nonatomic, assign) BOOL started;
-@property (nonatomic, assign) BOOL reportInProgress;
-@property (nonatomic, assign) int fps;
-@property (nonatomic, strong) CADisplayLink* displayLink;
-@property (nonatomic, assign) CFTimeInterval fpsWindowStart;
-@property (nonatomic, assign) int frameCount;
-@property (nonatomic, assign) int ctxShotFlushCounter;
-@property (nonatomic, copy) NSString* ctxShotDiskPath;
 // Cache-driven debug-mode auto-prompt state.
 //  - autoPromptShown: launch-time prompt fired (or skipped because cache
 //    wasn't internal); guards against re-prompting in the same session.
@@ -250,41 +244,13 @@ static void BPAttachStoryboardFromCrashFile(NSString* rawStr, NSMutableDictionar
 @property (nonatomic, assign) BOOL autoPromptShown;
 @property (nonatomic, assign) BOOL startedFromCachedPrompt;
 + (instancetype)shared;
-- (void)onFrame:(CADisplayLink*)link;
 @end
 
 @implementation BPDebugMode
 + (instancetype)shared {
     static BPDebugMode* i; static dispatch_once_t once;
-    dispatch_once(&once, ^{ i = [BPDebugMode new];
-        i.metadata = [NSMutableDictionary new];
-        i.customData = [NSMutableDictionary new];
-    });
+    dispatch_once(&once, ^{ i = [BPDebugMode new]; });
     return i;
-}
-- (void)onFrame:(CADisplayLink*)link {
-    // Tick the ANR watchdog from the main thread — this proves the main
-    // thread is alive and processing display link callbacks.
-    Bugpunch_TickAnrWatchdog();
-
-    CFTimeInterval now = link.timestamp;
-    if (self.fpsWindowStart == 0) { self.fpsWindowStart = now; self.frameCount = 0; return; }
-    self.frameCount++;
-    CFTimeInterval elapsed = now - self.fpsWindowStart;
-    if (elapsed >= 1.0) {
-        self.fps = (int)(self.frameCount / elapsed);
-        self.frameCount = 0;
-        self.fpsWindowStart = now;
-
-        // Every ~3 seconds, persist the Metal backbuffer to disk so native
-        // crash reports (SIGSEGV etc.) have a context screenshot on next launch.
-        if (self.ctxShotDiskPath && ++self.ctxShotFlushCounter >= 3) {
-            self.ctxShotFlushCounter = 0;
-            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-                Bugpunch_WriteBackbufferJPEG([self.ctxShotDiskPath UTF8String], 0.75f);
-            });
-        }
-    }
 }
 @end
 
@@ -395,7 +361,7 @@ static NSString* BPJsonEscape(NSString* s) {
 static NSString* BPBuildMetadataJson(NSString* type, NSString* title,
                                      NSString* description, NSDictionary* extra,
                                      NSString* reporterEmail, NSString* severity) {
-    BPDebugMode* d = [BPDebugMode shared];
+    BPRuntime* r = [BPRuntime shared];
     NSMutableDictionary* m = [NSMutableDictionary dictionary];
     // Normalise the type string to the discriminator values expected by the
     // unified /api/issues/ingest endpoint.
@@ -410,24 +376,24 @@ static NSString* BPBuildMetadataJson(NSString* type, NSString* title,
     m[@"timestamp"] = [[NSISO8601DateFormatter new] stringFromDate:[NSDate date]];
 
     m[@"device"] = @{
-        @"model":    d.metadata[@"deviceModel"] ?: @"",
-        @"os":       d.metadata[@"osVersion"] ?: @"",
+        @"model":    r.metadata[@"deviceModel"] ?: @"",
+        @"os":       r.metadata[@"osVersion"] ?: @"",
         @"platform": @"iOS",
-        @"gpu":      d.metadata[@"gpu"] ?: @"",
-        @"deviceId": d.metadata[@"deviceId"] ?: @"",
+        @"gpu":      r.metadata[@"gpu"] ?: @"",
+        @"deviceId": r.metadata[@"deviceId"] ?: @"",
     };
     m[@"app"] = @{
-        @"version":          d.metadata[@"appVersion"] ?: @"",
-        @"bundleId":         d.metadata[@"bundleId"] ?: @"",
-        @"buildFingerprint": d.metadata[@"buildFingerprint"] ?: @"",
-        @"unityVersion":     d.metadata[@"unityVersion"] ?: @"",
-        @"branch":           d.metadata[@"branch"] ?: @"",
-        @"changeset":        d.metadata[@"changeset"] ?: @"",
-        @"scene":            d.metadata[@"scene"] ?: @"",
-        @"fps":              @(d.fps),
-        @"installerMode":    d.metadata[@"installerMode"] ?: @"unknown",
+        @"version":          r.metadata[@"appVersion"] ?: @"",
+        @"bundleId":         r.metadata[@"bundleId"] ?: @"",
+        @"buildFingerprint": r.metadata[@"buildFingerprint"] ?: @"",
+        @"unityVersion":     r.metadata[@"unityVersion"] ?: @"",
+        @"branch":           r.metadata[@"branch"] ?: @"",
+        @"changeset":        r.metadata[@"changeset"] ?: @"",
+        @"scene":            r.metadata[@"scene"] ?: @"",
+        @"fps":              @(r.fps),
+        @"installerMode":    r.metadata[@"installerMode"] ?: @"unknown",
     };
-    NSMutableDictionary* custom = [d.customData mutableCopy];
+    NSMutableDictionary* custom = [r.customData mutableCopy];
     if (extra) {
         // Hoist structured sidecar fields (video metadata, touch events) to
         // the top level — they aren't arbitrary user-provided custom data.
@@ -519,15 +485,15 @@ static NSString* BPWriteGzipLogs(void) {
 
 static void BPFireReport(NSString* type, NSString* title, NSString* description,
                          NSDictionary* extra) {
-    BPDebugMode* d = [BPDebugMode shared];
-    if (!d.started) { NSLog(@"[Bugpunch] reportBug before start"); return; }
+    BPRuntime* r = [BPRuntime shared];
+    if (!r.started) { NSLog(@"[Bugpunch] reportBug before start"); return; }
 
     if ([type isEqualToString:@"exception"]) {
-        NSTimeInterval cooldown = [d.config[@"autoReportCooldownSeconds"] doubleValue];
+        NSTimeInterval cooldown = [r.config[@"autoReportCooldownSeconds"] doubleValue];
         if (cooldown <= 0) cooldown = 30.0;
         NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-        if (now - d.lastAutoReport < cooldown) return;
-        d.lastAutoReport = now;
+        if (now - r.lastAutoReport < cooldown) return;
+        r.lastAutoReport = now;
     }
 
     NSString* caches = NSSearchPathForDirectoriesInDomains(
@@ -555,18 +521,18 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
     // User-initiated bug reports show the form; silent reports enqueue directly.
     BOOL showForm = [type isEqualToString:@"bug"];
     if (showForm) {
-        if (d.reportInProgress) {
+        if (r.reportInProgress) {
             NSLog(@"[Bugpunch] report already in progress, ignoring");
             return;
         }
-        d.reportInProgress = YES;
+        r.reportInProgress = YES;
         Bugpunch_PresentReportForm([shotPath UTF8String],
             [(title ?: @"") UTF8String], [(description ?: @"") UTF8String]);
         return;
     }
 
-    NSString* serverUrl = d.config[@"serverUrl"] ?: @"";
-    NSString* apiKey = d.config[@"apiKey"] ?: @"";
+    NSString* serverUrl = r.config[@"serverUrl"] ?: @"";
+    NSString* apiKey = r.config[@"apiKey"] ?: @"";
     if (serverUrl.length == 0 || apiKey.length == 0) {
         NSLog(@"[Bugpunch] serverUrl/apiKey not configured — skipping report");
         return;
@@ -678,7 +644,7 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
 extern "C" {
 
 bool Bugpunch_StartDebugMode(const char* configJson) {
-    BPDebugMode* d = [BPDebugMode shared];
+    BPRuntime* r = [BPRuntime shared];
 
     // Always re-parse and merge config + metadata so a second call from C#
     // after the early +load bootstrap refreshes Unity-runtime values
@@ -691,7 +657,7 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
         if ([parsed isKindOfClass:[NSDictionary class]]) cfg = parsed;
     }
-    if (cfg.count > 0 || !d.config) d.config = cfg;
+    if (cfg.count > 0 || !r.config) r.config = cfg;
 
     // Push the native-overlay theme into BPTheme so every surface built
     // downstream (welcome card, request-help picker, recording overlay,
@@ -718,35 +684,35 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
     if ([metaDict isKindOfClass:[NSDictionary class]]) {
         for (NSString* k in metaDict) {
             id v = metaDict[k];
-            d.metadata[k] = [v isKindOfClass:[NSString class]] ? v
+            r.metadata[k] = [v isKindOfClass:[NSString class]] ? v
                 : [NSString stringWithFormat:@"%@", v];
         }
     }
 
     // Installer mode — same result either call, set once.
-    if (!d.metadata[@"installerMode"]) {
+    if (!r.metadata[@"installerMode"]) {
         NSURL* receiptURL = [[NSBundle mainBundle] appStoreReceiptURL];
         if (receiptURL) {
-            d.metadata[@"installerMode"] = [[receiptURL lastPathComponent]
+            r.metadata[@"installerMode"] = [[receiptURL lastPathComponent]
                 isEqualToString:@"sandboxReceipt"] ? @"testflight" : @"store";
         } else {
-            d.metadata[@"installerMode"] = @"sideload";
+            r.metadata[@"installerMode"] = @"sideload";
         }
     }
 
     // Refresh crash handler metadata every call so a late refresh from C#
     // picks up Unity-runtime values for any crash that hits after Unity boots.
     Bugpunch_SetCrashMetadata(
-        [d.metadata[@"appVersion"] ?: @"" UTF8String],
-        [d.metadata[@"bundleId"] ?: @"" UTF8String],
-        [d.metadata[@"unityVersion"] ?: @"" UTF8String],
-        [d.metadata[@"deviceModel"] ?: @"" UTF8String],
-        [d.metadata[@"osVersion"] ?: @"" UTF8String],
-        [d.metadata[@"gpu"] ?: @"" UTF8String]);
+        [r.metadata[@"appVersion"] ?: @"" UTF8String],
+        [r.metadata[@"bundleId"] ?: @"" UTF8String],
+        [r.metadata[@"unityVersion"] ?: @"" UTF8String],
+        [r.metadata[@"deviceModel"] ?: @"" UTF8String],
+        [r.metadata[@"osVersion"] ?: @"" UTF8String],
+        [r.metadata[@"gpu"] ?: @"" UTF8String]);
 
     // Everything below is one-time init — crash handler install, backbuffer,
     // watchdog, log reader, shake, display link, crash drain.
-    if (d.started) return true;
+    if (r.started) return true;
 
     NSString* caches = NSSearchPathForDirectoriesInDomains(
         NSCachesDirectory, NSUserDomainMask, YES).firstObject;
@@ -772,7 +738,7 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
     // Set disk path for periodic context screenshot persistence. On native crash
     // (SIGSEGV etc.) the process dies — this file on disk is the only way to get
     // a context screenshot on next launch.
-    d.ctxShotDiskPath = [crashDir stringByAppendingPathComponent:@"context_screenshot.jpg"];
+    r.ctxShotDiskPath = [crashDir stringByAppendingPathComponent:@"context_screenshot.jpg"];
 
     // ANR watchdog — background thread checks that the main thread ticks.
     int anrMs = [cfg[@"anrTimeoutMs"] intValue];
@@ -792,13 +758,11 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         }];
     }
 
-    // Frame tick for native FPS — CADisplayLink on main runloop.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        d.displayLink = [CADisplayLink displayLinkWithTarget:d selector:@selector(onFrame:)];
-        [d.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
-    });
+    // Frame tick for native FPS — CADisplayLink on main runloop. Lives on
+    // BPRuntime since it tracks runtime FPS, not debug-mode-specific state.
+    [r startFrameTick];
 
-    d.started = YES;
+    r.started = YES;
     NSLog(@"[Bugpunch] debug mode started");
 
     // Drain any .crash files left by the signal / Mach handler on a prior
@@ -806,8 +770,8 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
     // parses the ---STACK--- + ---BUILD_IDS--- sections. Same shape as
     // Android so the ingest contract is one path on the server.
     @try {
-        NSString* srv = d.config[@"serverUrl"] ?: @"";
-        NSString* key = d.config[@"apiKey"] ?: @"";
+        NSString* srv = r.config[@"serverUrl"] ?: @"";
+        NSString* key = r.config[@"apiKey"] ?: @"";
         if (srv.length > 0 && key.length > 0) {
             NSString* base = [srv stringByTrimmingCharactersInSet:
                 [NSCharacterSet characterSetWithCharactersInString:@"/"]];
@@ -871,7 +835,7 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                     // the crash file — pull from current runtime metadata (they
                     // don't change within a build's lifetime so drain-time ==
                     // crash-time).
-                    BPDebugMode* cur = [BPDebugMode shared];
+                    BPRuntime* cur = [BPRuntime shared];
                     NSString* br = cur.metadata[@"branch"];
                     if (br.length) body[@"branch"] = br;
                     NSString* cs = cur.metadata[@"changeset"];
@@ -1046,8 +1010,8 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
 extern "C" void Bugpunch_PresentConsentSheet(void (^onStart)(void));
 
 static void BPStartRingFromConfig(void) {
-    BPDebugMode* d = [BPDebugMode shared];
-    NSDictionary* v = d.config[@"video"];
+    BPRuntime* r = [BPRuntime shared];
+    NSDictionary* v = r.config[@"video"];
     int fps = [v isKindOfClass:[NSDictionary class]] ? [v[@"fps"] intValue] : 0;
     int bitrate = [v isKindOfClass:[NSDictionary class]] ? [v[@"bitrate"] intValue] : 0;
     int windowSec = [v isKindOfClass:[NSDictionary class]] ? [v[@"bufferSeconds"] intValue] : 0;
@@ -1071,7 +1035,7 @@ static void BPStartRingFromConfig(void) {
 
 void Bugpunch_EnterDebugMode(int skipConsent) {
     BPDebugMode* d = [BPDebugMode shared];
-    if (!d.started) return;
+    if (![BPRuntime shared].started) return;
     if (BugpunchRing_IsRunning()) return;
     // Manual entry — clear the cache-driven flag so a subsequent server
     // role of non-internal doesn't tear down a user-initiated recording.
@@ -1111,7 +1075,7 @@ extern "C" const char* Bugpunch_ReadLastTesterRoleCache(void) {
 static void BPRunAutoPromptOnMain(void) {
     BPDebugMode* d = [BPDebugMode shared];
     if (d.autoPromptShown) return;
-    if (!d.started) return;
+    if (![BPRuntime shared].started) return;
     if (BugpunchRing_IsRunning()) return;
 
     NSString* cached = [[NSUserDefaults standardUserDefaults] stringForKey:kBPLastTesterRoleKey];
@@ -1160,7 +1124,7 @@ extern "C" void Bugpunch_MaybeAutoPromptDebugModeOnLaunch(void) {
 extern "C" void Bugpunch_OnRoleBecameInternal(void) {
     BPDebugMode* d = [BPDebugMode shared];
     if (d.autoPromptShown) return;
-    if (!d.started) return;
+    if (![BPRuntime shared].started) return;
     if (BugpunchRing_IsRunning()) return;
     d.autoPromptShown = YES;
     NSLog(@"[Bugpunch] role flipped to internal — prompting consent mid-session");
@@ -1188,46 +1152,46 @@ extern "C" void Bugpunch_OnRoleLeftInternal(void) {
 }
 
 void Bugpunch_StopDebugMode(void) {
-    BPDebugMode* d = [BPDebugMode shared];
-    if (!d.started) return;
+    BPRuntime* r = [BPRuntime shared];
+    if (!r.started) return;
     [BPShake stop];
     [BPLogReader stop];
     BugpunchTouch_Stop();
     Bugpunch_StopAnrWatchdog();
     Bugpunch_ShutdownBackbuffer();
-    [d.displayLink invalidate]; d.displayLink = nil;
-    d.started = NO;
+    [r stopFrameTick];
+    r.started = NO;
 }
 
 void Bugpunch_SetCustomData(const char* key, const char* value) {
     if (!key) return;
     NSString* k = [NSString stringWithUTF8String:key];
-    BPDebugMode* d = [BPDebugMode shared];
-    if (!value) [d.customData removeObjectForKey:k];
-    else d.customData[k] = [NSString stringWithUTF8String:value];
+    BPRuntime* r = [BPRuntime shared];
+    if (!value) [r.customData removeObjectForKey:k];
+    else r.customData[k] = [NSString stringWithUTF8String:value];
 }
 
 extern void BugpunchPerfMonitor_OnSceneChange(NSString* newScene);
 
 void Bugpunch_UpdateScene(const char* scene) {
-    BPDebugMode* d = [BPDebugMode shared];
+    BPRuntime* r = [BPRuntime shared];
     NSString* s = scene ? [NSString stringWithUTF8String:scene] : nil;
-    if (s) d.metadata[@"scene"] = s;
+    if (s) r.metadata[@"scene"] = s;
     BugpunchPerfMonitor_OnSceneChange(s);
 }
 
 const char* Bugpunch_GetInstallerMode(void) {
-    NSString* m = [BPDebugMode shared].metadata[@"installerMode"] ?: @"unknown";
+    NSString* m = [BPRuntime shared].metadata[@"installerMode"] ?: @"unknown";
     return strdup([m UTF8String]);
 }
 
 void Bugpunch_SubmitReport(const char* title, const char* description,
                            const char* reporterEmail, const char* severity,
                            const char* screenshotPath, const char* annotationsPath) {
-    BPDebugMode* d = [BPDebugMode shared];
-    if (!d.started) return;
-    NSString* serverUrl = d.config[@"serverUrl"] ?: @"";
-    NSString* apiKey = d.config[@"apiKey"] ?: @"";
+    BPRuntime* r = [BPRuntime shared];
+    if (!r.started) return;
+    NSString* serverUrl = r.config[@"serverUrl"] ?: @"";
+    NSString* apiKey = r.config[@"apiKey"] ?: @"";
     if (serverUrl.length == 0 || apiKey.length == 0) return;
     while ([serverUrl hasSuffix:@"/"])
         serverUrl = [serverUrl substringToIndex:serverUrl.length - 1];
@@ -1262,14 +1226,14 @@ void Bugpunch_SubmitReport(const char* title, const char* description,
 }
 
 void Bugpunch_ClearReportInProgress(void) {
-    [BPDebugMode shared].reportInProgress = NO;
+    [BPRuntime shared].reportInProgress = NO;
 }
 
 // Force-allow the next exception report by zeroing the auto-report cooldown.
 // Used by user-initiated send paths (e.g. the SDK error overlay's Send
 // button) where the throttle is undesirable.
 void Bugpunch_ResetAutoReportCooldown(void) {
-    [BPDebugMode shared].lastAutoReport = 0;
+    [BPRuntime shared].lastAutoReport = 0;
 }
 
 void Bugpunch_ReportBug(const char* type, const char* title, const char* description,
@@ -1382,10 +1346,10 @@ static void BPEnsureAnalyticsInit(void) {
 // Build the base event with the same identity payload as the Android lane
 // (BugpunchRuntime.baseEvent). Caller adds type-specific fields and enqueues.
 static NSMutableDictionary* BPBaseEvent(NSString* type) {
-    BPDebugMode* dbg = [BPDebugMode shared];
-    NSString* buildVersion = dbg.config[@"appVersion"] ?: @"";
-    NSString* deviceId = dbg.config[@"deviceId"] ?: @"";
-    NSString* scene = dbg.config[@"scene"] ?: @"";
+    BPRuntime* r = [BPRuntime shared];
+    NSString* buildVersion = r.config[@"appVersion"] ?: @"";
+    NSString* deviceId = r.config[@"deviceId"] ?: @"";
+    NSString* scene = r.config[@"scene"] ?: @"";
 
     NSMutableDictionary* ev = [NSMutableDictionary dictionary];
     ev[@"type"] = type;
@@ -1396,8 +1360,8 @@ static NSMutableDictionary* BPBaseEvent(NSString* type) {
     ev[@"sessionId"] = gAnalyticsSessionId ?: @"";
     ev[@"platform"] = @"ios";
     ev[@"buildVersion"] = buildVersion;
-    ev[@"branch"] = dbg.metadata[@"branch"] ?: @"";
-    ev[@"changeset"] = dbg.metadata[@"changeset"] ?: @"";
+    ev[@"branch"] = r.metadata[@"branch"] ?: @"";
+    ev[@"changeset"] = r.metadata[@"changeset"] ?: @"";
     ev[@"scene"] = scene;
     NSLocale* loc = [NSLocale currentLocale];
     NSString* country = [loc objectForKey:NSLocaleCountryCode];
@@ -1508,9 +1472,9 @@ static void BPFlushAnalytics(void) {
         drained = [gAnalyticsBuffer copy];
         [gAnalyticsBuffer removeAllObjects];
     }
-    BPDebugMode* dbg = [BPDebugMode shared];
-    NSString* serverUrl = dbg.config[@"serverUrl"] ?: @"";
-    NSString* apiKey = dbg.config[@"apiKey"] ?: @"";
+    BPRuntime* r = [BPRuntime shared];
+    NSString* serverUrl = r.config[@"serverUrl"] ?: @"";
+    NSString* apiKey = r.config[@"apiKey"] ?: @"";
     if (serverUrl.length == 0 || apiKey.length == 0) return;
     while ([serverUrl hasSuffix:@"/"])
         serverUrl = [serverUrl substringToIndex:serverUrl.length - 1];

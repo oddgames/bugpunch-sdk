@@ -29,13 +29,8 @@ extern "C" void   BugpunchUploader_EnqueueJson(const char* url, const char* apiK
 // UnitySendMessage lives in libiPhone-lib.a; declared here so we can call it.
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg);
 
-// Global access to the shared config (lives in BugpunchDebugMode.mm).
-@interface BPDebugMode : NSObject
-@property (nonatomic, strong) NSDictionary* config;
-@property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* metadata;
-@property (nonatomic, assign) BOOL started;
-+ (instancetype)shared;
-@end
+// Shared config + metadata read from BPRuntime (cross-lane state holder).
+#import "BugpunchRuntime.h"
 
 static NSString* const kBPDirectiveDeniedKey = @"bugpunch.directive.denied.";
 
@@ -56,12 +51,12 @@ static void BPEnsurePending(void) {
 // -- Helpers --
 
 static NSString* BPServerUrl(void) {
-    NSString* s = [BPDebugMode shared].config[@"serverUrl"];
+    NSString* s = [BPRuntime shared].config[@"serverUrl"];
     return [s isKindOfClass:[NSString class]] ? s : @"";
 }
 
 static NSString* BPApiKey(void) {
-    NSString* s = [BPDebugMode shared].config[@"apiKey"];
+    NSString* s = [BPRuntime shared].config[@"apiKey"];
     return [s isKindOfClass:[NSString class]] ? s : @"";
 }
 
@@ -106,7 +101,7 @@ static void BPPostJson(NSString* url, NSDictionary* body) {
 // -- attach_files: allow-list glob inside BugpunchConfig.attachmentRules --
 
 static NSArray* BPAllowList(void) {
-    NSArray* rules = [BPDebugMode shared].config[@"attachmentRules"];
+    NSArray* rules = [BPRuntime shared].config[@"attachmentRules"];
     return [rules isKindOfClass:[NSArray class]] ? rules : @[];
 }
 
