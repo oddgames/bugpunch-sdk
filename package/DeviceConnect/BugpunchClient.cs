@@ -298,13 +298,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             BuildLazyServices();
             StartConnectionMode();
 
-            // QA → player chat reply heartbeat. Runs on every platform so
-            // the auto-fulfill side (PlayerPrefs / file / SystemInfo reads
-            // — Unity-dependent) fires regardless of lane. The banner
-            // trigger inside the loop is platform-gated: native pollers own
-            // the banner on Android / iOS player; C# owns it on Editor +
-            // Standalone. See project_sdk_three_lanes memory.
-            StartCoroutine(ChatReplyHeartbeat());
+            // QA → player chat reply heartbeat — see BugpunchPoller. Runs
+            // on every lane so auto-fulfill of dataRequest rows (PlayerPrefs
+            // / file / SystemInfo — Unity-bound) fires regardless of lane.
+            // The banner trigger inside the poller is gated to the managed
+            // lane; native pollers own the banner on Android / iOS.
+            BugpunchPoller.Start(this, AutoFulfillRequestAsync);
         }
 
         // ── Phase 1 — always-on init ───────────────────────────────────────
@@ -492,169 +491,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         }
 
         // ─── Chat reply heartbeat ───────────────────────────────────────
-        //
-        // The chat board itself polls when it's open (5s). This heartbeat
-        // runs whether the board is open or not, so QA replies land on the
-        // player even if they haven't been thinking about chat. The native
-        // tunnel is the long-term home for this push, but v2 just polls —
-        // one request every 30s is trivial cost.
-
-        // Tracks the createdAt timestamp of the newest QA message we've
-        // already surfaced via the native chat banner. A newer-than-this
-        // unread QA message re-shows the banner, so a player who dismisses
-        // it can't accidentally miss subsequent replies.
-        string _lastShownQaAt;
-
-        // Snooze high-watermark — set when the player taps X on the banner.
-        // The banner stays hidden as long as the newest unread QA is at or
-        // before this timestamp. A newer QA message clears the snooze
-        // implicitly (the gating compare in CheckChatUnreadCoroutine).
-        string _bannerDismissedAt;
-
-        IEnumerator ChatReplyHeartbeat()
-        {
-            // Small initial delay so we don't race the very first connect.
-            yield return new WaitForSeconds(10f);
-            while (true)
-            {
-                // Skip the check if the user's in a no-interrupt state; we'll
-                // check again on the next tick. Don't even bother hitting the
-                // server while suppressed — feels more polite and saves bytes.
-                if (!SuppressInteractions)
-                    yield return CheckChatUnreadCoroutine();
-                // 60s — chat is conversational, not real-time. At 10k users
-                // this halves chat-heartbeat QPS vs the previous 30s without
-                // a noticeable UX difference (banner appears within a minute
-                // of the QA reply landing).
-                yield return new WaitForSeconds(60f);
-            }
-        }
-
-        IEnumerator CheckChatUnreadCoroutine()
-        {
-            if (Config == null || string.IsNullOrEmpty(Config.HttpBaseUrl) || string.IsNullOrEmpty(Config.apiKey))
-                yield break;
-
-            // Single-thread-per-device API: GET /chat/thread returns
-            // { thread, messages } when a thread exists, 404 when none does.
-            // We scan messages for two things on each tick:
-            //   1. Unread QA messages (drives the persistent re-open behaviour).
-            //   2. Pending typed dataRequest rows whose request_kind is in the
-            //      auto-fulfill set (playerprefs / file / deviceinfo) — those
-            //      run without a player prompt.
-            var url = Config.HttpBaseUrl + "/api/v1/chat/thread";
-            using var req = UnityWebRequest.Get(url);
-            req.SetRequestHeader("Authorization", "Bearer " + (Config.apiKey ?? ""));
-            req.SetRequestHeader("X-Device-Id", DeviceIdentity.GetDeviceId() ?? "");
-            req.SetRequestHeader("Accept", "application/json");
-            req.timeout = 10;
-            yield return req.SendWebRequest();
-
-            if (req.result != UnityWebRequest.Result.Success) yield break;
-            // 404 is the "no thread yet" sentinel — treat as zero unread and
-            // reset the popup guard so the next QA-originated message (if
-            // any) re-arms the auto-open.
-            if (req.responseCode == 404)
-            {
-                _lastShownQaAt = null;
-                yield break;
-            }
-            if (req.responseCode < 200 || req.responseCode >= 300) yield break;
-
-            string newestUnreadQaAt = null;
-            int unreadCount = 0;
-            var autoFulfill = new List<(string id, string kind, string body)>();
-            try
-            {
-                var bodyStr = req.downloadHandler != null ? req.downloadHandler.text : "";
-                var obj = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(bodyStr) ? "{}" : bodyStr);
-                var arr = obj["messages"] as Newtonsoft.Json.Linq.JArray;
-                if (arr != null)
-                {
-                    foreach (var m in arr)
-                    {
-                        var sender = (string)m["sender"] ?? (string)m["Sender"];
-                        if (!string.Equals(sender, "qa", StringComparison.Ordinal)) continue;
-
-                        var msgId       = (string)m["id"] ?? (string)m["Id"];
-                        var msgType     = (string)m["type"] ?? (string)m["Type"];
-                        var requestKind = (string)m["requestKind"] ?? (string)m["RequestKind"];
-                        var requestState= (string)m["requestState"] ?? (string)m["RequestState"];
-                        var msgBody     = (string)m["body"] ?? (string)m["Body"] ?? "";
-                        var readAt      = (string)m["readBySdkAt"] ?? (string)m["ReadBySdkAt"];
-                        var createdAt   = (string)m["createdAt"] ?? (string)m["CreatedAt"];
-
-                        // Track unread for persistent-show.
-                        if (string.IsNullOrEmpty(readAt))
-                        {
-                            unreadCount++;
-                            if (newestUnreadQaAt == null
-                                || string.CompareOrdinal(createdAt ?? "", newestUnreadQaAt) > 0)
-                                newestUnreadQaAt = createdAt;
-                        }
-
-                        // Auto-fulfill kinds — collect for execution after the
-                        // parse loop (run outside the try so exceptions there
-                        // don't blow up parsing).
-                        if (msgType == "dataRequest"
-                            && requestState == "pending"
-                            && (requestKind == "playerprefs" || requestKind == "file" || requestKind == "deviceinfo"))
-                        {
-                            if (!string.IsNullOrEmpty(msgId))
-                                autoFulfill.Add((msgId, requestKind, msgBody));
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                BugpunchNative.ReportSdkError("BugpunchClient.ChatReplyHeartbeat", ex);
-                yield break;
-            }
-
-            // Run auto-fulfill handlers — fire-and-forget; PostRequestResult
-            // handles its own retries/logging.
-            foreach (var entry in autoFulfill)
-                _ = AutoFulfillRequestAsync(entry.id, entry.kind, entry.body);
-
-            // Banner ownership lives in BugpunchPoller.java / .mm on device
-            // — native polls /api/v1/chat/unread on its own loop and shows
-            // / hides the pill. The C# heartbeat only drives the banner on
-            // Editor + Standalone, where no native lane exists.
-#if UNITY_EDITOR || UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_STANDALONE_LINUX
-            if (newestUnreadQaAt == null)
-            {
-                // QA queue is fully read — hide banner and re-arm so the
-                // next QA message re-shows.
-                _lastShownQaAt = null;
-                _bannerDismissedAt = null;
-                BugpunchNative.HideChatBanner();
-                yield break;
-            }
-            if (SuppressInteractions) { BugpunchNative.HideChatBanner(); yield break; }
-
-            // Snooze gate — if the player tapped X on the banner, don't
-            // re-show until a QA message newer than the snoozed one arrives.
-            if (_bannerDismissedAt != null
-                && string.CompareOrdinal(newestUnreadQaAt, _bannerDismissedAt) <= 0)
-                yield break;
-
-            // Already-shown gate — don't churn the banner if nothing new.
-            if (_lastShownQaAt != null
-                && string.CompareOrdinal(newestUnreadQaAt, _lastShownQaAt) <= 0
-                && unreadCount == _lastShownUnreadCount)
-                yield break;
-
-            _lastShownQaAt = newestUnreadQaAt;
-            _lastShownUnreadCount = unreadCount;
-            BugpunchNative.ShowChatBanner(unreadCount);
-#endif
-        }
-
-        // Tracks the unread count we last passed to the banner so a tick
-        // with the same newest timestamp but a different unread count still
-        // updates the visible label.
-        int _lastShownUnreadCount;
+        // Lives in BugpunchPoller.cs — mirrors BugpunchPoller.{java,mm} by
+        // name across lanes. Started from Setup() above.
 
         IEnumerator ConnectLoop()
         {
@@ -1224,22 +1062,23 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         /// <summary>
         /// UnitySendMessage receiver. Fired by the native chat banner when
-        /// the player taps the X. Snoozes re-show until a QA message newer
-        /// than the one we last surfaced arrives.
+        /// the player taps the X. Forwards to <see cref="BugpunchPoller"/>
+        /// which holds the snooze high-watermark.
         /// </summary>
         public void OnChatBannerDismissed(string _)
         {
-            _bannerDismissedAt = _lastShownQaAt;
+            BugpunchPoller.NotifyBannerDismissed();
         }
 
         /// <summary>
-        /// UnitySendMessage receiver. Fired by the native chat banner when the
-        /// player taps the body (which also opens the chat board natively).
-        /// We only need to clear the snooze so the banner re-arms on next QA.
+        /// UnitySendMessage receiver. Fired by the native chat banner when
+        /// the player taps the body (which also opens the chat board natively).
+        /// Forwards to <see cref="BugpunchPoller"/> to clear the snooze so
+        /// the banner re-arms on the next QA reply.
         /// </summary>
         public void OnChatBannerOpened(string _)
         {
-            _bannerDismissedAt = null;
+            BugpunchPoller.NotifyBannerOpened();
         }
 
         /// <summary>
