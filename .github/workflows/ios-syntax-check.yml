@@ -1,13 +1,13 @@
-name: iOS Plugin Syntax Check
+name: iOS Plugin Compile Check
 
 # Edit-time compile coverage for the iOS plugin sources. iOS code only ever
 # compiles when a consumer builds an iOS player from Unity, so structural
 # typos in `.mm` files (the kind that come from cross-file refactors —
 # renaming a class, moving a property, mistyping a category) hide for days
-# until somebody actually runs an Xcode build. This workflow runs
-# `clang -fsyntax-only` against every `.mm` in `package/Plugins/iOS/` on
-# every PR + push that touches that tree, using the real iOS SDK on a
-# GitHub-hosted macOS runner.
+# until somebody actually runs an Xcode build. This workflow compiles every
+# `.mm` in `package/Plugins/iOS/` on every PR + push that touches that
+# tree, using the real iOS SDK on a GitHub-hosted macOS runner. Output is
+# discarded; we just want "does every translation unit compile?".
 #
 # Cost: macOS runners are 10x against private-repo minutes, but this is
 # ~30s per run — well under the noise floor of normal SDK CI.
@@ -41,9 +41,16 @@ jobs:
           xcrun --show-sdk-path --sdk iphoneos
           xcrun clang --version
 
-      - name: Syntax-check every .mm
+      - name: Compile every .mm
         working-directory: package/Plugins/iOS
-        # `-fsyntax-only` parses + type-checks but emits no object file.
+        # Full per-file compile (not `-fsyntax-only`) — same cost on a
+        # macOS runner, but the codegen pass catches per-file errors that
+        # syntax-check passes through (ARC ownership generation, certain
+        # template instantiations, codegen-time type checks). Output is
+        # discarded; we don't link or ship a binary, this is just a "does
+        # every translation unit compile?" gate. Linker errors (undefined
+        # symbols across files) still hide here — Unity does the link.
+        #
         # `-arch arm64` matches the on-device architecture; the simulator
         # SDK would also parse but iOS-arm64 is what ships, so check that.
         # `-fobjc-arc` mirrors Unity's iOS player setting (ARC enabled).
@@ -62,7 +69,7 @@ jobs:
           for f in *.mm; do
             echo "::group::$f"
             if ! xcrun clang \
-                -fsyntax-only \
+                -c -o /dev/null \
                 -arch arm64 \
                 -isysroot "$SDK" \
                 -fobjc-arc \
@@ -79,7 +86,7 @@ jobs:
           done
           if [ "$FAILED" -gt 0 ]; then
             echo ""
-            echo "::error::iOS syntax check failed for $FAILED file(s):$FAILED_FILES"
+            echo "::error::iOS compile check failed for $FAILED file(s):$FAILED_FILES"
             exit 1
           fi
-          echo "iOS syntax check: all .mm files clean."
+          echo "iOS compile check: all .mm files clean."
