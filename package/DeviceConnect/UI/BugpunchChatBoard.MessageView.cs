@@ -305,8 +305,27 @@ namespace ODDGames.Bugpunch.DeviceConnect.UI
         static async System.Threading.Tasks.Task LoadImageAsync(string url, Action<Texture2D> onDone)
         {
             if (string.IsNullOrEmpty(url)) { onDone?.Invoke(null); return; }
-            using var req = UnityWebRequestTexture.GetTexture(url);
+
+            // Server returns relative /api/files/... paths; resolve against the
+            // configured base URL. The endpoint is JWT-or-API-key authed, so
+            // attach the project's API key on the X-Api-Key header — without
+            // it /api/files/* 401s and Unity logs a "broken image" download
+            // failure instead of rendering the bubble.
+            string fullUrl = url;
+            string apiKey = null;
+            if (TryGetBaseUrl(out var baseUrl, out var key))
+            {
+                apiKey = key;
+                if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                    && !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    fullUrl = baseUrl.TrimEnd('/') + (url.StartsWith("/") ? url : "/" + url);
+                }
+            }
+
+            using var req = UnityWebRequestTexture.GetTexture(fullUrl);
             req.timeout = 20;
+            if (!string.IsNullOrEmpty(apiKey)) req.SetRequestHeader("X-Api-Key", apiKey);
             var op = req.SendWebRequest();
             while (!op.isDone) await System.Threading.Tasks.Task.Yield();
             if (req.result != UnityWebRequest.Result.Success)

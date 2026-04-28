@@ -442,8 +442,8 @@ namespace ODDGames.Bugpunch.Editor
             var pick = s_crashFingerprints[dev.Rng.Next(s_crashFingerprints.Length)];
             var sb = new StringBuilder(512);
             sb.Append('{');
-            sb.Append("\"errorMessage\":\"").Append(EscapeJson(pick.err)).Append("\",");
-            sb.Append("\"stackTrace\":\"").Append(EscapeJson(pick.stack)).Append("\",");
+            sb.Append("\"errorMessage\":\"").Append(BugpunchJson.Esc(pick.err)).Append("\",");
+            sb.Append("\"stackTrace\":\"").Append(BugpunchJson.Esc(pick.stack)).Append("\",");
             sb.Append("\"type\":\"exception\",");
             sb.Append("\"buildVersion\":\"").Append(dev.AppVersion).Append("\",");
             sb.Append("\"platform\":\"").Append(dev.Platform.ToLowerInvariant()).Append("\",");
@@ -457,12 +457,6 @@ namespace ODDGames.Bugpunch.Editor
         }
 
         // ── Helpers ──
-
-        static string EscapeJson(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t");
-        }
 
         static string Trim(string s, int max)
         {

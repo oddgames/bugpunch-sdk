@@ -56,6 +56,12 @@ static char s_device_model[MAX_METADATA] = {0};
 static char s_os_version[MAX_METADATA] = {0};
 static char s_gpu_name[MAX_METADATA] = {0};
 
+// Active log_session id at crash time. Pushed in by BugpunchTunnel whenever
+// the runtime rotates sSessionId. The next-launch drain sends the dumped log
+// ring's tail to /api/v1/log-sessions/<id>/append-crash-tail so the Logs page
+// shows everything up to the moment of death.
+static char s_session_id[MAX_METADATA] = {0};
+
 // Previous signal handlers for chaining
 static struct sigaction s_old_handlers[32];
 static const int s_signals[] = { SIGABRT, SIGSEGV, SIGBUS, SIGFPE, SIGILL };
@@ -214,6 +220,138 @@ static void write_metadata(int fd) {
     safe_write_str(fd, "device_model:"); safe_write_str(fd, s_device_model); safe_write_str(fd, "\n");
     safe_write_str(fd, "os_version:"); safe_write_str(fd, s_os_version); safe_write_str(fd, "\n");
     safe_write_str(fd, "gpu:"); safe_write_str(fd, s_gpu_name); safe_write_str(fd, "\n");
+    safe_write_str(fd, "session_id:"); safe_write_str(fd, s_session_id); safe_write_str(fd, "\n");
+}
+
+#pragma mark - Storyboard signal-handler dump
+
+// Storyboard ring base path — same convention as Android: dump files land at
+// `<base>_<i>.rgba` per slot, `<base>_at_crash.rgba` for the newest, and
+// `<base>.bin` for the packed headers. Set by Bugpunch_SetStoryboardPathBase
+// after the runtime resolves s_crash_dir at init.
+static char s_sb_path_base[MAX_PATH] = {0};
+
+// Async-signal-safe accessors implemented in BugpunchStoryboard.mm.
+extern "C" int  bp_storyboard_capacity(void);
+extern "C" int  bp_storyboard_header_bytes(void);
+extern "C" int  bp_storyboard_count(void);
+extern "C" int  bp_storyboard_newest(void);
+extern "C" const unsigned char* bp_storyboard_header_ptr(int slot);
+extern "C" const unsigned char* bp_storyboard_pixels_ptr(int slot, int* len_out);
+
+// Append a small unsigned int (0..99) as decimal to dst. Async-signal-safe.
+static int append_decimal(char* dst, int pos, int max, int v) {
+    if (v >= 10 && pos < max - 1) {
+        dst[pos++] = (char)('0' + v / 10);
+        v %= 10;
+    }
+    if (pos < max - 1) dst[pos++] = (char)('0' + v);
+    return pos;
+}
+
+// Append a literal C string. Async-signal-safe.
+static int append_str(char* dst, int pos, int max, const char* s) {
+    while (*s && pos < max - 1) dst[pos++] = *s++;
+    return pos;
+}
+
+// Walk the storyboard ring and dump per-slot raw RGBA + packed headers, plus
+// the newest slot duplicated as `_at_crash.rgba` (used as `screenshot:`). Same
+// shape Android writes — drain is shared by both platforms.
+static void write_storyboard(int fd) {
+    int count = bp_storyboard_count();
+    int newest = bp_storyboard_newest();
+    int cap = bp_storyboard_capacity();
+    int hdr_bytes = bp_storyboard_header_bytes();
+    if (count <= 0 || newest < 0 || cap <= 0 || hdr_bytes <= 0
+        || s_sb_path_base[0] == 0) return;
+    if (count > cap) count = cap;
+    int start = (newest - count + 1 + cap) % cap;
+
+    char hdr_path[MAX_PATH];
+    int hp = append_str(hdr_path, 0, MAX_PATH, s_sb_path_base);
+    hp = append_str(hdr_path, hp, MAX_PATH, ".bin");
+    hdr_path[hp] = '\0';
+    int hfd = open(hdr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+    for (int i = 0; i < count; i++) {
+        int slot = (start + i) % cap;
+        const unsigned char* hdr_addr = bp_storyboard_header_ptr(slot);
+        int pix_len = 0;
+        const unsigned char* pix_addr = bp_storyboard_pixels_ptr(slot, &pix_len);
+        if (!hdr_addr || !pix_addr || pix_len <= 0) continue;
+
+        // Per-slot RGBA dump file: `<base>_<i>.rgba`.
+        char p_path[MAX_PATH];
+        int pp = append_str(p_path, 0, MAX_PATH, s_sb_path_base);
+        if (pp < MAX_PATH - 1) p_path[pp++] = '_';
+        pp = append_decimal(p_path, pp, MAX_PATH, i);
+        pp = append_str(p_path, pp, MAX_PATH, ".rgba");
+        p_path[pp] = '\0';
+
+        int pfd = open(p_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (pfd >= 0) {
+            const char* p = (const char*)pix_addr;
+            size_t left = (size_t)pix_len;
+            while (left > 0) {
+                ssize_t n = write(pfd, p, left);
+                if (n <= 0) break;
+                p += n; left -= (size_t)n;
+            }
+            close(pfd);
+
+            if (slot == newest) {
+                // Duplicate the newest slot as `<base>_at_crash.rgba` so the
+                // existing `screenshot:` consumer can encode it without
+                // racing the storyboard parser (which deletes its sources).
+                int w = (int)((uint32_t)hdr_addr[24] | ((uint32_t)hdr_addr[25] << 8)
+                          | ((uint32_t)hdr_addr[26] << 16) | ((uint32_t)hdr_addr[27] << 24));
+                int hi = (int)((uint32_t)hdr_addr[28] | ((uint32_t)hdr_addr[29] << 8)
+                          | ((uint32_t)hdr_addr[30] << 16) | ((uint32_t)hdr_addr[31] << 24));
+
+                char at_path[MAX_PATH];
+                int ap = append_str(at_path, 0, MAX_PATH, s_sb_path_base);
+                ap = append_str(at_path, ap, MAX_PATH, "_at_crash.rgba");
+                at_path[ap] = '\0';
+                int afd = open(at_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (afd >= 0) {
+                    const char* p2 = (const char*)pix_addr;
+                    size_t left2 = (size_t)pix_len;
+                    while (left2 > 0) {
+                        ssize_t n = write(afd, p2, left2);
+                        if (n <= 0) break;
+                        p2 += n; left2 -= (size_t)n;
+                    }
+                    close(afd);
+                    safe_write_str(fd, "screenshot:"); safe_write_str(fd, at_path); safe_write_str(fd, "\n");
+                    safe_write_str(fd, "frame_w:"); safe_write_u64(fd, (unsigned long long)w); safe_write_str(fd, "\n");
+                    safe_write_str(fd, "frame_h:"); safe_write_u64(fd, (unsigned long long)hi); safe_write_str(fd, "\n");
+                    safe_write_str(fd, "frame_format:rgba8888\n");
+                }
+            }
+        }
+
+        if (hfd >= 0) {
+            const char* hp2 = (const char*)hdr_addr;
+            size_t left = (size_t)hdr_bytes;
+            while (left > 0) {
+                ssize_t n = write(hfd, hp2, left);
+                if (n <= 0) break;
+                hp2 += n; left -= (size_t)n;
+            }
+        }
+    }
+    if (hfd >= 0) close(hfd);
+
+    safe_write_str(fd, "storyboard_path_base:"); safe_write_str(fd, s_sb_path_base); safe_write_str(fd, "\n");
+    safe_write_str(fd, "storyboard_count:"); safe_write_u64(fd, (unsigned long long)count); safe_write_str(fd, "\n");
+    safe_write_str(fd, "storyboard_header_bytes:"); safe_write_u64(fd, (unsigned long long)hdr_bytes); safe_write_str(fd, "\n");
+}
+
+extern "C" void Bugpunch_SetStoryboardPathBase(const char* pathBase) {
+    if (!pathBase) { s_sb_path_base[0] = '\0'; return; }
+    int i; for (i = 0; pathBase[i] && i < MAX_PATH - 1; i++) s_sb_path_base[i] = pathBase[i];
+    s_sb_path_base[i] = '\0';
 }
 
 #pragma mark - Signal handler (async-signal-safe)
@@ -250,6 +388,7 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* ucontext) {
     }
 
     write_metadata(fd);
+    write_storyboard(fd);
 
     // Stack trace — backtrace() is technically not async-signal-safe on all
     // platforms, but works reliably on iOS/ARM64 in practice
@@ -347,6 +486,33 @@ static void* mach_exception_thread(void* arg) {
             [report appendFormat:@"device_model:%s\n", s_device_model];
             [report appendFormat:@"os_version:%s\n", s_os_version];
             [report appendFormat:@"gpu:%s\n", s_gpu_name];
+            [report appendFormat:@"session_id:%s\n", s_session_id];
+
+            // Storyboard ring rescue. Mach thread isn't a signal handler so we
+            // could use Obj-C, but the file dumps are pure POSIX in both paths
+            // — reuse the signal-handler helper by writing into a tmp FD then
+            // splicing the output into the report before the ---STACK--- block.
+            // Cheaper to just call the helper twice (file dumps + emit lines)
+            // through a memfd-style buffer; iOS lacks memfd_create so we open
+            // a small temp file, write metadata to it, read it back, then
+            // unlink. Acceptable cost — Mach crashes are rare.
+            if (s_sb_path_base[0] && bp_storyboard_count() > 0) {
+                NSString* tmpMetaPath = [NSTemporaryDirectory()
+                    stringByAppendingPathComponent:@"bp_sb_mach_meta.tmp"];
+                int mfd = open([tmpMetaPath fileSystemRepresentation],
+                    O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (mfd >= 0) {
+                    write_storyboard(mfd);
+                    close(mfd);
+                    NSData* metaData = [NSData dataWithContentsOfFile:tmpMetaPath];
+                    if (metaData.length > 0) {
+                        NSString* meta = [[NSString alloc] initWithData:metaData
+                            encoding:NSUTF8StringEncoding];
+                        if (meta) [report appendString:meta];
+                    }
+                    [[NSFileManager defaultManager] removeItemAtPath:tmpMetaPath error:nil];
+                }
+            }
 
             // Get stack trace of the crashing thread
             // Hex-only frames — the server's crashSymbolicator regex matches
@@ -568,6 +734,7 @@ static void write_anr_report(uint64_t elapsed_ms) {
         [report appendFormat:@"device_model:%s\n", s_device_model];
         [report appendFormat:@"os_version:%s\n", s_os_version];
         [report appendFormat:@"gpu:%s\n", s_gpu_name];
+        [report appendFormat:@"session_id:%s\n", s_session_id];
 
         // Capture thread stacks via Mach thread API (works from any thread).
         [report appendString:@"---STACK---\n"];
@@ -797,6 +964,16 @@ void Bugpunch_SetCrashMetadata(const char* appVersion, const char* bundleId,
     if (deviceModel) strncpy(s_device_model, deviceModel, MAX_METADATA - 1);
     if (osVersion) strncpy(s_os_version, osVersion, MAX_METADATA - 1);
     if (gpuName) strncpy(s_gpu_name, gpuName, MAX_METADATA - 1);
+}
+
+// Push the active log_session id so the signal / Mach exception handler
+// stamps it into the crash header. The next-launch drain reads it and POSTs
+// the recovered log tail to /api/v1/log-sessions/<id>/append-crash-tail.
+void Bugpunch_SetCrashSessionId(const char* sessionId)
+{
+    if (!sessionId) { s_session_id[0] = '\0'; return; }
+    strncpy(s_session_id, sessionId, MAX_METADATA - 1);
+    s_session_id[MAX_METADATA - 1] = '\0';
 }
 
 /// Returns a newline-separated list of pending crash file paths, or empty string.

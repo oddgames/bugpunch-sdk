@@ -52,10 +52,19 @@ public final class BugpunchPoller {
     private static int sPollIntervalSeconds = 30;
     private static String sScriptPermission = "ask";
 
-    // Unread-chat badge piggybacks on the poll loop (issue #32). At the
-    // default 30s cadence we hit /chat/unread every other tick (≈ 60s) so
-    // the badge updates promptly without doubling our HTTP traffic.
+    // Unread-chat poll piggybacks on the poll loop (issue #32). Adaptive
+    // cadence based on the most-recent message timestamp on the device's
+    // thread — drives both the floating-button badge and the persistent
+    // top banner (banner ownership lives native; the C# heartbeat is now
+    // editor/standalone-only).
+    //   < 72h activity → every tick     (≈ 30s — active conversation)
+    //   < 7d  activity → every 2nd tick (≈ 60s — cooling off)
+    //   else / never  → every 10th tick (≈ 5min — idle)
+    // Persisted to SharedPreferences so a cold restart shortly after a
+    // chat exchange resumes the fast cadence on the first tick.
     private static int sUnreadTickCounter;
+    private static long sChatActivityLastSeenMs = -1L; // -1 = never observed
+    private static final String CHAT_ACTIVITY_KEY = "chat_activity_last_seen_ms";
 
     /**
      * Start registering and polling. Safe to call multiple times — subsequent
@@ -224,12 +233,13 @@ public final class BugpunchPoller {
                 BugpunchUnity.sendMessage("BugpunchClient", "OnPollScripts", scripts.toString());
             }
 
-            // 4) Unread-chat badge (issue #32). Piggybacks on the same tick
-            //    so we don't add a second timer. Every other tick at the
-            //    default 30s cadence keeps the chat-server load steady while
-            //    surfacing replies within ~60s.
+            // 4) Unread-chat poll (issue #32). Piggybacks on the same tick
+            //    so we don't add a second timer. Adaptive cadence — see
+            //    chatTickModulus: active conversation polls every tick,
+            //    cooling off every 2nd, idle every 10th.
             sUnreadTickCounter++;
-            if ((sUnreadTickCounter & 1) == 0) {
+            int modulus = chatTickModulus(activity);
+            if (modulus <= 1 || (sUnreadTickCounter % modulus) == 0) {
                 pollUnreadChat();
             }
         } catch (Throwable t) {
@@ -238,11 +248,14 @@ public final class BugpunchPoller {
     }
 
     /**
-     * Hit {@code GET /api/v1/chat/unread} and push the count into the
-     * floating-button badge. Uses the SDK auth headers (Bearer + X-Device-Id),
-     * not the device-poll token, so the call hits the same chat router the
-     * native chat Activity uses. Failures are silent — the badge just keeps
-     * its previous value until the next successful tick.
+     * Hit {@code GET /api/v1/chat/unread} and drive both the floating-button
+     * badge and the persistent top banner. Uses the SDK auth headers
+     * ({@code X-Api-Key} + {@code X-Device-Id}) so the call hits the same
+     * chat router the native chat Activity uses. Failures are silent — the
+     * badge / banner keep their previous state until the next successful tick.
+     *
+     * Also reads {@code lastMessageAt} from the response and refreshes the
+     * adaptive-cadence high-watermark (persisted to SharedPreferences).
      */
     private static void pollUnreadChat() {
         String serverUrl = BugpunchRuntime.getServerUrl();
@@ -260,7 +273,7 @@ public final class BugpunchPoller {
             con.setRequestMethod("GET");
             con.setConnectTimeout(CONNECT_TIMEOUT_MS);
             con.setReadTimeout(READ_TIMEOUT_MS);
-            con.setRequestProperty("Authorization", "Bearer " + apiKey);
+            con.setRequestProperty("X-Api-Key", apiKey);
             con.setRequestProperty("X-Device-Id", deviceId);
             con.setRequestProperty("Accept", "application/json");
 
@@ -275,12 +288,58 @@ public final class BugpunchPoller {
             }
             JSONObject obj = new JSONObject(sb.toString());
             int count = obj.optInt("count", 0);
+
+            // Floating-button badge.
             BugpunchReportOverlay.setUnreadCount(count);
+
+            // Persistent top banner — native owns this so the C# heartbeat
+            // can stay editor/standalone-only without players losing the pill.
+            if (count > 0) BugpunchRuntime.showChatBanner(count);
+            else           BugpunchRuntime.hideChatBanner();
+
+            // Adaptive-cadence high-watermark.
+            String lastMessageAt = obj.optString("lastMessageAt", null);
+            long lastMs = parseIso8601Millis(lastMessageAt);
+            if (lastMs > 0L && lastMs > sChatActivityLastSeenMs) {
+                sChatActivityLastSeenMs = lastMs;
+                if (activity != null) {
+                    SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+                    sp.edit().putLong(CHAT_ACTIVITY_KEY, lastMs).apply();
+                }
+            }
         } catch (Throwable t) {
-            // Silent — the badge keeps its previous value.
+            // Silent — badge / banner keep their previous values.
         } finally {
             if (con != null) con.disconnect();
         }
+    }
+
+    /** Best-effort ISO-8601 parser. Returns 0L on failure. */
+    private static long parseIso8601Millis(String iso) {
+        if (iso == null || iso.isEmpty()) return 0L;
+        try {
+            // java.time is API 26+; this project's minSdk is high enough.
+            return java.time.Instant.parse(iso).toEpochMilli();
+        } catch (Throwable t) {
+            return 0L;
+        }
+    }
+
+    /**
+     * How many poll ticks to skip before the next /chat/unread fetch. < 72h
+     * activity polls every tick (~30s); < 7d every 2nd (~60s); idle every
+     * 10th (~5min). Loads from SharedPreferences on first call.
+     */
+    private static int chatTickModulus(Activity activity) {
+        if (sChatActivityLastSeenMs < 0L && activity != null) {
+            SharedPreferences sp = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            sChatActivityLastSeenMs = sp.getLong(CHAT_ACTIVITY_KEY, 0L);
+        }
+        if (sChatActivityLastSeenMs <= 0L) return 10;
+        long idleMs = System.currentTimeMillis() - sChatActivityLastSeenMs;
+        if (idleMs < 72L * 3600_000L)              return 1;
+        if (idleMs < 7L * 24L * 3600_000L)         return 2;
+        return 10;
     }
 
     private static void ensureReportTunnelIfInternal(Activity activity, JSONObject roleConfig) {

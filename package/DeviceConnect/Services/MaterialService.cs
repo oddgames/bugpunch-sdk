@@ -123,17 +123,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 sb.Append("{");
                 sb.Append($"\"id\":{instanceId}");
-                sb.Append($",\"name\":\"{Esc(name)}\"");
-                sb.Append($",\"shader\":\"{Esc(shaderName)}\"");
+                sb.Append($",\"name\":\"{BugpunchJson.Esc(name)}\"");
+                sb.Append($",\"shader\":\"{BugpunchJson.Esc(shaderName)}\"");
                 if (!string.IsNullOrEmpty(mainTexName))
-                    sb.Append($",\"texture\":\"{Esc(mainTexName)}\"");
+                    sb.Append($",\"texture\":\"{BugpunchJson.Esc(mainTexName)}\"");
                 if (texNames.Count > 0)
                 {
                     sb.Append(",\"textures\":[");
                     for (int i = 0; i < texNames.Count; i++)
                     {
                         if (i > 0) sb.Append(",");
-                        sb.Append($"\"{Esc(texNames[i])}\"");
+                        sb.Append($"\"{BugpunchJson.Esc(texNames[i])}\"");
                     }
                     sb.Append("]");
                 }
@@ -143,7 +143,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     for (int i = 0; i < gos.Count; i++)
                     {
                         if (i > 0) sb.Append(",");
-                        sb.Append($"\"{Esc(gos[i])}\"");
+                        sb.Append($"\"{BugpunchJson.Esc(gos[i])}\"");
                     }
                     sb.Append("]");
                 }
@@ -278,8 +278,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var sb = new StringBuilder();
             sb.Append("{");
             sb.Append($"\"id\":{instanceId}");
-            sb.Append($",\"name\":\"{Esc(mat.name)}\"");
-            sb.Append($",\"shader\":\"{Esc(shader != null ? shader.name : "")}\"");
+            sb.Append($",\"name\":\"{BugpunchJson.Esc(mat.name)}\"");
+            sb.Append($",\"shader\":\"{BugpunchJson.Esc(shader != null ? shader.name : "")}\"");
             sb.Append($",\"renderQueue\":{mat.renderQueue}");
 
             // Properties
@@ -300,8 +300,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (!first) sb.Append(",");
                     first = false;
                     sb.Append("{");
-                    sb.Append($"\"name\":\"{Esc(propName)}\"");
-                    sb.Append($",\"label\":\"{Esc(desc)}\"");
+                    sb.Append($"\"name\":\"{BugpunchJson.Esc(propName)}\"");
+                    sb.Append($",\"label\":\"{BugpunchJson.Esc(desc)}\"");
                     sb.Append($",\"hidden\":{(hidden ? "true" : "false")}");
 
                     switch (propType)
@@ -348,7 +348,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                             {
                                 sb.Append(",\"value\":{");
                                 sb.Append($"\"id\":{tex.GetInstanceID()}");
-                                sb.Append($",\"name\":\"{Esc(tex.name)}\"");
+                                sb.Append($",\"name\":\"{BugpunchJson.Esc(tex.name)}\"");
                                 sb.Append($",\"width\":{tex.width}");
                                 sb.Append($",\"height\":{tex.height}");
                                 sb.Append("}");
@@ -410,7 +410,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (!first) sb.Append(",");
                     first = false;
                     sb.Append("{");
-                    sb.Append($"\"name\":\"{Esc(kw)}\"");
+                    sb.Append($"\"name\":\"{BugpunchJson.Esc(kw)}\"");
                     sb.Append($",\"enabled\":{(enabled.Contains(kw) ? "true" : "false")}");
                     sb.Append($",\"declared\":{(declared ? "true" : "false")}");
                     sb.Append("}");
@@ -432,7 +432,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var mat = FindMaterial(instanceId);
             if (mat == null) return "{\"ok\":false,\"error\":\"material not found\"}";
             if (string.IsNullOrEmpty(propName)) return "{\"ok\":false,\"error\":\"missing property name\"}";
-            if (!mat.HasProperty(propName)) return "{\"ok\":false,\"error\":\"shader has no property " + Esc(propName) + "\"}";
+            if (!mat.HasProperty(propName)) return "{\"ok\":false,\"error\":\"shader has no property " + BugpunchJson.Esc(propName) + "\"}";
 
             try
             {
@@ -511,13 +511,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
                         break;
                     }
                     default:
-                        return "{\"ok\":false,\"error\":\"unsupported type " + Esc(type) + "\"}";
+                        return "{\"ok\":false,\"error\":\"unsupported type " + BugpunchJson.Esc(type) + "\"}";
                 }
                 return "{\"ok\":true}";
             }
             catch (Exception ex)
             {
-                return "{\"ok\":false,\"error\":\"" + Esc(ex.Message) + "\"}";
+                return "{\"ok\":false,\"error\":\"" + BugpunchJson.Esc(ex.Message) + "\"}";
             }
         }
 
@@ -537,7 +537,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                return "{\"ok\":false,\"error\":\"" + Esc(ex.Message) + "\"}";
+                return "{\"ok\":false,\"error\":\"" + BugpunchJson.Esc(ex.Message) + "\"}";
             }
         }
 
@@ -578,9 +578,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 var desc = shader.GetPropertyDescription(i);
                 sb.Append("{");
-                sb.Append($"\"property\":\"{Esc(propName)}\"");
-                sb.Append($",\"label\":\"{Esc(desc)}\"");
-                sb.Append($",\"textureName\":\"{Esc(tex.name)}\"");
+                sb.Append($"\"property\":\"{BugpunchJson.Esc(propName)}\"");
+                sb.Append($",\"label\":\"{BugpunchJson.Esc(desc)}\"");
+                sb.Append($",\"textureName\":\"{BugpunchJson.Esc(tex.name)}\"");
                 sb.Append($",\"width\":{tex.width}");
                 sb.Append($",\"height\":{tex.height}");
                 sb.Append("}");
@@ -772,7 +772,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

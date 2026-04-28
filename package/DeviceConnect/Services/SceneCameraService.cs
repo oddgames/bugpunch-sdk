@@ -1,3 +1,5 @@
+// preflight-allow: render-pipeline — hybrid hooks both SRP and Built-in callbacks
+// so scene camera capture works under Built-in / URP / HDRP.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -1153,7 +1155,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (count > 0) sb.Append(",");
                 var go = hit.collider.gameObject;
                 string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
-                sb.Append($"{{\"instanceId\":{go.GetInstanceID()},\"name\":\"{EscapeJson(go.name)}\",\"distance\":{F(hit.distance)},\"point\":{{\"x\":{F(hit.point.x)},\"y\":{F(hit.point.y)},\"z\":{F(hit.point.z)}}}}}");
+                sb.Append($"{{\"instanceId\":{go.GetInstanceID()},\"name\":\"{BugpunchJson.Esc(go.name)}\",\"distance\":{F(hit.distance)},\"point\":{{\"x\":{F(hit.point.x)},\"y\":{F(hit.point.y)},\"z\":{F(hit.point.z)}}}}}");
                 count++;
             }
             sb.Append("]");
@@ -1185,7 +1187,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
                 if (count > 0) sb.Append(",");
                 string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
-                sb.Append($"{{\"id\":{renderer.gameObject.GetInstanceID()},\"name\":\"{EscapeJson(renderer.gameObject.name)}\",");
+                sb.Append($"{{\"id\":{renderer.gameObject.GetInstanceID()},\"name\":\"{BugpunchJson.Esc(renderer.gameObject.name)}\",");
                 sb.Append($"\"center\":{{\"x\":{F(b.center.x)},\"y\":{F(b.center.y)},\"z\":{F(b.center.z)}}},");
                 sb.Append($"\"extents\":{{\"x\":{F(b.extents.x)},\"y\":{F(b.extents.y)},\"z\":{F(b.extents.z)}}}}}");
                 count++;
@@ -1265,7 +1267,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     lastPos = wPos,
                     lastRot = wRot,
                 });
-                sb.Append($"\"id\":{id},\"name\":\"{EscapeJson(go.name)}\",");
+                sb.Append($"\"id\":{id},\"name\":\"{BugpunchJson.Esc(go.name)}\",");
                 sb.Append($"\"tier\":{tier},");
 
                 SerializeShape(sb, col, F);
@@ -1423,7 +1425,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
-        static string EscapeJson(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

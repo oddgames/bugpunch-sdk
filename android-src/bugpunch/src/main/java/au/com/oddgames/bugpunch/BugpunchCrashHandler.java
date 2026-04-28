@@ -62,28 +62,10 @@ public class BugpunchCrashHandler {
     private static native void nativeSetMetadata(String appVersion, String bundleId,
         String unityVersion, String deviceModel, String osVersion, String gpuName);
 
-    /**
-     * Register the two native-memory ring slots and their dimensions. The
-     * signal handler reads raw ARGB bytes from these buffers and writes them
-     * to the target attachment paths as `.raw` files when SIGSEGV fires —
-     * the only way to get a screenshot out of a dead Mono runtime without
-     * touching disk during normal operation.
-     *
-     * Buffers must be direct (allocateDirect) so their addresses survive
-     * outside the JVM heap and are reachable from an async-signal-safe
-     * context (no GC move, no copy).
-     */
-    private static native void nativeSetScreenshotBuffers(
-        ByteBuffer slotA, ByteBuffer slotB, int width, int height);
-
-    /** Target file paths the signal handler will write raw pixels to when it
-     *  fires. `atCrashPath` receives the newer slot, `beforePath` the other.
-     *  Paths stay stable for the process lifetime. */
-    private static native void nativeSetScreenshotAttachmentPaths(
-        String atCrashPath, String beforePath);
-
-    /** Update which slot is currently newest: 0 = A, 1 = B. */
-    private static native void nativeSetScreenshotNewestSlot(int slot);
+    /** Push the active log_session id so the signal handler can stamp it in
+     *  the crash header. The next-launch drain reads it and POSTs the
+     *  recovered log tail to that session via the crash-tail-append route. */
+    private static native void nativeSetSessionId(String sessionId);
 
     /** Set the absolute path the signal handler writes the log snapshot to
      *  at crash time. Stays fixed for the process lifetime. */
@@ -108,6 +90,51 @@ public class BugpunchCrashHandler {
     /** Absolute path the signal handler dumps the ring to at crash time. */
     private static native void nativeSetInputPath(String path);
 
+    // ── Storyboard ring (BugpunchStoryboard) ──
+    // 10-slot ring of {fixed header, variable RGBA pixels}. Headers are
+    // pre-allocated direct buffers registered once; pixel slots are
+    // lazy-allocated on first push and registered as they appear, so a
+    // session with no presses doesn't pay any pixel-buffer memory.
+
+    /** One-time fixed capacity. Must match {@code BugpunchStoryboard.CAPACITY}. */
+    private static native void nativeSetStoryboardCapacity(int capacity);
+
+    /** Register a header slot's direct-buffer address. Headers are fixed-size
+     *  for the session — single registration per slot at init. */
+    private static native void nativeSetStoryboardSlotHeader(int slot, ByteBuffer header, int headerBytes);
+
+    /** Register a pixel slot's direct-buffer address. Called the first time a
+     *  given slot is written, since slots are lazily allocated to keep idle
+     *  sessions cheap. {@code pixelBytes} = capacity, not necessarily fill. */
+    private static native void nativeSetStoryboardSlotPixels(int slot, ByteBuffer pixels, int pixelBytes);
+
+    /** Update which slot is newest (-1 = empty) and how many slots are valid. */
+    private static native void nativeSetStoryboardNewest(int slot, int count);
+
+    /** Absolute base path for storyboard dump files written by the signal
+     *  handler. Files are {@code <path>_<slot>.rgba} (raw pixels) +
+     *  {@code <path>.bin} (concatenated headers). The next-launch crash drain
+     *  reads this layout to encode JPEGs and build the upload manifest. */
+    private static native void nativeSetStoryboardPathBase(String pathBase);
+
+    // ── Video ring (bp_video.c) ──
+    //
+    // Native mmap'd ring of encoded H.264 samples for crash-survivable video.
+    // Hot path is two memcpys per encoded frame, no syscalls — the kernel's
+    // page-cache writeback persists samples whether or not we exit cleanly.
+    // bp.c's signal handler calls bp_video_finalize() to msync the cursor,
+    // then drain on next launch remuxes the ring into a real .mp4.
+    private static native boolean nativeVideoInit(String path, long totalBytes,
+        int idxCapacity, int width, int height, int fps);
+    private static native void nativeVideoSetFormat(byte[] sps, byte[] pps);
+    private static native void nativeVideoWriteSample(byte[] data, int offset,
+        int length, long ptsUs, boolean keyframe);
+    private static native void nativeVideoFinalize();
+    private static native void nativeVideoClose();
+    /** Tells bp.c's signal handler where the ring file lives, so it can emit
+     *  a `video:` line into the .crash file alongside other attachments. */
+    private static native void nativeSetVideoPath(String path);
+
     // ── Public API (called from Unity C# via AndroidJavaClass) ──
 
     /**
@@ -118,11 +145,17 @@ public class BugpunchCrashHandler {
      * @param anrTimeoutMs ANR detection timeout in milliseconds (0 = disable)
      * @return true if initialization succeeded
      */
+    /** Cached application context — used by the ANR watchdog (live Java
+     *  thread, not a signal handler) to snapshot the video ring file when a
+     *  hang fires. App context is leak-safe to hold statically. */
+    private static volatile Context sAnrAppContext;
+
     public static synchronized boolean initialize(Context context, int anrTimeoutMs) {
         if (sInitialized) {
             Log.w(TAG, "already initialized");
             return true;
         }
+        if (context != null) sAnrAppContext = context.getApplicationContext();
 
         // Load the native library
         if (!sNativeLoaded) {
@@ -176,20 +209,13 @@ public class BugpunchCrashHandler {
         }
     }
 
-    /** Register the native-memory slot buffers with the signal handler. */
-    public static void setScreenshotBuffers(
-            ByteBuffer slotA, ByteBuffer slotB, int width, int height) {
-        if (sNativeLoaded) nativeSetScreenshotBuffers(slotA, slotB, width, height);
-    }
-
-    /** Register the raw-attachment output paths (written at crash time). */
-    public static void setScreenshotAttachmentPaths(String atCrashPath, String beforePath) {
-        if (sNativeLoaded) nativeSetScreenshotAttachmentPaths(atCrashPath, beforePath);
-    }
-
-    /** Called by {@link BugpunchScreenshot} after each successful slot write. */
-    public static void setScreenshotNewestSlot(int slot) {
-        if (sNativeLoaded) nativeSetScreenshotNewestSlot(slot);
+    /**
+     * Push the active log_session id so the signal handler can stamp it into
+     * the crash header. Called whenever the runtime rotates sSessionId (start
+     * and on resume after long background).
+     */
+    public static void setSessionId(String sessionId) {
+        if (sNativeLoaded) nativeSetSessionId(sessionId == null ? "" : sessionId);
     }
 
     /** Register the log snapshot output path with the signal handler. */
@@ -220,6 +246,147 @@ public class BugpunchCrashHandler {
     /** Register the rescue file path for the input ring. */
     public static void setInputPath(String path) {
         if (sNativeLoaded) nativeSetInputPath(path);
+    }
+
+    // ── Storyboard JNI facade ─────────────────────────────────────────────
+
+    public static void setStoryboardCapacity(int capacity) {
+        if (sNativeLoaded) nativeSetStoryboardCapacity(capacity);
+    }
+
+    public static void setStoryboardSlotHeader(int slot, ByteBuffer header, int headerBytes) {
+        if (sNativeLoaded) nativeSetStoryboardSlotHeader(slot, header, headerBytes);
+    }
+
+    public static void setStoryboardSlotPixels(int slot, ByteBuffer pixels, int pixelBytes) {
+        if (sNativeLoaded) nativeSetStoryboardSlotPixels(slot, pixels, pixelBytes);
+    }
+
+    public static void setStoryboardNewest(int slot, int count) {
+        if (sNativeLoaded) nativeSetStoryboardNewest(slot, count);
+    }
+
+    public static void setStoryboardPathBase(String pathBase) {
+        if (sNativeLoaded) nativeSetStoryboardPathBase(pathBase);
+    }
+
+    // ── Video ring facade ──
+
+    /** Allocate and mmap the crash-survivable video ring. {@code path} must
+     *  be writable (typically inside the app's cache dir) and reachable from
+     *  bp.c's signal handler — the registered path is also handed to
+     *  {@link #setVideoPath(String)} so the .crash file references it.
+     *
+     *  Window length is chosen by the caller via {@code totalBytes}; at typical
+     *  Bugpunch encoder bitrates 30-90s lands around 8-32 MB.
+     *
+     *  @return true if init succeeded; false if already initialized, the file
+     *          couldn't be opened, or the requested sizing was invalid. */
+    public static boolean videoInit(String path, long totalBytes, int idxCapacity,
+            int width, int height, int fps) {
+        if (!sNativeLoaded) return false;
+        boolean ok = nativeVideoInit(path, totalBytes, idxCapacity, width, height, fps);
+        if (ok) nativeSetVideoPath(path);
+        return ok;
+    }
+
+    /** Publish the H.264 SPS/PPS (from {@code MediaFormat.csd-0/csd-1}) into
+     *  the ring header. Must be called once before any sample writes; the
+     *  remuxer on next launch needs these to build a {@code MediaFormat}. */
+    public static void videoSetFormat(byte[] sps, byte[] pps) {
+        if (sNativeLoaded) nativeVideoSetFormat(sps, pps);
+    }
+
+    /** Append one encoded H.264 sample to the ring. Single-writer (the
+     *  encoder thread). Two memcpys + atomic head bumps; no allocations. */
+    public static void videoWriteSample(byte[] data, int offset, int length,
+            long ptsUs, boolean keyframe) {
+        if (sNativeLoaded) nativeVideoWriteSample(data, offset, length, ptsUs, keyframe);
+    }
+
+    /** Async-signal-safe header msync. Called from bp.c's signal handler;
+     *  exposed to Java only so the recorder's clean-shutdown path can flush
+     *  before close. */
+    public static void videoFinalize() {
+        if (sNativeLoaded) nativeVideoFinalize();
+    }
+
+    /** Tear down the mmap and close the file. Called from the recorder's
+     *  stop() path on a normal shutdown. */
+    public static void videoClose() {
+        if (sNativeLoaded) nativeVideoClose();
+    }
+
+    // ── Video ring file management ──
+    //
+    // Single canonical filename used by every code path: live recorder, ANR
+    // snapshot, previous-session preservation, and drain. Centralized here
+    // so renames/lookups across the codebase don't drift.
+    static final String VIDEO_RING_FILENAME = "bp_video.dat";
+    static final String VIDEO_RING_PREV_FILENAME = "bp_video.prev.dat";
+
+    /** Path where the live recorder writes its ring this session. */
+    public static File videoRingFile(Context ctx) {
+        return new File(ctx.getCacheDir(), VIDEO_RING_FILENAME);
+    }
+
+    /** Path where the previous session's ring is parked at startup so the
+     *  drain can recover it before the new recorder truncates the canonical
+     *  file. */
+    public static File videoRingPrevFile(Context ctx) {
+        return new File(ctx.getCacheDir(), VIDEO_RING_PREV_FILENAME);
+    }
+
+    /**
+     * At startup, rename any leftover {@code bp_video.dat} from a previous
+     * session into {@code bp_video.prev.dat} so it survives the recorder's
+     * truncating re-init. Idempotent — if the target already exists from an
+     * even older session it gets deleted (the drain will pick up whatever
+     * .crash files reference it; nothing else does).
+     *
+     * Must run before {@link BugpunchRecorder#start}/{@link
+     * BugpunchRecorder#startBufferMode} could fire and before AEI synthesis
+     * runs (so synthesised .crash files reference the correct prev path).
+     */
+    public static void preserveVideoRingFromPreviousSession(Context ctx) {
+        try {
+            File live = videoRingFile(ctx);
+            File prev = videoRingPrevFile(ctx);
+            if (!live.exists()) return;
+            if (prev.exists()) {
+                try { prev.delete(); } catch (Exception ignored) {}
+            }
+            if (!live.renameTo(prev)) {
+                Log.w(TAG, "preserveVideoRing: rename failed; deleting live ring");
+                try { live.delete(); } catch (Exception ignored) {}
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "preserveVideoRing failed", t);
+        }
+    }
+
+    /**
+     * Take a point-in-time copy of the live ring file at {@code dstPath}.
+     * Used by the ANR watchdog to capture the in-process ring before the
+     * recorder keeps writing past the hang. Best-effort — returns false if
+     * there's no live ring to copy or the copy fails.
+     */
+    public static boolean snapshotVideoRingTo(Context ctx, String dstPath) {
+        try {
+            videoFinalize();
+            File live = videoRingFile(ctx);
+            if (!live.exists() || live.length() == 0) return false;
+            try (java.io.FileInputStream in = new java.io.FileInputStream(live);
+                 java.io.FileOutputStream out = new java.io.FileOutputStream(dstPath)) {
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "snapshotVideoRingTo failed", t);
+            return false;
+        }
     }
 
     /**
@@ -366,12 +533,33 @@ public class BugpunchCrashHandler {
 
             String trace = readTrace(info);
 
+            // Resolve the parked previous-session video ring once per scan
+            // — synthesised crashes that overlap the previous session all
+            // reference the same prev file, and the drain dedupes by deleting
+            // it after first remux.
+            String prevVideo = resolvePrevVideoPath(context);
             File existing = findMatchingCrashFile(crashDir, type, ts);
             if (existing != null) {
-                appendAeiSection(existing, info, trace);
+                appendAeiSection(existing, info, trace, prevVideo);
                 merged++;
             } else {
-                synthesizeAeiCrashFile(crashDir, info, trace, type);
+                // bp.c is the authoritative source for native signals — if it
+                // didn't fire (no .crash file to merge into), AEI's
+                // getTraceInputStream() is usually empty for REASON_SIGNALED
+                // and lossy for REASON_CRASH_NATIVE. Synthesising from it
+                // produces an "Unknown" / "NATIVE" issue with no stack that
+                // duplicates the real bp.c-written record from a prior session
+                // (AEI keeps history across launches but bp.c files are
+                // deleted right after upload). Skip synth — the bp.c-written
+                // file from the original launch was already drained, and
+                // there's no useful new info for us to add.
+                if ("NATIVE_SIGNAL".equals(type)) {
+                    Log.i(TAG, "AEI scan: skipping synth for NATIVE_SIGNAL "
+                        + "(reason=" + reasonName(info.getReason()) + ") "
+                        + "— bp.c is authoritative");
+                    continue;
+                }
+                synthesizeAeiCrashFile(crashDir, info, trace, type, prevVideo);
                 synthesized++;
             }
         }
@@ -385,15 +573,31 @@ public class BugpunchCrashHandler {
     }
 
     /** Translate an ApplicationExitInfo reason into our crash-file `type:` value,
-     *  or null to skip (user-initiated exits, etc.). */
+     *  or null to skip (user-initiated exits, etc.).
+     *
+     *  The values returned here MUST match the {@code type:} strings the
+     *  in-process writers emit (bp.c writes {@code NATIVE_SIGNAL}; the ANR
+     *  watchdog writes {@code ANR}). {@link #findMatchingCrashFile} relies on
+     *  exact equality to merge AEI augmentation into the existing .crash
+     *  instead of synthesising a duplicate event. */
     private static String mapReasonToType(int reason) {
         switch (reason) {
             case ApplicationExitInfo.REASON_ANR:                     return "ANR";
-            case ApplicationExitInfo.REASON_CRASH:                   return "CRASH";
-            case ApplicationExitInfo.REASON_CRASH_NATIVE:            return "CRASH_NATIVE";
+            // REASON_CRASH = managed crash from the Android runtime side.
+            // We don't currently write a .crash file from the C# managed
+            // exception path (that goes via reportBug), so AEI is the only
+            // source — keep it as a distinct type.
+            case ApplicationExitInfo.REASON_CRASH:                   return "MANAGED_CRASH";
+            // REASON_CRASH_NATIVE = SIGSEGV / SIGABRT etc. that bp.c also
+            // catches. Align names so the merge step dedupes.
+            case ApplicationExitInfo.REASON_CRASH_NATIVE:            return "NATIVE_SIGNAL";
+            // REASON_SIGNALED = killed by an external signal (often SIGKILL
+            // from low-memory killer). bp.c can't catch SIGKILL, so AEI is
+            // the only source. Use the same merge-friendly name in case
+            // we ever do, and so the dashboard groups it as a native crash.
+            case ApplicationExitInfo.REASON_SIGNALED:                return "NATIVE_SIGNAL";
             case ApplicationExitInfo.REASON_LOW_MEMORY:              return "LOW_MEMORY";
             case ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE:return "EXCESSIVE_RESOURCE";
-            case ApplicationExitInfo.REASON_SIGNALED:                return "SIGNALED";
             case ApplicationExitInfo.REASON_INITIALIZATION_FAILURE:  return "INIT_FAILURE";
             default: return null;
         }
@@ -468,12 +672,28 @@ public class BugpunchCrashHandler {
         return best;
     }
 
+    /** Resolve the parked previous-session video ring (if any) — used by
+     *  both AEI synthesis paths to attach footage to crashes that bp.c's
+     *  signal handler couldn't write a `video:` line for (ANRs, OOM kills,
+     *  worker-thread crashes that bypass our handler). Returns null if no
+     *  prev file exists; static context is fine because we keep one app
+     *  Context cached on the AEI scanner. */
+    private static String resolvePrevVideoPath(Context ctx) {
+        File prev = videoRingPrevFile(ctx);
+        return (prev.exists() && prev.length() > 0) ? prev.getAbsolutePath() : null;
+    }
+
     /** Append an ---AEI--- block to an existing .crash file. The drain
      *  parser stops at the first --- line when extracting header fields,
      *  so putting the block at the end keeps existing fields intact while
      *  still making the AEI data visible in the full stackTrace text the
      *  server stores. */
-    private static void appendAeiSection(File file, ApplicationExitInfo info, String trace) {
+    private static void appendAeiSection(File file, ApplicationExitInfo info,
+            String trace, String prevVideoPath) {
+        // prevVideoPath is unused here: an existing .crash file from bp.c
+        // already has a `video:` field in its header. Drain falls back to
+        // the parked .prev.dat at resolve time when the bp.c-written path
+        // no longer exists.
         try {
             StringBuilder sb = new StringBuilder();
             sb.append("---AEI---\n");
@@ -501,7 +721,7 @@ public class BugpunchCrashHandler {
     /** Write a standalone .crash file for an AEI entry we had no in-process
      *  report for. Follows the same BUGPUNCH_CRASH_V1 schema the drain expects. */
     private static void synthesizeAeiCrashFile(File dir, ApplicationExitInfo info,
-                                               String trace, String type) {
+                                               String trace, String type, String prevVideoPath) {
         try {
             StringBuilder sb = new StringBuilder();
             sb.append("BUGPUNCH_CRASH_V1\n");
@@ -515,6 +735,12 @@ public class BugpunchCrashHandler {
             sb.append("aei_pss_kb:").append(info.getPss()).append('\n');
             sb.append("aei_rss_kb:").append(info.getRss()).append('\n');
             sb.append("aei_status:").append(info.getStatus()).append('\n');
+            // bp.c didn't run for this crash (otherwise we'd have merged
+            // into an existing .crash file). Reference the parked previous-
+            // session ring here so the drain still gets video.
+            if (prevVideoPath != null) {
+                sb.append("video:").append(prevVideoPath).append('\n');
+            }
             sb.append("---STACK---\n");
             if (trace != null) {
                 sb.append(trace);
@@ -678,11 +904,14 @@ public class BugpunchCrashHandler {
                 List<String> shotPaths = new ArrayList<>();
                 List<Long> shotTimestamps = new ArrayList<>();
 
-                // Before-frame from rolling buffer.
-                if (BugpunchScreenshot.hasLastFrame()) {
-                    long beforeTs = BugpunchScreenshot.getLastFrameTimestamp();
+                // Before-frame from the storyboard ring — last UI press the user
+                // made before the main thread froze. More useful than the old
+                // 1 Hz rolling buffer's "1s before" frame because it's anchored
+                // to a recognisable interaction the dashboard can label.
+                if (BugpunchStoryboard.hasNewestFrame()) {
+                    long beforeTs = BugpunchStoryboard.getNewestTimestampMs();
                     String beforePath = mCrashDir + "/anr_" + beforeTs + "_before.jpg";
-                    if (BugpunchScreenshot.writeLastFrame(beforePath, 75)) {
+                    if (BugpunchStoryboard.writeNewestJpegTo(new File(beforePath), 75)) {
                         shotPaths.add(beforePath);
                         shotTimestamps.add(beforeTs);
                     }
@@ -726,6 +955,25 @@ public class BugpunchCrashHandler {
                       .append(shotTimestamps.get(i)).append('\n');
                 }
                 sb.append("screenshot_count:").append(shotPaths.size()).append('\n');
+
+                // Video ring snapshot. The native crash handler emits
+                // `video:` pointing at the live ring file, but for ANRs the
+                // signal handler never runs — we have to capture it here in
+                // live Java. Snapshot the ring to a side file so the
+                // recorder's continued writes after the ANR don't overwrite
+                // the in-hang context. Best-effort: a missing snapshot just
+                // means no video for this crash, not a drain failure.
+                try {
+                    Context appCtx = sAnrAppContext;
+                    if (appCtx != null) {
+                        String videoSnapPath = mCrashDir + "/anr_" + baseTs + "_video.dat";
+                        if (BugpunchCrashHandler.snapshotVideoRingTo(appCtx, videoSnapPath)) {
+                            sb.append("video:").append(videoSnapPath).append('\n');
+                        }
+                    }
+                } catch (Throwable t) {
+                    Log.w(TAG, "ANR video snapshot failed", t);
+                }
 
                 // Log snapshot. The native signal handler dumps the rolling
                 // mirror buffer to disk from inside the signal handler, but the

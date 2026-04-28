@@ -47,10 +47,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 new() { status = status, binaryBody = data, contentType = contentType, isBinary = true };
 
             public static Response Error(string message, int status = 500) =>
-                Json($"{{\"error\":\"{Esc(message)}\"}}", status);
+                Json($"{{\"error\":\"{BugpunchJson.Esc(message)}\"}}", status);
 
             public static Response NotFound(string path) =>
-                Json($"{{\"error\":\"Unknown path: {Esc(path)}\"}}", 404);
+                Json($"{{\"error\":\"Unknown path: {BugpunchJson.Esc(path)}\"}}", 404);
         }
 
         /// <summary>
@@ -905,7 +905,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 catch { /* skip assemblies that can't be reflected */ }
             }
             if (errors.Length > 0)
-                return $"{{\"ok\":false,\"called\":{called},\"error\":\"{EscapeJson(errors.ToString())}\"}}";
+                return $"{{\"ok\":false,\"called\":{called},\"error\":\"{BugpunchJson.Esc(errors.ToString())}\"}}";
             return $"{{\"ok\":true,\"called\":{called}}}";
         }
 
@@ -1042,13 +1042,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return null;
         }
 
-        static string Esc(string s) => EscapeJson(s);
-
-        /// <summary>
-        /// Escape a string for safe inclusion in a JSON string value.
-        /// </summary>
-        public static string EscapeJson(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
 
         /// <summary>
         /// Minimal JSON value extractor for flat objects. Returns the raw string value for a key.

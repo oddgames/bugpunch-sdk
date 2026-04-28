@@ -149,7 +149,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         internal int streamFps = 10;
 
         // Bug reporting
-        internal int videoBufferSeconds = 30;
+        internal int videoBufferSeconds = 90;
         internal int bugReportVideoFps = 10;
 
         // Crash handling

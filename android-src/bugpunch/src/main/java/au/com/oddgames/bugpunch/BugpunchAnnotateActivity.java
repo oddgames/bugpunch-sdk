@@ -44,6 +44,10 @@ public class BugpunchAnnotateActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        // Pause the rolling video ring while we're annotating so the time
+        // spent drawing on the screenshot doesn't push out pre-incident
+        // gameplay. Released in onDestroy.
+        try { BugpunchRecorder.getInstance().pauseRing(); } catch (Throwable ignore) {}
         String shotPath = getIntent().getStringExtra(EX_SHOT);
         mBaseShot = shotPath != null ? BitmapFactory.decodeFile(shotPath) : null;
         if (mBaseShot == null) { finish(); return; }
@@ -140,6 +144,7 @@ public class BugpunchAnnotateActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         if (mBaseShot != null && !mBaseShot.isRecycled()) mBaseShot.recycle();
+        try { BugpunchRecorder.getInstance().resumeRing(); } catch (Throwable ignore) {}
     }
 
     private Button button(String text, int bg) {

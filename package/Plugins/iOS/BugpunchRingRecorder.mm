@@ -93,6 +93,8 @@ struct EncodedSample {
 - (int64_t)bufferSizeBytes;
 - (double)lastDumpStartHost;
 - (double)lastDumpEndHost;
+- (int)videoWidth;
+- (int)videoHeight;
 - (void)handleEncodedSampleBuffer:(CMSampleBufferRef)sampleBuffer;
 
 @end
@@ -825,6 +827,9 @@ static void BugpunchVTCompressionOutputCallback(void *outputCallbackRefCon,
     return writeSuccess;
 }
 
+- (int)videoWidth { return _width; }
+- (int)videoHeight { return _height; }
+
 @end
 
 // ===========================================================================
@@ -897,6 +902,16 @@ double BugpunchRing_GetLastDumpStartHostTime(void)
 double BugpunchRing_GetLastDumpEndHostTime(void)
 {
     return [[BugpunchRingRecorderImpl shared] lastDumpEndHost];
+}
+
+int BugpunchRing_GetVideoWidth(void)
+{
+    return [[BugpunchRingRecorderImpl shared] videoWidth];
+}
+
+int BugpunchRing_GetVideoHeight(void)
+{
+    return [[BugpunchRingRecorderImpl shared] videoHeight];
 }
 
 } // extern "C"

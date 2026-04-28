@@ -71,8 +71,11 @@ static void RecordTouches(UIEvent* event) {
     NSSet<UITouch*>* touches = event.allTouches;
     if (touches.count == 0) return;
 
-    // Populate capture size once — use key window's screen.
-    if (gCaptureW.load() == 0) {
+    // Refresh capture size on every event so live-overlay clients (the IDE)
+    // see correct screen dimensions across rotations. Crash playback uses the
+    // ring recorder's locked-in encoded dimensions instead — see
+    // BugpunchRing_GetVideoWidth/Height.
+    {
         UIScreen* screen = UIScreen.mainScreen;
         CGSize sz = screen.bounds.size;
         CGFloat scale = screen.scale;
@@ -160,11 +163,21 @@ bool BugpunchTouch_Start(void) {
     if (!gIdMap)  gIdMap  = new std::unordered_map<uintptr_t, int>();
 
     // Swizzle must run on the main thread to be safe against concurrent
-    // method dispatch; dispatch_sync if we're elsewhere.
-    if ([NSThread isMainThread]) {
+    // method dispatch; dispatch_sync if we're elsewhere. Capture size is read
+    // alongside it so UIScreen access stays on the main thread, and so live-
+    // overlay clients have valid dimensions before any touch lands.
+    void (^onMain)(void) = ^{
         InstallSwizzleOnce();
+        UIScreen* screen = UIScreen.mainScreen;
+        CGSize sz = screen.bounds.size;
+        CGFloat scale = screen.scale;
+        gCaptureW.store((int)(sz.width * scale));
+        gCaptureH.store((int)(sz.height * scale));
+    };
+    if ([NSThread isMainThread]) {
+        onMain();
     } else {
-        dispatch_sync(dispatch_get_main_queue(), ^{ InstallSwizzleOnce(); });
+        dispatch_sync(dispatch_get_main_queue(), onMain);
     }
     gRunning.store(true);
     BPTLog(@"started (max %d events)", gMaxEvents);

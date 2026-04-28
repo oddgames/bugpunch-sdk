@@ -34,6 +34,12 @@ import java.util.Deque;
  * the same monotonic source MediaCodec uses for Surface input PTS. So a
  * touch's nanos is directly comparable to the recorder's last-dump nanos
  * window, and (touchNs - dumpStartNs) / 1e6 is the ms offset into the MP4.
+ *
+ * Coordinate space: events are stored in real display pixels (the same frame
+ * VirtualDisplay AUTO_MIRROR captures). Window-relative ev.getX/Y is
+ * translated to display-space using the (rawX - x) offset that's identical
+ * for every pointer in a single MotionEvent. Capture size is refreshed from
+ * Display.getRealMetrics on every event so it stays correct after rotation.
  */
 public final class BugpunchTouchRecorder {
     private static final String TAG = "[Bugpunch.TouchRecorder]";
@@ -89,6 +95,15 @@ public final class BugpunchTouchRecorder {
                         sProxyCallback = new ProxyCallback(original);
                         w.setCallback(sProxyCallback);
                         sHostActivity = act;
+                        // Populate capture size eagerly so videoMeta has valid
+                        // dimensions even for clips with zero recorded touches.
+                        try {
+                            android.view.Display d = act.getWindowManager().getDefaultDisplay();
+                            android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+                            d.getRealMetrics(dm);
+                            sCaptureW = dm.widthPixels;
+                            sCaptureH = dm.heightPixels;
+                        } catch (Throwable ignored) {}
                         sRunning = true;
                         Log.i(TAG, "started (max " + sMaxEvents + " events)");
                     } catch (Throwable t) {
@@ -209,13 +224,16 @@ public final class BugpunchTouchRecorder {
     private static void record(MotionEvent ev) {
         if (!sRunning || ev == null) return;
         try {
-            if (sCaptureW == 0 || sCaptureH == 0) {
-                Activity act = sHostActivity;
-                if (act != null) {
-                    android.util.DisplayMetrics dm = act.getResources().getDisplayMetrics();
-                    sCaptureW = dm.widthPixels;
-                    sCaptureH = dm.heightPixels;
-                }
+            // Refresh capture size from the real display so rotation is
+            // tracked. getRealMetrics returns full physical pixels including
+            // system bars, matching VirtualDisplay AUTO_MIRROR's source.
+            Activity act = sHostActivity;
+            if (act != null) {
+                android.view.Display d = act.getWindowManager().getDefaultDisplay();
+                android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+                d.getRealMetrics(dm);
+                sCaptureW = dm.widthPixels;
+                sCaptureH = dm.heightPixels;
             }
             int action = ev.getActionMasked();
             int mapped = mapAction(action);
@@ -223,6 +241,14 @@ public final class BugpunchTouchRecorder {
 
             long tNs = eventTimeNanos(ev);
             int pointerCount = ev.getPointerCount();
+
+            // Translate window-local ev.getX/Y to real-display pixels. The
+            // (rawX - x) delta is identical for every pointer in this event
+            // since they share the same window-to-screen offset. Computed once
+            // from the action pointer (whose rawX/Y is well-defined on all
+            // API levels — getRawX(int) only exists on API 29+).
+            float dx = ev.getRawX() - ev.getX();
+            float dy = ev.getRawY() - ev.getY();
 
             // For POINTER_DOWN/UP only the pointer at getActionIndex() changes;
             // everything else is effectively stationary. Android has no
@@ -236,19 +262,19 @@ public final class BugpunchTouchRecorder {
                     if (idx >= 0 && idx < pointerCount) {
                         sRing.addLast(new Record(tNs,
                             ev.getPointerId(idx), mapped,
-                            ev.getX(idx), ev.getY(idx)));
+                            ev.getX(idx) + dx, ev.getY(idx) + dy));
                     }
                     for (int i = 0; i < pointerCount; i++) {
                         if (i == idx) continue;
                         sRing.addLast(new Record(tNs,
                             ev.getPointerId(i), PHASE_MOVED,
-                            ev.getX(i), ev.getY(i)));
+                            ev.getX(i) + dx, ev.getY(i) + dy));
                     }
                 } else {
                     for (int i = 0; i < pointerCount; i++) {
                         sRing.addLast(new Record(tNs,
                             ev.getPointerId(i), mapped,
-                            ev.getX(i), ev.getY(i)));
+                            ev.getX(i) + dx, ev.getY(i) + dy));
                     }
                 }
                 while (sRing.size() > sMaxEvents) sRing.pollFirst();

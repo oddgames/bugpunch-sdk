@@ -542,12 +542,24 @@ static const NSTimeInterval RESUME_THRESHOLD_S = 30.0;
 static NSTimeInterval gBackgroundedAt;
 static BOOL gSessionLifecycleHooked;
 
+// Forward declarations for the C symbol exported by BugpunchCrashHandler.mm —
+// the Mach exception / signal handler reads s_session_id and stamps it into
+// the crash header, so the next-launch drain knows which log_session to tail-
+// append. We push every time the runtime mints / rotates the active id.
+extern "C" void Bugpunch_SetCrashSessionId(const char* sessionId);
+
+static void BPPushSessionToCrashHandler(NSString* sid) {
+    if (!sid) { Bugpunch_SetCrashSessionId(""); return; }
+    Bugpunch_SetCrashSessionId([sid UTF8String] ?: "");
+}
+
 static void BPInitSessionIdsIfNeeded(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         gSessionLock = [NSLock new];
         gRootSessionId = [[NSUUID UUID] UUIDString];
         gSessionId = gRootSessionId;
+        BPPushSessionToCrashHandler(gSessionId);
     });
 }
 
@@ -593,9 +605,14 @@ static void BPHookSessionLifecycle(void) {
         [gSessionLock lock];
         gSessionId = [[NSUUID UUID] UUIDString];
         gParentSessionId = gRootSessionId;
+        NSString* sidCopy = gSessionId;
         [gSessionLock unlock];
+        // Mirror the new id into the native crash handler so a SIGSEGV /
+        // Mach exception mid-resume stamps the *current* session into the
+        // crash header (not the prior launch's).
+        BPPushSessionToCrashHandler(sidCopy);
         NSLog(@"[BugpunchTunnel] session resumed after %.0fs background → %@",
-              away, gSessionId);
+              away, sidCopy);
     }];
 }
 

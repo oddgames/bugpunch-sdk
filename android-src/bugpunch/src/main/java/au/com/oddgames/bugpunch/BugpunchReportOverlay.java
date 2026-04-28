@@ -212,7 +212,7 @@ public class BugpunchReportOverlay {
                     PixelFormat.TRANSLUCENT);
             // Make focusable so buttons work
             wlp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-            inheritImmersiveFlags(backdrop, activity);
+            inheritImmersiveFlags(backdrop, activity, wlp);
             wm.addView(backdrop, wlp);
             sWelcomeView = backdrop;
 
@@ -378,7 +378,7 @@ public class BugpunchReportOverlay {
                     WindowManager.LayoutParams.TYPE_APPLICATION,
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                     PixelFormat.TRANSLUCENT);
-            inheritImmersiveFlags(backdrop, activity);
+            inheritImmersiveFlags(backdrop, activity, wlp);
             wm.addView(backdrop, wlp);
             backdrop.requestFocus();
             sRequestHelpView = backdrop;
@@ -779,6 +779,13 @@ public class BugpunchReportOverlay {
         });
     }
 
+    /** True if the floating debug-mode recording overlay is currently
+     *  attached to a window. Used by the chat capture flow to decide whether
+     *  to put it back when capture mode ends. */
+    public static boolean isRecordingOverlayVisible() {
+        return sRecordingView != null;
+    }
+
     public static void hideRecordingOverlay(final Activity activity) {
         activity.runOnUiThread(() -> {
             if (sRecordingView == null) return;
@@ -864,10 +871,39 @@ public class BugpunchReportOverlay {
      * visibility and the user sees the status bar pop in.
      */
     private static void inheritImmersiveFlags(View overlay, Activity activity) {
+        inheritImmersiveFlags(overlay, activity, null);
+    }
+
+    /**
+     * Variant that also configures the overlay's own {@link WindowManager.LayoutParams}
+     * to request fullscreen + draw under the system bars. Without this the
+     * focusable overlay window (which steals focus from the host activity)
+     * relayouts at default visibility and the status bar / navigation bar
+     * pop in even though the host activity is in immersive sticky mode.
+     *
+     * Also installs a system-UI visibility listener on the overlay so the
+     * flags get re-applied if the OS clears them (e.g. user swipes from the
+     * edge — immersive sticky momentarily reveals the bars).
+     */
+    private static void inheritImmersiveFlags(View overlay, Activity activity, WindowManager.LayoutParams wlp) {
         if (overlay == null || activity == null) return;
         try {
-            overlay.setSystemUiVisibility(
-                    activity.getWindow().getDecorView().getSystemUiVisibility());
+            final int decorVis = activity.getWindow().getDecorView().getSystemUiVisibility();
+            overlay.setSystemUiVisibility(decorVis);
+            overlay.setOnSystemUiVisibilityChangeListener(visibility -> {
+                if (visibility != decorVis) overlay.setSystemUiVisibility(decorVis);
+            });
+            if (wlp != null) {
+                wlp.systemUiVisibility = decorVis;
+                wlp.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_INSET_DECOR
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    wlp.layoutInDisplayCutoutMode =
+                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                }
+            }
         } catch (Throwable ignore) { /* best-effort */ }
     }
 

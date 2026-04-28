@@ -157,20 +157,75 @@ final class BugpunchCrashDrain {
                     files.add(new BugpunchUploader.FileAttachment(
                         "logs", "logs.log", "text/plain", snapLogs, "logs"));
                 }
+                // Crash-survivable video. The native handler emits `video:`
+                // pointing at the bp_video.dat ring; remux to mp4 here (we
+                // have a live process and MediaMuxer is fine to use), then
+                // attach. The remuxer returns null for empty / unrecoverable
+                // rings, in which case the crash uploads without video.
+                // Video ring goes in as a DeferredAttachment so the remux
+                // only runs if the server's phase-1 response says it wants
+                // video for this fingerprint. The ring file's source path
+                // gets cleaned up automatically by the uploader after phase
+                // 2 — whether or not we actually remuxed it.
+                // Game-data attachment rules. Pre-resolved paths come from
+                // BugpunchNative.cs (Unity tokens like [PersistentDataPath]
+                // already expanded). Each match goes up gated on
+                // `attach_<rule_name>` so the server can budget per-rule.
+                appendAttachmentRuleFiles(uploadCache, snapPrefix, files);
+
+                List<BugpunchUploader.DeferredAttachment> deferred = new ArrayList<>();
+                String videoRing = resolveVideoRingPath(activity, extractField(raw, "video"));
+                if (videoRing != null) {
+                    deferred.add(new BugpunchUploader.DeferredAttachment(
+                        "video", "video.mp4", "video/mp4",
+                        "video", "video_ring", videoRing));
+                } else {
+                    // No ring on disk this session — could be: recorder never
+                    // started (no consent / EnterDebugMode never called), the
+                    // preserve step missed it, or the file was deleted. Push a
+                    // sentinel so the uploader emits a `bugpunchDiag_video`
+                    // text attachment with the reason instead of silently
+                    // omitting video. The sentinel sourcePath is non-empty so
+                    // the deferred validator passes; the remuxer will return
+                    // `ring_missing` since the file doesn't exist.
+                    deferred.add(new BugpunchUploader.DeferredAttachment(
+                        "video", "video.mp4", "video/mp4",
+                        "video", "video_ring",
+                        new java.io.File(activity.getCacheDir(), "bp_video_absent").getAbsolutePath()));
+                }
                 if (anrShotPaths != null) {
                     for (int i = 0; i < anrShotPaths.length; i++) {
                         files.add(BugpunchUploader.FileAttachment.jpegGated(
                             "anr_screenshot", i, anrShotPaths[i], "anr_screenshots"));
                     }
                 }
+
+                // Storyboard ring — bp.c dumped raw RGBA per slot + a packed
+                // header file. Encode each slot to JPEG, snapshot into the
+                // upload cache, embed metadata in the body so the server has
+                // the per-frame {label, path, scene, x, y, ...} even if the
+                // budget filter strips the JPEGs themselves.
+                attachStoryboardFiles(raw, uploadCache, snapPrefix, files, body);
                 // Native crashes always go through preflight — the server
                 // decides whether logs/screenshots/video are worth uploading
                 // based on per-fingerprint budget. If budget is spent,
                 // phase 2 is skipped entirely and attachments are cleaned up.
                 BugpunchUploader.enqueuePreflight(activity, preflightUrl,
-                    enrichTemplate, apiKey, body.toString(), files);
+                    enrichTemplate, apiKey, body.toString(), files, deferred);
                 BugpunchCrashHandler.deleteCrashFile(path);
                 Log.i(TAG, "queued pending crash: " + path);
+
+                // Recover the post-crash log tail into the live log_session.
+                // logsPath points at the dumped in-process log ring — most of
+                // it was already streamed via the WebSocket sink, but the last
+                // ~100 ms of buffered-but-unflushed lines got cut off when the
+                // process died. Server walks the prefix and drops overlap so
+                // re-deliveries are idempotent. Best-effort: a failure here
+                // never blocks the crash upload.
+                String crashSessionId = extractField(raw, "session_id");
+                if (crashSessionId != null && !crashSessionId.isEmpty() && logsPath != null) {
+                    enqueueCrashTail(activity, base, apiKey, crashSessionId, logsPath);
+                }
             } catch (Throwable t) {
                 Log.w(TAG, "failed to queue crash " + path, t);
                 // Leave the file on disk so next launch retries.
@@ -258,6 +313,116 @@ final class BugpunchCrashDrain {
         return body;
     }
 
+    /**
+     * Walk the configured attachment rules and stage matching files into
+     * the upload cache. Each match is added as a {@link
+     * BugpunchUploader.FileAttachment} gated on {@code attach_<name>} so
+     * the server's per-fingerprint budget can refuse the bytes when
+     * already collected. Files larger than the rule's {@code maxBytes} are
+     * skipped silently — no SDK-level error overlay for "your save file
+     * is too big to attach".
+     *
+     * <p>Per-rule cap: at most {@link #MAX_FILES_PER_RULE} files attached,
+     * sorted by mtime descending (newest first), to stop a rule pointing
+     * at a 5,000-file directory from blowing the manifest size. Drain
+     * stays best-effort — any rule throwing inside its loop is logged and
+     * skipped, the rest still run.
+     */
+    private static final int MAX_FILES_PER_RULE = 8;
+    private static void appendAttachmentRuleFiles(File uploadCache, String snapPrefix,
+                                                  List<BugpunchUploader.FileAttachment> files) {
+        JSONArray rules = BugpunchRuntime.getAttachmentRules();
+        if (rules == null || rules.length() == 0) return;
+        for (int i = 0; i < rules.length(); i++) {
+            try {
+                JSONObject r = rules.getJSONObject(i);
+                String name = r.optString("name", "rule_" + i);
+                String dirPath = r.optString("path", "");
+                String pattern = r.optString("pattern", "*");
+                long maxBytes = r.optLong("maxBytes", 1024 * 1024);
+                if (dirPath.isEmpty()) continue;
+
+                File dir = new File(dirPath);
+                if (!dir.isDirectory()) continue;
+                File[] candidates = dir.listFiles();
+                if (candidates == null) continue;
+
+                java.nio.file.PathMatcher matcher;
+                try {
+                    matcher = java.nio.file.FileSystems.getDefault()
+                        .getPathMatcher("glob:" + pattern);
+                } catch (Throwable t) {
+                    Log.w(TAG, "rule " + name + ": bad pattern '" + pattern + "'", t);
+                    continue;
+                }
+
+                List<File> matched = new ArrayList<>();
+                for (File f : candidates) {
+                    if (!f.isFile()) continue;
+                    if (f.length() > maxBytes) continue;
+                    if (!matcher.matches(java.nio.file.Paths.get(f.getName()))) continue;
+                    matched.add(f);
+                }
+                // Newest-first: typical "save data" use case wants the
+                // most recent autosave, not 6-month-old slot files.
+                matched.sort((a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+                int kept = 0;
+                String requires = "attach_" + name;
+                for (File f : matched) {
+                    if (kept >= MAX_FILES_PER_RULE) break;
+                    String snapName = snapPrefix + "attach_" + name + "_" + f.getName();
+                    String snap = snapshotAttachment(f.getAbsolutePath(), uploadCache, snapName);
+                    if (snap == null) continue;
+                    String mime = guessMimeForAttachment(f.getName());
+                    files.add(new BugpunchUploader.FileAttachment(
+                        kept == 0 ? name : name + "_" + kept,
+                        f.getName(), mime, snap, requires));
+                    kept++;
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "attachment rule " + i + " failed", t);
+            }
+        }
+    }
+
+    /** Cheap mime guess from extension. The server stores these as opaque
+     *  blobs anyway — getting it slightly wrong (text/plain vs application/json)
+     *  doesn't affect storage, only what the dashboard's preview tries to
+     *  render. */
+    private static String guessMimeForAttachment(String filename) {
+        String n = filename.toLowerCase();
+        if (n.endsWith(".json")) return "application/json";
+        if (n.endsWith(".txt") || n.endsWith(".log")) return "text/plain";
+        if (n.endsWith(".xml")) return "application/xml";
+        if (n.endsWith(".csv")) return "text/csv";
+        if (n.endsWith(".png")) return "image/png";
+        if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+        if (n.endsWith(".dat") || n.endsWith(".sav") || n.endsWith(".save")) return "application/octet-stream";
+        return "application/octet-stream";
+    }
+
+    /**
+     * Resolve a `video:` field from a .crash file to an actually-readable
+     * ring path. bp.c always writes the live-recorder path (e.g.
+     * {@code .../cache/bp_video.dat}); on next launch BugpunchRuntime renames
+     * that file to {@code bp_video.prev.dat} to keep it from being clobbered
+     * by the new session's recorder. So the path bp.c stamped into the crash
+     * file is usually stale by the time drain reads it — fall back to the
+     * parked prev file when that's the case.
+     *
+     * @return absolute path to a ring file that exists, or null if neither
+     *         the original nor the prev path resolves.
+     */
+    private static String resolveVideoRingPath(android.content.Context ctx, String fromCrash) {
+        if (fromCrash != null && !fromCrash.isEmpty()) {
+            File f = new File(fromCrash);
+            if (f.exists() && f.length() > 0) return f.getAbsolutePath();
+        }
+        File prev = BugpunchCrashHandler.videoRingPrevFile(ctx);
+        if (prev.exists() && prev.length() > 0) return prev.getAbsolutePath();
+        return null;
+    }
+
     /** Extract a header field from a crash file's key:value lines (before ---STACK---). */
     private static String extractField(String raw, String key) {
         for (String line : raw.split("\\r?\\n")) {
@@ -265,6 +430,65 @@ final class BugpunchCrashDrain {
             if (line.startsWith(key + ":")) return line.substring(key.length() + 1);
         }
         return null;
+    }
+
+    /**
+     * POST the previously-dumped log ring to
+     * {@code /api/v1/log-sessions/<id>/append-crash-tail} so the live Logs
+     * page sees everything up to the moment of death (not just the last
+     * successful WebSocket flush). The server walks the prefix of the body
+     * line-by-line against the existing file's tail and skips overlap, so
+     * re-deliveries are idempotent.
+     *
+     * <p>Best-effort: a network failure here doesn't roll back the crash
+     * upload — the user still gets the crash event with its `logs.log`
+     * attachment, just without the tail merged into the live session. Runs
+     * on its own thread so a slow upload doesn't block the rest of the
+     * drain loop.
+     */
+    private static void enqueueCrashTail(android.content.Context ctx, final String base,
+                                         final String apiKey, final String sessionId,
+                                         final String logsPath) {
+        final java.io.File f = new java.io.File(logsPath);
+        if (!f.exists() || f.length() <= 0) return;
+        new Thread(new Runnable() { @Override public void run() {
+            java.net.HttpURLConnection con = null;
+            try {
+                byte[] body;
+                try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(
+                        (int) Math.min(f.length(), 4 * 1024 * 1024));
+                    byte[] buf = new byte[16 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                    body = out.toByteArray();
+                }
+                if (body.length == 0) return;
+
+                String url = base + "/api/v1/log-sessions/"
+                    + java.net.URLEncoder.encode(sessionId, "UTF-8")
+                    + "/append-crash-tail";
+                con = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                con.setRequestMethod("POST");
+                con.setConnectTimeout(10_000);
+                con.setReadTimeout(20_000);
+                con.setDoOutput(true);
+                con.setFixedLengthStreamingMode(body.length);
+                con.setRequestProperty("Content-Type", "text/plain; charset=utf-8");
+                con.setRequestProperty("X-API-Key", apiKey);
+                try (java.io.OutputStream os = con.getOutputStream()) { os.write(body); }
+                int code = con.getResponseCode();
+                if (code >= 200 && code < 300) {
+                    Log.i(TAG, "crash tail appended (sessionId=" + sessionId + ", " + body.length + " bytes)");
+                } else {
+                    Log.w(TAG, "crash tail append HTTP " + code + " for sessionId=" + sessionId);
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "crash tail append failed for sessionId=" + sessionId, t);
+            } finally {
+                if (con != null) try { con.disconnect(); } catch (Throwable ignored) {}
+            }
+        }}, "bugpunch-crash-tail").start();
     }
 
     /** Read a null-padded UTF-8 string of max `max` bytes from `buf` at `offset`. */
@@ -289,6 +513,125 @@ final class BugpunchCrashDrain {
             case BugpunchInput.TYPE_CUSTOM:       return "custom";
             default: return "unknown";
         }
+    }
+
+    /**
+     * Storyboard ring — re-hydrate the per-slot RGBA blobs + packed header
+     * file the signal handler wrote, JPEG-encode each frame, and attach.
+     * The metadata array goes into the body too so the server keeps it even
+     * if its budget filter strips the JPEGs.
+     */
+    private static void attachStoryboardFiles(String raw, File uploadCache, String snapPrefix,
+            List<BugpunchUploader.FileAttachment> files, JSONObject body) {
+        String pathBase = extractField(raw, "storyboard_path_base");
+        if (pathBase == null || pathBase.isEmpty()) return;
+
+        int count = 0, headerBytes = 0;
+        try {
+            String c = extractField(raw, "storyboard_count");
+            if (c != null) count = Integer.parseInt(c);
+            String hb = extractField(raw, "storyboard_header_bytes");
+            if (hb != null) headerBytes = Integer.parseInt(hb);
+        } catch (NumberFormatException ignored) {}
+        if (count <= 0 || headerBytes <= 0) return;
+
+        // Read packed headers — `<base>.bin` contains `count * headerBytes` bytes.
+        byte[] headerBlob;
+        java.io.File binFile = new java.io.File(pathBase + ".bin");
+        if (!binFile.exists() || binFile.length() < (long)count * headerBytes) return;
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(binFile)) {
+            headerBlob = new byte[count * headerBytes];
+            int total = 0;
+            while (total < headerBlob.length) {
+                int n = fis.read(headerBlob, total, headerBlob.length - total);
+                if (n < 0) break;
+                total += n;
+            }
+            if (total < headerBlob.length) return;
+        } catch (Throwable t) {
+            Log.w(TAG, "storyboard: header read failed", t);
+            return;
+        }
+
+        JSONArray frames = new JSONArray();
+        try {
+            for (int i = 0; i < count; i++) {
+                int off = i * headerBytes;
+                long tsMs = readLittleLong(headerBlob, off);
+                float x   = readLittleFloat(headerBlob, off + 8);
+                float y   = readLittleFloat(headerBlob, off + 12);
+                int screenW = readLittleInt(headerBlob, off + 16);
+                int screenH = readLittleInt(headerBlob, off + 20);
+                int w = readLittleInt(headerBlob, off + 24);
+                int h = readLittleInt(headerBlob, off + 28);
+                // pixelsLen at +32 is informational (we already have the file size).
+                String path  = readFixedUtf8(headerBlob, off + 36, BugpunchStoryboard.PATH_LEN);
+                String label = readFixedUtf8(headerBlob, off + 36 + BugpunchStoryboard.PATH_LEN,
+                                             BugpunchStoryboard.LABEL_LEN);
+                String scene = readFixedUtf8(headerBlob, off + 36 + BugpunchStoryboard.PATH_LEN
+                                             + BugpunchStoryboard.LABEL_LEN,
+                                             BugpunchStoryboard.SCENE_LEN);
+
+                String rawPath = pathBase + "_" + i + ".rgba";
+                String jpgPath = encodeRawFrame(rawPath, w, h);
+                String fileName = null;
+                if (jpgPath != null) {
+                    String snapName = snapPrefix + "story_" + i + ".jpg";
+                    String snap = snapshotAttachment(jpgPath, uploadCache, snapName);
+                    new java.io.File(jpgPath).delete();
+                    if (snap != null) {
+                        files.add(BugpunchUploader.FileAttachment.jpegGated(
+                            "storyboard_frame", i, snap, "storyboard_frames"));
+                        fileName = "storyboard_frame_" + i + ".jpg";
+                    }
+                }
+
+                JSONObject f = new JSONObject();
+                f.put("tsMs",    tsMs);
+                f.put("x",       x);
+                f.put("y",       y);
+                f.put("screenW", screenW);
+                f.put("screenH", screenH);
+                f.put("w",       w);
+                f.put("h",       h);
+                if (path  != null) f.put("path",  path);
+                if (label != null) f.put("label", label);
+                if (scene != null) f.put("scene", scene);
+                if (fileName != null) f.put("file", fileName);
+                frames.put(f);
+            }
+            if (frames.length() > 0) body.put("storyboardFrames", frames);
+            // Cleanup the .bin file — its data is now in the body.
+            try { binFile.delete(); } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            Log.w(TAG, "storyboard: frame parse failed", t);
+        }
+    }
+
+    private static long readLittleLong(byte[] b, int o) {
+        return  ((long)(b[o]   & 0xff))
+             | (((long)(b[o+1] & 0xff)) << 8)
+             | (((long)(b[o+2] & 0xff)) << 16)
+             | (((long)(b[o+3] & 0xff)) << 24)
+             | (((long)(b[o+4] & 0xff)) << 32)
+             | (((long)(b[o+5] & 0xff)) << 40)
+             | (((long)(b[o+6] & 0xff)) << 48)
+             | (((long)(b[o+7] & 0xff)) << 56);
+    }
+    private static int readLittleInt(byte[] b, int o) {
+        return  (b[o]   & 0xff)
+             | ((b[o+1] & 0xff) << 8)
+             | ((b[o+2] & 0xff) << 16)
+             | ((b[o+3] & 0xff) << 24);
+    }
+    private static float readLittleFloat(byte[] b, int o) {
+        return Float.intBitsToFloat(readLittleInt(b, o));
+    }
+    private static String readFixedUtf8(byte[] b, int o, int maxBytes) {
+        int n = 0;
+        while (n < maxBytes && b[o + n] != 0) n++;
+        try { return new String(b, o, n, "UTF-8"); }
+        catch (java.io.UnsupportedEncodingException e) { return ""; }
     }
 
     /**

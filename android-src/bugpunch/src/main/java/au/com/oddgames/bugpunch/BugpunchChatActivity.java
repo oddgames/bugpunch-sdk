@@ -3,6 +3,7 @@ package au.com.oddgames.bugpunch;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
@@ -21,6 +22,7 @@ import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -60,7 +62,7 @@ import java.util.concurrent.Executors;
  *   POST /api/v1/chat/message    { body }          → post a player message
  *   POST /api/v1/chat/read       { }               → mark thread read
  *
- * Auth: {@code Authorization: Bearer <apiKey>} + {@code X-Device-Id: <stable>}
+ * Auth: {@code X-Api-Key: <apiKey>} + {@code X-Device-Id: <stable>}
  * — server resolves projectId from the API key.
  */
 public class BugpunchChatActivity extends Activity {
@@ -116,6 +118,30 @@ public class BugpunchChatActivity extends Activity {
     private boolean mOffHours;
     private String mHoursMessage;
 
+    // ── Identity (bot-style onboarding) ────────────────────────────
+    //
+    // Persisted to SharedPreferences so the player only does this once per
+    // install. Values flow into POST /api/v1/chat/message as {playerName,
+    // playerEmail} — server stamps them on the (find-or-created) thread on
+    // first send.
+    private static final String PREFS_NAME = "bugpunch_chat_identity";
+    private static final String PREF_NAME = "name";
+    private static final String PREF_EMAIL = "email";
+    private String mIdentityName;
+    private String mIdentityEmail;
+    /** True while the bot is collecting name/email — composer "Send" feeds
+     *  {@link #handleIdentityAnswer} instead of POSTing to the server. */
+    private boolean mOnboarding;
+    /** Cached from the most recent /api/v1/chat/hours response; -1 = unknown. */
+    private int mActiveStaffCount = -1;
+    /** Have we already shown the post-greet "X devs around" availability bubble
+     *  for this Activity instance? Don't repeat it on every send. */
+    private boolean mShownAvailability;
+    /** True once {@link #greetPlayer()} has run. Gates the availability
+     *  bubble so a fast {@code /chat/hours} response can't slip in above
+     *  the greeting / onboarding question. */
+    private boolean mGreeted;
+
     private final Handler mUi = new Handler(Looper.getMainLooper());
     private final ExecutorService mNet = Executors.newSingleThreadExecutor();
     private final Runnable mPoll = new Runnable() {
@@ -140,12 +166,23 @@ public class BugpunchChatActivity extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         applyTheme();
+        // Pause the rolling video ring while the chat UI is on screen so
+        // typing replies doesn't push pre-incident gameplay out of the
+        // window. Released in onDestroy. Note: explicit chat-attached video
+        // recording (segment mode) bypasses pauseRing() and keeps writing.
+        try { BugpunchRecorder.getInstance().pauseRing(); } catch (Throwable ignore) {}
 
         // Telemetry (#32) — note whether the player tapped through with the
         // unread badge visible. Just a log line for v1; full analytics is
         // out of scope.
         Log.d(TAG, "chat opened (badge was: "
                 + BugpunchReportOverlay.getLastUnreadCount() + ")");
+
+        // Per-activity orientation override — host games commonly lock to
+        // landscape/portrait; the chat surface should rotate freely so the
+        // player can hold the phone naturally while typing.
+        try { setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR); }
+        catch (Throwable ignore) {}
 
         // Full-bleed dark window — no system title bar.
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(COLOR_BG));
@@ -164,11 +201,15 @@ public class BugpunchChatActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.addView(column);
 
-        column.addView(buildHeader());
         column.addView(buildHoursBanner());
         column.addView(buildMessagesArea(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         column.addView(buildComposer());
+
+        // Floating close — top-right corner, sits above the chat content.
+        // Smaller than the old 40dp header X to free up screen real estate
+        // for the conversation; still has a 32dp hit target.
+        root.addView(buildFloatingClose());
 
         // "Disabled" overlay sits on top of everything when chat is off.
         mDisabledOverlay = buildDisabledOverlay();
@@ -176,8 +217,138 @@ public class BugpunchChatActivity extends Activity {
         root.addView(mDisabledOverlay);
 
         // Bootstrap.
+        loadIdentity();
         fetchHours();
         fetchThread();
+        // The bot greeting is queued after fetchThread's first render so the
+        // welcome line / onboarding question lands at the bottom of the list
+        // (after any historical messages on a returning device).
+    }
+
+    // ── Identity helpers ───────────────────────────────────────────
+
+    private android.content.SharedPreferences identityPrefs() {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    private void loadIdentity() {
+        android.content.SharedPreferences p = identityPrefs();
+        mIdentityName = p.getString(PREF_NAME, null);
+        mIdentityEmail = p.getString(PREF_EMAIL, null);
+    }
+
+    private void saveIdentity(String name, String email) {
+        identityPrefs().edit()
+                .putString(PREF_NAME, name)
+                .putString(PREF_EMAIL, email)
+                .apply();
+        mIdentityName = name;
+        mIdentityEmail = email;
+    }
+
+    private void clearIdentity() {
+        identityPrefs().edit().clear().apply();
+        mIdentityName = null;
+        mIdentityEmail = null;
+    }
+
+    /** Best-effort first-email-looking-token extractor. Doesn't try to be
+     *  RFC 5322 — just enough to split "David david@oddgames.com.au" into
+     *  a name + email pair. Anything before the email becomes the name;
+     *  if there's no name on either side the saved name stays null. */
+    private static String[] parseNameAndEmail(String input) {
+        if (input == null) return new String[] { null, null };
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}").matcher(input);
+        if (!m.find()) return new String[] { input.trim().isEmpty() ? null : input.trim(), null };
+        String email = m.group();
+        String rest = (input.substring(0, m.start()) + input.substring(m.end()))
+                .replaceAll("[,;]", " ").replaceAll("\\s+", " ").trim();
+        return new String[] { rest.isEmpty() ? null : rest, email };
+    }
+
+    /** True if {@code email} looks like an email — the same predicate
+     *  {@link #parseNameAndEmail} uses internally. */
+    private static boolean looksLikeEmail(String email) {
+        if (email == null) return false;
+        return java.util.regex.Pattern.compile(
+                "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$").matcher(email).matches();
+    }
+
+    /** Append a synthetic bot bubble (sender = "bot") to the local message
+     *  list. Bot messages never hit the server — they're UI scaffolding. */
+    private void addBotBubble(String text) {
+        addBotBubble(text, false);
+    }
+
+    /** Variant that marks the bubble as bearing an "Edit details" pill. The
+     *  pill is drawn underneath the bubble in {@link #buildBubble}. */
+    private void addBotBubble(String text, boolean withEditPill) {
+        try {
+            JSONObject m = new JSONObject();
+            m.put("Id", "_bot_" + System.currentTimeMillis() + "_" + mMessages.size());
+            m.put("Sender", "bot");
+            m.put("Body", text);
+            m.put("CreatedAt", iso(System.currentTimeMillis()));
+            if (withEditPill) m.put("EditDetails", true);
+            mMessages.add(m);
+            renderMessages();
+        } catch (Throwable ignored) {}
+    }
+
+    /** Greet the player on chat open — either the bot onboarding question
+     *  or the welcome-back line with an Edit-details pill. Called after
+     *  fetchThread has rendered any existing thread, so the greeting is the
+     *  most recent thing the player sees. */
+    private void greetPlayer() {
+        if (mGreeted) return;
+        mGreeted = true;
+        if (mIdentityEmail != null && looksLikeEmail(mIdentityEmail)) {
+            String name = (mIdentityName != null && !mIdentityName.isEmpty())
+                    ? mIdentityName : mIdentityEmail;
+            addBotBubble(BugpunchStrings.text("chatWelcomeBack",
+                    "Welcome back " + name + ", " + mIdentityEmail
+                            + " — if you want to change your details tap "), true);
+            mOnboarding = false;
+            maybeShowAvailability();
+        } else {
+            addBotBubble(BugpunchStrings.text("chatBotIntro",
+                    "Hey! What's your name and email address?"));
+            mOnboarding = true;
+        }
+        updateSendEnabled();
+    }
+
+    /** Composer "Send" path while the bot is collecting identity. Parses
+     *  the player's message for an email + optional name, persists, then
+     *  flips out of onboarding and lets normal sending take over. */
+    private void handleIdentityAnswer(String body) {
+        // Echo the player's reply as a normal "mine" bubble so the
+        // conversation reads naturally — but never send it to the server.
+        try {
+            JSONObject m = new JSONObject();
+            m.put("Id", "_local_" + System.currentTimeMillis());
+            m.put("Sender", "sdk");
+            m.put("Body", body);
+            m.put("CreatedAt", iso(System.currentTimeMillis()));
+            mMessages.add(m);
+            renderMessages();
+        } catch (Throwable ignored) {}
+
+        String[] parsed = parseNameAndEmail(body);
+        String name = parsed[0];
+        String email = parsed[1];
+        if (email == null || !looksLikeEmail(email)) {
+            addBotBubble(BugpunchStrings.text("chatBotNeedEmail",
+                    "I didn't catch your email — could you include it like name@example.com?"));
+            return;
+        }
+        saveIdentity(name, email);
+        mOnboarding = false;
+        addBotBubble(BugpunchStrings.text("chatBotThanks",
+                "Thanks" + (name != null ? " " + name : "")
+                        + " — we'll reply to " + email + ". What's up?"));
+        maybeShowAvailability();
     }
 
     @Override protected void onResume() {
@@ -193,83 +364,35 @@ public class BugpunchChatActivity extends Activity {
     @Override protected void onDestroy() {
         mUi.removeCallbacks(mPoll);
         mNet.shutdownNow();
+        try { BugpunchRecorder.getInstance().resumeRing(); } catch (Throwable ignore) {}
         super.onDestroy();
     }
 
-    // ── Header ─────────────────────────────────────────────────────
+    // ── Floating close ─────────────────────────────────────────────
 
-    private View buildHeader() {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(COLOR_HEADER);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        int pad = dp(12);
-        bar.setPadding(pad, pad, pad, pad);
-
-        // Bottom hairline.
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(COLOR_HEADER);
-        // Use a layer drawable so we get a 1dp bottom line without an
-        // extra wrapper view.
-        android.graphics.drawable.LayerDrawable layered = new android.graphics.drawable.LayerDrawable(
-                new android.graphics.drawable.Drawable[] { bg, hairline(COLOR_BORDER) });
-        layered.setLayerInset(1, 0, dp(48), 0, 0);  // push hairline to the bottom
-        // The bottom-inset trick above isn't strictly needed since we set the
-        // bg solid; simpler: just keep the solid header bg and add a child
-        // separator. Drop the layered drawable.
-        bar.setBackground(bg);
-
-        // Avatar circle
-        View avatar = new View(this);
-        GradientDrawable av = new GradientDrawable();
-        av.setShape(GradientDrawable.OVAL);
-        av.setColor(COLOR_ACCENT);
-        avatar.setBackground(av);
-        LinearLayout.LayoutParams aLp = new LinearLayout.LayoutParams(dp(36), dp(36));
-        aLp.rightMargin = dp(10);
-        bar.addView(avatar, aLp);
-
-        // Title + subtitle stack
-        LinearLayout titleCol = new LinearLayout(this);
-        titleCol.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams tcLp = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        bar.addView(titleCol, tcLp);
-
-        TextView title = new TextView(this);
-        title.setText(BugpunchStrings.text("chatTitle", "Chat with the team"));
-        title.setTextColor(COLOR_TEXT);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeTitle", 17));
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        titleCol.addView(title);
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText(BugpunchStrings.text("chatSubtitle", "Usually replies within a day"));
-        subtitle.setTextColor(COLOR_TEXT_MUTED);
-        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeCaption", 12));
-        titleCol.addView(subtitle);
-
-        // Close (X)
+    /** Small ✕ in the top-right that finishes the activity. Replaces the
+     *  old full-width header bar so the conversation has the whole screen.
+     *  32dp box / 16sp glyph + a faint circular backing so it stays legible
+     *  over both the message list and the composer. */
+    private View buildFloatingClose() {
         TextView close = new TextView(this);
         close.setText("✕");
         close.setTextColor(COLOR_TEXT_DIM);
-        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         close.setGravity(Gravity.CENTER);
         close.setClickable(true);
         close.setFocusable(true);
-        int cp = dp(8);
-        close.setPadding(cp, cp, cp, cp);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0xCC1B1F25); // ~80% header colour, no border
+        close.setBackground(bg);
         close.setOnClickListener(v -> finish());
-        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(dp(40), dp(40));
-        bar.addView(close, cLp);
-
-        return bar;
-    }
-
-    private GradientDrawable hairline(int color) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(color);
-        return d;
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(32), dp(32));
+        lp.gravity = Gravity.TOP | Gravity.END;
+        lp.topMargin = dp(8);
+        lp.rightMargin = dp(8);
+        close.setLayoutParams(lp);
+        return close;
     }
 
     // ── Hours banner (visible when off-hours but chat is enabled) ──
@@ -503,22 +626,227 @@ public class BugpunchChatActivity extends Activity {
 
     // ── Capture: screenshot ────────────────────────────────────────
 
+    /** Floating Capture pill — three buttons (back-to-chat, screenshot,
+     *  cancel/X). Tapping screenshot grabs the frame and returns to chat with
+     *  the attachment chip; the other two return to chat with an inline
+     *  "no screenshot was taken" info row. Static so the chat-back path can
+     *  dismiss it from anywhere. */
+    private static View sChatCapturePill;
+    private static WindowManager sChatCapturePillWm;
+    /** Was the debug-mode recording overlay visible when we minimised? We
+     *  hide it during capture mode (less clutter, prevents tap collisions
+     *  with the floating pill) and restore it when capture ends. */
+    private static boolean sRestoreRecordingOverlay;
+
     private void takeScreenshotAttachment() {
         hideAttachPill();
-        // Capture using existing native screenshot helper. We minimize the
-        // chat first so the captured frame is the live game view, not our
-        // own UI; then re-show it once the file is on disk.
-        moveTaskToBack(true);
+        final Activity host = BugpunchUnity.currentActivity();
+        if (host == null) {
+            Log.w(TAG, "takeScreenshotAttachment: no host activity");
+            return;
+        }
+        // Hide the floating recording overlay (debug-mode pill) so the
+        // capture pill stands alone. We track that we hid it so we can put
+        // it back when capture mode ends.
+        sRestoreRecordingOverlay = BugpunchReportOverlay.isRecordingOverlayVisible();
+        if (sRestoreRecordingOverlay) {
+            BugpunchReportOverlay.hideRecordingOverlay(host);
+        }
+        // Bring the game activity to the front of our own task. moveTaskToBack
+        // would send the whole task (chat + game) to the background and reveal
+        // the home screen — and PixelCopy on a backgrounded SurfaceView would
+        // capture nothing. Reordering the game on top inside the same task
+        // keeps Unity rendering, so the capture has a real frame to read.
+        minimiseToGame(host);
+        showCapturePill(host);
+    }
+
+    /** Bring the host (Unity) activity to the front within the current task,
+     *  pushing chat just below it. Used by the screenshot + video flows so
+     *  Unity is actually visible while we capture. */
+    private void minimiseToGame(Activity host) {
+        try {
+            Intent i = new Intent(this, host.getClass());
+            i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(i);
+        } catch (Throwable t) {
+            Log.w(TAG, "minimiseToGame failed, falling back to moveTaskToBack", t);
+            moveTaskToBack(true);
+        }
+    }
+
+    private void showCapturePill(final Activity host) {
+        host.runOnUiThread(() -> {
+            if (sChatCapturePill != null) return;
+
+            int accent = BugpunchTheme.color("accentChat", 0xFF336199);
+            int dim = BugpunchTheme.color("cardBackground", 0xF0222222);
+
+            LinearLayout pill = new LinearLayout(host);
+            pill.setOrientation(LinearLayout.HORIZONTAL);
+            pill.setGravity(Gravity.CENTER_VERTICAL);
+            int pad = (int) (host.getResources().getDisplayMetrics().density * 8);
+            pill.setPadding(pad, pad, pad, pad);
+
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(dim);
+            bg.setStroke((int) host.getResources().getDisplayMetrics().density,
+                    BugpunchTheme.color("cardBorder", 0xFF474747));
+            bg.setCornerRadius(host.getResources().getDisplayMetrics().density * 28);
+            pill.setBackground(bg);
+
+            // 1) Back-to-chat (chat icon) — cancels capture, surfaces info row.
+            View chatBtn = buildCapturePillIconButton(host, "💬",
+                    BugpunchTheme.color("textPrimary", Color.WHITE),
+                    v -> cancelCaptureMode(true));
+            pill.addView(chatBtn);
+
+            // 2) Screenshot (camera icon, accent fill) — actually captures.
+            View shotBtn = buildCapturePillCameraButton(host, accent);
+            shotBtn.setOnClickListener(v -> captureNow());
+            int gap = (int) (host.getResources().getDisplayMetrics().density * 6);
+            LinearLayout.LayoutParams shotLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            shotLp.leftMargin = gap; shotLp.rightMargin = gap;
+            pill.addView(shotBtn, shotLp);
+
+            // 3) Cancel (X) — same effect as the chat icon.
+            View xBtn = buildCapturePillIconButton(host, "✕",
+                    BugpunchTheme.color("textMuted", 0xFF999999),
+                    v -> cancelCaptureMode(true));
+            pill.addView(xBtn);
+
+            WindowManager wm = (WindowManager) host.getSystemService(Context.WINDOW_SERVICE);
+            WindowManager.LayoutParams wlp = new WindowManager.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT);
+            wlp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+            wlp.y = (int) (host.getResources().getDisplayMetrics().density * 48);
+
+            try {
+                wm.addView(pill, wlp);
+                sChatCapturePill = pill;
+                sChatCapturePillWm = wm;
+            } catch (Exception e) {
+                Log.w(TAG, "showCapturePill addView failed", e);
+            }
+        });
+    }
+
+    /** Round 40dp icon-only button used by the capture pill side actions. */
+    private View buildCapturePillIconButton(Activity host, String glyph, int color,
+                                            View.OnClickListener onClick) {
+        TextView t = new TextView(host);
+        t.setText(glyph);
+        t.setTextColor(color);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        t.setGravity(Gravity.CENTER);
+        int size = (int) (host.getResources().getDisplayMetrics().density * 40);
+        t.setMinWidth(size); t.setMinHeight(size);
+        t.setClickable(true); t.setFocusable(true);
+        t.setOnClickListener(onClick);
+        return t;
+    }
+
+    /** Big circular accent shutter button — the actual capture trigger. */
+    private View buildCapturePillCameraButton(Activity host, int accent) {
+        FrameLayout wrap = new FrameLayout(host);
+        int size = (int) (host.getResources().getDisplayMetrics().density * 48);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(accent);
+        wrap.setBackground(bg);
+        wrap.setLayoutParams(new ViewGroup.LayoutParams(size, size));
+        wrap.setClickable(true); wrap.setFocusable(true);
+
+        TextView icon = new TextView(host);
+        icon.setText("📷");
+        icon.setTextColor(Color.WHITE);
+        icon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        icon.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        wrap.addView(icon, lp);
+        return wrap;
+    }
+
+    private static void hideCapturePill() {
+        try {
+            if (sChatCapturePill != null && sChatCapturePillWm != null) {
+                sChatCapturePillWm.removeView(sChatCapturePill);
+            }
+        } catch (Exception ignored) {}
+        sChatCapturePill = null;
+        sChatCapturePillWm = null;
+    }
+
+    /** Common exit path for the capture pill — hides the pill, optionally
+     *  restores the debug-mode recording overlay, and bring chat back. When
+     *  {@code addInfoRow} is true (cancel paths) we surface a non-bubble
+     *  info entry so the player sees their tap had effect. */
+    private void cancelCaptureMode(boolean addInfoRow) {
+        hideCapturePill();
+        Activity host = BugpunchUnity.currentActivity();
+        if (sRestoreRecordingOverlay && host != null) {
+            BugpunchReportOverlay.showRecordingOverlay(host);
+        }
+        sRestoreRecordingOverlay = false;
+        if (addInfoRow) {
+            mUi.post(() -> {
+                addLocalInfo(BugpunchStrings.text("chatNoScreenshot",
+                        "No screenshot was taken."));
+            });
+        }
+        bringChatBack();
+    }
+
+    /**
+     * Tapped from the floating Capture pill's shutter. Hide the pill *first*
+     * so it doesn't appear in the captured frame, grab the screenshot, then
+     * bring chat back with the attachment chip already added.
+     */
+    private void captureNow() {
+        hideCapturePill();
+        final boolean restore = sRestoreRecordingOverlay;
+        sRestoreRecordingOverlay = false;
         final String outPath = new java.io.File(
                 getCacheDir(), "bp_chat_shot_" + System.currentTimeMillis() + ".png").getAbsolutePath();
-        // Tiny delay so the chat window has actually animated out before we
-        // grab the frame. 250ms matches the default activity transition.
+        // Tiny delay so the WindowManager has actually removed the pill from
+        // the surface before we read pixels back. The recording overlay is
+        // restored AFTER capture so it doesn't appear in the saved frame.
         mUi.postDelayed(() -> {
             BugpunchScreenshot.captureThen(outPath, 90, () -> mUi.post(() -> {
+                Activity host = BugpunchUnity.currentActivity();
+                if (restore && host != null) {
+                    BugpunchReportOverlay.showRecordingOverlay(host);
+                }
                 addPendingAttachment(new PendingAttachment("image", outPath));
                 bringChatBack();
             }));
-        }, 250L);
+        }, 100L);
+    }
+
+    /**
+     * Insert a transient, non-bubble info row into the message list — used
+     * to tell the player something happened (or didn't) without polluting
+     * their conversation history. Centered muted text, no avatar, no
+     * timestamp. Lives only in {@link #mMessages} so it disappears on the
+     * next server-side fetch / replace.
+     */
+    private void addLocalInfo(String text) {
+        try {
+            JSONObject info = new JSONObject();
+            info.put("Id", "_info_" + System.currentTimeMillis());
+            info.put("Type", "info");
+            info.put("Body", text);
+            mMessages.add(info);
+            renderMessages();
+        } catch (Throwable ignored) {}
     }
 
     // ── Capture: video (issue #30 — real flow) ─────────────────────
@@ -545,6 +873,12 @@ public class BugpunchChatActivity extends Activity {
     private static View sChatStopPill;
     private static WindowManager sChatStopPillWm;
 
+    /** True when we're in "ride the ring" mode — debug mode is already
+     *  recording, so chat-video taps don't trigger a fresh MediaProjection
+     *  consent. Stop tap dumps the existing rolling window to disk instead
+     *  of finalising a new segment muxer. */
+    private boolean mUsingRingForChatVideo;
+
     private void startVideoAttachment() {
         hideAttachPill();
 
@@ -565,7 +899,24 @@ public class BugpunchChatActivity extends Activity {
         // We do this BEFORE asking for projection consent so the system
         // dialog appears over the game (matching the bug-report flow which
         // is normally already minimised when triggered from a pin / shake).
-        moveTaskToBack(true);
+        // Reorder the game to the top inside our own task instead of
+        // moveTaskToBack — moving the whole task to the back would reveal
+        // the home screen and stop Unity from rendering frames.
+        minimiseToGame(host);
+
+        // Fast path: if debug mode is already recording, the MediaProjection
+        // token is live and the player has already consented at debug-mode
+        // entry. Re-prompting is hostile UX. Resume the ring (chat onCreate
+        // paused it) and capture the rolling window when the player taps
+        // Stop — same UX, zero extra dialogs.
+        if (BugpunchRecorder.getInstance().isRunning()) {
+            mUsingRingForChatVideo = true;
+            mPendingVideoPath = outPath;
+            try { BugpunchRecorder.getInstance().resumeRing(); } catch (Throwable ignored) {}
+            showStopPill(host);
+            return;
+        }
+        mUsingRingForChatVideo = false;
 
         BugpunchProjectionRequest.requestForJavaCallback(host,
                 new BugpunchProjectionRequest.JavaProjectionCallback() {
@@ -714,6 +1065,29 @@ public class BugpunchChatActivity extends Activity {
         mPendingVideoPath = null;
         if (path == null) { bringChatBack(); return; }
 
+        // Ring-dump branch: debug mode was already recording. Pull the
+        // current rolling window to disk and re-pause the ring so we don't
+        // pollute future bug-report dumps with the chat composer.
+        if (mUsingRingForChatVideo) {
+            mUsingRingForChatVideo = false;
+            boolean ok = false;
+            try {
+                ok = BugpunchRecorder.getInstance().dump(path);
+            } catch (Exception e) {
+                Log.w(TAG, "ring dump failed", e);
+            }
+            try { BugpunchRecorder.getInstance().pauseRing(); } catch (Throwable ignored) {}
+            bringChatBack();
+            java.io.File f = new java.io.File(path);
+            if (ok && f.exists() && f.length() > 0) {
+                mUi.post(() -> addPendingAttachment(new PendingAttachment("video", path)));
+            } else {
+                Log.w(TAG, "chat ring-dump empty or failed — discarded: " + path);
+                try { f.delete(); } catch (Exception ignored) {}
+            }
+            return;
+        }
+
         // BugpunchRecorder.stop() finalises the segment muxer and stops the
         // FG service. It's synchronous so we can safely peek at the file
         // immediately after.
@@ -761,44 +1135,112 @@ public class BugpunchChatActivity extends Activity {
             return;
         }
         mAttachmentStrip.setVisibility(View.VISIBLE);
+        final int thumbSide = dp(56);
         for (final PendingAttachment a : mPendingAttachments) {
+            // Square thumbnail card so the player can actually see what they
+            // captured before sending. Falls back to a glyph if decoding the
+            // bitmap or pulling a frame from the MP4 fails.
             FrameLayout chip = new FrameLayout(this);
             GradientDrawable cb = new GradientDrawable();
             cb.setColor(COLOR_BG);
             cb.setStroke(dp(1), COLOR_BORDER);
             cb.setCornerRadius(dp(8));
             chip.setBackground(cb);
+            chip.setClipToOutline(true);
 
-            TextView label = new TextView(this);
-            label.setText(("image".equals(a.type) ? "📷 " : "🎥 ")
-                    + new java.io.File(a.path).getName());
-            label.setTextColor(COLOR_TEXT_DIM);
-            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeCaption", 12));
-            int lp = dp(8);
-            label.setPadding(lp, lp, dp(28), lp);
-            chip.addView(label);
+            ImageView thumb = new ImageView(this);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            FrameLayout.LayoutParams thumbLp = new FrameLayout.LayoutParams(thumbSide, thumbSide);
+            chip.addView(thumb, thumbLp);
+
+            android.graphics.Bitmap bmp = decodeAttachmentThumb(a, thumbSide);
+            if (bmp != null) {
+                thumb.setImageBitmap(bmp);
+            } else {
+                // Couldn't decode — show the type glyph so the chip isn't blank.
+                TextView fallback = new TextView(this);
+                fallback.setText("image".equals(a.type) ? "📷" : "🎥");
+                fallback.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+                fallback.setGravity(Gravity.CENTER);
+                FrameLayout.LayoutParams fLp = new FrameLayout.LayoutParams(thumbSide, thumbSide);
+                chip.addView(fallback, fLp);
+            }
+
+            // Tiny type badge in the corner so video chips are still
+            // distinguishable at a glance even when their poster frame is
+            // similar to a screenshot.
+            if ("video".equals(a.type)) {
+                TextView badge = new TextView(this);
+                badge.setText("🎥");
+                badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                badge.setBackgroundColor(0x99000000);
+                int bp = dp(2);
+                badge.setPadding(bp + 2, 0, bp + 2, 0);
+                FrameLayout.LayoutParams bLp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                bLp.gravity = Gravity.BOTTOM | Gravity.START;
+                bLp.leftMargin = dp(2); bLp.bottomMargin = dp(2);
+                chip.addView(badge, bLp);
+            }
 
             TextView x = new TextView(this);
             x.setText("×");
-            x.setTextColor(COLOR_TEXT_MUTED);
-            x.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            x.setTextColor(Color.WHITE);
+            x.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
             x.setTypeface(Typeface.DEFAULT_BOLD);
+            x.setGravity(Gravity.CENTER);
+            GradientDrawable xBg = new GradientDrawable();
+            xBg.setShape(GradientDrawable.OVAL);
+            xBg.setColor(0xCC000000);
+            x.setBackground(xBg);
+            int xSize = dp(18);
             x.setClickable(true);
             x.setOnClickListener(v -> {
                 mPendingAttachments.remove(a);
                 rebuildAttachmentStrip();
                 updateSendEnabled();
             });
-            FrameLayout.LayoutParams xLp = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            xLp.gravity = Gravity.CENTER_VERTICAL | Gravity.END;
-            xLp.rightMargin = dp(6);
+            FrameLayout.LayoutParams xLp = new FrameLayout.LayoutParams(xSize, xSize);
+            xLp.gravity = Gravity.TOP | Gravity.END;
+            xLp.topMargin = dp(2); xLp.rightMargin = dp(2);
             chip.addView(x, xLp);
 
             LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    thumbSide, thumbSide);
             chipLp.rightMargin = dp(6);
             mAttachmentStrip.addView(chip, chipLp);
+        }
+    }
+
+    /** Decode a thumbnail for a pending attachment. Returns null if the file
+     *  is missing or the decode fails — caller falls back to a glyph. */
+    private android.graphics.Bitmap decodeAttachmentThumb(PendingAttachment a, int targetSide) {
+        try {
+            java.io.File f = new java.io.File(a.path);
+            if (!f.exists() || f.length() == 0) return null;
+            if ("video".equals(a.type)) {
+                android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
+                try {
+                    r.setDataSource(f.getAbsolutePath());
+                    return r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                } finally {
+                    try { r.release(); } catch (Throwable ignored) {}
+                }
+            }
+            // Image: decode at a sensible sample size so we don't blow memory
+            // on a 2160-wide screenshot just to show a 56dp tile.
+            android.graphics.BitmapFactory.Options bounds = new android.graphics.BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath(), bounds);
+            int sample = 1;
+            int max = Math.max(bounds.outWidth, bounds.outHeight);
+            while (max / sample > targetSide * 2) sample *= 2;
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inSampleSize = Math.max(1, sample);
+            return android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath(), opts);
+        } catch (Throwable t) {
+            Log.w(TAG, "decodeAttachmentThumb failed", t);
+            return null;
         }
     }
 
@@ -848,13 +1290,39 @@ public class BugpunchChatActivity extends Activity {
         }
         mEmpty.setVisibility(View.GONE);
         for (JSONObject m : mMessages) {
-            mMessageList.addView(buildBubble(m));
+            String type = m.optString("Type", m.optString("type", "text"));
+            if ("info".equalsIgnoreCase(type)) {
+                mMessageList.addView(buildInfoRow(m));
+            } else {
+                mMessageList.addView(buildBubble(m));
+            }
         }
         mUi.post(() -> mScroll.fullScroll(View.FOCUS_DOWN));
     }
 
+    /** Centered muted system note — used for transient client-side
+     *  acknowledgments like "no screenshot was taken". Not a chat bubble. */
+    private View buildInfoRow(JSONObject m) {
+        TextView t = new TextView(this);
+        t.setText(m.optString("Body", m.optString("body", "")));
+        t.setTextColor(COLOR_TEXT_MUTED);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeCaption", 12));
+        t.setTypeface(Typeface.DEFAULT, Typeface.ITALIC);
+        t.setGravity(Gravity.CENTER);
+        int pad = dp(8);
+        t.setPadding(pad, pad, pad, pad);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(4);
+        lp.bottomMargin = dp(4);
+        t.setLayoutParams(lp);
+        return t;
+    }
+
     private View buildBubble(JSONObject m) {
         String sender = m.optString("Sender", m.optString("sender", "qa"));
+        boolean isBot = "bot".equalsIgnoreCase(sender);
+        if (isBot) return buildBotBubble(m);
         boolean mine = "sdk".equalsIgnoreCase(sender);
         String body = m.optString("Body", m.optString("body", ""));
         String createdAt = m.optString("CreatedAt", m.optString("createdAt", ""));
@@ -962,6 +1430,91 @@ public class BugpunchChatActivity extends Activity {
     }
 
     /**
+     * Bot-style bubble used during onboarding + the welcome-back greeting.
+     * Renders QA-side (left aligned) with a "Bugpunch" caption above so the
+     * player can tell it apart from a real teammate. When the message has
+     * the {@code EditDetails} flag, an inline pill is appended underneath
+     * which clears saved identity and re-runs the onboarding flow.
+     */
+    private View buildBotBubble(JSONObject m) {
+        String body = m.optString("Body", m.optString("body", ""));
+        boolean withEditPill = m.optBoolean("EditDetails", false);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setGravity(Gravity.START);
+        int rowPad = dp(2);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = rowPad;
+        rowLp.bottomMargin = rowPad;
+        row.setLayoutParams(rowLp);
+
+        TextView caption = new TextView(this);
+        caption.setText(BugpunchStrings.text("chatBotName", "Bugpunch"));
+        caption.setTextColor(COLOR_TEXT_MUTED);
+        caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeCaption", 11));
+        caption.setTypeface(Typeface.DEFAULT_BOLD);
+        int capPad = dp(6);
+        caption.setPadding(capPad, 0, capPad, dp(2));
+        row.addView(caption);
+
+        TextView bubble = new TextView(this);
+        bubble.setText(body);
+        bubble.setTextColor(COLOR_TEXT);
+        bubble.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeBody", 14));
+        int bp = dp(12), bpv = dp(8);
+        bubble.setPadding(bp, bpv, bp, bpv);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(COLOR_BUBBLE_OTHER);
+        float r = dp(16), tail = dp(4);
+        bg.setCornerRadii(new float[] { r, r, r, r, r, r, tail, tail });
+        bubble.setBackground(bg);
+        bubble.setMaxWidth((int)(getResources().getDisplayMetrics().widthPixels * 0.8f));
+        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bLp.gravity = Gravity.START;
+        row.addView(bubble, bLp);
+
+        if (withEditPill) {
+            TextView pill = new TextView(this);
+            pill.setText(BugpunchStrings.text("chatEditDetails", "Edit details"));
+            pill.setTextColor(COLOR_ACCENT);
+            pill.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeCaption", 12));
+            pill.setTypeface(Typeface.DEFAULT_BOLD);
+            int pp = dp(10), ppv = dp(6);
+            pill.setPadding(pp, ppv, pp, ppv);
+            GradientDrawable pillBg = new GradientDrawable();
+            pillBg.setColor(0x00000000);
+            pillBg.setStroke(dp(1), COLOR_ACCENT);
+            pillBg.setCornerRadius(dp(14));
+            pill.setBackground(pillBg);
+            pill.setClickable(true);
+            pill.setFocusable(true);
+            pill.setOnClickListener(v -> startReonboarding());
+            LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            pLp.topMargin = dp(6);
+            pLp.leftMargin = dp(2);
+            row.addView(pill, pLp);
+        }
+
+        return row;
+    }
+
+    /** Edit-details pill click handler. Wipes saved name/email and runs the
+     *  onboarding bot question again so the player can re-enter both.
+     *  Existing chat history stays put — only identity changes. */
+    private void startReonboarding() {
+        clearIdentity();
+        mShownAvailability = false;
+        addBotBubble(BugpunchStrings.text("chatBotReintro",
+                "Sure — what's your name and email address?"));
+        mOnboarding = true;
+        updateSendEnabled();
+    }
+
+    /**
      * One image / video attachment rendered as a thumb above the bubble body.
      * Image: actual bitmap loaded from disk (local path) — server-fetched
      * thumbs come in a follow-up pass since we don't have a network image
@@ -1013,6 +1566,15 @@ public class BugpunchChatActivity extends Activity {
      * stamps the message with the new RequestState.
      */
     private View buildRequestBubble(final JSONObject m, String type, String body) {
+        boolean isScript = "scriptRequest".equalsIgnoreCase(type);
+        String description = m.optString("RequestDescription", m.optString("requestDescription", "")).trim();
+        boolean hasDescription = !description.isEmpty();
+        // Spoiler model: when QA shipped a plain-English summary the script
+        // source hides behind a "Show script" toggle. Players never need to
+        // read C# to make an informed approve/decline call. Legacy
+        // QA-without-description rows fall back to the inline source preview.
+        final boolean collapseSource = isScript && hasDescription;
+
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable bg = new GradientDrawable();
@@ -1024,7 +1586,7 @@ public class BugpunchChatActivity extends Activity {
         container.setPadding(p, p, p, p);
 
         TextView label = new TextView(this);
-        label.setText("scriptRequest".equalsIgnoreCase(type)
+        label.setText(isScript
                 ? BugpunchStrings.text("chatScriptRequest", "The dev team wants to run a script:")
                 : BugpunchStrings.text("chatDataRequest", "The dev team is asking for data:"));
         label.setTextColor(COLOR_TEXT_DIM);
@@ -1032,19 +1594,52 @@ public class BugpunchChatActivity extends Activity {
         label.setTypeface(Typeface.DEFAULT_BOLD);
         container.addView(label);
 
-        TextView preview = new TextView(this);
-        // Truncate long script bodies — full source is still shown when
-        // tapped to expand (TODO).
+        // Plain-English summary (when present) — sits prominently above the
+        // collapsed source.
+        if (hasDescription) {
+            TextView desc = new TextView(this);
+            desc.setText(description);
+            desc.setTextColor(COLOR_TEXT);
+            desc.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeBody", 14));
+            int dp = dp(6);
+            desc.setPadding(0, dp, 0, dp);
+            container.addView(desc);
+        }
+
+        // Source preview — same as before, but hidden by default when we
+        // have a description that supersedes it.
+        final TextView preview = new TextView(this);
         String shown = body == null ? "" : body;
         if (shown.length() > 600) shown = shown.substring(0, 600) + "\n…";
         preview.setText(shown);
         preview.setTextColor(COLOR_TEXT);
         preview.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeCaption", 12));
-        if ("scriptRequest".equalsIgnoreCase(type)) {
+        if (isScript) {
             preview.setTypeface(Typeface.MONOSPACE);
         }
         int pp = dp(8);
         preview.setPadding(0, pp, 0, pp);
+        preview.setVisibility(collapseSource ? View.GONE : View.VISIBLE);
+
+        // Spoiler toggle — only on script requests with a description.
+        if (collapseSource) {
+            final TextView spoiler = new TextView(this);
+            spoiler.setText(BugpunchStrings.text("chatShowScript", "▸ Show script"));
+            spoiler.setTextColor(COLOR_ACCENT);
+            spoiler.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeCaption", 12));
+            spoiler.setClickable(true);
+            spoiler.setFocusable(true);
+            int sp = dp(4);
+            spoiler.setPadding(0, sp, 0, sp);
+            spoiler.setOnClickListener(v -> {
+                boolean nowHidden = preview.getVisibility() != View.GONE;
+                preview.setVisibility(nowHidden ? View.GONE : View.VISIBLE);
+                spoiler.setText(nowHidden
+                        ? BugpunchStrings.text("chatShowScript", "▸ Show script")
+                        : BugpunchStrings.text("chatHideScript", "▾ Hide script"));
+            });
+            container.addView(spoiler);
+        }
         container.addView(preview);
 
         // Two-button row.
@@ -1108,30 +1703,139 @@ public class BugpunchChatActivity extends Activity {
                 payload.put("approved", approved);
                 http("POST", "/api/v1/chat/request/answer", payload.toString());
 
-                // For approved scriptRequest / dataRequest: bounce the body
-                // up to C# (BugpunchClient.OnApprovedScriptRequest /
-                // OnApprovedDataRequest) where ODDGames.Scripting actually
-                // lives. C# runs it, captures the result, and POSTs the
-                // reply chat message itself — native just kicks the next
-                // poll so the bubble appears.
                 String type = m.optString("Type", m.optString("type", ""));
+                String kind = m.optString("RequestKind", m.optString("requestKind", ""));
+
                 if (approved) {
-                    String body = m.optString("Body", m.optString("body", ""));
-                    String b64 = android.util.Base64.encodeToString(
-                            body.getBytes("UTF-8"),
-                            android.util.Base64.NO_WRAP);
-                    String unityPayload = id + "|" + b64;
-                    if ("scriptRequest".equalsIgnoreCase(type)) {
-                        BugpunchUnity.sendMessage(
-                                "BugpunchClient", "OnApprovedScriptRequest", unityPayload);
-                    } else if ("dataRequest".equalsIgnoreCase(type)) {
-                        BugpunchUnity.sendMessage(
-                                "BugpunchClient", "OnApprovedDataRequest", unityPayload);
+                    boolean handledNatively = false;
+
+                    // Native fulfilment for kinds that don't need Mono — the
+                    // capture, upload, and result POST all stay in this
+                    // process. C# is never on the path for these.
+                    if ("dataRequest".equalsIgnoreCase(type)
+                            && "screenshot".equalsIgnoreCase(kind)) {
+                        performNativeScreenshotForRequest(id);
+                        handledNatively = true;
+                    } else if ("dataRequest".equalsIgnoreCase(type)
+                            && "video".equalsIgnoreCase(kind)) {
+                        // On-demand chat-video capture is tracked under
+                        // bugpunch-sdk-unity#39. Post a typed error so QA
+                        // sees an explicit "not implemented" rather than
+                        // silence.
+                        postRequestResult(id, "error", null,
+                                "Video capture for chat not yet implemented (bugpunch-sdk-unity#39)",
+                                null);
+                        handledNatively = true;
+                    }
+
+                    if (!handledNatively) {
+                        // Bounce to C# for kinds that need Mono — script
+                        // execution today, plus the legacy untyped
+                        // dataRequest fallback. New payload format
+                        // includes the kind so the C# layer can branch
+                        // without re-fetching the message.
+                        String body = m.optString("Body", m.optString("body", ""));
+                        String b64 = android.util.Base64.encodeToString(
+                                body.getBytes("UTF-8"),
+                                android.util.Base64.NO_WRAP);
+                        if ("scriptRequest".equalsIgnoreCase(type)) {
+                            // Script kind is implied by the method name —
+                            // keep the legacy two-field payload.
+                            String unityPayload = id + "|" + b64;
+                            BugpunchUnity.sendMessage(
+                                    "BugpunchClient", "OnApprovedScriptRequest", unityPayload);
+                        } else if ("dataRequest".equalsIgnoreCase(type)) {
+                            String unityPayload = id + "|" + (kind == null ? "" : kind) + "|" + b64;
+                            BugpunchUnity.sendMessage(
+                                    "BugpunchClient", "OnApprovedDataRequest", unityPayload);
+                        }
                     }
                 }
                 mUi.post(() -> fetchMessages(true));
             } catch (Throwable t) {
                 Log.w(TAG, "answerRequest failed", t);
+            }
+        });
+    }
+
+    // ── Native screenshot fulfilment ───────────────────────────────
+    //
+    // Capture the Unity SurfaceView via PixelCopy (BugpunchScreenshot),
+    // upload the JPEG to /api/v1/chat/upload via the existing
+    // uploadAttachment helper, and POST the captured ref onto the request
+    // message via /api/v1/chat/request/result. C# is never on the path.
+    private void performNativeScreenshotForRequest(final String mid) {
+        if (mid == null || mid.length() == 0) return;
+
+        java.io.File dir = new java.io.File(getCacheDir(), "bp_chat");
+        if (!dir.exists()) dir.mkdirs();
+        final java.io.File outFile = new java.io.File(dir,
+                "chat_" + mid + "_" + System.currentTimeMillis() + ".jpg");
+
+        BugpunchScreenshot.captureWithResult(outFile.getAbsolutePath(), 85,
+                new BugpunchScreenshot.OnCaptureFinished() {
+                    @Override public void onResult(boolean success, String path, String reason) {
+                        if (!success) {
+                            postRequestResult(mid, "error", null,
+                                    "Native screenshot capture failed: "
+                                        + (reason != null ? reason : "unknown"),
+                                    null);
+                            return;
+                        }
+                        // Upload + result POST go on the network executor —
+                        // uploadAttachment blocks on HttpURLConnection.
+                        mNet.execute(() -> {
+                            PendingAttachment a = new PendingAttachment();
+                            a.type = "image";
+                            a.path = path;
+                            String ref = uploadAttachment(a);
+
+                            // Best-effort cleanup of the temp JPEG.
+                            try { outFile.delete(); } catch (Throwable ignored) {}
+
+                            if (ref == null || ref.length() == 0) {
+                                postRequestResult(mid, "error", null,
+                                        "Screenshot upload failed", null);
+                                return;
+                            }
+                            try {
+                                JSONArray atts = new JSONArray();
+                                JSONObject att = new JSONObject();
+                                att.put("type", "image");
+                                att.put("ref", ref);
+                                att.put("mime", "image/jpeg");
+                                atts.put(att);
+                                postRequestResult(mid, "ok", "Captured screenshot", null, atts);
+                            } catch (JSONException e) {
+                                postRequestResult(mid, "error", null,
+                                        "result envelope encoding failed", null);
+                            }
+                        });
+                    }
+                });
+    }
+
+    // POST /api/v1/chat/request/result with optional attachments. The
+    // server (chatService.recordRequestResult) writes the descriptors onto
+    // the message row's attachments column so the dashboard renders them
+    // inline in the request bubble.
+    private void postRequestResult(final String mid, final String status,
+                                   final String log, final String error,
+                                   final JSONArray attachments) {
+        mNet.execute(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("messageId", mid);
+                body.put("status", status != null ? status : "ok");
+                if (log != null)   body.put("log", log);
+                if (error != null) body.put("error", error);
+                if (attachments != null && attachments.length() > 0) {
+                    body.put("attachments", attachments);
+                }
+                http("POST", "/api/v1/chat/request/result", body.toString());
+                mUi.post(() -> fetchMessages(true));
+            } catch (Throwable t) {
+                Log.w(TAG, "postRequestResult failed", t);
             }
         });
     }
@@ -1143,6 +1847,26 @@ public class BugpunchChatActivity extends Activity {
         String body = mComposer.getText().toString().trim();
         if (body.length() == 0 && mPendingAttachments.isEmpty()) return;
         mComposer.setText("");
+        // Dismiss the IME and drop focus so the bubble list reclaims the
+        // bottom of the screen — matches Messenger / iMessage behavior on
+        // hitting send.
+        try {
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) imm.hideSoftInputFromWindow(mComposer.getWindowToken(), 0);
+        } catch (Throwable ignored) {}
+        mComposer.clearFocus();
+
+        // While the bot is collecting identity, the player's "send" routes
+        // into the onboarding parser instead of the server. Attachments are
+        // not allowed during onboarding — silently drop them rather than
+        // accidentally posting them with the first real message.
+        if (mOnboarding) {
+            mPendingAttachments.clear();
+            rebuildAttachmentStrip();
+            handleIdentityAnswer(body);
+            updateSendEnabled();
+            return;
+        }
         final List<PendingAttachment> attachments = new ArrayList<>(mPendingAttachments);
         mPendingAttachments.clear();
         rebuildAttachmentStrip();
@@ -1187,6 +1911,16 @@ public class BugpunchChatActivity extends Activity {
                 JSONObject payload = new JSONObject();
                 payload.put("body", body);
                 if (uploaded.length() > 0) payload.put("attachments", uploaded);
+                // Stamp identity on every send so the server can keep the
+                // thread row in sync if the player edits via the header
+                // pill — the server sendSdkMessage handler updates non-null
+                // / changed values on the existing thread.
+                if (mIdentityName != null && !mIdentityName.isEmpty()) {
+                    payload.put("playerName", mIdentityName);
+                }
+                if (mIdentityEmail != null && !mIdentityEmail.isEmpty()) {
+                    payload.put("playerEmail", mIdentityEmail);
+                }
                 String resp = http("POST", "/api/v1/chat/message", payload.toString());
                 if (resp == null) return;
                 JSONObject obj = new JSONObject(resp);
@@ -1222,7 +1956,7 @@ public class BugpunchChatActivity extends Activity {
             conn.setReadTimeout(60000);
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
-            conn.setRequestProperty("Authorization", "Bearer " + key);
+            conn.setRequestProperty("X-Api-Key", key);
             conn.setRequestProperty("X-Device-Id", BugpunchIdentity.getStableDeviceId(this));
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
 
@@ -1266,10 +2000,13 @@ public class BugpunchChatActivity extends Activity {
                 boolean offHours = o.optBoolean("isOffHours", false);
                 String msg = o.optString("offHoursMessage",
                         "Outside support hours — we'll get back to you.");
+                final int activeStaff = o.optInt("activeStaffCount", -1);
                 mUi.post(() -> {
                     mDisabled = disabled;
                     mOffHours = offHours;
                     mHoursMessage = msg;
+                    if (activeStaff >= 0) mActiveStaffCount = activeStaff;
+                    maybeShowAvailability();
                     if (mDisabled) {
                         mDisabledOverlay.setVisibility(View.VISIBLE);
                     } else if (mOffHours) {
@@ -1287,19 +2024,64 @@ public class BugpunchChatActivity extends Activity {
     private void fetchThread() {
         mNet.execute(() -> {
             String resp = http("GET", "/api/v1/chat/thread", null);
-            if (resp == null) return;
+            if (resp == null) {
+                // No thread or transient error — greet the player so the
+                // empty chat doesn't read as broken.
+                mUi.post(() -> {
+                    renderMessages();
+                    greetPlayer();
+                });
+                return;
+            }
             try {
                 JSONObject o = new JSONObject(resp);
                 JSONObject thread = o.optJSONObject("thread");
                 if (thread == null) thread = o;
                 String tid = thread.optString("Id", thread.optString("id", null));
                 if (tid != null && !tid.isEmpty()) mThreadId = tid;
-                mUi.post(() -> fetchMessages(true));
+                mUi.post(() -> {
+                    fetchMessages(true);
+                    greetPlayer();
+                });
             } catch (Throwable t) {
                 // 404 = no thread yet, that's fine — empty state stays.
-                mUi.post(this::renderMessages);
+                mUi.post(() -> {
+                    renderMessages();
+                    greetPlayer();
+                });
             }
         });
+    }
+
+    /** Drop the "please wait for a dev to get in touch" availability line if
+     *  we know the staff count, the player isn't being onboarded, and we
+     *  haven't already shown it. Called from both the greet path (when the
+     *  count is already cached) and fetchHours (when it just landed). */
+    private void maybeShowAvailability() {
+        if (mShownAvailability) return;
+        if (!mGreeted) return;
+        if (mOnboarding) return;
+        if (mActiveStaffCount < 0) return;
+        mShownAvailability = true;
+        String text;
+        if (mActiveStaffCount > 0) {
+            text = BugpunchStrings.text("chatAvailability",
+                    "Please wait for a dev to get in touch — there "
+                            + (mActiveStaffCount == 1 ? "is " : "are ")
+                            + mActiveStaffCount + " active right now, but it might take a "
+                            + "little while for someone to respond.");
+        } else {
+            text = BugpunchStrings.text("chatAvailabilityNoneActive",
+                    "Please wait for a dev to get in touch — no one's around right "
+                            + "now, but we'll respond as soon as we can.");
+        }
+        addBotBubble(text);
+        // Final prompt: tell us what's wrong. Mention the (planned) wiki
+        // surface so the player knows similar reports may be matched up.
+        addBotBubble(BugpunchStrings.text("chatTellUs",
+                "Tell us what's wrong and someone will respond as soon as "
+                        + "they can. We might also surface similar issues "
+                        + "from our wiki."));
     }
 
     private void fetchMessages(boolean fullReplace) {
@@ -1375,7 +2157,7 @@ public class BugpunchChatActivity extends Activity {
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
             conn.setRequestMethod(method);
-            conn.setRequestProperty("Authorization", "Bearer " + key);
+            conn.setRequestProperty("X-Api-Key", key);
             conn.setRequestProperty("X-Device-Id",
                     BugpunchIdentity.getStableDeviceId(this));
             conn.setRequestProperty("Accept", "application/json");
@@ -1388,7 +2170,12 @@ public class BugpunchChatActivity extends Activity {
             }
 
             int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) return null;
+            if (code < 200 || code >= 300) {
+                String err = readError(conn);
+                Log.w(TAG, method + " " + path + " → HTTP " + code
+                        + (err != null && !err.isEmpty() ? " body=" + err : ""));
+                return null;
+            }
             return readAll(conn);
         } catch (Throwable t) {
             Log.w(TAG, method + " " + path + " failed: " + t.getMessage());
@@ -1396,6 +2183,21 @@ public class BugpunchChatActivity extends Activity {
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /** Best-effort read of the error stream — never throws. */
+    private String readError(HttpURLConnection conn) {
+        try {
+            java.io.InputStream is = conn.getErrorStream();
+            if (is == null) return null;
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(is, "UTF-8"))) {
+                String line;
+                while ((line = r.readLine()) != null) sb.append(line);
+            }
+            String s = sb.toString();
+            return s.length() > 500 ? s.substring(0, 500) + "…" : s;
+        } catch (Throwable t) { return null; }
     }
 
     private String readAll(HttpURLConnection conn) throws Exception {

@@ -3,6 +3,7 @@ package au.com.oddgames.bugpunch;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Canvas;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.MediaCodec;
@@ -85,6 +86,40 @@ public class BugpunchRecorder {
     /** True if we're in buffer-input mode (Unity feeds frames via queueFrame). */
     public boolean isBufferMode() { return mBufferMode; }
 
+    /** True while one or more callers have paused the ring. Encoded samples
+     *  arriving while paused are dropped (not added to the in-RAM ring or
+     *  the crash-survivable native ring). */
+    public boolean isRingPaused() { return mPauseCount.get() > 0; }
+
+    /**
+     * Stop appending encoded samples to the rolling rings while a Bugpunch
+     * UI is on screen, so the user typing into our own forms doesn't push
+     * out the pre-incident gameplay footage.
+     *
+     * Counter-based — every call must be paired with {@link #resumeRing()}.
+     * Pre-pause samples are retained; the first sample after the count
+     * returns to zero folds the PTS gap into a paused-time accumulator so
+     * they aren't immediately evicted by the now much-later PTS cutoff.
+     *
+     * Safe to call from any thread. Safe to call before/after the recorder
+     * is running — pause state persists and applies once samples flow.
+     */
+    public void pauseRing() {
+        int n = mPauseCount.incrementAndGet();
+        if (n == 1) {
+            mPauseStartPtsUs = mLastSamplePtsUs;
+            Log.i(TAG, "ring paused (lastPts=" + mPauseStartPtsUs + "us)");
+        }
+    }
+
+    /** Pair to {@link #pauseRing()}. The ring resumes when the count hits zero. */
+    public void resumeRing() {
+        int n = mPauseCount.updateAndGet(v -> v > 0 ? v - 1 : 0);
+        if (n == 0) {
+            Log.i(TAG, "ring resumed (accumPaused=" + mAccumPausedUs + "us)");
+        }
+    }
+
     // Buffer-input mode — used when MediaProjection consent was denied and
     // Unity feeds NV12 frames directly from a mirror RenderTexture.
     private volatile boolean mBufferMode;
@@ -102,6 +137,30 @@ public class BugpunchRecorder {
     // Ring buffer of encoded samples
     private final Deque<Sample> mBuffer = new ArrayDeque<>();
     private final Object mBufferLock = new Object();
+
+    // ─── Pause-while-our-UI-is-up ────────────────────────────────────
+    //
+    // While a Bugpunch UI (bug report form, feedback, etc.) is on screen,
+    // the user is typing into our forms — feeding that footage into the
+    // ring would push out the pre-incident gameplay we actually care about.
+    // Pause by dropping incoming samples (both in-RAM ring and native
+    // crash ring). Counter-based so overlapping UIs balance correctly.
+    //
+    // We compensate the trim cutoff with mAccumPausedUs so that, once
+    // recording resumes, pre-pause samples aren't immediately evicted by
+    // the now much-later PTS values. mPauseStartPtsUs is the PTS of the
+    // last sample seen before pausing; the first post-resume sample SETS
+    // mAccumPausedUs to (its PTS - mPauseStartPtsUs) — overwriting any
+    // previous pause cycle, NOT accumulating. Capped at mWindowSeconds so
+    // the dump never exceeds 2× the configured window even after a single
+    // long pause. (Accumulating across cycles caused dumps to grow without
+    // bound — bug forms / chat / annotate / tools each pause once, summing
+    // to multi-minute compensations and producing many-minute uploads.)
+    private final java.util.concurrent.atomic.AtomicInteger mPauseCount =
+        new java.util.concurrent.atomic.AtomicInteger(0);
+    private volatile long mLastSamplePtsUs;
+    private volatile long mPauseStartPtsUs;
+    private volatile long mAccumPausedUs;
 
     // ─── Segment-mode (chat video — issue #30) ───────────────────────
     //
@@ -127,6 +186,22 @@ public class BugpunchRecorder {
      *  whether the file at mSegmentOutputPath is actually playable. */
     private volatile boolean mLastSegmentValid;
     private final Object mSegmentLock = new Object();
+
+    // ─── Crash-survivable video ring (bp_video.c) ─────────────────────
+    //
+    // Additive to the in-memory mBuffer: every encoded sample goes BOTH
+    // into the existing in-RAM ring (used by the live dump/chat paths)
+    // AND into a native mmap'd file the kernel persists across process
+    // death. On crash, bp.c's signal handler msyncs the header; on next
+    // launch BugpunchCrashDrain remuxes the ring into an .mp4. Capacity
+    // is sized from mWindowSeconds × bitrate, clamped to [30, 90] s.
+    private static final int VIDEO_WINDOW_MIN_SEC = 30;
+    private static final int VIDEO_WINDOW_MAX_SEC = 90;
+    /** Headroom multiplier on top of nominal bitrate × window — encoders
+     *  burst above the target bitrate around scene cuts and the first GOP. */
+    private static final double VIDEO_RING_HEADROOM = 1.5;
+    private volatile boolean mVideoRingActive;
+    private volatile boolean mVideoRingFormatPublished;
 
     private static class Sample {
         final byte[] data;
@@ -244,6 +319,15 @@ public class BugpunchRecorder {
             mBufferModeStartNanos = System.nanoTime();
             mPendingFrames.clear();
             mRunning = true;
+            startVideoRing(ctx);
+            // Prime the encoder with a single black NV12 frame so it emits CSD
+            // + a first IDR within ~150 ms, before any real Unity frames arrive.
+            // Without this, a crash within the first ~1 s of EnterDebugMode
+            // produces a ring with no SPS/PPS and the remuxer rejects it
+            // (`no_csd_yet`). The black frame is overwritten in the rolling
+            // window as soon as real content flows; only matters for very
+            // early crashes.
+            primeEncoderWithBlackFrame();
             Log.i(TAG, "started buffer mode " + mWidth + "x" + mHeight + " @ " + mFps
                 + "fps, window=" + mWindowSeconds + "s");
             return true;
@@ -282,6 +366,63 @@ public class BugpunchRecorder {
      * so codec PTS values stay monotonic across sessions.
      */
     public long getBufferModeStartNanos() { return mBufferModeStartNanos; }
+
+    /**
+     * Push one synthetic black NV12 frame at PTS=0 so the encoder produces
+     * its first output (CSD + IDR keyframe) without waiting for Unity to
+     * deliver real content. Cuts the warmup window for crash-survivable video
+     * from "first Unity frame + encoder roundtrip" (often >1 s on slow startup
+     * paths) to roughly the encoder's own dequeue latency (~100-200 ms).
+     *
+     * NV12 black: Y plane all 0x10 (BT.601 limited-range black), interleaved
+     * UV plane all 0x80 (chroma neutral). Size = w*h + w*h/2 bytes; computed
+     * once and cached so repeated EnterDebugMode calls don't reallocate.
+     */
+    /**
+     * Projection-mode equivalent of {@link #primeEncoderWithBlackFrame()}.
+     * Draws one solid-black frame onto {@link #mInputSurface} via
+     * {@code lockHardwareCanvas} → fill → {@code unlockCanvasAndPost}, which
+     * the encoder dequeues like any other input. Runs after {@code start()}
+     * but before {@code createVirtualDisplay} attaches the screen mirror, so
+     * the primer frame is guaranteed to be the encoder's first input —
+     * subsequent mirrored frames arrive on top of it. Best-effort: if the
+     * canvas lock throws (some vendors disallow it on encoder-input Surfaces),
+     * we just skip and accept the slightly longer warmup.
+     */
+    private void primeProjectionSurface() {
+        if (mInputSurface == null) return;
+        Canvas canvas = null;
+        try {
+            canvas = mInputSurface.lockHardwareCanvas();
+            if (canvas == null) canvas = mInputSurface.lockCanvas(null);
+            if (canvas == null) return;
+            canvas.drawColor(android.graphics.Color.BLACK);
+        } catch (Throwable t) {
+            Log.w(TAG, "primeProjectionSurface lock failed", t);
+        } finally {
+            if (canvas != null) {
+                try { mInputSurface.unlockCanvasAndPost(canvas); }
+                catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    private byte[] mBlackFrame;
+    private void primeEncoderWithBlackFrame() {
+        try {
+            int ySize  = mWidth * mHeight;
+            int uvSize = ySize / 2;
+            int total  = ySize + uvSize;
+            if (mBlackFrame == null || mBlackFrame.length != total) {
+                mBlackFrame = new byte[total];
+                java.util.Arrays.fill(mBlackFrame, 0, ySize, (byte) 0x10);
+                java.util.Arrays.fill(mBlackFrame, ySize, total, (byte) 0x80);
+            }
+            queueFrame(mBlackFrame, 0L);
+        } catch (Throwable t) {
+            Log.w(TAG, "primeEncoderWithBlackFrame failed", t);
+        }
+    }
 
     private boolean startInternal(Context ctx, int resultCode, Intent resultData, int dpi) {
         if (mRunning) { Log.w(TAG, "already running"); return true; }
@@ -326,13 +467,23 @@ public class BugpunchRecorder {
             mInputSurface = mEncoder.createInputSurface();
             mEncoder.start();
 
+            mRunning = true;
+            startVideoRing(ctx);
+            // Prime the encoder with a single black frame drawn directly onto
+            // the input Surface, BEFORE VirtualDisplay attaches and starts
+            // mirroring. This forces CSD + first IDR to land in ~100-200 ms
+            // even if the OS render loop hasn't pushed a real frame yet —
+            // covers crashes that fire within the first second of
+            // EnterDebugMode (otherwise the ring rejects with `no_csd_yet`).
+            // The frame slides out of the rolling window as soon as real
+            // mirrored content arrives.
+            primeProjectionSurface();
+
             // Route the screen into the encoder's input Surface
             mVirtualDisplay = mProjection.createVirtualDisplay(
                 "BugpunchCapture", mWidth, mHeight, dpi,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 mInputSurface, null, mEncoderHandler);
-
-            mRunning = true;
             Log.i(TAG, "started " + mWidth + "x" + mHeight + " @ " + mFps + "fps, window=" + mWindowSeconds + "s");
             return true;
         } catch (Exception e) {
@@ -394,9 +545,12 @@ public class BugpunchRecorder {
             return false;
         }
 
-        // Find the oldest keyframe within the last windowSeconds
+        // Find the oldest keyframe within the last windowSeconds. Subtract
+        // mAccumPausedUs so dumps performed after a pause/resume cycle still
+        // include the pre-pause footage rather than evicting it on the now
+        // much-later PTS values.
         long latestPtsUs = snapshot[snapshot.length - 1].ptsUs;
-        long cutoffPtsUs = latestPtsUs - (long) mWindowSeconds * 1_000_000L;
+        long cutoffPtsUs = latestPtsUs - (long) mWindowSeconds * 1_000_000L - mAccumPausedUs;
         int firstKeyframeIdx = -1;
         for (int i = 0; i < snapshot.length; i++) {
             Sample s = snapshot[i];
@@ -508,21 +662,58 @@ public class BugpunchRecorder {
                     buf.get(copy);
 
                     if ((info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
-                        Sample s = new Sample(copy, info.presentationTimeUs, info.flags);
-                        long cutoffPtsUs = info.presentationTimeUs - (long) mWindowSeconds * 1_000_000L;
-                        synchronized (mBufferLock) {
-                            mBuffer.addLast(s);
-                            // Trim samples older than the window, but keep the first keyframe so we have a valid start
-                            while (mBuffer.size() > 2 && mBuffer.peekFirst().ptsUs < cutoffPtsUs) {
-                                // Only trim if there's a later keyframe we can restart from
-                                if (!hasKeyframeAfter(cutoffPtsUs)) break;
-                                mBuffer.pollFirst();
+                        // Drop incoming samples while a Bugpunch UI is up so
+                        // typing into our forms doesn't push out the
+                        // pre-incident gameplay we want to capture. CSD
+                        // samples above bypass this gate — they're config,
+                        // not content. Segment-mode (chat video) deliberately
+                        // ignores pause: that flow is an explicit
+                        // user-initiated recording, not the rolling ring.
+                        boolean paused = mPauseCount.get() > 0;
+                        if (!paused) {
+                            // First post-resume sample: fold the PTS gap into
+                            // the paused-time accumulator so the cutoff
+                            // doesn't immediately evict pre-pause samples.
+                            if (mPauseStartPtsUs > 0) {
+                                long gapUs = info.presentationTimeUs - mPauseStartPtsUs;
+                                long capUs = (long) mWindowSeconds * 1_000_000L;
+                                mAccumPausedUs = Math.min(gapUs, capUs);
+                                mPauseStartPtsUs = 0;
+                            }
+                            mLastSamplePtsUs = info.presentationTimeUs;
+                            // Crash-survivable ring write — happens BEFORE the
+                            // RAM-ring/segment-muxer paths so a crash mid-callback
+                            // still preserves the sample in the mmap'd ring.
+                            if (mVideoRingActive && mVideoRingFormatPublished) {
+                                boolean keyframe = (info.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0;
+                                try {
+                                    BugpunchCrashHandler.videoWriteSample(
+                                        copy, 0, copy.length, info.presentationTimeUs, keyframe);
+                                } catch (Throwable t) {
+                                    Log.w(TAG, "videoWriteSample failed (disabling ring)", t);
+                                    mVideoRingActive = false;
+                                }
+                            }
+                            Sample s = new Sample(copy, info.presentationTimeUs, info.flags);
+                            long cutoffPtsUs = info.presentationTimeUs
+                                - (long) mWindowSeconds * 1_000_000L
+                                - mAccumPausedUs;
+                            synchronized (mBufferLock) {
+                                mBuffer.addLast(s);
+                                // Trim samples older than the window, but keep the first keyframe so we have a valid start
+                                while (mBuffer.size() > 2 && mBuffer.peekFirst().ptsUs < cutoffPtsUs) {
+                                    // Only trim if there's a later keyframe we can restart from
+                                    if (!hasKeyframeAfter(cutoffPtsUs)) break;
+                                    mBuffer.pollFirst();
+                                }
                             }
                         }
 
                         // Segment-mode (#30) — also pipe to the live MP4 muxer
                         // for the chat video flow. Skip until we've seen the
                         // first keyframe so the file always plays from t=0.
+                        // Runs regardless of pauseRing(): it's an explicit
+                        // user-driven recording, not the background ring.
                         if (mSegmentMode) {
                             writeSegmentSample(copy, info);
                         }
@@ -546,6 +737,9 @@ public class BugpunchRecorder {
         public void onOutputFormatChanged(MediaCodec codec, MediaFormat format) {
             mOutputFormat = format;
             Log.i(TAG, "output format: " + format);
+            if (mVideoRingActive && !mVideoRingFormatPublished) {
+                publishVideoFormat(format);
+            }
             // Segment-mode: build the muxer now that we know the output
             // format (codec-config samples are embedded in csd-0/csd-1 of
             // this MediaFormat, so we don't need to write them manually).
@@ -554,6 +748,82 @@ public class BugpunchRecorder {
             }
         }
     };
+
+    // ─── Crash-survivable video ring helpers ────────────────────────
+
+    /** Allocate and mmap the native ring. Sized from {@link #mWindowSeconds}
+     *  (clamped to [30, 90] s) and {@link #mBitrate} with a headroom factor
+     *  for encoder bursting. Best-effort — any failure just leaves the
+     *  ring inactive; the in-RAM path keeps working untouched. */
+    private void startVideoRing(Context ctx) {
+        try {
+            int windowSec = Math.max(VIDEO_WINDOW_MIN_SEC,
+                Math.min(VIDEO_WINDOW_MAX_SEC, mWindowSeconds));
+            // bytes ≈ bitrate(bps) * window(s) / 8 * headroom
+            long totalBytes = (long) ((double) mBitrate * windowSec / 8.0 * VIDEO_RING_HEADROOM);
+            // Hard floor + ceiling so we never produce a degenerate file.
+            if (totalBytes < 2L * 1024 * 1024) totalBytes = 2L * 1024 * 1024;     // 2 MB
+            if (totalBytes > 64L * 1024 * 1024) totalBytes = 64L * 1024 * 1024;   // 64 MB
+            // Index sized for ~3× the expected sample count at fps × window —
+            // covers B-frames + IDR splits comfortably without bloating the file.
+            int idxCapacity = Math.max(512, mFps * windowSec * 3);
+
+            String path = new java.io.File(ctx.getCacheDir(), "bp_video.dat")
+                .getAbsolutePath();
+            boolean ok = BugpunchCrashHandler.videoInit(
+                path, totalBytes, idxCapacity, mWidth, mHeight, mFps);
+            mVideoRingActive = ok;
+            mVideoRingFormatPublished = false;
+            if (ok) {
+                Log.i(TAG, "video ring opened: path=" + path
+                    + " bytes=" + totalBytes + " idx=" + idxCapacity);
+            } else {
+                Log.w(TAG, "video ring init failed — crash-survivable video disabled");
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "startVideoRing threw", t);
+            mVideoRingActive = false;
+            mVideoRingFormatPublished = false;
+        }
+    }
+
+    /** Pull csd-0 (SPS) and csd-1 (PPS) out of the encoder's output format
+     *  and publish them into the ring header. The remuxer on next launch
+     *  needs these to build a {@code MediaFormat} for {@code MediaMuxer}. */
+    private void publishVideoFormat(MediaFormat format) {
+        try {
+            ByteBuffer sps = format.containsKey("csd-0") ? format.getByteBuffer("csd-0") : null;
+            ByteBuffer pps = format.containsKey("csd-1") ? format.getByteBuffer("csd-1") : null;
+            if (sps == null || pps == null) {
+                Log.w(TAG, "publishVideoFormat: missing csd-0/csd-1");
+                return;
+            }
+            byte[] spsArr = new byte[sps.remaining()];
+            sps.duplicate().get(spsArr);
+            byte[] ppsArr = new byte[pps.remaining()];
+            pps.duplicate().get(ppsArr);
+            BugpunchCrashHandler.videoSetFormat(spsArr, ppsArr);
+            mVideoRingFormatPublished = true;
+            Log.i(TAG, "video ring CSD published: sps=" + spsArr.length
+                + "B pps=" + ppsArr.length + "B");
+        } catch (Throwable t) {
+            Log.w(TAG, "publishVideoFormat failed", t);
+        }
+    }
+
+    /** Close the native ring on a clean shutdown. The signal-handler path
+     *  uses bp_video_finalize() instead — closing here would race. */
+    private void closeVideoRing() {
+        if (!mVideoRingActive) return;
+        try {
+            BugpunchCrashHandler.videoFinalize();
+            BugpunchCrashHandler.videoClose();
+        } catch (Throwable t) {
+            Log.w(TAG, "closeVideoRing failed", t);
+        }
+        mVideoRingActive = false;
+        mVideoRingFormatPublished = false;
+    }
 
     // ─── Segment-mode helpers (#30) ──────────────────────────────────
 
@@ -677,5 +947,13 @@ public class BugpunchRecorder {
         mOutputFormat = null;
         mBufferMode = false;
         mPendingFrames.clear();
+        // Reset pause state — counter persists across stop/restart only by
+        // accident; a fresh recorder session starts unpaused with a zero
+        // accumulator so the cutoff math doesn't carry stale offsets.
+        mPauseCount.set(0);
+        mLastSamplePtsUs = 0;
+        mPauseStartPtsUs = 0;
+        mAccumPausedUs = 0;
+        closeVideoRing();
     }
 }

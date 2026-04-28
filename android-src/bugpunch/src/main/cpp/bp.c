@@ -25,6 +25,8 @@
 /* Optional: use <unwind.h> for stack trace on ARM/ARM64. */
 #include <unwind.h>
 
+#include "bp_video.h"
+
 #define TAG "BugpunchCrash"
 #define MAX_PATH 512
 #define MAX_FRAMES 64
@@ -51,30 +53,26 @@ static char s_device_model[MAX_METADATA] = {0};
 static char s_os_version[MAX_METADATA] = {0};
 static char s_gpu_name[MAX_METADATA] = {0};
 
-/* Screenshot rescue path — the rolling capture keeps raw ARGB pixels in two
- * native-memory slots (direct ByteBuffers owned by Java). On SIGSEGV we
- * can't JPEG-encode (not async-signal-safe, needs malloc), so the handler
- * dumps the raw bytes from the slot pointers into `.raw` files at these
- * target paths. Drain on next launch encodes raw→JPEG before uploading.
- *
- * Newest-slot convention: 0 = slot A is the "at crash" frame; 1 = slot B.
- * The stale slot becomes the "before" frame.
- */
-static void* s_frame_slot_a = NULL;
-static void* s_frame_slot_b = NULL;
-static int   s_frame_w = 0;
-static int   s_frame_h = 0;
-static char s_frame_at_path[MAX_PATH] = {0};
-static char s_frame_before_path[MAX_PATH] = {0};
-static volatile int s_newest_slot = -1;
+/* Active log_session id at crash time. Pushed in by BugpunchTunnel whenever
+ * BugpunchRuntime.sSessionId rotates (process start + each foreground after
+ * a long background). The drain on the next launch sends the dumped log
+ * ring's tail to /api/v1/log-sessions/<id>/append-crash-tail so the Logs
+ * page shows everything up to the moment of death. */
+static char s_session_id[MAX_METADATA] = {0};
 
-/* Log snapshot rescue — same native-memory pattern as the screenshot ring.
+/* Log snapshot rescue — native-memory pattern shared with the storyboard ring.
  * Java's logcat reader serializes the current ring into `s_logs_buf` each
  * flush, then sets `s_logs_len` to the valid-byte count. At crash time we
  * write [0..s_logs_len) to `s_logs_path`. No disk I/O during gameplay. */
 static void* s_logs_buf = NULL;
 static volatile int s_logs_len = 0;
 static char s_logs_path[MAX_PATH] = {0};
+
+/* Video ring path — recorded once at init via Java. The signal handler
+ * doesn't touch video bytes (they're already in the kernel page cache from
+ * normal operation); we just emit the path so drain knows where to look,
+ * and call bp_video_finalize() to msync the ring header. */
+static char s_video_path[MAX_PATH] = {0};
 
 /* Input breadcrumb ring — captures what the user was pressing in the seconds
  * before the crash. Each entry is a fixed-size record so the signal handler
@@ -100,6 +98,40 @@ static volatile int s_input_count = 0;
 static volatile int s_input_capacity = 0;
 static volatile int s_input_entry_size = 0;
 static char s_input_path[MAX_PATH] = {0};
+
+/* Storyboard ring — last N UI presses, each with a fixed-layout header (per
+ * BugpunchStoryboard.HEADER_BYTES) and a variable RGBA pixel buffer. C# pushes
+ * a frame after every UI press via AsyncGPUReadback; the slot dimensions lock
+ * to the first frame's size (orientation change drops the ring).
+ *
+ * Header layout per slot — must match Java BugpunchStoryboard:
+ *   off  size  field
+ *   0    8     long   tsMs
+ *   8    4     float  x
+ *   12   4     float  y
+ *   16   4     int    screenW
+ *   20   4     int    screenH
+ *   24   4     int    w
+ *   28   4     int    h
+ *   32   4     int    pixelsLen
+ *   36  192    char   path[192]
+ *  228   96    char   label[96]
+ *  324   32    char   scene[32]
+ *   = 356 bytes.
+ *
+ * Newest slot's pixels are written as `screenshot_at_crash.rgba`; the whole
+ * ring is dumped as `<base>_<i>.rgba` (oldest-to-newest) + `<base>.bin`
+ * (concatenated headers) so drain on the next launch can JPEG-encode each
+ * frame and compose a per-event `storyboard_frames` JSON array. */
+#define BP_STORYBOARD_MAX_SLOTS 16
+static void* s_sb_hdr[BP_STORYBOARD_MAX_SLOTS] = {0};
+static void* s_sb_pix[BP_STORYBOARD_MAX_SLOTS] = {0};
+static int   s_sb_pix_cap[BP_STORYBOARD_MAX_SLOTS] = {0};
+static int   s_sb_hdr_bytes = 0;
+static volatile int s_sb_capacity = 0;
+static volatile int s_sb_newest = -1;
+static volatile int s_sb_count = 0;
+static char s_sb_path_base[MAX_PATH] = {0};
 
 /* Previous signal handlers (for chaining) */
 static struct sigaction s_old_handlers[32]; /* indexed by signal number */
@@ -361,62 +393,127 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* ucontext) {
     safe_write_str(fd, "device_model:"); safe_write_str(fd, s_device_model); safe_write_str(fd, "\n");
     safe_write_str(fd, "os_version:"); safe_write_str(fd, s_os_version); safe_write_str(fd, "\n");
     safe_write_str(fd, "gpu:"); safe_write_str(fd, s_gpu_name); safe_write_str(fd, "\n");
+    safe_write_str(fd, "session_id:"); safe_write_str(fd, s_session_id); safe_write_str(fd, "\n");
 
-    /* Screenshot rescue. The rolling capture keeps the most recent pixels
-     * alive in native memory (outside the Java heap, so unaffected by a
-     * Mono/IL2CPP meltdown). We dump them to disk here — write() is
-     * async-signal-safe, memcpy is implicit via the kernel, no Java/ART
-     * involvement. Drain code on next launch reads `.raw` + `frame_w/h` and
-     * encodes to JPEG for upload. */
-    if (s_frame_w > 0 && s_frame_h > 0) {
-        int newest = s_newest_slot;
-        void* at     = NULL;
-        void* before = NULL;
-        if (newest == 0) {
-            at     = s_frame_slot_a;
-            before = s_frame_slot_b;
-        } else if (newest == 1) {
-            at     = s_frame_slot_b;
-            before = s_frame_slot_a;
-        }
-        size_t bytes = (size_t)s_frame_w * (size_t)s_frame_h * 4u;
-        /* Dump the "at crash" slot first — it's the most valuable byte for
-         * byte, and a partial write on the older slot is still useful. */
-        if (at && s_frame_at_path[0]) {
-            int ffd = open(s_frame_at_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (ffd >= 0) {
-                /* write() may return short — loop until done or error. */
-                const char* p = (const char*)at;
-                size_t left = bytes;
+    /* Storyboard ring rescue. Same async-signal-safe pattern as the screenshot
+     * ring: pixels live in native-memory direct ByteBuffers registered by
+     * BugpunchStoryboard, so we just open files + write() the bytes. We dump
+     * each valid slot in oldest-to-newest order to `<base>_<i>.rgba` plus a
+     * `<base>.bin` containing every slot's header. The newest slot doubles as
+     * `screenshot_at_crash` so the existing dashboard "frame at crash" path
+     * keeps working without code change. */
+    if (s_sb_count > 0 && s_sb_newest >= 0 && s_sb_capacity > 0
+        && s_sb_path_base[0] && s_sb_hdr_bytes > 0) {
+        int cap = s_sb_capacity;
+        int count = s_sb_count;
+        if (count > cap) count = cap;
+        int newest = s_sb_newest;
+        int start = (newest - count + 1 + cap) % cap;
+
+        /* Concatenated headers go into <base>.bin so drain can map slot
+         * indices to metadata without parsing the .crash file format. */
+        char hdr_path[MAX_PATH];
+        int bp = 0;
+        for (int k = 0; s_sb_path_base[k] && bp < MAX_PATH - 5; k++) hdr_path[bp++] = s_sb_path_base[k];
+        const char* binSuffix = ".bin";
+        for (int k = 0; binSuffix[k] && bp < MAX_PATH - 1; k++) hdr_path[bp++] = binSuffix[k];
+        hdr_path[bp] = '\0';
+        int hfd = open(hdr_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+        int written_pixels_for_newest = 0;
+        for (int i = 0; i < count; i++) {
+            int slot = (start + i) % cap;
+            void* hdr_addr = s_sb_hdr[slot];
+            void* pix_addr = s_sb_pix[slot];
+            if (!hdr_addr || !pix_addr) continue;
+
+            /* Pixel buffer: read pixelsLen from header (offset 32 in our layout). */
+            const unsigned char* h = (const unsigned char*)hdr_addr;
+            int pixels_len = (int)((unsigned)h[32] | ((unsigned)h[33] << 8)
+                                | ((unsigned)h[34] << 16) | ((unsigned)h[35] << 24));
+            if (pixels_len <= 0 || pixels_len > s_sb_pix_cap[slot]) continue;
+
+            /* Per-slot rgba file — <base>_<i>.rgba. Build path with manual
+             * int decimal write: i is 0..15 so up to 2 digits. */
+            char p_path[MAX_PATH];
+            int pp = 0;
+            for (int k = 0; s_sb_path_base[k] && pp < MAX_PATH - 16; k++) p_path[pp++] = s_sb_path_base[k];
+            if (pp < MAX_PATH - 1) p_path[pp++] = '_';
+            int idx_val = i;
+            if (idx_val >= 10) {
+                if (pp < MAX_PATH - 1) p_path[pp++] = (char)('0' + idx_val / 10);
+                idx_val %= 10;
+            }
+            if (pp < MAX_PATH - 1) p_path[pp++] = (char)('0' + idx_val);
+            const char* rawSuffix = ".rgba";
+            for (int k = 0; rawSuffix[k] && pp < MAX_PATH - 1; k++) p_path[pp++] = rawSuffix[k];
+            p_path[pp] = '\0';
+
+            int pfd = open(p_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (pfd >= 0) {
+                const char* p = (const char*)pix_addr;
+                size_t left = (size_t)pixels_len;
                 while (left > 0) {
-                    ssize_t n = write(ffd, p, left);
+                    ssize_t n = write(pfd, p, left);
                     if (n <= 0) break;
                     p += n;
                     left -= (size_t)n;
                 }
-                close(ffd);
-                safe_write_str(fd, "screenshot:"); safe_write_str(fd, s_frame_at_path); safe_write_str(fd, "\n");
+                close(pfd);
+                if (slot == newest) {
+                    /* Also surface the newest frame as the at-crash screenshot.
+                     * Write a separate `_at_crash.rgba` so the storyboard parser
+                     * can still consume the per-slot file (encodeRawFrame deletes
+                     * its source). 1× extra ring-of-pixels write at signal time
+                     * is cheap; avoids a fragile ordering contract in the drain. */
+                    int w = (int)((unsigned)h[24] | ((unsigned)h[25] << 8)
+                               | ((unsigned)h[26] << 16) | ((unsigned)h[27] << 24));
+                    int hi = (int)((unsigned)h[28] | ((unsigned)h[29] << 8)
+                               | ((unsigned)h[30] << 16) | ((unsigned)h[31] << 24));
+
+                    char at_path[MAX_PATH];
+                    int ap = 0;
+                    for (int k = 0; s_sb_path_base[k] && ap < MAX_PATH - 16; k++) at_path[ap++] = s_sb_path_base[k];
+                    const char* atSuffix = "_at_crash.rgba";
+                    for (int k = 0; atSuffix[k] && ap < MAX_PATH - 1; k++) at_path[ap++] = atSuffix[k];
+                    at_path[ap] = '\0';
+                    int afd = open(at_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                    if (afd >= 0) {
+                        const char* p = (const char*)pix_addr;
+                        size_t left = (size_t)pixels_len;
+                        while (left > 0) {
+                            ssize_t n = write(afd, p, left);
+                            if (n <= 0) break;
+                            p += n;
+                            left -= (size_t)n;
+                        }
+                        close(afd);
+                        safe_write_str(fd, "screenshot:"); safe_write_str(fd, at_path); safe_write_str(fd, "\n");
+                        safe_write_str(fd, "frame_w:"); safe_write_u64(fd, (unsigned long long)w); safe_write_str(fd, "\n");
+                        safe_write_str(fd, "frame_h:"); safe_write_u64(fd, (unsigned long long)hi); safe_write_str(fd, "\n");
+                        safe_write_str(fd, "frame_format:rgba8888\n");
+                        written_pixels_for_newest = 1;
+                    }
+                }
             }
-        }
-        if (before && s_frame_before_path[0]) {
-            int ffd = open(s_frame_before_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (ffd >= 0) {
-                const char* p = (const char*)before;
-                size_t left = bytes;
+
+            if (hfd >= 0) {
+                const char* hp = (const char*)hdr_addr;
+                size_t left = (size_t)s_sb_hdr_bytes;
                 while (left > 0) {
-                    ssize_t n = write(ffd, p, left);
+                    ssize_t n = write(hfd, hp, left);
                     if (n <= 0) break;
-                    p += n;
+                    hp += n;
                     left -= (size_t)n;
                 }
-                close(ffd);
-                safe_write_str(fd, "context_screenshot:"); safe_write_str(fd, s_frame_before_path); safe_write_str(fd, "\n");
             }
         }
-        /* Dimensions + format — needed by drain to reconstruct a Bitmap. */
-        safe_write_str(fd, "frame_w:"); safe_write_u64(fd, (unsigned long long)s_frame_w); safe_write_str(fd, "\n");
-        safe_write_str(fd, "frame_h:"); safe_write_u64(fd, (unsigned long long)s_frame_h); safe_write_str(fd, "\n");
-        safe_write_str(fd, "frame_format:rgba8888\n");
+        if (hfd >= 0) close(hfd);
+
+        safe_write_str(fd, "storyboard_path_base:"); safe_write_str(fd, s_sb_path_base); safe_write_str(fd, "\n");
+        safe_write_str(fd, "storyboard_count:"); safe_write_u64(fd, (unsigned long long)count); safe_write_str(fd, "\n");
+        safe_write_str(fd, "storyboard_header_bytes:"); safe_write_u64(fd, (unsigned long long)s_sb_hdr_bytes); safe_write_str(fd, "\n");
+        (void)written_pixels_for_newest; /* used in extended logging if added later */
     }
     /* Log snapshot: Java keeps the ring serialized into a native ByteBuffer.
      * Dump [0..s_logs_len) to the configured path now. If either is unset or
@@ -486,6 +583,18 @@ static void crash_signal_handler(int sig, siginfo_t* info, void* ucontext) {
             safe_write_str(fd, "breadcrumbs_count:"); safe_write_u64(fd, (unsigned long long)count); safe_write_str(fd, "\n");
             safe_write_str(fd, "breadcrumbs_stride:"); safe_write_u64(fd, (unsigned long long)entrySize); safe_write_str(fd, "\n");
         }
+    }
+
+    /* Video ring: msync the header page so the cursors are durable, then
+     * emit the path so drain on next launch can locate and remux it. The
+     * payload pages are already on their way to disk via normal page-cache
+     * writeback — nothing for us to flush here.
+     *
+     * Skipped silently if the recorder was never started (s_video_path empty)
+     * or the ring is otherwise unconfigured (bp_video_finalize is a no-op). */
+    if (s_video_path[0]) {
+        bp_video_finalize();
+        safe_write_str(fd, "video:"); safe_write_str(fd, s_video_path); safe_write_str(fd, "\n");
     }
 
     /* Stack trace */
@@ -669,6 +778,20 @@ Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetMetadata(
     #undef COPY_FIELD
 }
 
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetSessionId(
+    JNIEnv* env, jclass cls, jstring sessionId)
+{
+    (void)cls;
+    if (!sessionId) { s_session_id[0] = '\0'; return; }
+    const char* s = (*env)->GetStringUTFChars(env, sessionId, NULL);
+    if (!s) { s_session_id[0] = '\0'; return; }
+    int i;
+    for (i = 0; s[i] && i < MAX_METADATA - 1; i++) s_session_id[i] = s[i];
+    s_session_id[i] = '\0';
+    (*env)->ReleaseStringUTFChars(env, sessionId, s);
+}
+
 /* Copy a jstring into a fixed-size char buffer; tolerates NULL jstring
  * (clears the buffer). Used by the attachment-path setters below. */
 static void copy_jstring_to(JNIEnv* env, jstring src, char* dst, int max) {
@@ -679,34 +802,6 @@ static void copy_jstring_to(JNIEnv* env, jstring src, char* dst, int max) {
     for (i = 0; s[i] && i < max - 1; i++) dst[i] = s[i];
     dst[i] = '\0';
     (*env)->ReleaseStringUTFChars(env, src, s);
-}
-
-JNIEXPORT void JNICALL
-Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetScreenshotBuffers(
-    JNIEnv* env, jclass cls, jobject slotA, jobject slotB, jint width, jint height)
-{
-    (void)cls;
-    s_frame_slot_a = slotA ? (*env)->GetDirectBufferAddress(env, slotA) : NULL;
-    s_frame_slot_b = slotB ? (*env)->GetDirectBufferAddress(env, slotB) : NULL;
-    s_frame_w = (int)width;
-    s_frame_h = (int)height;
-}
-
-JNIEXPORT void JNICALL
-Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetScreenshotAttachmentPaths(
-    JNIEnv* env, jclass cls, jstring atCrashPath, jstring beforePath)
-{
-    (void)cls;
-    copy_jstring_to(env, atCrashPath, s_frame_at_path,     MAX_PATH);
-    copy_jstring_to(env, beforePath,  s_frame_before_path, MAX_PATH);
-}
-
-JNIEXPORT void JNICALL
-Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetScreenshotNewestSlot(
-    JNIEnv* env, jclass cls, jint slot)
-{
-    (void)env; (void)cls;
-    s_newest_slot = (int)slot;
 }
 
 JNIEXPORT void JNICALL
@@ -766,4 +861,70 @@ Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetInputPath(
 {
     (void)cls;
     copy_jstring_to(env, path, s_input_path, MAX_PATH);
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetVideoPath(
+    JNIEnv* env, jclass cls, jstring path)
+{
+    (void)cls;
+    copy_jstring_to(env, path, s_video_path, MAX_PATH);
+}
+
+/* ── Storyboard ring JNI bridges ──
+ * Header slots are pre-allocated direct ByteBuffers (one per ring slot) and
+ * registered once at init. Pixel slots are lazily allocated by Java on first
+ * write per slot, so register-on-first-write is the norm. The signal handler
+ * walks both tables to dump the ring; there's no JNI involvement at crash time. */
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetStoryboardCapacity(
+    JNIEnv* env, jclass cls, jint capacity)
+{
+    (void)env; (void)cls;
+    int c = (int)capacity;
+    if (c < 0) c = 0;
+    if (c > BP_STORYBOARD_MAX_SLOTS) c = BP_STORYBOARD_MAX_SLOTS;
+    s_sb_capacity = c;
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetStoryboardSlotHeader(
+    JNIEnv* env, jclass cls, jint slot, jobject header, jint headerBytes)
+{
+    (void)cls;
+    int s = (int)slot;
+    if (s < 0 || s >= BP_STORYBOARD_MAX_SLOTS) return;
+    s_sb_hdr[s] = header ? (*env)->GetDirectBufferAddress(env, header) : NULL;
+    /* All slots share the same header byte length — last writer wins, but the
+     * Java side passes the same constant for every slot. */
+    if (headerBytes > 0) s_sb_hdr_bytes = (int)headerBytes;
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetStoryboardSlotPixels(
+    JNIEnv* env, jclass cls, jint slot, jobject pixels, jint pixelBytes)
+{
+    (void)cls;
+    int s = (int)slot;
+    if (s < 0 || s >= BP_STORYBOARD_MAX_SLOTS) return;
+    s_sb_pix[s] = pixels ? (*env)->GetDirectBufferAddress(env, pixels) : NULL;
+    s_sb_pix_cap[s] = (int)pixelBytes;
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetStoryboardNewest(
+    JNIEnv* env, jclass cls, jint slot, jint count)
+{
+    (void)env; (void)cls;
+    s_sb_newest = (int)slot;
+    s_sb_count  = (int)count;
+}
+
+JNIEXPORT void JNICALL
+Java_au_com_oddgames_bugpunch_BugpunchCrashHandler_nativeSetStoryboardPathBase(
+    JNIEnv* env, jclass cls, jstring pathBase)
+{
+    (void)cls;
+    copy_jstring_to(env, pathBase, s_sb_path_base, MAX_PATH);
 }

@@ -59,6 +59,8 @@ extern "C" {
     bool BugpunchRing_IsRunning(void);
     double BugpunchRing_GetLastDumpStartHostTime(void);
     double BugpunchRing_GetLastDumpEndHostTime(void);
+    int BugpunchRing_GetVideoWidth(void);
+    int BugpunchRing_GetVideoHeight(void);
     // Touch recorder (iOS):
     void BugpunchTouch_Configure(int maxEvents);
     bool BugpunchTouch_Start(void);
@@ -76,6 +78,138 @@ extern "C" {
 // Zero device-side parsing: each OSLog entry becomes one raw text line
 // (logcat-ish format so the server's parser handles it the same way as
 // Android). The SDK never builds structured JSON — the server owns that.
+
+#pragma mark - Drain helpers (storyboard JPEG encode + RGBA encode)
+
+/// Encode a raw RGBA8888 dump to a JPEG sitting next to it (.jpg suffix).
+/// Returns the JPEG path on success, nil on failure (truncated dump etc.).
+/// Mirrors the Android drain's encodeRawFrame.
+static NSString* BPEncodeRgbaToJpeg(NSString* rawPath, int w, int h, int quality) {
+    if (rawPath.length == 0 || w <= 0 || h <= 0) return nil;
+    NSData* raw = [NSData dataWithContentsOfFile:rawPath];
+    int needed = w * h * 4;
+    if (!raw || raw.length < (NSUInteger)needed) return nil;
+
+    @autoreleasepool {
+        CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+        CGBitmapInfo info = (CGBitmapInfo)(kCGImageAlphaPremultipliedLast
+            | kCGBitmapByteOrder32Big);
+        CGContextRef ctx = CGBitmapContextCreate((void*)raw.bytes, w, h, 8,
+            (size_t)w * 4, cs, info);
+        CGColorSpaceRelease(cs);
+        if (!ctx) return nil;
+        CGImageRef img = CGBitmapContextCreateImage(ctx);
+        CGContextRelease(ctx);
+        if (!img) return nil;
+        UIImage* ui = [UIImage imageWithCGImage:img];
+        CGImageRelease(img);
+
+        CGFloat q = (CGFloat)(quality < 1 ? 1 : (quality > 100 ? 100 : quality)) / 100.0;
+        NSData* jpeg = UIImageJPEGRepresentation(ui, q);
+        if (!jpeg) return nil;
+
+        NSString* base = [rawPath stringByDeletingPathExtension];
+        NSString* jpgPath = [base stringByAppendingPathExtension:@"jpg"];
+        if (![jpeg writeToFile:jpgPath atomically:YES]) return nil;
+        [[NSFileManager defaultManager] removeItemAtPath:rawPath error:nil];
+        return jpgPath;
+    }
+}
+
+/// Header field reader matching the BugpunchStoryboard layout.
+typedef struct {
+    int64_t  tsMs;
+    float    x, y;
+    int32_t  screenW, screenH;
+    int32_t  w, h;
+    int32_t  pixelsLen;
+    char     path[192];
+    char     label[96];
+    char     scene[32];
+} BPStoryboardHeader;
+
+static BOOL BPReadStoryboardHeader(NSData* blob, int idx, int headerBytes,
+                                   BPStoryboardHeader* out) {
+    if (!out) return NO;
+    NSUInteger off = (NSUInteger)idx * (NSUInteger)headerBytes;
+    if (off + headerBytes > blob.length) return NO;
+    const uint8_t* b = (const uint8_t*)blob.bytes + off;
+    out->tsMs = (int64_t)((uint64_t)b[0] | ((uint64_t)b[1] << 8) | ((uint64_t)b[2] << 16) | ((uint64_t)b[3] << 24)
+        | ((uint64_t)b[4] << 32) | ((uint64_t)b[5] << 40) | ((uint64_t)b[6] << 48) | ((uint64_t)b[7] << 56));
+    uint32_t xu = ((uint32_t)b[8] | ((uint32_t)b[9] << 8) | ((uint32_t)b[10] << 16) | ((uint32_t)b[11] << 24));
+    uint32_t yu = ((uint32_t)b[12] | ((uint32_t)b[13] << 8) | ((uint32_t)b[14] << 16) | ((uint32_t)b[15] << 24));
+    memcpy(&out->x, &xu, 4);
+    memcpy(&out->y, &yu, 4);
+    out->screenW = (int32_t)((uint32_t)b[16] | ((uint32_t)b[17] << 8) | ((uint32_t)b[18] << 16) | ((uint32_t)b[19] << 24));
+    out->screenH = (int32_t)((uint32_t)b[20] | ((uint32_t)b[21] << 8) | ((uint32_t)b[22] << 16) | ((uint32_t)b[23] << 24));
+    out->w       = (int32_t)((uint32_t)b[24] | ((uint32_t)b[25] << 8) | ((uint32_t)b[26] << 16) | ((uint32_t)b[27] << 24));
+    out->h       = (int32_t)((uint32_t)b[28] | ((uint32_t)b[29] << 8) | ((uint32_t)b[30] << 16) | ((uint32_t)b[31] << 24));
+    out->pixelsLen = (int32_t)((uint32_t)b[32] | ((uint32_t)b[33] << 8) | ((uint32_t)b[34] << 16) | ((uint32_t)b[35] << 24));
+    memcpy(out->path,  b + 36,                  192);
+    memcpy(out->label, b + 36 + 192,            96);
+    memcpy(out->scene, b + 36 + 192 + 96,       32);
+    out->path[191]  = '\0'; // safety NUL — buffers are NUL-padded but be defensive
+    out->label[95]  = '\0';
+    out->scene[31]  = '\0';
+    return YES;
+}
+
+/// Parse the `.bin` packed-header file + per-slot `.rgba` dumps the signal
+/// handler emitted, encode each slot to JPEG, and append:
+///   - per-slot file attachments to `outFiles` with field
+///     `storyboard_frame_<i>` and requires `storyboard_frames`
+///   - a `storyboardFrames` JSON array on `body` carrying per-press metadata
+///     (label / path / scene / x,y / screen dims / w,h / referenced filename)
+static void BPAttachStoryboardFromCrashFile(NSString* rawStr, NSMutableDictionary* body,
+                                            NSMutableArray* outFiles) {
+    NSString* base = nil;
+    int count = 0, headerBytes = 0;
+    for (NSString* line in [rawStr componentsSeparatedByString:@"\n"]) {
+        if ([line hasPrefix:@"---"]) break;
+        if ([line hasPrefix:@"storyboard_path_base:"]) base = [line substringFromIndex:@"storyboard_path_base:".length];
+        else if ([line hasPrefix:@"storyboard_count:"]) count = [line substringFromIndex:@"storyboard_count:".length].intValue;
+        else if ([line hasPrefix:@"storyboard_header_bytes:"]) headerBytes = [line substringFromIndex:@"storyboard_header_bytes:".length].intValue;
+    }
+    if (base.length == 0 || count <= 0 || headerBytes <= 0) return;
+
+    NSString* binPath = [base stringByAppendingString:@".bin"];
+    NSData* binBlob = [NSData dataWithContentsOfFile:binPath];
+    if (!binBlob || binBlob.length < (NSUInteger)(count * headerBytes)) return;
+
+    NSMutableArray* frames = [NSMutableArray array];
+    for (int i = 0; i < count; i++) {
+        BPStoryboardHeader h;
+        if (!BPReadStoryboardHeader(binBlob, i, headerBytes, &h)) continue;
+        NSString* rawPath = [NSString stringWithFormat:@"%@_%d.rgba", base, i];
+        NSString* jpgPath = BPEncodeRgbaToJpeg(rawPath, h.w, h.h, 80);
+
+        NSMutableDictionary* meta = [NSMutableDictionary dictionary];
+        meta[@"tsMs"]    = @(h.tsMs);
+        meta[@"x"]       = @(h.x);
+        meta[@"y"]       = @(h.y);
+        meta[@"screenW"] = @(h.screenW);
+        meta[@"screenH"] = @(h.screenH);
+        meta[@"w"]       = @(h.w);
+        meta[@"h"]       = @(h.h);
+        meta[@"path"]    = [NSString stringWithUTF8String:h.path]  ?: @"";
+        meta[@"label"]   = [NSString stringWithUTF8String:h.label] ?: @"";
+        meta[@"scene"]   = [NSString stringWithUTF8String:h.scene] ?: @"";
+        if (jpgPath) {
+            NSString* fileName = [NSString stringWithFormat:@"storyboard_frame_%d.jpg", i];
+            meta[@"file"] = fileName;
+            [outFiles addObject:@{
+                @"field":       [NSString stringWithFormat:@"storyboard_frame_%d", i],
+                @"filename":    fileName,
+                @"contentType": @"image/jpeg",
+                @"path":        jpgPath,
+                @"requires":    @"storyboard_frames",
+            }];
+        }
+        [frames addObject:meta];
+    }
+    if (frames.count > 0) body[@"storyboardFrames"] = frames;
+    [[NSFileManager defaultManager] removeItemAtPath:binPath error:nil];
+}
 
 @interface BPDebugMode : NSObject
 @property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* metadata;
@@ -314,8 +448,13 @@ static void BPDumpRingAndTouches(NSString** outVideoPath, NSMutableDictionary* e
     double endHost   = BugpunchRing_GetLastDumpEndHostTime();
     if (!extras || endHost <= startHost) return;
 
-    int capW = 0, capH = 0;
-    BugpunchTouch_GetCaptureSize(&capW, &capH);
+    // The encoded video frame is the canonical coordinate space for touches —
+    // both ReplayKit and BugpunchTouchRecorder operate in mainScreen pixels at
+    // start time, so the recorder's locked-in dimensions are the right answer
+    // even if the device rotated mid-buffer (touches in the rotated portion
+    // wouldn't be aligned regardless).
+    int capW = BugpunchRing_GetVideoWidth();
+    int capH = BugpunchRing_GetVideoHeight();
 
     NSMutableDictionary* videoMeta = [NSMutableDictionary dictionary];
     videoMeta[@"durationMs"] = @((int)lround((endHost - startHost) * 1000.0));
@@ -436,6 +575,9 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
 
     NSString* metadataJson = BPBuildMetadataJson(type, title, description, mergedExtra, nil, nil);
     NSString* logsGzPath = BPWriteGzipLogs();
+    // Mark a boundary in the live ring so the next report's logs render
+    // a collapsible "previously reported" divider in the dashboard viewer.
+    [BPLogReader markBoundaryWithType:type title:title];
 
     NSArray* traceAttach = BPPrepareTraceAttachments();
     NSString* tracesPath = traceAttach ? (NSString*)traceAttach[0] : nil;
@@ -596,6 +738,13 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
         withIntermediateDirectories:YES attributes:nil error:nil];
     Bugpunch_InstallCrashHandlers([crashDir UTF8String]);
 
+    // Storyboard ring base path — signal/Mach handlers dump the ring's per-slot
+    // RGBA + packed-header files at this path on crash; the next-launch drain
+    // encodes JPEGs and ships them with the manifest. Mirrors Android.
+    extern void Bugpunch_SetStoryboardPathBase(const char*);
+    NSString* sbBase = [crashDir stringByAppendingPathComponent:@"storyboard"];
+    Bugpunch_SetStoryboardPathBase([sbBase UTF8String]);
+
     // Metal backbuffer capture — swizzles presentDrawable to blit each frame
     // to a shared-memory texture. Near-zero CPU cost per frame. Used for:
     //   - ANR screenshots (background thread reads last frame)
@@ -712,20 +861,56 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                     if (cs.length) body[@"changeset"] = cs;
                     NSString* fp = cur.metadata[@"buildFingerprint"];
                     if (fp.length) body[@"buildFingerprint"] = fp;
-                    // Extract screenshot + logs paths for ANR reports.
+                    // Extract screenshot + logs paths for ANR reports, plus
+                    // the active log_session id at crash time so we can
+                    // tail-append the recovered ring into the live session.
                     NSString* shotPath = nil;
                     NSString* logsPath = nil;
+                    NSString* crashSessionId = nil;
                     for (NSString* line in [rawStr componentsSeparatedByString:@"\n"]) {
                         if ([line hasPrefix:@"---"]) break;
                         if (!shotPath && [line hasPrefix:@"screenshot:"]) {
                             shotPath = [line substringFromIndex:@"screenshot:".length];
                         } else if (!logsPath && [line hasPrefix:@"logs:"]) {
                             logsPath = [line substringFromIndex:@"logs:".length];
+                        } else if (!crashSessionId && [line hasPrefix:@"session_id:"]) {
+                            crashSessionId = [line substringFromIndex:@"session_id:".length];
                         }
-                        if (shotPath && logsPath) break;
+                        if (shotPath && logsPath && crashSessionId) break;
                     }
                     BOOL hasShot = shotPath.length > 0 &&
                         [[NSFileManager defaultManager] fileExistsAtPath:shotPath];
+
+                    // Native crash: bp.c-equivalent writes shotPath as a raw
+                    // RGBA file alongside frame_w/frame_h/frame_format=rgba8888.
+                    // Encode to JPEG before queuing — server expects image/jpeg
+                    // and the bandwidth saving dwarfs the one-shot encode cost.
+                    NSString* shotFmt = nil;
+                    int shotW = 0, shotH = 0;
+                    for (NSString* line in [rawStr componentsSeparatedByString:@"\n"]) {
+                        if ([line hasPrefix:@"---"]) break;
+                        if ([line hasPrefix:@"frame_format:"]) shotFmt = [line substringFromIndex:@"frame_format:".length];
+                        else if ([line hasPrefix:@"frame_w:"]) shotW = [line substringFromIndex:@"frame_w:".length].intValue;
+                        else if ([line hasPrefix:@"frame_h:"]) shotH = [line substringFromIndex:@"frame_h:".length].intValue;
+                    }
+                    if (hasShot && [shotFmt isEqualToString:@"rgba8888"] && shotW > 0 && shotH > 0) {
+                        NSString* jpgPath = BPEncodeRgbaToJpeg(shotPath, shotW, shotH, 80);
+                        if (jpgPath) {
+                            shotPath = jpgPath;
+                            hasShot = YES;
+                        } else {
+                            hasShot = NO;
+                        }
+                    }
+
+                    // Storyboard ring rescue. Each per-slot RGBA file gets
+                    // encoded to JPEG and attached as `storyboard_frame_<i>`
+                    // (requires=storyboard_frames). Metadata array goes into
+                    // body so even budget-rejected events keep the per-press
+                    // breadcrumb timeline.
+                    NSMutableArray* storyboardFiles = [NSMutableArray array];
+                    BPAttachStoryboardFromCrashFile(rawStr, body, storyboardFiles);
+
                     // For native crashes without an embedded screenshot, check the
                     // rolling buffer's persisted context screenshot on disk.
                     NSString* ctxShotPath = nil;
@@ -768,6 +953,8 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                                 @"path": logsPath,
                                 @"requires": @"logs" }];
                         }
+                        // Storyboard JPEGs encoded above by BPAttachStoryboardFromCrashFile.
+                        for (NSDictionary* sf in storyboardFiles) [attach addObject:sf];
                         NSData* attachJsonData = [NSJSONSerialization dataWithJSONObject:attach
                             options:0 error:nil];
                         NSString* attachJson = attachJsonData
@@ -779,6 +966,45 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
                         Bugpunch_DeleteCrashFile([p UTF8String]);
                         NSLog(@"[Bugpunch] queued pending crash: %@ (screenshot=%@, context=%@)",
                             p, hasShot ? @"yes" : @"no", ctxShotPath ? @"yes" : @"no");
+
+                        // Recover the post-crash log tail into the live
+                        // log_session. Best-effort; mirrors Android. Server
+                        // dedupes any prefix that was already streamed.
+                        if (crashSessionId.length > 0 && logsPath.length > 0 &&
+                            [[NSFileManager defaultManager] fileExistsAtPath:logsPath]) {
+                            NSString* sid = [crashSessionId copy];
+                            NSString* lp = [logsPath copy];
+                            NSString* tailUrl = [NSString stringWithFormat:
+                                @"%@/api/v1/log-sessions/%@/append-crash-tail",
+                                base,
+                                [sid stringByAddingPercentEncodingWithAllowedCharacters:
+                                    [NSCharacterSet URLPathAllowedCharacterSet]] ?: sid];
+                            NSString* apiKey = [key copy];
+                            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                                NSData* data = [NSData dataWithContentsOfFile:lp];
+                                if (!data || data.length == 0) return;
+                                NSMutableURLRequest* req = [NSMutableURLRequest
+                                    requestWithURL:[NSURL URLWithString:tailUrl]];
+                                req.HTTPMethod = @"POST";
+                                req.timeoutInterval = 20;
+                                [req setValue:@"text/plain; charset=utf-8" forHTTPHeaderField:@"Content-Type"];
+                                [req setValue:apiKey forHTTPHeaderField:@"X-API-Key"];
+                                req.HTTPBody = data;
+                                NSURLSessionDataTask* task = [[NSURLSession sharedSession]
+                                    dataTaskWithRequest:req
+                                    completionHandler:^(NSData* _, NSURLResponse* resp, NSError* err) {
+                                    NSInteger code = [(NSHTTPURLResponse*)resp statusCode];
+                                    if (err || code < 200 || code >= 300) {
+                                        NSLog(@"[Bugpunch] crash tail append failed sid=%@ code=%ld err=%@",
+                                            sid, (long)code, err);
+                                    } else {
+                                        NSLog(@"[Bugpunch] crash tail appended sid=%@ (%lu bytes)",
+                                            sid, (unsigned long)data.length);
+                                    }
+                                }];
+                                [task resume];
+                            });
+                        }
                     } else {
                         NSLog(@"[Bugpunch] failed to serialize crash payload: %@", e);
                         // File stays — retry next launch.
@@ -810,7 +1036,7 @@ static void BPStartRingFromConfig(void) {
     int windowSec = [v isKindOfClass:[NSDictionary class]] ? [v[@"bufferSeconds"] intValue] : 0;
     if (fps <= 0) fps = 30;
     if (bitrate <= 0) bitrate = 2000000;
-    if (windowSec <= 0) windowSec = 30;
+    if (windowSec <= 0) windowSec = 90;
     CGSize sz = UIScreen.mainScreen.bounds.size;
     CGFloat scale = UIScreen.mainScreen.scale;
     BugpunchRing_Configure((int)(sz.width * scale), (int)(sz.height * scale),
@@ -1001,6 +1227,7 @@ void Bugpunch_SubmitReport(const char* title, const char* description,
     NSString* metadataJson = BPBuildMetadataJson(@"bug", nsTitle, nsDesc,
         mergedExtra.count ? mergedExtra : nil, nsEmail, nsSev);
     NSString* logsGzPath = BPWriteGzipLogs();
+    [BPLogReader markBoundaryWithType:@"bug" title:nsTitle];
 
     NSArray* traceAttach = BPPrepareTraceAttachments();
     NSString* tracesPath = traceAttach ? (NSString*)traceAttach[0] : nil;
@@ -1019,6 +1246,13 @@ void Bugpunch_SubmitReport(const char* title, const char* description,
 
 void Bugpunch_ClearReportInProgress(void) {
     [BPDebugMode shared].reportInProgress = NO;
+}
+
+// Force-allow the next exception report by zeroing the auto-report cooldown.
+// Used by user-initiated send paths (e.g. the SDK error overlay's Send
+// button) where the throttle is undesirable.
+void Bugpunch_ResetAutoReportCooldown(void) {
+    [BPDebugMode shared].lastAutoReport = 0;
 }
 
 void Bugpunch_ReportBug(const char* type, const char* title, const char* description,
@@ -1059,15 +1293,54 @@ static NSObject* gAnalyticsLock;
 static dispatch_source_t gAnalyticsTimer;
 static NSString* gAnalyticsSessionId;
 
+// Stable per-install identifier (idfv on iOS, persisted in NSUserDefaults
+// as a fallback). User id + properties bag set via the SDK API; included on
+// every typed event so the server can keep analytics_users current.
+static NSString* gInstallId;
+static NSString* gUserId;
+static NSMutableDictionary<NSString*, NSString*>* gUserProps;
+static NSObject* gUserLock;
+
+// Open-session bookkeeping for emitting session_start / session_end on
+// foreground / background transitions. Wall-clock seconds since reference;
+// 0 when no session is open.
+static NSTimeInterval gSessionStartedAt;
+static BOOL gSessionOpen;
+
 extern "C" void BugpunchUploader_EnqueueJson(const char*, const char*, const char*);
 
 static void BPFlushAnalytics(void);
+static void BPEmitSessionStart(void);
+static void BPEmitSessionEnd(void);
+
+static NSString* BPInstallId(void) {
+    if (gInstallId.length > 0) return gInstallId;
+    @synchronized (gUserLock) {
+        if (gInstallId.length > 0) return gInstallId;
+        // idfv is stable for the same vendor; can be nil briefly at first
+        // launch on some iOS versions, so fall back to NSUserDefaults UUID.
+        NSString* idfv = [[UIDevice currentDevice] identifierForVendor].UUIDString;
+        if (idfv.length == 0) {
+            NSString* stored = [[NSUserDefaults standardUserDefaults] stringForKey:@"bp_install_id"];
+            if (stored.length == 0) {
+                stored = [[NSUUID UUID] UUIDString];
+                [[NSUserDefaults standardUserDefaults] setObject:stored forKey:@"bp_install_id"];
+            }
+            gInstallId = stored;
+        } else {
+            gInstallId = idfv;
+        }
+        return gInstallId;
+    }
+}
 
 static void BPEnsureAnalyticsInit(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         gAnalyticsBuffer = [NSMutableArray array];
         gAnalyticsLock = [NSObject new];
+        gUserLock = [NSObject new];
+        gUserProps = [NSMutableDictionary dictionary];
         gAnalyticsSessionId = [[NSUUID UUID] UUIDString];
         gAnalyticsTimer = dispatch_source_create(
             DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
@@ -1077,41 +1350,52 @@ static void BPEnsureAnalyticsInit(void) {
             dispatch_time(DISPATCH_TIME_NOW, interval), interval, interval / 10);
         dispatch_source_set_event_handler(gAnalyticsTimer, ^{ BPFlushAnalytics(); });
         dispatch_resume(gAnalyticsTimer);
+
+        // Lifecycle hooks for session_start / session_end. didBecomeActive
+        // covers cold launch + every resume; didEnterBackground closes the
+        // current session. These fire on the main thread; the buffered
+        // enqueue path is thread-safe, so this is fine.
+        [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
+            object:nil queue:nil usingBlock:^(NSNotification* n) { BPEmitSessionStart(); }];
+        [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidEnterBackgroundNotification
+            object:nil queue:nil usingBlock:^(NSNotification* n) { BPEmitSessionEnd(); }];
     });
 }
 
-void Bugpunch_TrackEvent(const char* name, const char* propertiesJson) {
-    if (!name || !*name) return;
-    BPEnsureAnalyticsInit();
-
-    NSString* evName = [NSString stringWithUTF8String:name];
-    NSDictionary* props = nil;
-    if (propertiesJson && *propertiesJson) {
-        NSData* d = [[NSString stringWithUTF8String:propertiesJson]
-            dataUsingEncoding:NSUTF8StringEncoding];
-        id parsed = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
-        if ([parsed isKindOfClass:[NSDictionary class]]) props = parsed;
-    }
-
+// Build the base event with the same identity payload as the Android lane
+// (BugpunchRuntime.baseEvent). Caller adds type-specific fields and enqueues.
+static NSMutableDictionary* BPBaseEvent(NSString* type) {
     BPDebugMode* dbg = [BPDebugMode shared];
     NSString* buildVersion = dbg.config[@"appVersion"] ?: @"";
     NSString* deviceId = dbg.config[@"deviceId"] ?: @"";
     NSString* scene = dbg.config[@"scene"] ?: @"";
-    NSString* userId = dbg.customData[@"userId"];
 
     NSMutableDictionary* ev = [NSMutableDictionary dictionary];
-    ev[@"name"] = evName;
-    if (props) ev[@"properties"] = props;
+    ev[@"type"] = type;
+    ev[@"name"] = type;
     ev[@"timestamp"] = [[NSISO8601DateFormatter new] stringFromDate:[NSDate date]];
-    ev[@"platform"] = @"ios";
+    ev[@"installId"] = BPInstallId();
     ev[@"deviceId"] = deviceId;
-    ev[@"sessionId"] = gAnalyticsSessionId;
+    ev[@"sessionId"] = gAnalyticsSessionId ?: @"";
+    ev[@"platform"] = @"ios";
     ev[@"buildVersion"] = buildVersion;
     ev[@"branch"] = dbg.metadata[@"branch"] ?: @"";
     ev[@"changeset"] = dbg.metadata[@"changeset"] ?: @"";
     ev[@"scene"] = scene;
-    if (userId) ev[@"userId"] = userId;
+    NSLocale* loc = [NSLocale currentLocale];
+    NSString* country = [loc objectForKey:NSLocaleCountryCode];
+    if (country) ev[@"country"] = country;
+    NSString* language = [loc objectForKey:NSLocaleLanguageCode];
+    if (language) ev[@"locale"] = language;
 
+    NSString* uid = nil;
+    @synchronized (gUserLock) { uid = gUserId; }
+    if (uid.length == 0) uid = dbg.customData[@"userId"];
+    if (uid.length > 0) ev[@"userId"] = uid;
+    return ev;
+}
+
+static void BPEnqueueAnalyticsEvent(NSDictionary* ev) {
     BOOL shouldFlush = NO;
     @synchronized (gAnalyticsLock) {
         if (gAnalyticsBuffer.count >= kBPAnalyticsBufferMax) {
@@ -1124,6 +1408,79 @@ void Bugpunch_TrackEvent(const char* name, const char* propertiesJson) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
             BPFlushAnalytics();
         });
+    }
+}
+
+static void BPEmitSessionStart(void) {
+    BPEnsureAnalyticsInit();
+    if (gSessionOpen) return;
+    gSessionOpen = YES;
+    gSessionStartedAt = [[NSDate date] timeIntervalSinceReferenceDate];
+    NSMutableDictionary* ev = BPBaseEvent(@"session_start");
+    BPEnqueueAnalyticsEvent(ev);
+}
+
+static void BPEmitSessionEnd(void) {
+    if (!gSessionOpen) return;
+    NSTimeInterval now = [[NSDate date] timeIntervalSinceReferenceDate];
+    NSInteger durationS = (NSInteger)MAX(0, now - gSessionStartedAt);
+    NSMutableDictionary* ev = BPBaseEvent(@"session_end");
+    ev[@"durationS"] = @(durationS);
+    gSessionOpen = NO;
+    BPEnqueueAnalyticsEvent(ev);
+    // Flush so the session_end lands before the OS suspends the process.
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ BPFlushAnalytics(); });
+}
+
+void Bugpunch_TrackEvent(const char* name, const char* propertiesJson) {
+    if (!name || !*name) return;
+    BPEnsureAnalyticsInit();
+
+    NSDictionary* props = nil;
+    if (propertiesJson && *propertiesJson) {
+        NSData* d = [[NSString stringWithUTF8String:propertiesJson]
+            dataUsingEncoding:NSUTF8StringEncoding];
+        id parsed = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+        if ([parsed isKindOfClass:[NSDictionary class]]) props = parsed;
+    }
+
+    NSMutableDictionary* ev = BPBaseEvent(@"design");
+    ev[@"name"] = [NSString stringWithUTF8String:name];
+    if (props) ev[@"properties"] = props;
+    BPEnqueueAnalyticsEvent(ev);
+}
+
+void Bugpunch_LogTypedEvent(const char* type, const char* payloadJson) {
+    if (!type || !*type) return;
+    BPEnsureAnalyticsInit();
+
+    NSMutableDictionary* ev = BPBaseEvent([NSString stringWithUTF8String:type]);
+    if (payloadJson && *payloadJson) {
+        NSData* d = [[NSString stringWithUTF8String:payloadJson]
+            dataUsingEncoding:NSUTF8StringEncoding];
+        id parsed = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+        if ([parsed isKindOfClass:[NSDictionary class]]) {
+            NSDictionary* payload = parsed;
+            for (NSString* key in payload) {
+                ev[key] = payload[key];
+            }
+        }
+    }
+    BPEnqueueAnalyticsEvent(ev);
+}
+
+void Bugpunch_SetUserId(const char* userId) {
+    @synchronized (gUserLock) {
+        gUserId = (userId && *userId) ? [NSString stringWithUTF8String:userId] : nil;
+    }
+}
+
+void Bugpunch_SetUserProperty(const char* key, const char* value) {
+    if (!key || !*key) return;
+    NSString* k = [NSString stringWithUTF8String:key];
+    @synchronized (gUserLock) {
+        if (value && *value) gUserProps[k] = [NSString stringWithUTF8String:value];
+        else [gUserProps removeObjectForKey:k];
     }
 }
 

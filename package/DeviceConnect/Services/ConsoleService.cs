@@ -139,8 +139,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     sb.Append($"\"recid\":{log.id},");
                     sb.Append($"\"second\":{log.time:F3},");
                     sb.Append($"\"type\":\"{log.type}\",");
-                    sb.Append($"\"message\":\"{EscapeJson(log.message)}\",");
-                    sb.Append($"\"stacktrace\":\"{EscapeJson(log.stackTrace)}\"");
+                    sb.Append($"\"message\":\"{BugpunchJson.Esc(log.message)}\",");
+                    sb.Append($"\"stacktrace\":\"{BugpunchJson.Esc(log.stackTrace)}\"");
 
                     // Color coding
                     var style = log.type switch
@@ -268,8 +268,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append("\"}");
             _tunnel.SendRaw(sb.ToString());
         }
-
-        static string EscapeJson(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
     }
 }

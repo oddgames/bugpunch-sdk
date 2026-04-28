@@ -341,7 +341,7 @@ namespace ODDGames.Bugpunch.Editor
                 if (result == UploadResult.Success || result == UploadResult.Cancelled) return result;
                 if (!retryable || attempt == MaxUploadAttempts) return result;
 
-                var backoffMs = 1000 * (1 << (attempt - 1));
+                var backoffMs = BugpunchRetry.ExponentialBackoff(attempt, 1000, 60000);
                 BugpunchLog.Warn("SymbolUploader", $"Direct upload attempt {attempt}/{MaxUploadAttempts} failed for {f.Filename}; " +
                                  $"retrying in {backoffMs}ms");
                 var waited = 0;

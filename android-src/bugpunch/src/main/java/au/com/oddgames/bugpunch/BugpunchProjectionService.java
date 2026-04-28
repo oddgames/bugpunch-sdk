@@ -89,7 +89,7 @@ public class BugpunchProjectionService extends Service {
         int height = intent.getIntExtra(EXTRA_HEIGHT, 1920);
         int bitrate = intent.getIntExtra(EXTRA_BITRATE, 2_000_000);
         int fps = intent.getIntExtra(EXTRA_FPS, 30);
-        int windowSeconds = intent.getIntExtra(EXTRA_WINDOW_SECONDS, 30);
+        int windowSeconds = intent.getIntExtra(EXTRA_WINDOW_SECONDS, 90);
         int dpi = intent.getIntExtra(EXTRA_DPI, 320);
 
         BugpunchRecorder recorder = BugpunchRecorder.getInstance();

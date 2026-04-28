@@ -52,7 +52,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 var scene = SceneManager.GetSceneAt(i);
                 if (i > 0) sb.Append(",");
-                sb.Append($"{{\"name\":\"{EscapeJson(scene.name)}\",\"path\":\"{EscapeJson(scene.path)}\",\"isLoaded\":{(scene.isLoaded ? "true" : "false")},\"rootCount\":{scene.rootCount}}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(scene.name)}\",\"path\":\"{BugpunchJson.Esc(scene.path)}\",\"isLoaded\":{(scene.isLoaded ? "true" : "false")},\"rootCount\":{scene.rootCount}}}");
             }
             sb.Append("]");
             return sb.ToString();
@@ -63,10 +63,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var go = t.gameObject;
             sb.Append("{");
             sb.Append($"\"recid\":{go.GetInstanceID()},");
-            sb.Append($"\"name\":\"{EscapeJson(go.name)}\",");
+            sb.Append($"\"name\":\"{BugpunchJson.Esc(go.name)}\",");
             sb.Append($"\"active\":{(go.activeSelf ? "true" : "false")},");
             sb.Append($"\"layer\":{go.layer},");
-            sb.Append($"\"tag\":\"{EscapeJson(go.tag)}\",");
+            sb.Append($"\"tag\":\"{BugpunchJson.Esc(go.tag)}\",");
 
             // Components summary
             var components = go.GetComponents<Component>();
@@ -76,7 +76,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (i > 0) sb.Append(",");
                 var c = components[i];
                 if (c == null) { sb.Append("\"(Missing)\""); continue; }
-                sb.Append($"\"{EscapeJson(c.GetType().Name)}\"");
+                sb.Append($"\"{BugpunchJson.Esc(c.GetType().Name)}\"");
             }
             sb.Append("],");
 
@@ -201,14 +201,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var sb = new StringBuilder(256);
             sb.Append("{");
             sb.Append($"\"instanceId\":{go.GetInstanceID()},");
-            sb.Append($"\"name\":\"{EscapeJson(go.name)}\",");
+            sb.Append($"\"name\":\"{BugpunchJson.Esc(go.name)}\",");
             sb.Append($"\"active\":{(go.activeSelf ? "true" : "false")},");
             sb.Append($"\"activeInHierarchy\":{(go.activeInHierarchy ? "true" : "false")},");
             sb.Append($"\"isStatic\":{(go.isStatic ? "true" : "false")},");
-            sb.Append($"\"tag\":\"{EscapeJson(go.tag)}\",");
+            sb.Append($"\"tag\":\"{BugpunchJson.Esc(go.tag)}\",");
             sb.Append($"\"layer\":{go.layer},");
-            sb.Append($"\"layerName\":\"{EscapeJson(LayerMask.LayerToName(go.layer) ?? "")}\",");
-            sb.Append($"\"scene\":\"{EscapeJson(go.scene.name ?? "")}\"");
+            sb.Append($"\"layerName\":\"{BugpunchJson.Esc(LayerMask.LayerToName(go.layer) ?? "")}\",");
+            sb.Append($"\"scene\":\"{BugpunchJson.Esc(go.scene.name ?? "")}\"");
             sb.Append("}");
             return sb.ToString();
         }
@@ -247,7 +247,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (System.Exception ex)
             {
-                return $"{{\"ok\":false,\"error\":\"{EscapeJson(ex.Message)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(ex.Message)}\"}}";
             }
         }
 
@@ -255,7 +255,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             sb.Append("{");
             sb.Append($"\"id\":{go.GetInstanceID()},");
-            sb.Append($"\"name\":\"{EscapeJson(go.name)}\",");
+            sb.Append($"\"name\":\"{BugpunchJson.Esc(go.name)}\",");
             sb.Append($"\"hasChildren\":{(go.transform.childCount > 0 ? "true" : "false")},");
 
             sb.Append("\"components\":[");
@@ -267,7 +267,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (c == null) continue;
                 if (!first) sb.Append(",");
                 first = false;
-                sb.Append($"\"{EscapeJson(c.GetType().Name)}\"");
+                sb.Append($"\"{BugpunchJson.Esc(c.GetType().Name)}\"");
             }
             sb.Append("]");
 
@@ -297,8 +297,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             return null;
         }
-
-        static string EscapeJson(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

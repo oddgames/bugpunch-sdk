@@ -1,13 +1,17 @@
 namespace ODDGames.Bugpunch.DeviceConnect.Database
 {
     /// <summary>
-    /// Plugin interface for on-device database parsing. Implementations detect
+    /// Plugin contract for on-device database parsing. Implementations detect
     /// whether a specific library (Siaqodb, Odin, etc.) is available in the
     /// current project and use the real serializer to parse files.
     ///
     /// Plugins are discovered by <see cref="DatabasePluginRegistry"/> via
-    /// assembly scanning. To add a new format, implement this interface — no
-    /// registration code required.
+    /// assembly scanning — no registration code required.
+    ///
+    /// Most implementations should derive from <see cref="DatabasePluginBase"/>
+    /// rather than implementing this interface directly. The base class
+    /// provides reflection helpers and table builders so a typical plugin
+    /// is &lt;30 lines.
     /// </summary>
     public interface IDatabasePlugin
     {
@@ -27,10 +31,9 @@ namespace ODDGames.Bugpunch.DeviceConnect.Database
         bool IsAvailable();
 
         /// <summary>
-        /// Parse a file at the given path and return a JSON string with the
-        /// standard database viewer format:
-        /// <code>{"ok":true,"tables":[{"name":"...","columns":[...],"rows":[...]}]}</code>
+        /// Parse a file at the given path and return the typed result. The
+        /// registry takes care of JSON serialization for the wire format.
         /// </summary>
-        string Parse(string filePath);
+        ParseResult Parse(string filePath);
     }
 }

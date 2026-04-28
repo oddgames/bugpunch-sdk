@@ -3,6 +3,7 @@ package au.com.oddgames.bugpunch;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -63,7 +64,7 @@ import java.util.concurrent.Executors;
  *   POST /api/feedback/&lt;id&gt;/comments     → post a comment
  *   POST /api/feedback/attachments             → multipart upload, returns {url,...}
  *
- * Auth: {@code Authorization: Bearer <apiKey>} + {@code X-Device-Id: <stable>}
+ * Auth: {@code X-Api-Key: <apiKey>} + {@code X-Device-Id: <stable>}
  * — server resolves projectId from the API key.
  */
 public class BugpunchFeedbackActivity extends Activity {
@@ -89,7 +90,7 @@ public class BugpunchFeedbackActivity extends Activity {
     // ── Views ──────────────────────────────────────────────────────
     private FrameLayout mRoot;
     private LinearLayout mBody;            // current view's content lives in here
-    private View mHeader;                  // pinned header, swapped when view changes
+    private View mBackBtn;                 // floating ‹, hidden on list view
 
     // Submit-view state — kept across the similarity prompt so "Post mine
     // anyway" can resubmit with the same payload.
@@ -137,6 +138,16 @@ public class BugpunchFeedbackActivity extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         applyTheme();
+        // Pause the rolling video ring while the feedback UI is on screen so
+        // the user typing into our forms doesn't push out pre-incident
+        // gameplay. Released in onDestroy.
+        try { BugpunchRecorder.getInstance().pauseRing(); } catch (Throwable ignore) {}
+
+        // Per-activity orientation override — host games commonly lock to
+        // landscape/portrait; the feedback surface should rotate freely so
+        // the player can read long-form descriptions in either orientation.
+        try { setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR); }
+        catch (Throwable ignore) {}
 
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(COLOR_BG));
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -148,43 +159,42 @@ public class BugpunchFeedbackActivity extends Activity {
         mRoot.setFitsSystemWindows(true);
         setContentView(mRoot);
 
-        LinearLayout column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        mRoot.addView(column);
-
-        // Header swaps per-view (List / Detail / Submit) so back / title text
-        // matches the active screen. Body container just gets its children
-        // replaced — no re-layout of the activity root each switch.
-        mHeader = buildListHeader();
-        column.addView(mHeader);
-
         mBody = new LinearLayout(this);
         mBody.setOrientation(LinearLayout.VERTICAL);
-        column.addView(mBody, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        mBody.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mRoot.addView(mBody);
+
+        // Floating chrome — back chevron (top-left, hidden on list) and
+        // close X (top-right, always visible). Replaces the per-view header
+        // bar so list/detail/submit each get the full screen.
+        mBackBtn = buildFloatingBack();
+        mRoot.addView(mBackBtn);
+        mRoot.addView(buildFloatingClose());
 
         showListView();
     }
 
+    @Override public void onBackPressed() {
+        // System back from detail or submit returns to list rather than
+        // exiting — matches the visual back chevron.
+        if (mBackBtn != null && mBackBtn.getVisibility() == View.VISIBLE) {
+            showListView();
+            return;
+        }
+        super.onBackPressed();
+    }
+
     @Override protected void onDestroy() {
         mNet.shutdownNow();
+        try { BugpunchRecorder.getInstance().resumeRing(); } catch (Throwable ignore) {}
         super.onDestroy();
     }
 
     // ── View switching ─────────────────────────────────────────────
 
-    private void replaceHeader(View newHeader) {
-        ViewGroup parent = (ViewGroup) mHeader.getParent();
-        int idx = parent.indexOfChild(mHeader);
-        parent.removeView(mHeader);
-        parent.addView(newHeader, idx);
-        mHeader = newHeader;
-    }
-
     private void showListView() {
-        replaceHeader(buildListHeader());
+        mBackBtn.setVisibility(View.GONE);
         mBody.removeAllViews();
         mBody.addView(buildListBody(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -194,7 +204,7 @@ public class BugpunchFeedbackActivity extends Activity {
     private void showDetailView(JSONObject item) {
         mDetailItem = item;
         mCommentDraftAttachments.clear();
-        replaceHeader(buildDetailHeader());
+        mBackBtn.setVisibility(View.VISIBLE);
         mBody.removeAllViews();
         mBody.addView(buildDetailBody(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -205,68 +215,55 @@ public class BugpunchFeedbackActivity extends Activity {
         mPendingTitle = "";
         mPendingDescription = "";
         mSubmitDraftAttachments.clear();
-        replaceHeader(buildSubmitHeader());
+        mBackBtn.setVisibility(View.VISIBLE);
         mBody.removeAllViews();
         mBody.addView(buildSubmitBody(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    // ── Headers ────────────────────────────────────────────────────
+    // ── Floating chrome ────────────────────────────────────────────
 
-    private View buildHeaderShell(String title, String leadingText, View.OnClickListener leadingClick) {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(COLOR_HEADER);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        int pad = dp(12);
-        bar.setPadding(pad, pad, pad, pad);
-
-        // Leading control — close X for list, back chevron for detail/submit.
-        TextView leading = new TextView(this);
-        leading.setText(leadingText);
-        leading.setTextColor(COLOR_TEXT_DIM);
-        leading.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        leading.setGravity(Gravity.CENTER);
-        leading.setClickable(true);
-        leading.setFocusable(true);
-        int cp = dp(8);
-        leading.setPadding(cp, cp, cp, cp);
-        leading.setOnClickListener(leadingClick);
-        LinearLayout.LayoutParams lLp = new LinearLayout.LayoutParams(dp(40), dp(40));
-        lLp.rightMargin = dp(8);
-        bar.addView(leading, lLp);
-
-        TextView titleView = new TextView(this);
-        titleView.setText(title);
-        titleView.setTextColor(COLOR_TEXT);
-        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, BugpunchTheme.sp("fontSizeTitle", 17));
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        bar.addView(titleView, tLp);
-
-        return bar;
+    private View buildFloatingClose() {
+        TextView close = new TextView(this);
+        close.setText("✕");
+        close.setTextColor(COLOR_TEXT_DIM);
+        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        close.setGravity(Gravity.CENTER);
+        close.setClickable(true);
+        close.setFocusable(true);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0xCC1B1F25);
+        close.setBackground(bg);
+        close.setOnClickListener(v -> finish());
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(32), dp(32));
+        lp.gravity = Gravity.TOP | Gravity.END;
+        lp.topMargin = dp(8);
+        lp.rightMargin = dp(8);
+        close.setLayoutParams(lp);
+        return close;
     }
 
-    private View buildListHeader() {
-        return buildHeaderShell(
-                BugpunchStrings.text("feedbackTitle", "Feedback"),
-                "✕",
-                v -> finish());
-    }
-
-    private View buildDetailHeader() {
-        return buildHeaderShell(
-                BugpunchStrings.text("feedbackDetailTitle", "Feedback"),
-                "‹",
-                v -> showListView());
-    }
-
-    private View buildSubmitHeader() {
-        return buildHeaderShell(
-                BugpunchStrings.text("feedbackNewTitle", "New feedback"),
-                "‹",
-                v -> showListView());
+    private View buildFloatingBack() {
+        TextView back = new TextView(this);
+        back.setText("‹");
+        back.setTextColor(COLOR_TEXT_DIM);
+        back.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        back.setGravity(Gravity.CENTER);
+        back.setClickable(true);
+        back.setFocusable(true);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0xCC1B1F25);
+        back.setBackground(bg);
+        back.setOnClickListener(v -> showListView());
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(32), dp(32));
+        lp.gravity = Gravity.TOP | Gravity.START;
+        lp.topMargin = dp(8);
+        lp.leftMargin = dp(8);
+        back.setLayoutParams(lp);
+        back.setVisibility(View.GONE);
+        return back;
     }
 
     // ── List view body ─────────────────────────────────────────────
@@ -880,8 +877,8 @@ public class BugpunchFeedbackActivity extends Activity {
     private void showSimilarityPrompt(JSONObject match, Runnable resetSubmitButton) {
         // Render as an inline replacement of the submit body so the user
         // doesn't lose context. "Vote for that" / "Post mine anyway" lead
-        // back into the appropriate flow.
-        replaceHeader(buildSubmitHeader());
+        // back into the appropriate flow. Back button stays visible (we
+        // entered from the submit view, where it was already shown).
         mBody.removeAllViews();
 
         ScrollView scroll = new ScrollView(this);
@@ -1182,7 +1179,24 @@ public class BugpunchFeedbackActivity extends Activity {
     private void takeScreenshotAttachment(final boolean isComment,
                                           final LinearLayout commentStrip,
                                           final LinearLayout submitStrip) {
-        moveTaskToBack(true);
+        // Bring Unity to the front of our task instead of moveTaskToBack —
+        // sending the whole task to the background would reveal the home
+        // screen and stop Unity from rendering, leaving PixelCopy with a
+        // blank surface to read.
+        final Activity host = BugpunchUnity.currentActivity();
+        if (host != null) {
+            try {
+                Intent i = new Intent(this, host.getClass());
+                i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                        | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(i);
+            } catch (Throwable t) {
+                Log.w(TAG, "feedback minimiseToGame failed, falling back", t);
+                moveTaskToBack(true);
+            }
+        } else {
+            moveTaskToBack(true);
+        }
         final String outPath = new java.io.File(
                 getCacheDir(), "bp_feedback_shot_" + System.currentTimeMillis() + ".png").getAbsolutePath();
         mUi.postDelayed(() -> {
@@ -1240,7 +1254,7 @@ public class BugpunchFeedbackActivity extends Activity {
             conn.setReadTimeout(60000);
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
-            conn.setRequestProperty("Authorization", "Bearer " + key);
+            conn.setRequestProperty("X-Api-Key", key);
             conn.setRequestProperty("X-Device-Id", BugpunchIdentity.getStableDeviceId(this));
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
 
@@ -1667,7 +1681,7 @@ public class BugpunchFeedbackActivity extends Activity {
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
             conn.setRequestMethod(method);
-            conn.setRequestProperty("Authorization", "Bearer " + key);
+            conn.setRequestProperty("X-Api-Key", key);
             conn.setRequestProperty("X-Device-Id",
                     BugpunchIdentity.getStableDeviceId(this));
             conn.setRequestProperty("Accept", "application/json");

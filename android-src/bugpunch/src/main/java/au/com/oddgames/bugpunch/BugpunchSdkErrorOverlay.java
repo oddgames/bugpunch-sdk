@@ -342,7 +342,7 @@ public class BugpunchSdkErrorOverlay {
             card.addView(title);
 
             TextView subtitle = new TextView(ctx);
-            subtitle.setText("Internal SDK problems. Tap dismiss to hide; toggle off via Bugpunch.SetSdkErrorOverlay(false).");
+            subtitle.setText("Internal SDK problems. Tap Send to upload them as an exception report; toggle off via Bugpunch.SetSdkErrorOverlay(false).");
             subtitle.setTextColor(0xFFB8B8B8);
             subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
             LinearLayout.LayoutParams subtLp = new LinearLayout.LayoutParams(
@@ -381,6 +381,25 @@ public class BugpunchSdkErrorOverlay {
                 hideExpanded(activity);
             });
             footer.addView(clearBtn);
+
+            final TextView sendBtn = new TextView(ctx);
+            int ringCount;
+            synchronized (BugpunchSdkErrorOverlay.class) { ringCount = sRing.size(); }
+            boolean enabled = ringCount > 0;
+            sendBtn.setText("Send to Bugpunch");
+            sendBtn.setTextColor(enabled ? 0xFFFFB74D : 0xFF555555);
+            sendBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            sendBtn.setPadding(dp(ctx, 12), dp(ctx, 6), dp(ctx, 12), dp(ctx, 6));
+            sendBtn.setClickable(enabled);
+            sendBtn.setOnClickListener(v -> {
+                if (!enqueueRingAsExceptionReport()) return;
+                sendBtn.setText("Sent");
+                sendBtn.setTextColor(0xFF66BB6A);
+                sendBtn.setClickable(false);
+                ensureHandler();
+                sHandler.postDelayed(() -> hideExpanded(activity), 900L);
+            });
+            footer.addView(sendBtn);
 
             TextView dismissBtn = new TextView(ctx);
             dismissBtn.setText("Dismiss");
@@ -466,6 +485,74 @@ public class BugpunchSdkErrorOverlay {
             entriesCol.addView(div, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 1)));
         }
+    }
+
+    /**
+     * Snapshot the SDK-error ring and enqueue it as an "exception" report
+     * through the standard upload pipeline. The most-recent entry's stack
+     * becomes the report description (so server fingerprinting groups
+     * recurring SDK errors together); all entries land in customData with
+     * flat keys for dashboard display. Clears the ring on success.
+     *
+     * Returns true if a report was enqueued; false if the ring was empty.
+     */
+    private static boolean enqueueRingAsExceptionReport() {
+        List<Entry> snapshot;
+        synchronized (BugpunchSdkErrorOverlay.class) {
+            if (sRing.isEmpty()) return false;
+            snapshot = new ArrayList<>(sRing);
+        }
+        Entry top = snapshot.get(0);
+
+        String title = "[SDK] " + (top.source == null ? "Bugpunch" : top.source)
+            + ": " + (top.message == null ? "" : top.message);
+        if (title.length() > 200) title = title.substring(0, 200);
+
+        // Description: full ring as text. The first stack present anchors
+        // the server-side fingerprint.
+        StringBuilder desc = new StringBuilder(1024);
+        desc.append("Bugpunch SDK errors collected during session (")
+            .append(snapshot.size()).append(" entries):\n");
+        for (int i = 0; i < snapshot.size(); i++) {
+            Entry e = snapshot.get(i);
+            desc.append("\n[").append(i + 1).append("] [").append(e.source).append("] ")
+                .append(e.message);
+            if (e.count > 1) desc.append("  ×").append(e.count);
+            desc.append('\n');
+            if (e.stackTrace != null && !e.stackTrace.isEmpty()) {
+                desc.append(e.stackTrace);
+                if (!e.stackTrace.endsWith("\n")) desc.append('\n');
+            }
+        }
+
+        // Flat customData — mirrors UnityExceptionForwarder's serialization
+        // style so the dashboard's Custom Data tab renders entries cleanly.
+        org.json.JSONObject extra = new org.json.JSONObject();
+        try {
+            extra.put("bugpunchSdkError", true);
+            extra.put("sdkError.count", snapshot.size());
+            extra.put("sdkError.source", top.source);
+            extra.put("sdkError.message", top.message);
+            for (int i = 0; i < snapshot.size() && i < 10; i++) {
+                Entry e = snapshot.get(i);
+                String p = "sdkError.entry." + i;
+                extra.put(p + ".source", e.source);
+                extra.put(p + ".message", e.message);
+                extra.put(p + ".count", e.count);
+            }
+        } catch (org.json.JSONException ignored) {}
+
+        try {
+            // User-initiated send — bypass the exception-type cooldown that
+            // exists only to throttle auto-reports from tight exception loops.
+            BugpunchRuntime.setLastAutoReport(0L);
+            BugpunchReportingService.reportBug("exception", title, desc.toString(), extra.toString());
+        } catch (Throwable t) {
+            Log.w(TAG, "enqueueRingAsExceptionReport: reportBug failed", t);
+            return false;
+        }
+        synchronized (BugpunchSdkErrorOverlay.class) { sRing.clear(); }
+        return true;
     }
 
     private static void hideExpanded(Activity activity) {

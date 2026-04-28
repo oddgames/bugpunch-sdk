@@ -47,13 +47,29 @@ static NSString* gScriptPermission = @"ask";
 static NSURLSession* gSession = nil;
 
 // Unread-chat tick counter (issue #32). Piggybacks on the existing poll
-// loop — every other tick we hit /api/v1/chat/unread to update the
-// floating-widget badge.
+// loop — every Nth tick we hit /api/v1/chat/unread to update the
+// floating-widget badge AND drive the persistent top banner.
+//
+// Cadence is adaptive based on the most-recent message timestamp on the
+// device's thread (returned by /api/v1/chat/unread):
+//   < 72h activity → every tick     (~30s — active conversation)
+//   < 7d  activity → every 2nd tick (~60s — cooling off)
+//   else / never  → every 10th tick (~5min — idle)
+//
+// Persisted to NSUserDefaults so a cold restart shortly after a chat
+// exchange resumes the fast cadence immediately instead of waiting for
+// the first poll to bump it.
 static NSInteger gUnreadTickCounter = 0;
+static NSDate* gChatActivityLastSeen = nil;
+static NSString* const kBPChatActivityKey = @"bugpunch.chat.lastActivityUtc";
 
-// Bridges to the debug widget that owns the badge. Lives in
-// BugpunchDebugWidget.mm.
+// Bridges to the debug widget that owns the badge + the top banner.
+// Both live in iOS-side native code (badge in BugpunchDebugWidget.mm,
+// banner in BugpunchTopBanner.mm — see BugpunchNative.cs for the
+// canonical declarations).
 extern "C" void Bugpunch_SetUnreadCount(int count);
+extern "C" void Bugpunch_TopBanner_ShowChat(int unread);
+extern "C" void Bugpunch_TopBanner_HideChat(void);
 
 // -- Helpers ------------------------------------------------------------------
 
@@ -192,6 +208,48 @@ static void BPEnsureRegistered(void) {
 // Failures are silent — the badge keeps its previous value until we get a
 // successful tick.
 
+static NSDateFormatter* BPIsoFormatter(void) {
+    static NSDateFormatter* fmt = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        fmt = [[NSDateFormatter alloc] init];
+        fmt.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        fmt.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSXXX";
+        fmt.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
+    });
+    return fmt;
+}
+
+static NSDate* BPParseIso8601(NSString* s) {
+    if (![s isKindOfClass:[NSString class]] || s.length == 0) return nil;
+    NSDate* d = [BPIsoFormatter() dateFromString:s];
+    if (d) return d;
+    // Fallback for timestamps without milliseconds.
+    static NSDateFormatter* fallback = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        fallback = [[NSDateFormatter alloc] init];
+        fallback.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        fallback.dateFormat = @"yyyy-MM-dd'T'HH:mm:ssXXX";
+        fallback.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
+    });
+    return [fallback dateFromString:s];
+}
+
+static void BPLoadChatActivity(void) {
+    if (gChatActivityLastSeen) return;
+    NSString* raw = [[NSUserDefaults standardUserDefaults] stringForKey:kBPChatActivityKey];
+    NSDate* d = BPParseIso8601(raw);
+    if (d) gChatActivityLastSeen = d;
+}
+
+static void BPPersistChatActivity(NSDate* d) {
+    if (!d) return;
+    [[NSUserDefaults standardUserDefaults]
+        setObject:[BPIsoFormatter() stringFromDate:d]
+           forKey:kBPChatActivityKey];
+}
+
 static void BPPollUnreadChat(void) {
     NSString* serverUrl = BPServerUrl();
     NSString* apiKey = BPApiKey();
@@ -210,7 +268,7 @@ static void BPPollUnreadChat(void) {
     NSString* url = [serverUrl stringByAppendingString:@"/api/v1/chat/unread"];
     NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
     req.HTTPMethod = @"GET";
-    [req setValue:[@"Bearer " stringByAppendingString:apiKey] forHTTPHeaderField:@"Authorization"];
+    [req setValue:apiKey forHTTPHeaderField:@"X-Api-Key"];
     [req setValue:deviceId forHTTPHeaderField:@"X-Device-Id"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
 
@@ -224,15 +282,43 @@ static void BPPollUnreadChat(void) {
             }
             id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
             if ([parsed isKindOfClass:[NSDictionary class]]) {
+                int count = 0;
                 id n = parsed[@"count"];
-                if ([n isKindOfClass:[NSNumber class]]) {
-                    Bugpunch_SetUnreadCount([n intValue]);
+                if ([n isKindOfClass:[NSNumber class]]) count = [n intValue];
+
+                // Floating-button badge.
+                Bugpunch_SetUnreadCount(count);
+
+                // Persistent top banner — native owns this so the C# heartbeat
+                // can stay editor-only without the player losing the pill.
+                if (count > 0) Bugpunch_TopBanner_ShowChat(count);
+                else           Bugpunch_TopBanner_HideChat();
+
+                // Adaptive cadence: refresh the activity high-watermark from
+                // the response, persist for cold-start recovery.
+                NSDate* lastMsg = BPParseIso8601(parsed[@"lastMessageAt"]);
+                if (lastMsg && (!gChatActivityLastSeen
+                        || [lastMsg compare:gChatActivityLastSeen] == NSOrderedDescending)) {
+                    gChatActivityLastSeen = lastMsg;
+                    BPPersistChatActivity(lastMsg);
                 }
             }
             dispatch_semaphore_signal(sem);
         }];
     [task resume];
     dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+}
+
+/** How many poll ticks to skip before the next chat-unread fetch, based on
+ *  the gap between now and the most recent message we've seen. < 72h: every
+ *  tick. < 7d: every 2nd. Otherwise: every 10th. */
+static NSInteger BPChatTickModulus(void) {
+    BPLoadChatActivity();
+    if (!gChatActivityLastSeen) return 10;
+    NSTimeInterval idle = [[NSDate date] timeIntervalSinceDate:gChatActivityLastSeen];
+    if (idle < 72.0 * 3600.0)            return 1;
+    if (idle < 7.0 * 24.0 * 3600.0)      return 2;
+    return 10;
 }
 
 // -- Poll ---------------------------------------------------------------------
@@ -310,11 +396,14 @@ static void BPDoPoll(void) {
             }
         });
 
-    // 4) Unread-chat badge (issue #32). Piggybacks on the same tick so we
-    // don't add a second timer. Every other tick at the default 30s cadence
-    // keeps chat-server load steady while surfacing replies within ~60s.
+    // 4) Unread-chat poll (issue #32). Piggybacks on the same tick so we
+    // don't add a second timer. Adaptive cadence — see BPChatTickModulus:
+    //   active conversation (<72h) → every tick (~30s)
+    //   recent (<7d)               → every 2nd tick (~60s)
+    //   idle / never               → every 10th tick (~5min)
     gUnreadTickCounter++;
-    if ((gUnreadTickCounter & 1) == 0) {
+    NSInteger modulus = BPChatTickModulus();
+    if (modulus <= 1 || (gUnreadTickCounter % modulus) == 0) {
         BPPollUnreadChat();
     }
 }

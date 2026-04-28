@@ -81,61 +81,207 @@ namespace ODDGames.Bugpunch
         }
 
         // ── Analytics events ──
+        //
+        // Mobile-game analytics taxonomy modelled on GameAnalytics + Firebase
+        // Analytics. Sessions, installs, and user identity are auto-tracked
+        // by native; the API below covers the events the game itself emits.
 
         /// <summary>
-        /// Record a custom product-analytics event. Cheap, fire-and-forget:
-        /// native holds an in-memory ring and flushes in batches to the
-        /// server. Event name is required; properties are optional flat
-        /// key→value pairs (strings, numbers, bools — complex types are
-        /// ToString'd).
+        /// Record a custom design event — flexible catch-all. Cheap,
+        /// fire-and-forget: native holds an in-memory ring and flushes in
+        /// batches to the server. Event id is required; properties are
+        /// optional flat key→value pairs (strings, numbers, bools — complex
+        /// types are ToString'd).
+        ///
+        /// Use the typed helpers below (<see cref="LogPurchase"/>,
+        /// <see cref="LogAd"/>, <see cref="LogResource"/>,
+        /// <see cref="LogProgression"/>, <see cref="LogScreen"/>) when the
+        /// event matches a standard mobile-F2P shape — they populate typed
+        /// columns server-side so the dashboard charts work without per-game
+        /// configuration.
         /// </summary>
         public static void TrackEvent(string name, System.Collections.IDictionary properties = null)
+            => LogDesign(name, properties);
+
+        /// <summary>
+        /// Record a free-form 'design' event. Same as <see cref="TrackEvent"/>
+        /// — kept as the typed-API name; TrackEvent stays for back-compat.
+        /// </summary>
+        public static void LogDesign(string eventId, System.Collections.IDictionary properties = null)
         {
-            if (!EnsureStarted() || string.IsNullOrEmpty(name)) return;
-            BugpunchNative.TrackEvent(name, SerializeDict(properties));
+            if (!EnsureStarted() || string.IsNullOrEmpty(eventId)) return;
+            var sb = new System.Text.StringBuilder(128);
+            sb.Append('{');
+            sb.Append("\"name\":\"").Append(BugpunchJson.Esc(eventId)).Append('"');
+            if (properties != null && properties.Count > 0)
+            {
+                sb.Append(",\"properties\":").Append(SerializeDict(properties));
+            }
+            sb.Append('}');
+            BugpunchNative.LogTypedEvent("design", sb.ToString());
         }
 
         /// <summary>
-        /// Convenience: record an in-app purchase. Thin wrapper over
-        /// <see cref="TrackEvent"/> with a standard event name + property
-        /// shape so the dashboard can build revenue charts without each
-        /// game needing to pick its own conventions. Call from your
-        /// purchase callback — e.g. Unity IAP's ProcessPurchase, Google
-        /// Play Billing's onPurchasesUpdated, StoreKit's paymentQueue
-        /// transaction observer.
+        /// Real-money in-app purchase. Call from your purchase callback —
+        /// Unity IAP's ProcessPurchase, Google Play Billing's
+        /// onPurchasesUpdated, StoreKit's paymentQueue transaction observer.
+        /// <paramref name="price"/> is in <paramref name="currency"/>;
+        /// fractional values are preserved (server stores micros).
         /// </summary>
         public static void LogPurchase(string sku, double price, string currency = "USD",
             string transactionId = null)
         {
             if (!EnsureStarted() || string.IsNullOrEmpty(sku)) return;
-            var props = new System.Collections.Generic.Dictionary<string, object> {
-                ["sku"] = sku,
-                ["price"] = price,
-                ["currency"] = currency ?? "USD",
-            };
-            if (!string.IsNullOrEmpty(transactionId)) props["transactionId"] = transactionId;
-            BugpunchNative.TrackEvent("purchase", SerializeDict(props));
+            long micros = (long)System.Math.Round(price * 1_000_000.0);
+            var sb = new System.Text.StringBuilder(160);
+            sb.Append('{');
+            sb.Append("\"amountMicros\":").Append(micros);
+            sb.Append(",\"currency\":\"").Append(BugpunchJson.Esc(currency ?? "USD")).Append('"');
+            sb.Append(",\"itemId\":\"").Append(BugpunchJson.Esc(sku)).Append('"');
+            if (!string.IsNullOrEmpty(transactionId))
+                sb.Append(",\"transactionId\":\"").Append(BugpunchJson.Esc(transactionId)).Append('"');
+            sb.Append('}');
+            BugpunchNative.LogTypedEvent("business", sb.ToString());
         }
 
         /// <summary>
-        /// Convenience: record an ad impression. Call from your ad-SDK's
-        /// onAdShown/onImpression callback — e.g. AdMob's OnAdImpression,
-        /// AppLovin MAX's onAdDisplayed, ironSource's onImpressionSuccess.
-        /// <paramref name="revenue"/> is the eCPM / reported impression
-        /// revenue in USD (nullable — pass null if the network doesn't
-        /// expose it).
+        /// Ad event. <paramref name="action"/> is one of "shown", "click",
+        /// "reward", "fail". Call from your ad-SDK callbacks — AdMob's
+        /// OnAdImpression, AppLovin MAX's onAdDisplayed, etc.
+        /// <paramref name="revenueUSD"/> is the reported impression revenue
+        /// in USD (nullable — pass null if the network doesn't expose it).
+        /// </summary>
+        public static void LogAd(string action, string adType, string sdkName,
+            string placement, double? revenueUSD = null)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(action)) return;
+            var sb = new System.Text.StringBuilder(160);
+            sb.Append('{');
+            sb.Append("\"adAction\":\"").Append(BugpunchJson.Esc(action)).Append('"');
+            if (!string.IsNullOrEmpty(adType))
+                sb.Append(",\"adType\":\"").Append(BugpunchJson.Esc(adType)).Append('"');
+            if (!string.IsNullOrEmpty(sdkName))
+                sb.Append(",\"adSdk\":\"").Append(BugpunchJson.Esc(sdkName)).Append('"');
+            if (!string.IsNullOrEmpty(placement))
+                sb.Append(",\"adPlacement\":\"").Append(BugpunchJson.Esc(placement)).Append('"');
+            if (revenueUSD.HasValue)
+            {
+                long micros = (long)System.Math.Round(revenueUSD.Value * 1_000_000.0);
+                sb.Append(",\"amountMicros\":").Append(micros);
+                sb.Append(",\"currency\":\"USD\"");
+            }
+            sb.Append('}');
+            BugpunchNative.LogTypedEvent("ad", sb.ToString());
+        }
+
+        /// <summary>
+        /// Back-compat wrapper around <see cref="LogAd"/>. New code should
+        /// call LogAd directly — it maps every action ('shown' / 'click' /
+        /// 'reward' / 'fail') instead of just impressions.
         /// </summary>
         public static void LogAdImpression(string placement, string format,
             string network = null, double? revenue = null)
+            => LogAd("shown", format, network, placement, revenue);
+
+        /// <summary>
+        /// Virtual currency flow. <paramref name="flow"/> is "source" (earn)
+        /// or "sink" (spend). <paramref name="currency"/> is your in-game
+        /// currency name (gold, gems, ...).
+        /// </summary>
+        public static void LogResource(string flow, string currency, long amount,
+            string itemType, string itemId)
         {
-            if (!EnsureStarted() || string.IsNullOrEmpty(placement)) return;
-            var props = new System.Collections.Generic.Dictionary<string, object> {
-                ["placement"] = placement,
-                ["format"] = format ?? "unknown",
-            };
-            if (!string.IsNullOrEmpty(network)) props["network"] = network;
-            if (revenue.HasValue) props["value"] = revenue.Value;
-            BugpunchNative.TrackEvent("ad_impression", SerializeDict(props));
+            if (!EnsureStarted() || string.IsNullOrEmpty(flow) || string.IsNullOrEmpty(currency)) return;
+            var sb = new System.Text.StringBuilder(160);
+            sb.Append('{');
+            sb.Append("\"resourceFlow\":\"").Append(BugpunchJson.Esc(flow)).Append('"');
+            sb.Append(",\"currency\":\"").Append(BugpunchJson.Esc(currency)).Append('"');
+            sb.Append(",\"amountMicros\":").Append(amount * 1_000_000L);
+            if (!string.IsNullOrEmpty(itemType))
+                sb.Append(",\"itemType\":\"").Append(BugpunchJson.Esc(itemType)).Append('"');
+            if (!string.IsNullOrEmpty(itemId))
+                sb.Append(",\"itemId\":\"").Append(BugpunchJson.Esc(itemId)).Append('"');
+            sb.Append('}');
+            BugpunchNative.LogTypedEvent("resource", sb.ToString());
+        }
+
+        /// <summary>
+        /// Progression event. <paramref name="status"/> is "start", "complete",
+        /// or "fail". Hierarchical: <paramref name="level1"/> is the top of
+        /// the progression tree (world / chapter), <paramref name="level2"/>
+        /// is the next level (level / mission), <paramref name="level3"/> is
+        /// the leaf (stage / wave). Server stores the path as
+        /// "level1/level2/level3" so prefix grouping works for funnel analysis.
+        /// </summary>
+        public static void LogProgression(string status, string level1,
+            string level2 = null, string level3 = null,
+            double? score = null, int? attempt = null)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(status) || string.IsNullOrEmpty(level1)) return;
+            var path = level1;
+            if (!string.IsNullOrEmpty(level2)) { path += "/" + level2; }
+            if (!string.IsNullOrEmpty(level3)) { path += "/" + level3; }
+            var sb = new System.Text.StringBuilder(160);
+            sb.Append('{');
+            sb.Append("\"progStatus\":\"").Append(BugpunchJson.Esc(status)).Append('"');
+            sb.Append(",\"progPath\":\"").Append(BugpunchJson.Esc(path)).Append('"');
+            if (score.HasValue)
+                sb.Append(",\"score\":").Append(score.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+            if (attempt.HasValue)
+                sb.Append(",\"attemptN\":").Append(attempt.Value);
+            sb.Append('}');
+            BugpunchNative.LogTypedEvent("progression", sb.ToString());
+        }
+
+        /// <summary>
+        /// Screen / view transition. Auto-emitted on Unity scene changes when
+        /// <c>BugpunchConfig.autoScreenViews</c> is true; call manually for
+        /// in-scene UI screens that don't trigger a SceneManager event.
+        /// </summary>
+        public static void LogScreen(string screenName, string previousScreen = null)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(screenName)) return;
+            var sb = new System.Text.StringBuilder(128);
+            sb.Append('{');
+            sb.Append("\"screenName\":\"").Append(BugpunchJson.Esc(screenName)).Append('"');
+            if (!string.IsNullOrEmpty(previousScreen))
+                sb.Append(",\"previousScreen\":\"").Append(BugpunchJson.Esc(previousScreen)).Append('"');
+            sb.Append('}');
+            BugpunchNative.LogTypedEvent("screen_view", sb.ToString());
+        }
+
+        // ── User identity ──
+
+        /// <summary>
+        /// Set the app-supplied user id. Survives across sessions on the same
+        /// install. Pass null to clear (e.g. on logout). Native install_id
+        /// remains the stable key for retention math regardless.
+        /// </summary>
+        public static void SetUserId(string userId)
+        {
+            if (!EnsureStarted()) return;
+            BugpunchNative.SetUserId(userId);
+        }
+
+        /// <summary>Set a user property (string).</summary>
+        public static void SetUserProperty(string key, string value)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(key)) return;
+            BugpunchNative.SetUserProperty(key, value);
+        }
+
+        /// <summary>Set a user property (number).</summary>
+        public static void SetUserProperty(string key, double value)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(key)) return;
+            BugpunchNative.SetUserProperty(key, value.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>Set a user property (bool).</summary>
+        public static void SetUserProperty(string key, bool value)
+        {
+            if (!EnsureStarted() || string.IsNullOrEmpty(key)) return;
+            BugpunchNative.SetUserProperty(key, value ? "true" : "false");
         }
 
         /// <summary>
@@ -306,8 +452,8 @@ namespace ODDGames.Bugpunch
                 if (kv.Key == null) continue;
                 if (!first) sb.Append(',');
                 first = false;
-                sb.Append('"').Append(EscJson(kv.Key)).Append("\":\"")
-                    .Append(EscJson(kv.Value ?? "")).Append('"');
+                sb.Append('"').Append(BugpunchJson.Esc(kv.Key)).Append("\":\"")
+                    .Append(BugpunchJson.Esc(kv.Value ?? "")).Append('"');
             }
             sb.Append('}');
             return sb.ToString();
@@ -324,7 +470,7 @@ namespace ODDGames.Bugpunch
                 if (entry.Key == null) continue;
                 if (!first) sb.Append(',');
                 first = false;
-                sb.Append('"').Append(EscJson(entry.Key.ToString())).Append("\":");
+                sb.Append('"').Append(BugpunchJson.Esc(entry.Key.ToString())).Append("\":");
                 AppendJsonValue(sb, entry.Value);
             }
             sb.Append('}');
@@ -339,29 +485,7 @@ namespace ODDGames.Bugpunch
             if (value is long l) { sb.Append(l); return; }
             if (value is float f) { sb.Append(f.ToString(System.Globalization.CultureInfo.InvariantCulture)); return; }
             if (value is double d) { sb.Append(d.ToString(System.Globalization.CultureInfo.InvariantCulture)); return; }
-            sb.Append('"').Append(EscJson(value.ToString())).Append('"');
-        }
-
-        static string EscJson(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            var sb = new System.Text.StringBuilder(s.Length + 8);
-            foreach (var c in s)
-            {
-                switch (c)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"':  sb.Append("\\\""); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < 0x20) sb.AppendFormat("\\u{0:X4}", (int)c);
-                        else sb.Append(c);
-                        break;
-                }
-            }
-            return sb.ToString();
+            sb.Append('"').Append(BugpunchJson.Esc(value.ToString())).Append('"');
         }
 
         // ── Game Config Variables ──

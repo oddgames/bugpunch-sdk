@@ -96,8 +96,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (i > 0) sb.Append(",");
                 var g = groups[i];
                 sb.Append("{");
-                sb.Append($"\"key\":\"{Esc(g.Key)}\",");
-                sb.Append($"\"displayName\":\"{Esc(g.DisplayName)}\",");
+                sb.Append($"\"key\":\"{BugpunchJson.Esc(g.Key)}\",");
+                sb.Append($"\"displayName\":\"{BugpunchJson.Esc(g.DisplayName)}\",");
                 sb.Append($"\"rendererCount\":{g.Renderers.Count},");
                 sb.Append("\"sampleObjects\":[");
                 int sampleMax = Mathf.Min(3, g.Renderers.Count);
@@ -107,7 +107,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var rr = g.Renderers[r];
                     if (rr == null || rr.gameObject == null) continue;
                     if (written > 0) sb.Append(",");
-                    sb.Append($"\"{Esc(rr.gameObject.name)}\"");
+                    sb.Append($"\"{BugpunchJson.Esc(rr.gameObject.name)}\"");
                     written++;
                 }
                 sb.Append("]");
@@ -126,7 +126,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public string BeginProfile(string by, float secondsPerGroup, int warmupFrames, bool pauseGame, string keysCsv)
         {
             if (_activeJob != null && _activeJob.Stage != Stage.Done && _activeJob.Stage != Stage.Error && _activeJob.Stage != Stage.Cancelled)
-                return $"{{\"ok\":false,\"error\":\"A sweep is already running\",\"jobId\":\"{Esc(_activeJob.JobId)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"A sweep is already running\",\"jobId\":\"{BugpunchJson.Esc(_activeJob.JobId)}\"}}";
 
             // Spotlight must be cleared before a sweep — both touch the same renderer-state slot.
             if (_spotlightSavedEnabled != null)
@@ -171,7 +171,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             _activeJob = job;
             StartCoroutine(RunSweep(job));
 
-            return $"{{\"ok\":true,\"jobId\":\"{Esc(job.JobId)}\"}}";
+            return $"{{\"ok\":true,\"jobId\":\"{BugpunchJson.Esc(job.JobId)}\"}}";
         }
 
         public string GetStatus(string jobId)
@@ -181,18 +181,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             var sb = new StringBuilder();
             sb.Append("{\"ok\":true,");
-            sb.Append($"\"jobId\":\"{Esc(job.JobId)}\",");
+            sb.Append($"\"jobId\":\"{BugpunchJson.Esc(job.JobId)}\",");
             sb.Append($"\"stage\":\"{StageName(job.Stage)}\",");
             sb.Append($"\"currentIndex\":{job.CurrentIndex},");
             sb.Append($"\"totalGroups\":{job.TotalGroups},");
-            sb.Append($"\"currentName\":\"{Esc(job.CurrentName ?? "")}\"");
+            sb.Append($"\"currentName\":\"{BugpunchJson.Esc(job.CurrentName ?? "")}\"");
             if (job.Baseline != null)
             {
                 sb.Append(",\"baseline\":");
                 AppendGroupJson(sb, job.Baseline, baselineMs: 0f);
             }
             if (job.Error != null)
-                sb.Append($",\"error\":\"{Esc(job.Error)}\"");
+                sb.Append($",\"error\":\"{BugpunchJson.Esc(job.Error)}\"");
             sb.Append("}");
             return sb.ToString();
         }
@@ -202,7 +202,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (string.IsNullOrEmpty(jobId) || !_jobs.TryGetValue(jobId, out var job))
                 return "{\"ok\":false,\"error\":\"Unknown jobId\"}";
             if (job.Stage == Stage.Error)
-                return $"{{\"ok\":false,\"error\":\"{Esc(job.Error ?? "Unknown error")}\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(job.Error ?? "Unknown error")}\"}}";
             if (job.Stage == Stage.Cancelled)
                 return "{\"ok\":false,\"cancelled\":true}";
             if (job.Stage != Stage.Done)
@@ -215,9 +215,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             var sb = new StringBuilder();
             sb.Append("{\"ok\":true,");
-            sb.Append($"\"jobId\":\"{Esc(job.JobId)}\",");
+            sb.Append($"\"jobId\":\"{BugpunchJson.Esc(job.JobId)}\",");
             sb.Append(string.Format(CultureInfo.InvariantCulture, "\"durationSec\":{0:F2},", job.CompletedAt - job.StartedAt));
-            sb.Append($"\"groupBy\":\"{Esc(job.GroupBy)}\",");
+            sb.Append($"\"groupBy\":\"{BugpunchJson.Esc(job.GroupBy)}\",");
             sb.Append("\"baseline\":");
             AppendGroupJson(sb, job.Baseline, baselineMs: 0f);
             sb.Append(",\"groups\":[");
@@ -278,7 +278,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (r.enabled != keep) r.enabled = keep;
             }
             _spotlightActiveKey = key;
-            return $"{{\"ok\":true,\"spotlight\":\"{Esc(key)}\"}}";
+            return $"{{\"ok\":true,\"spotlight\":\"{BugpunchJson.Esc(key)}\"}}";
         }
 
         // -------------------------------------------------------------------
@@ -545,8 +545,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             if (g == null) { sb.Append("null"); return; }
             sb.Append("{");
-            sb.Append($"\"key\":\"{Esc(g.Key)}\",");
-            sb.Append($"\"displayName\":\"{Esc(g.DisplayName)}\",");
+            sb.Append($"\"key\":\"{BugpunchJson.Esc(g.Key)}\",");
+            sb.Append($"\"displayName\":\"{BugpunchJson.Esc(g.DisplayName)}\",");
             sb.Append($"\"rendererCount\":{g.RendererCount},");
             sb.Append(string.Format(CultureInfo.InvariantCulture, "\"avgMs\":{0:F3},", g.AvgMs));
             sb.Append(string.Format(CultureInfo.InvariantCulture, "\"p99Ms\":{0:F3},", g.P99Ms));
@@ -564,9 +564,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             Stage.Cancelled => "cancelled",
             _ => "unknown",
         };
-
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
 
         // -------------------------------------------------------------------
         // Lifecycle

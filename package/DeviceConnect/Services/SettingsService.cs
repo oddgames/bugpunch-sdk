@@ -100,7 +100,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append("\"queriesHitTriggers\":").Append(Physics.queriesHitTriggers ? "true" : "false").Append(",");
             sb.Append("\"queriesHitBackfaces\":").Append(Physics.queriesHitBackfaces ? "true" : "false").Append(",");
 #if UNITY_2022_2_OR_NEWER
-            sb.Append("\"simulationMode\":\"").Append(Esc(Physics.simulationMode.ToString())).Append("\",");
+            sb.Append("\"simulationMode\":\"").Append(BugpunchJson.Esc(Physics.simulationMode.ToString())).Append("\",");
 #else
             sb.Append("\"autoSimulation\":").Append(Physics.autoSimulation ? "true" : "false").Append(",");
 #endif
@@ -154,7 +154,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append("\"queriesStartInColliders\":").Append(Physics2D.queriesStartInColliders ? "true" : "false").Append(",");
             sb.Append("\"callbacksOnDisable\":").Append(Physics2D.callbacksOnDisable ? "true" : "false").Append(",");
 #if UNITY_2022_2_OR_NEWER
-            sb.Append("\"simulationMode\":\"").Append(Esc(Physics2D.simulationMode.ToString())).Append("\"");
+            sb.Append("\"simulationMode\":\"").Append(BugpunchJson.Esc(Physics2D.simulationMode.ToString())).Append("\"");
 #else
             sb.Append("\"autoSimulation\":").Append(Physics2D.autoSimulation ? "true" : "false");
 #endif
@@ -203,7 +203,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             for (int i = 0; i < names.Length; i++)
             {
                 if (i > 0) sb.Append(",");
-                sb.Append("\"").Append(Esc(names[i])).Append("\"");
+                sb.Append("\"").Append(BugpunchJson.Esc(names[i])).Append("\"");
             }
             sb.Append("],");
             sb.Append("\"vSyncCount\":").Append(QualitySettings.vSyncCount).Append(",");
@@ -283,7 +283,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             F(sb, "haloStrength", RenderSettings.haloStrength); sb.Append(",");
             F(sb, "flareStrength", RenderSettings.flareStrength); sb.Append(",");
             F(sb, "flareFadeSpeed", RenderSettings.flareFadeSpeed); sb.Append(",");
-            sb.Append("\"skybox\":\"").Append(Esc(RenderSettings.skybox != null ? RenderSettings.skybox.name : "")).Append("\"");
+            sb.Append("\"skybox\":\"").Append(BugpunchJson.Esc(RenderSettings.skybox != null ? RenderSettings.skybox.name : "")).Append("\"");
             sb.Append("}");
             return sb.ToString();
         }
@@ -375,7 +375,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var sb = new StringBuilder(512);
             sb.Append("{");
             sb.Append("\"globalMaximumLOD\":").Append(Shader.globalMaximumLOD).Append(",");
-            sb.Append("\"globalRenderPipeline\":\"").Append(Esc(Shader.globalRenderPipeline ?? "")).Append("\",");
+            sb.Append("\"globalRenderPipeline\":\"").Append(BugpunchJson.Esc(Shader.globalRenderPipeline ?? "")).Append("\",");
             sb.Append("\"wireframe\":").Append(GL.wireframe ? "true" : "false").Append(",");
             sb.Append("\"srpBatching\":").Append(UnityEngine.Rendering.GraphicsSettings.useScriptableRenderPipelineBatching ? "true" : "false").Append(",");
             sb.Append("\"lightsLinearIntensity\":").Append(UnityEngine.Rendering.GraphicsSettings.lightsUseLinearIntensity ? "true" : "false").Append(",");
@@ -385,7 +385,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             foreach (var kv in _shaderGlobals)
             {
                 if (!first) sb.Append(",");
-                sb.Append("{\"name\":\"").Append(Esc(kv.Key)).Append("\",");
+                sb.Append("{\"name\":\"").Append(BugpunchJson.Esc(kv.Key)).Append("\",");
                 sb.Append("\"type\":\"").Append(kv.Value.type).Append("\",");
                 sb.Append("\"value\":").Append(kv.Value.valueJson).Append("}");
                 first = false;
@@ -476,7 +476,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             for (int i = 0; i < 32; i++)
             {
                 if (i > 0) sb.Append(",");
-                sb.Append("\"").Append(Esc(LayerMask.LayerToName(i) ?? "")).Append("\"");
+                sb.Append("\"").Append(BugpunchJson.Esc(LayerMask.LayerToName(i) ?? "")).Append("\"");
             }
             sb.Append("],\"matrix3d\":[");
             for (int i = 0; i < 32; i++)
@@ -544,9 +544,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
                  .Append(",\"g\":").Append(c.g.ToString("R", Inv))
                  .Append(",\"b\":").Append(c.b.ToString("R", Inv))
                  .Append(",\"a\":").Append(c.a.ToString("R", Inv)).Append("}");
-
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
 
         // Read a number key from a flat JSON body. Returns false if missing or
         // non-numeric. Accepts both bare numbers and quoted-string numbers.

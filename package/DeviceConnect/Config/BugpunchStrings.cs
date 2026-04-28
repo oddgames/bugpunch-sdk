@@ -283,7 +283,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (t == null || string.IsNullOrEmpty(t.locale) || t.overrides == null) continue;
                     if (!firstLocale) sb.Append(',');
                     firstLocale = false;
-                    sb.Append('"').Append(EscJson(t.locale)).Append("\":{");
+                    sb.Append('"').Append(BugpunchJson.Esc(t.locale)).Append("\":{");
                     bool firstKv = true;
                     foreach (var kv in t.overrides)
                     {
@@ -316,29 +316,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         static void AppendField(System.Text.StringBuilder sb, string k, string v)
         {
-            sb.Append('"').Append(EscJson(k)).Append("\":\"").Append(EscJson(v)).Append('"');
+            sb.Append('"').Append(BugpunchJson.Esc(k)).Append("\":\"").Append(BugpunchJson.Esc(v)).Append('"');
         }
 
-        static string EscJson(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            var sb = new System.Text.StringBuilder(s.Length + 8);
-            foreach (var c in s)
-            {
-                switch (c)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"':  sb.Append("\\\""); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < 0x20) sb.AppendFormat("\\u{0:X4}", (int)c);
-                        else sb.Append(c);
-                        break;
-                }
-            }
-            return sb.ToString();
-        }
     }
 }

@@ -21,6 +21,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// Frames accepted from server:  request, registered, pong
     /// Frames sent to server:        register, heartbeat, response, event
     /// </summary>
+    [ODDGames.Scripting.ScriptProtected(
+        ODDGames.Scripting.ScriptTrustLevel.System,
+        "IDE tunnel internals are off-limits to scripts at every trust level")]
     public class IdeTunnel
     {
         readonly BugpunchConfig _config;
@@ -111,7 +114,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 _mainThreadQueue.Enqueue(() => OnDisconnected?.Invoke());
 
                 attempt++;
-                int delayMs = Math.Min(1000 * (int)Math.Pow(2, attempt - 1), 10000);
+                int delayMs = BugpunchRetry.ExponentialBackoff(attempt, 1000, 10000);
                 await Task.Delay(delayMs);
             }
         }

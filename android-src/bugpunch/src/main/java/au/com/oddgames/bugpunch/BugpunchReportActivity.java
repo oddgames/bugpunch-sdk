@@ -55,6 +55,10 @@ public class BugpunchReportActivity extends Activity {
     private int COLOR_TEXT_LABEL;
     private int COLOR_ACCENT;
     private int COLOR_ACCENT_DARK;
+    // Send-button accent. Sourced from BugpunchTheme.accentBug so studios can
+    // tint just the bug-report CTA without affecting other accent surfaces.
+    private int COLOR_BUG_ACCENT;
+    private int COLOR_BUG_ACCENT_DARK;
 
     private void applyTheme() {
         COLOR_BG          = BugpunchTheme.color("backdrop",       0xFF0B0D10);
@@ -66,6 +70,16 @@ public class BugpunchReportActivity extends Activity {
         COLOR_TEXT_LABEL  = BugpunchTheme.color("textSecondary",  0xFFB8C2CF);
         COLOR_ACCENT      = BugpunchTheme.color("accentPrimary",  0xFF3B82F6);
         COLOR_ACCENT_DARK = BugpunchTheme.color("accentChat",     0xFF2563EB);
+        COLOR_BUG_ACCENT      = BugpunchTheme.color("accentBug",  0xFFEA7A2C);
+        COLOR_BUG_ACCENT_DARK = darken(COLOR_BUG_ACCENT, 0.78f);
+    }
+
+    private static int darken(int argb, float factor) {
+        int a = (argb >>> 24) & 0xFF;
+        int r = Math.round(((argb >> 16) & 0xFF) * factor);
+        int g = Math.round(((argb >>  8) & 0xFF) * factor);
+        int b = Math.round(( argb        & 0xFF) * factor);
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     private static final String EX_SHOT = "bp_shot";
@@ -120,6 +134,11 @@ public class BugpunchReportActivity extends Activity {
             }
         }
 
+        // Pause the rolling video ring while this form is on screen — the
+        // user typing the description shouldn't push the pre-incident
+        // gameplay out of the window. Released in onDestroy.
+        try { BugpunchRecorder.getInstance().pauseRing(); } catch (Throwable ignore) {}
+
         buildUi();
     }
 
@@ -138,6 +157,7 @@ public class BugpunchReportActivity extends Activity {
         super.onDestroy();
         // Release the "report in progress" guard so the next Send Report works.
         BugpunchRuntime.clearReportInProgress();
+        try { BugpunchRecorder.getInstance().resumeRing(); } catch (Throwable ignore) {}
     }
 
     @Override
@@ -175,14 +195,8 @@ public class BugpunchReportActivity extends Activity {
         eyebrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         eyebrow.setLetterSpacing(0.2f);
         eyebrow.setTypeface(Typeface.DEFAULT_BOLD);
+        eyebrow.setPadding(0, 0, 0, dp(8));
         headerBlock.addView(eyebrow);
-        TextView header = new TextView(this);
-        header.setText(BugpunchStrings.text("reportFormHeader", "Tell us what happened"));
-        header.setTextColor(COLOR_TEXT);
-        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        header.setTypeface(Typeface.DEFAULT_BOLD);
-        header.setPadding(0, dp(4), 0, dp(6));
-        headerBlock.addView(header);
         View accentBar = new View(this);
         GradientDrawable bar = new GradientDrawable(
             GradientDrawable.Orientation.LEFT_RIGHT,
@@ -638,7 +652,7 @@ public class BugpunchReportActivity extends Activity {
         b.setPadding(dp(22), 0, dp(22), 0);
         GradientDrawable fill = new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[] { COLOR_ACCENT, COLOR_ACCENT_DARK });
+            new int[] { COLOR_BUG_ACCENT, COLOR_BUG_ACCENT_DARK });
         fill.setCornerRadius(dp(10));
         b.setBackground(new RippleDrawable(
             ColorStateList.valueOf(0x33FFFFFF), fill, null));

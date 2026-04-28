@@ -7,6 +7,17 @@
 #import "BugpunchShake.h"
 #import <CoreMotion/CoreMotion.h>
 
+// Defined in BugpunchDebugMode.mm. Forward-declared here so we can emit a
+// `shake_fired` analytics event without pulling in the whole debug-mode
+// header. Mirrors the Android side which calls BugpunchRuntime.trackEvent.
+#ifdef __cplusplus
+extern "C" {
+#endif
+void Bugpunch_TrackEvent(const char* name, const char* propertiesJson);
+#ifdef __cplusplus
+}
+#endif
+
 @implementation BPShake
 static CMMotionManager* gMotion;
 static void (^gShakeCb)(void);
@@ -34,6 +45,7 @@ static void (^gShakeCb)(void);
         lastSpike = now;
         if (spikes >= 2 && now - lastShake > 2.0) {
             lastShake = now; spikes = 0;
+            Bugpunch_TrackEvent("shake_fired", "{\"platform\":\"ios\"}");
             if (gShakeCb) gShakeCb();
         }
     }];

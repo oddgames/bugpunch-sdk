@@ -5,7 +5,7 @@ project(bp C)
 # CMAKE_OBJECT_PATH_MAX (250 chars) on deeply-nested Jenkins workspaces.
 # OUTPUT_NAME preserves the on-disk libbugpunch_crash.so that Java expects
 # via System.loadLibrary("bugpunch_crash").
-add_library(bp SHARED bp.c)
+add_library(bp SHARED bp.c bp_video.c)
 set_target_properties(bp PROPERTIES OUTPUT_NAME bugpunch_crash)
 target_link_libraries(bp log)
 

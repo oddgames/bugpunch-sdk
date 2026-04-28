@@ -111,7 +111,6 @@ public class BugpunchDebugMode {
         BugpunchShakeDetector.stop();
         BugpunchLogReader.stop();
         BugpunchTouchRecorder.stop();
-        BugpunchScreenshot.stopRollingBuffer();
         BugpunchCrashHandler.shutdown();
     }
 
@@ -275,7 +274,7 @@ public class BugpunchDebugMode {
         JSONObject video = config != null ? config.optJSONObject("video") : null;
         int fps = video != null ? video.optInt("fps", 30) : 30;
         int bitrate = video != null ? video.optInt("bitrate", 2_000_000) : 2_000_000;
-        int windowSec = video != null ? video.optInt("bufferSeconds", 30) : 30;
+        int windowSec = video != null ? video.optInt("bufferSeconds", 90) : 90;
         DisplayMetrics dm = activity.getResources().getDisplayMetrics();
         // Touch recorder shares the same window; sized generously so a
         // multi-finger session over the buffer window never drops events.

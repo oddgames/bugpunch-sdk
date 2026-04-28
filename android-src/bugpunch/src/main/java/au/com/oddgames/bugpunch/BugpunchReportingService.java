@@ -157,9 +157,11 @@ public final class BugpunchReportingService {
 
         JSONObject config = BugpunchRuntime.getConfig();
 
-        // Cooldown for auto exception reports.
+        // Cooldown for auto exception reports — prevents a tight exception loop from
+        // flooding the server, but keeps it short enough that manual test crashes
+        // within the same session are all captured.
         if ("exception".equals(type)) {
-            long cooldownMs = (long)(config.optDouble("autoReportCooldownSeconds", 30.0) * 1000);
+            long cooldownMs = (long)(config.optDouble("autoReportCooldownSeconds", 5.0) * 1000);
             long now = System.currentTimeMillis();
             if (now - BugpunchRuntime.getLastAutoReport() < cooldownMs) return;
             BugpunchRuntime.setLastAutoReport(now);
@@ -190,15 +192,15 @@ public final class BugpunchReportingService {
         // Silent path — assemble manifest directly.
         final DumpResult dump = dumpRingAndTouches(activity);
 
-        // Context screenshot — last frame from the rolling buffer (~1s before
-        // the event). Additional to the event screenshot taken below.
+        // Context screenshot — last storyboard frame (most recent UI press).
+        // Additional to the event screenshot taken below.
         String contextShotPath = null;
         long contextShotTs = 0;
-        if (BugpunchScreenshot.hasLastFrame()) {
+        if (BugpunchStoryboard.hasNewestFrame()) {
             contextShotPath = activity.getCacheDir().getAbsolutePath()
                 + "/bp_ctx_" + System.nanoTime() + ".jpg";
-            contextShotTs = BugpunchScreenshot.getLastFrameTimestamp();
-            if (!BugpunchScreenshot.writeLastFrame(contextShotPath, 85)) {
+            contextShotTs = BugpunchStoryboard.getNewestTimestampMs();
+            if (!BugpunchStoryboard.writeNewestJpegTo(new java.io.File(contextShotPath), 85)) {
                 contextShotPath = null;
             }
         }
@@ -230,6 +232,9 @@ public final class BugpunchReportingService {
 
         String logsText = BugpunchLogReader.snapshotText();
         String logsGzPath = writeGzipLogs(activity, logsText);
+        // Mark a boundary in the live ring so the next report's logs render
+        // a collapsible "previously reported" divider in the dashboard viewer.
+        BugpunchLogReader.markBoundary(type, title);
         String metadataJson = buildMetadataJson(type, title, description,
             extra, /* reporterEmail */ null, /* severity */ null, dump);
         Object[] traceAttach = prepareTraceAttachments(activity);
@@ -328,14 +333,14 @@ public final class BugpunchReportingService {
         JSONObject extra = new JSONObject();
         JSONArray screenshotsMeta = new JSONArray();
         try {
-            // Context screenshot from rolling buffer
+            // Context screenshot — last storyboard frame (most recent UI press).
             String contextPath = null;
             long contextTs = 0;
-            if (BugpunchScreenshot.hasLastFrame()) {
+            if (BugpunchStoryboard.hasNewestFrame()) {
                 contextPath = activity.getCacheDir().getAbsolutePath()
                     + "/bp_ctx_" + System.nanoTime() + ".jpg";
-                contextTs = BugpunchScreenshot.getLastFrameTimestamp();
-                if (!BugpunchScreenshot.writeLastFrame(contextPath, 85)) contextPath = null;
+                contextTs = BugpunchStoryboard.getNewestTimestampMs();
+                if (!BugpunchStoryboard.writeNewestJpegTo(new java.io.File(contextPath), 85)) contextPath = null;
             }
             if (contextPath != null) {
                 JSONObject ctx = new JSONObject();
@@ -365,6 +370,7 @@ public final class BugpunchReportingService {
 
         String logsText = BugpunchLogReader.snapshotText();
         String logsGzPath = writeGzipLogs(activity, logsText);
+        BugpunchLogReader.markBoundary("bug", title);
         String metadataJson = buildMetadataJson("bug", title, description,
             extra, email, severity, dump);
         Object[] traceAttach = prepareTraceAttachments(activity);
@@ -431,7 +437,13 @@ public final class BugpunchReportingService {
         try {
             JSONObject v = new JSONObject();
             v.put("durationMs", (int) ((endNs - startNs) / 1_000_000L));
-            int w = rec.getWidth(), h = rec.getHeight();
+            // Touches are stored in real-display pixels (see BugpunchTouchRecorder).
+            // The video frame shows the full display scaled into the encoder
+            // dimensions, so the dashboard needs the touch coord frame —
+            // not the encoder size — to map touches onto the playback canvas.
+            int w = BugpunchTouchRecorder.getCaptureWidth();
+            int h = BugpunchTouchRecorder.getCaptureHeight();
+            if (w <= 0 || h <= 0) { w = rec.getWidth(); h = rec.getHeight(); }
             if (w > 0 && h > 0) {
                 v.put("width", w);
                 v.put("height", h);
@@ -554,6 +566,7 @@ public final class BugpunchReportingService {
             if (severity != null && !severity.isEmpty())
                 m.put("severity", severity);
             m.put("timestamp", java.text.DateFormat.getDateTimeInstance().format(new java.util.Date()));
+            m.put("clientTimestampMs", System.currentTimeMillis());
 
             JSONObject device = new JSONObject();
             device.put("model", BugpunchRuntime.getMetadata("deviceModel"));

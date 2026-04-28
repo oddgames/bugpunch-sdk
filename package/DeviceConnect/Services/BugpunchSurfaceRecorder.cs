@@ -24,6 +24,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// (projection succeeded on a later attempt, recorder torn down, etc.)
     /// this stops too.
     /// </summary>
+    [ODDGames.Scripting.ScriptProtected]
     public class BugpunchSurfaceRecorder : MonoBehaviour
     {
         // Capture cadence. 15 fps is plenty for bug-report video and gives

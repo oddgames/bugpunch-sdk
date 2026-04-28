@@ -3,8 +3,9 @@
 // Owns the upload queue, does multipart POSTs via NSURLSession with retry,
 // cleans up on success. Queue lives in {caches}/bugpunch_uploads/*.upload.json.
 //
-// Manifest schema — see BugpunchUploader.java for details. Same format on both
-// platforms so server sees identical requests.
+// Canonical manifest schema, two-stage preflight flow, and pinned constants:
+// see sdk/docs/upload-manifest.md. The Android BugpunchUploader.java follows
+// the same contract — change them together.
 
 #import <Foundation/Foundation.h>
 
@@ -19,6 +20,10 @@ void BPDirectives_OnUploadResponse(const char* url, const char* responseBody);
 // on-screen diagnostic banner so swallowed failures don't leave the dev/QA in
 // the dark.
 void Bugpunch_ReportSdkError(const char* source, const char* message, const char* stack);
+// Defined in BugpunchTopBanner.mm — top-of-screen progress pill mirroring
+// the Android BugpunchUploadStatusBanner.
+void Bugpunch_TopBanner_ShowUpload(int pending);
+void Bugpunch_TopBanner_HideUpload(void);
 #ifdef __cplusplus
 }
 #endif
@@ -77,6 +82,52 @@ static void BPCleanup(NSDictionary* manifest) {
         if (![p isKindOfClass:[NSString class]] || p.length == 0) continue;
         [fm removeItemAtPath:p error:nil];
     }
+}
+
+/**
+ * Build the {@code attachmentsAvailable} array advertised on the phase-1
+ * preflight body. THE RULE: every attachment with a non-empty
+ * {@code requires} key MUST appear here — the server's per-fingerprint
+ * budget filter ({@code issues/ingest.ts}: {@code if (offered.has(f))})
+ * silently drops fields absent from this set. Centralised so callers can't
+ * forget. See {@code sdk/docs/upload-manifest.md} and the matching Java
+ * implementation in {@code BugpunchUploader.collectAvailableRequires}.
+ *
+ * Returns an NSSet of unique requires-key strings (may be empty).
+ */
+static NSSet<NSString*>* BPCollectAvailableRequires(NSArray* files) {
+    NSMutableSet* available = [NSMutableSet set];
+    if (![files isKindOfClass:[NSArray class]]) return available;
+    for (NSDictionary* f in files) {
+        if (![f isKindOfClass:[NSDictionary class]]) continue;
+        NSString* req = f[@"requires"];
+        if ([req isKindOfClass:[NSString class]] && req.length > 0) {
+            [available addObject:req];
+        }
+    }
+    return available;
+}
+
+/**
+ * Inject {@code attachmentsAvailable} into a JSON-string body. If the body
+ * isn't valid JSON or the file list has no requires keys, returns the body
+ * unchanged. Mirrors the Android implementation's "patch rawJsonBody in
+ * place" approach so the wire format is byte-identical across platforms.
+ */
+static NSString* BPInjectAttachmentsAvailable(NSString* jsonBody, NSArray* files) {
+    NSSet* available = BPCollectAvailableRequires(files);
+    if (available.count == 0) return jsonBody;
+    NSData* bodyData = [jsonBody dataUsingEncoding:NSUTF8StringEncoding];
+    if (!bodyData) return jsonBody;
+    NSError* err = nil;
+    id parsed = [NSJSONSerialization JSONObjectWithData:bodyData options:0 error:&err];
+    if (err || ![parsed isKindOfClass:[NSDictionary class]]) return jsonBody;
+    NSMutableDictionary* body = [(NSDictionary*)parsed mutableCopy];
+    body[@"attachmentsAvailable"] = [available allObjects];
+    NSData* patched = [NSJSONSerialization dataWithJSONObject:body options:0 error:&err];
+    if (err || !patched) return jsonBody;
+    NSString* out = [[NSString alloc] initWithData:patched encoding:NSUTF8StringEncoding];
+    return out ?: jsonBody;
 }
 
 static NSData* BPBuildMultipart(NSDictionary* manifest, NSString* boundary) {
@@ -286,11 +337,24 @@ static void BPProcessOne(NSString* manifestPath, dispatch_group_t group) {
     [task resume];
 }
 
+static NSInteger BPCountPendingManifests(void) {
+    NSArray<NSString*>* files = [[NSFileManager defaultManager]
+        contentsOfDirectoryAtPath:BPQueueDirPath() error:nil];
+    NSInteger n = 0;
+    for (NSString* name in files) if ([name hasSuffix:@".upload.json"]) n++;
+    return n;
+}
+
 static void BPDrainQueueSync(void) {
     NSString* dir = BPQueueDirPath();
     NSArray<NSString*>* files = [[NSFileManager defaultManager]
         contentsOfDirectoryAtPath:dir error:nil];
     if (files.count == 0) return;
+    // Surface the upload banner so the player sees a small "Sending crash
+    // report…" pill while the drain works. Mirrors the Android
+    // BugpunchUploader status-observer wiring.
+    NSInteger pending = BPCountPendingManifests();
+    if (pending > 0) Bugpunch_TopBanner_ShowUpload((int)pending);
     dispatch_group_t group = dispatch_group_create();
     for (NSString* name in files) {
         if (![name hasSuffix:@".upload.json"]) continue;
@@ -298,6 +362,7 @@ static void BPDrainQueueSync(void) {
         BPProcessOne(path, group);
     }
     dispatch_group_wait(group, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kResourceTimeout * NSEC_PER_SEC)));
+    if (BPCountPendingManifests() == 0) Bugpunch_TopBanner_HideUpload();
 }
 
 extern "C" {
@@ -593,12 +658,21 @@ void Bugpunch_EnqueuePreflight(const char* preflightUrlC, const char* enrichUrlT
             }
         }
 
+        // Advertise every `requires` key on the attachments list so the
+        // server's per-fingerprint budget filter (issues/ingest.ts) admits
+        // them into collect[]. Contract is documented in
+        // sdk/docs/upload-manifest.md — same rule as
+        // BugpunchUploader.collectAvailableRequires() on Android. Without
+        // this, phase-2 silently drops every multipart field that has a
+        // `requires` key the server doesn't already expect.
+        NSString* patchedJsonBody = BPInjectAttachmentsAvailable(jsonBody, files);
+
         NSMutableDictionary* m = [NSMutableDictionary dictionary];
         m[@"stage"] = @"preflight";
         m[@"url"] = preflightUrl;
         m[@"enrichUrlTemplate"] = enrichTemplate;
         m[@"headers"] = @{ @"X-Api-Key": apiKey, @"Content-Type": @"application/json" };
-        m[@"rawJsonBody"] = jsonBody;
+        m[@"rawJsonBody"] = patchedJsonBody;
         m[@"files"] = files;
         m[@"cleanupPaths"] = cleanup;
         m[@"attempts"] = @0;

@@ -25,8 +25,8 @@
 //   POST /api/v1/chat/upload               (multipart)
 //   POST /api/v1/chat/request/answer       { messageId, approved }
 //
-// Auth: Authorization: Bearer <apiKey> + X-Device-Id: <stable> — server
-// resolves projectId from the API key.
+// Auth: X-Api-Key: <apiKey> + X-Device-Id: <stable> — server resolves
+// projectId from the API key.
 //
 // Server returns mixed PascalCase / camelCase across endpoints; every
 // field lookup falls back to both keys (Id / id, Sender / sender, …) the
@@ -206,7 +206,6 @@ static NSArray* BPChatArr(NSDictionary* m, NSString* a, NSString* b) {
     UIColor* _cBubbleOther;
 
     // Chrome
-    UIView*       _headerBar;
     UIScrollView* _scroll;
     UIView*       _messagesColumn;
     UILabel*      _emptyLabel;
@@ -268,10 +267,10 @@ static const NSTimeInterval kBPChatPollInterval = 5.0;
     cfg.timeoutIntervalForResource = 60.0;
     _session = [NSURLSession sessionWithConfiguration:cfg];
 
-    [self buildHeader];
     [self buildHoursBanner];
     [self buildMessagesArea];
     [self buildComposer];
+    [self buildFloatingClose];
     [self buildDisabledOverlay];
 
     // Keyboard tracking — push composer up so it isn't covered.
@@ -301,6 +300,17 @@ static const NSTimeInterval kBPChatPollInterval = 5.0;
     [_session invalidateAndCancel];
 }
 
+#pragma mark – Rotation
+
+// Host games commonly lock orientation at the AppDelegate level — the chat
+// surface should rotate freely so the player can hold the phone naturally
+// while typing. Capped by the orientations the host's Info.plist declares;
+// nothing we can override at the SDK layer can extend past that.
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskAll;
+}
+- (BOOL)shouldAutorotate { return YES; }
+
 - (void)applyTheme {
     _cBg          = [BPTheme color:@"backdrop"        fallback:[UIColor colorWithRed:0.063 green:0.071 blue:0.086 alpha:1]];
     _cHeader      = [BPTheme color:@"cardBackground"  fallback:[UIColor colorWithRed:0.106 green:0.122 blue:0.145 alpha:1]];
@@ -312,79 +322,29 @@ static const NSTimeInterval kBPChatPollInterval = 5.0;
     _cBubbleOther = [BPTheme color:@"cardBorder"      fallback:[UIColor colorWithRed:0.165 green:0.192 blue:0.224 alpha:1]];
 }
 
-#pragma mark – Header
+#pragma mark – Floating close
 
-- (void)buildHeader {
-    _headerBar = [[UIView alloc] init];
-    _headerBar.translatesAutoresizingMaskIntoConstraints = NO;
-    _headerBar.backgroundColor = _cHeader;
-    [self.view addSubview:_headerBar];
-
-    // Bottom hairline
-    UIView* hairline = [[UIView alloc] init];
-    hairline.translatesAutoresizingMaskIntoConstraints = NO;
-    hairline.backgroundColor = _cBorder;
-    [_headerBar addSubview:hairline];
-
-    // Avatar — solid accent circle (matches Android). 36pt.
-    UIView* avatar = [[UIView alloc] init];
-    avatar.translatesAutoresizingMaskIntoConstraints = NO;
-    avatar.backgroundColor = _cAccent;
-    avatar.layer.cornerRadius = 18;
-    avatar.layer.masksToBounds = YES;
-    [_headerBar addSubview:avatar];
-
-    UILabel* title = [[UILabel alloc] init];
-    title.translatesAutoresizingMaskIntoConstraints = NO;
-    title.text = [BPStrings text:@"chatTitle" fallback:@"Chat with the team"];
-    title.textColor = _cText;
-    title.font = [UIFont boldSystemFontOfSize:[BPTheme font:@"fontSizeTitle" fallback:17]];
-    [_headerBar addSubview:title];
-
-    UILabel* subtitle = [[UILabel alloc] init];
-    subtitle.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitle.text = [BPStrings text:@"chatSubtitle" fallback:@"Usually replies within a day"];
-    subtitle.textColor = _cTextMuted;
-    subtitle.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeCaption" fallback:12]];
-    [_headerBar addSubview:subtitle];
-
-    UIButton* close = [UIButton buttonWithType:UIButtonTypeSystem];
+/** Small ✕ in the top-right that dismisses the VC. Replaces the old header
+ *  bar so the conversation has the whole screen. 32pt circle, 16pt glyph,
+ *  added last so it sits above the message list and composer. */
+- (void)buildFloatingClose {
+    UIButton* close = [UIButton buttonWithType:UIButtonTypeCustom];
     close.translatesAutoresizingMaskIntoConstraints = NO;
     [close setTitle:@"✕" forState:UIControlStateNormal];
     [close setTitleColor:_cTextDim forState:UIControlStateNormal];
-    close.titleLabel.font = [UIFont systemFontOfSize:22];
+    close.titleLabel.font = [UIFont systemFontOfSize:16];
+    close.backgroundColor = [_cHeader colorWithAlphaComponent:0.8];
+    close.layer.cornerRadius = 16;
+    close.layer.masksToBounds = YES;
     [close addTarget:self action:@selector(onCloseTapped) forControlEvents:UIControlEventTouchUpInside];
-    [_headerBar addSubview:close];
+    [self.view addSubview:close];
 
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [_headerBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
-        [_headerBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [_headerBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [_headerBar.heightAnchor constraintEqualToConstant:60],
-
-        [hairline.leadingAnchor constraintEqualToAnchor:_headerBar.leadingAnchor],
-        [hairline.trailingAnchor constraintEqualToAnchor:_headerBar.trailingAnchor],
-        [hairline.bottomAnchor constraintEqualToAnchor:_headerBar.bottomAnchor],
-        [hairline.heightAnchor constraintEqualToConstant:0.5],
-
-        [avatar.leadingAnchor constraintEqualToAnchor:_headerBar.leadingAnchor constant:14],
-        [avatar.centerYAnchor constraintEqualToAnchor:_headerBar.centerYAnchor],
-        [avatar.widthAnchor constraintEqualToConstant:36],
-        [avatar.heightAnchor constraintEqualToConstant:36],
-
-        [title.leadingAnchor constraintEqualToAnchor:avatar.trailingAnchor constant:10],
-        [title.topAnchor constraintEqualToAnchor:_headerBar.topAnchor constant:10],
-        [title.trailingAnchor constraintLessThanOrEqualToAnchor:close.leadingAnchor constant:-8],
-
-        [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
-        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:1],
-        [subtitle.trailingAnchor constraintLessThanOrEqualToAnchor:close.leadingAnchor constant:-8],
-
-        [close.trailingAnchor constraintEqualToAnchor:_headerBar.trailingAnchor constant:-8],
-        [close.centerYAnchor constraintEqualToAnchor:_headerBar.centerYAnchor],
-        [close.widthAnchor constraintEqualToConstant:40],
-        [close.heightAnchor constraintEqualToConstant:40],
+        [close.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
+        [close.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
+        [close.widthAnchor constraintEqualToConstant:32],
+        [close.heightAnchor constraintEqualToConstant:32],
     ]];
 }
 
@@ -401,8 +361,9 @@ static const NSTimeInterval kBPChatPollInterval = 5.0;
     _hoursBanner.hidden = YES;
     [self.view addSubview:_hoursBanner];
 
+    UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [_hoursBanner.topAnchor constraintEqualToAnchor:_headerBar.bottomAnchor],
+        [_hoursBanner.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [_hoursBanner.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [_hoursBanner.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
     ]];
@@ -1305,6 +1266,16 @@ static __weak BugpunchChatViewController* sBPChatVCWaitingForVideo = nil;
  *  with a stub reply — full ScriptRunner JNI/IL2CPP bridge is the
  *  follow-up issue, same as Android. */
 - (UIView*)buildRequestBubble:(NSDictionary*)m type:(NSString*)type body:(NSString*)body {
+    BOOL isScript = [type caseInsensitiveCompare:@"scriptRequest"] == NSOrderedSame;
+    NSString* description = BPChatStr(m, @"RequestDescription", @"requestDescription", @"");
+    BOOL hasDescription = description.length > 0;
+    // Spoiler model: when we have a plain-English description, the source
+    // preview hides behind a "Show script" toggle. Keeps players from
+    // having to read C# to make an informed approve/decline call. When
+    // there's no description (legacy QA composer or non-script request)
+    // we fall back to showing the body inline like before.
+    BOOL collapseSource = isScript && hasDescription;
+
     UIView* container = [[UIView alloc] init];
     container.backgroundColor = _cBubbleOther;
     container.layer.cornerRadius = 12;
@@ -1312,27 +1283,66 @@ static __weak BugpunchChatViewController* sBPChatVCWaitingForVideo = nil;
     container.layer.borderColor = _cAccent.CGColor;
     container.layer.masksToBounds = YES;
 
-    UILabel* label = [[UILabel alloc] init];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.text = [type caseInsensitiveCompare:@"scriptRequest"] == NSOrderedSame
+    // Use a vertical stack so hidden children (the collapsed source
+    // preview) cleanly drop out of layout without manual constraint
+    // gymnastics.
+    UIStackView* stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentFill;
+    stack.spacing = 6;
+    [container addSubview:stack];
+
+    UILabel* header = [[UILabel alloc] init];
+    header.text = isScript
         ? [BPStrings text:@"chatScriptRequest" fallback:@"The dev team wants to run a script:"]
         : [BPStrings text:@"chatDataRequest"   fallback:@"The dev team is asking for data:"];
-    label.textColor = _cTextDim;
-    label.font = [UIFont boldSystemFontOfSize:[BPTheme font:@"fontSizeCaption" fallback:12]];
-    [container addSubview:label];
+    header.textColor = _cTextDim;
+    header.font = [UIFont boldSystemFontOfSize:[BPTheme font:@"fontSizeCaption" fallback:12]];
+    header.numberOfLines = 0;
+    [stack addArrangedSubview:header];
+
+    // Description (only when present) — sits prominently between the
+    // header and the (possibly hidden) source.
+    if (hasDescription) {
+        UILabel* descLabel = [[UILabel alloc] init];
+        descLabel.text = description;
+        descLabel.textColor = _cText;
+        descLabel.numberOfLines = 0;
+        descLabel.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeBody" fallback:14]];
+        [stack addArrangedSubview:descLabel];
+    }
 
     UILabel* preview = [[UILabel alloc] init];
-    preview.translatesAutoresizingMaskIntoConstraints = NO;
     NSString* shown = body ?: @"";
     if (shown.length > 600) shown = [[shown substringToIndex:600] stringByAppendingString:@"\n…"];
     preview.text = shown;
     preview.textColor = _cText;
     preview.numberOfLines = 0;
-    preview.font = ([type caseInsensitiveCompare:@"scriptRequest"] == NSOrderedSame)
+    preview.font = isScript
         ? [UIFont fontWithName:@"Menlo" size:[BPTheme font:@"fontSizeCaption" fallback:12]]
         : [UIFont systemFontOfSize:[BPTheme font:@"fontSizeCaption" fallback:12]];
     if (!preview.font) preview.font = [UIFont systemFontOfSize:12];
-    [container addSubview:preview];
+    preview.hidden = collapseSource;
+
+    // Spoiler toggle — only present on script requests that ship a
+    // description. Tapping flips preview.hidden + the title.
+    UIButton* spoiler = nil;
+    if (collapseSource) {
+        spoiler = [UIButton buttonWithType:UIButtonTypeSystem];
+        [spoiler setTitle:[BPStrings text:@"chatShowScript" fallback:@"▸ Show script"]
+                 forState:UIControlStateNormal];
+        [spoiler setTitleColor:_cAccent forState:UIControlStateNormal];
+        spoiler.titleLabel.font = [UIFont systemFontOfSize:[BPTheme font:@"fontSizeCaption" fallback:12]];
+        spoiler.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+        objc_setAssociatedObject(spoiler, "bp_preview", preview, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [spoiler addTarget:self
+                    action:@selector(onSpoilerTapped:)
+          forControlEvents:UIControlEventTouchUpInside];
+        [stack addArrangedSubview:spoiler];
+    }
+
+    [stack addArrangedSubview:preview];
 
     UIButton* decline = [self requestActionButton:[BPStrings text:@"chatDecline" fallback:@"Decline"]
                                               bg:_cBorder
@@ -1340,32 +1350,41 @@ static __weak BugpunchChatViewController* sBPChatVCWaitingForVideo = nil;
     UIButton* approve = [self requestActionButton:[BPStrings text:@"chatApprove" fallback:@"Approve"]
                                               bg:_cAccent
                                               fg:[UIColor whiteColor]];
-    // Capture the message dict + outcome for the action handlers.
     NSDictionary* mc = [m copy];
     [decline addTarget:self action:@selector(onDeclineTapped:) forControlEvents:UIControlEventTouchUpInside];
     [approve addTarget:self action:@selector(onApproveTapped:) forControlEvents:UIControlEventTouchUpInside];
     objc_setAssociatedObject(decline, "bp_msg", mc, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(approve, "bp_msg", mc, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [container addSubview:decline];
-    [container addSubview:approve];
+
+    // Action row — own horizontal stack so the buttons sit neatly to the
+    // right inside the vertical stack.
+    UIView* spacer = [[UIView alloc] init];
+    [spacer setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    UIStackView* actionRow = [[UIStackView alloc] initWithArrangedSubviews:@[ spacer, decline, approve ]];
+    actionRow.axis = UILayoutConstraintAxisHorizontal;
+    actionRow.spacing = 8;
+    actionRow.alignment = UIStackViewAlignmentCenter;
+    [stack setCustomSpacing:10 afterView:preview];
+    [stack addArrangedSubview:actionRow];
 
     [NSLayoutConstraint activateConstraints:@[
-        [label.topAnchor constraintEqualToAnchor:container.topAnchor constant:12],
-        [label.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:12],
-        [label.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-12],
-
-        [preview.topAnchor constraintEqualToAnchor:label.bottomAnchor constant:6],
-        [preview.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:12],
-        [preview.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-12],
-
-        [approve.topAnchor constraintEqualToAnchor:preview.bottomAnchor constant:10],
-        [approve.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-12],
-        [approve.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-12],
-
-        [decline.trailingAnchor constraintEqualToAnchor:approve.leadingAnchor constant:-8],
-        [decline.centerYAnchor constraintEqualToAnchor:approve.centerYAnchor],
+        [stack.topAnchor      constraintEqualToAnchor:container.topAnchor      constant:12],
+        [stack.leadingAnchor  constraintEqualToAnchor:container.leadingAnchor  constant:12],
+        [stack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-12],
+        [stack.bottomAnchor   constraintEqualToAnchor:container.bottomAnchor   constant:-12],
     ]];
     return container;
+}
+
+- (void)onSpoilerTapped:(UIButton*)sender {
+    UILabel* preview = objc_getAssociatedObject(sender, "bp_preview");
+    if (!preview) return;
+    BOOL nowHidden = !preview.hidden;
+    preview.hidden = nowHidden;
+    [sender setTitle:(nowHidden
+                        ? [BPStrings text:@"chatShowScript" fallback:@"▸ Show script"]
+                        : [BPStrings text:@"chatHideScript" fallback:@"▾ Hide script"])
+            forState:UIControlStateNormal];
 }
 
 - (UIButton*)requestActionButton:(NSString*)title bg:(UIColor*)bg fg:(UIColor*)fg {
@@ -1394,6 +1413,7 @@ static __weak BugpunchChatViewController* sBPChatVCWaitingForVideo = nil;
     NSString* mid = BPChatStr(m, @"Id", @"id", @"");
     if (mid.length == 0) return;
     NSString* type = BPChatStr(m, @"Type", @"type", @"");
+    NSString* kind = BPChatStr(m, @"RequestKind", @"requestKind", @"");
 
     // Optimistic flip — find this message in our state by id and stamp it
     // approved/declined so the buttons disappear immediately.
@@ -1412,26 +1432,134 @@ static __weak BugpunchChatViewController* sBPChatVCWaitingForVideo = nil;
     [self http:@"POST" path:@"/api/v1/chat/request/answer"
         jsonBody:payload
       completion:^(NSDictionary* resp, NSInteger status) {
-        // For approved scriptRequest / dataRequest: bounce body up to
-        // BugpunchClient (C#) where ODDGames.Scripting actually runs.
-        // C# captures the result and POSTs the reply chat message
-        // itself — native just kicks the next poll so the bubble appears.
         if (approved) {
-            NSString* body = BPChatStr(m, @"Body", @"body", @"");
-            NSData* utf8 = [body dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
-            NSString* b64 = [utf8 base64EncodedStringWithOptions:0];
-            NSString* unityPayload = [NSString stringWithFormat:@"%@|%@", mid, b64];
-            const char* method = nil;
-            if ([type caseInsensitiveCompare:@"scriptRequest"] == NSOrderedSame) {
-                method = "OnApprovedScriptRequest";
-            } else if ([type caseInsensitiveCompare:@"dataRequest"] == NSOrderedSame) {
-                method = "OnApprovedDataRequest";
+            BOOL handledNatively = NO;
+
+            // Native fulfilment for kinds that don't need Mono / IL2CPP —
+            // capture, upload, and result POST all happen on the native
+            // side. C# is never on the path for these.
+            if ([type caseInsensitiveCompare:@"dataRequest"] == NSOrderedSame
+                && [kind caseInsensitiveCompare:@"screenshot"] == NSOrderedSame) {
+                [self performNativeScreenshotForRequest:mid];
+                handledNatively = YES;
+            } else if ([type caseInsensitiveCompare:@"dataRequest"] == NSOrderedSame
+                && [kind caseInsensitiveCompare:@"video"] == NSOrderedSame) {
+                // On-demand chat-video capture is tracked under
+                // bugpunch-sdk-unity#39. Post a typed error so QA sees an
+                // explicit "not implemented" rather than silence.
+                [self postRequestResult:mid
+                                 status:@"error"
+                                    log:nil
+                                  error:@"Video capture for chat not yet implemented (bugpunch-sdk-unity#39)"
+                            attachments:nil];
+                handledNatively = YES;
             }
-            if (method) {
-                UnitySendMessage("BugpunchClient", method, [unityPayload UTF8String]);
+
+            if (!handledNatively) {
+                // Bounce to C# for kinds that need Mono — script source
+                // execution today, plus the legacy untyped dataRequest
+                // fallback. New payload format includes the kind so the
+                // C# layer can branch without re-fetching the message.
+                NSString* body = BPChatStr(m, @"Body", @"body", @"");
+                NSData* utf8 = [body dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+                NSString* b64 = [utf8 base64EncodedStringWithOptions:0];
+                const char* method = nil;
+                NSString* unityPayload = nil;
+                if ([type caseInsensitiveCompare:@"scriptRequest"] == NSOrderedSame) {
+                    // Script kind is implied by the method name — keep the
+                    // legacy two-field payload to avoid touching
+                    // OnApprovedScriptRequest's parser.
+                    unityPayload = [NSString stringWithFormat:@"%@|%@", mid, b64];
+                    method = "OnApprovedScriptRequest";
+                } else if ([type caseInsensitiveCompare:@"dataRequest"] == NSOrderedSame) {
+                    NSString* k = kind.length > 0 ? kind : @"";
+                    unityPayload = [NSString stringWithFormat:@"%@|%@|%@", mid, k, b64];
+                    method = "OnApprovedDataRequest";
+                }
+                if (method && unityPayload) {
+                    UnitySendMessage("BugpunchClient", method, [unityPayload UTF8String]);
+                }
             }
         }
         // Refresh from server so the canonical state replaces our optimistic stub.
+        dispatch_async(dispatch_get_main_queue(), ^{ [self fetchMessages:YES]; });
+    }];
+}
+
+// ── Native screenshot fulfilment ─────────────────────────────────
+//
+// Capture the key window via Bugpunch_CaptureScreenshot, upload the JPEG
+// to /api/v1/chat/upload, and POST the captured ref onto the request
+// message via /api/v1/chat/request/result. Reuses the existing
+// uploadAttachmentSync:/http: helpers so retries + auth headers stay
+// consistent with the player-composer attachment path.
+- (void)performNativeScreenshotForRequest:(NSString*)mid {
+    if (mid.length == 0) return;
+
+    NSString* dir = NSTemporaryDirectory();
+    NSString* filename = [NSString stringWithFormat:@"bp_chat_%@_%lld.jpg",
+        mid, (long long)([NSDate date].timeIntervalSince1970 * 1000)];
+    NSString* path = [dir stringByAppendingPathComponent:filename];
+
+    Bugpunch_CaptureScreenshot([mid UTF8String], [path UTF8String], 85,
+        ^(const char* requestId, int success, const char* payloadOrErr) {
+            if (!success) {
+                NSString* err = payloadOrErr
+                    ? [NSString stringWithFormat:@"native screenshot capture failed: %s", payloadOrErr]
+                    : @"native screenshot capture failed";
+                [self postRequestResult:mid status:@"error" log:nil error:err attachments:nil];
+                return;
+            }
+
+            // Upload + result POST go off the main queue — uploadAttachmentSync:
+            // blocks on a semaphore for the multipart response.
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                BPChatPendingAttachment* a = [[BPChatPendingAttachment alloc] init];
+                a.type = @"image";
+                a.path = path;
+                NSString* ref = [self uploadAttachmentSync:a];
+
+                // Best-effort cleanup of the temp JPEG.
+                [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+
+                if (ref.length == 0) {
+                    [self postRequestResult:mid
+                                     status:@"error"
+                                        log:nil
+                                      error:@"Screenshot upload failed"
+                                attachments:nil];
+                    return;
+                }
+
+                NSDictionary* attachment = @{ @"type": @"image", @"ref": ref, @"mime": @"image/jpeg" };
+                [self postRequestResult:mid
+                                 status:@"ok"
+                                    log:@"Captured screenshot"
+                                  error:nil
+                            attachments:@[ attachment ]];
+            });
+        });
+}
+
+// POST /api/v1/chat/request/result with optional attachments. Server-side
+// (chatService.recordRequestResult) writes the descriptors onto the
+// message row's attachments column so the dashboard renders them inline.
+- (void)postRequestResult:(NSString*)mid
+                   status:(NSString*)status
+                      log:(NSString*)log
+                    error:(NSString*)err
+              attachments:(NSArray*)attachments {
+    NSMutableDictionary* body = [NSMutableDictionary dictionary];
+    body[@"messageId"] = mid;
+    body[@"status"]    = status ?: @"ok";
+    if (log)  body[@"log"]   = log;
+    if (err)  body[@"error"] = err;
+    if (attachments.count > 0) body[@"attachments"] = attachments;
+    [self http:@"POST" path:@"/api/v1/chat/request/result"
+        jsonBody:body
+      completion:^(NSDictionary* resp, NSInteger httpStatus) {
+        // Refresh so the canonical row (with the attachment ref + result_log)
+        // replaces our optimistic state.
         dispatch_async(dispatch_get_main_queue(), ^{ [self fetchMessages:YES]; });
     }];
 }
@@ -1513,7 +1641,7 @@ static __weak BugpunchChatViewController* sBPChatVCWaitingForVideo = nil;
     NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
     req.timeoutInterval = 60.0;
-    [req setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
+    [req setValue:key forHTTPHeaderField:@"X-Api-Key"];
     [req setValue:BPChatDeviceId() forHTTPHeaderField:@"X-Device-Id"];
     [req setValue:[NSString stringWithFormat:@"multipart/form-data; boundary=%@", boundary]
         forHTTPHeaderField:@"Content-Type"];
@@ -1563,7 +1691,7 @@ static __weak BugpunchChatViewController* sBPChatVCWaitingForVideo = nil;
     NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = method;
     req.timeoutInterval = 15.0;
-    [req setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
+    [req setValue:key forHTTPHeaderField:@"X-Api-Key"];
     [req setValue:BPChatDeviceId() forHTTPHeaderField:@"X-Device-Id"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
 

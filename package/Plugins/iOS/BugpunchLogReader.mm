@@ -143,6 +143,16 @@ static NSDateFormatter* gLineFmt;
     return out;
 }
 
++ (void)markBoundaryWithType:(NSString*)reportType title:(NSString*)title {
+    NSString* t = reportType.length > 0 ? reportType : @"report";
+    NSString* safeTitle = (title ?: @"");
+    safeTitle = [safeTitle stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+    safeTitle = [safeTitle stringByReplacingOccurrencesOfString:@"\r" withString:@" "];
+    NSString* line = [NSString stringWithFormat:@"%@     0     0 I Bugpunch.Boundary: type=%@ title=%@",
+        [gLineFmt stringFromDate:[NSDate date]], t, safeTitle];
+    [BPLogReader appendLine:line];
+}
+
 + (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace {
     if (!gLogBuffer) return;  // not started yet
     NSString* lvl =

@@ -107,6 +107,36 @@ public class BugpunchRuntime {
     private static int sStartedActivityCount;
     private static boolean sLifecycleHooked;
 
+    // Stable per-install identifier — UUID generated on first call, persisted
+    // in SharedPreferences. The dashboard uses this as the retention/cohort
+    // key (vs. user_id which the game sets and may be null until login).
+    private static volatile String sInstallId;
+    private static final String INSTALL_PREFS = "bugpunch_install";
+    private static final String INSTALL_KEY = "install_id";
+
+    // App-supplied user id (SetUserId) and user-property bag (SetUserProperty).
+    // Both are nullable — included on every typed event payload so the server
+    // can roll up the user record without the SDK keeping its own copy.
+    private static volatile String sUserId;
+    private static final ConcurrentHashMap<String, String> sUserProps = new ConcurrentHashMap<>();
+
+    // Open-session tracking for emitting session_end when the app backgrounds
+    // (or when start() runs again after a cold launch). Wall-clock UTC string;
+    // null when no session is open.
+    private static volatile long sSessionStartedRealtimeMs;
+    private static volatile boolean sSessionOpen;
+    /** Latest resumed activity. WeakReference so we don't pin one across
+     *  config changes. Used by the upload-status banner to find a window
+     *  to mount on without polluting public API with an activity getter. */
+    private static volatile java.lang.ref.WeakReference<Activity> sResumedActivity;
+
+    /** Currently-resumed Activity, or null. Cleared on pause; never holds
+     *  a reference past the activity's foreground lifecycle. */
+    public static Activity getResumedActivity() {
+        java.lang.ref.WeakReference<Activity> ref = sResumedActivity;
+        return ref != null ? ref.get() : null;
+    }
+
 
     /**
      * Initialize the always-on Bugpunch runtime. Safe to call multiple times
@@ -265,6 +295,10 @@ public class BugpunchRuntime {
 
         // 1) Crash handlers + ANR watchdog. BugpunchCrashHandler.initialize
         // takes a Context (not Activity) — safe from ContentProvider.onCreate().
+        // Before anything else, park any leftover bp_video.dat from the
+        // previous session as bp_video.prev.dat so the recorder's truncating
+        // re-init can't destroy footage we need for AEI/ANR synthesis.
+        BugpunchCrashHandler.preserveVideoRingFromPreviousSession(sAppContext);
         int anrMs = sConfig.optInt("anrTimeoutMs", 5000);
         BugpunchCrashHandler.initialize(sAppContext, anrMs);
         BugpunchCrashHandler.setMetadata(
@@ -274,24 +308,26 @@ public class BugpunchRuntime {
             sMetadata.getOrDefault("deviceModel", ""),
             sMetadata.getOrDefault("osVersion", ""),
             sMetadata.getOrDefault("gpu", ""));
+        // Stamp the root session id so any crash before the first resume
+        // still tells the next-launch drain which log_session to tail-append.
+        BugpunchCrashHandler.setSessionId(sSessionId);
 
-        // 1b) Register attachment paths + log mirror with the signal handler.
-        // The screenshot ring lives entirely in native memory (zero disk
-        // writes during normal operation) so the only time frame_at/before.raw
-        // files exist on disk is after a SIGSEGV: the signal handler dumps
-        // the native ByteBuffer contents into those paths, and drain on the
-        // next launch encodes them to JPEG before uploading.
+        // 1b) Register rescue file paths with the signal handler. Logs +
+        // input breadcrumbs are mirrored into native memory (zero disk
+        // during normal operation); the storyboard ring's per-slot RGBA +
+        // packed-header dump files are written only after a SIGSEGV. Drain
+        // on the next launch encodes JPEGs before upload.
         File crashDir = new File(sAppContext.getFilesDir(), "bugpunch_crashes");
         if (!crashDir.exists()) crashDir.mkdirs();
-        File frameAt     = new File(crashDir, "frame_at_crash.raw");
-        File frameBefore = new File(crashDir, "frame_before.raw");
-        File logsFile    = new File(crashDir, "logs_recent.log");
-        File inputFile   = new File(crashDir, "input_breadcrumbs.bin");
+        File logsFile  = new File(crashDir, "logs_recent.log");
+        File inputFile = new File(crashDir, "input_breadcrumbs.bin");
         BugpunchLogReader.setRollingDiskPath(logsFile.getAbsolutePath());
-        BugpunchCrashHandler.setScreenshotAttachmentPaths(
-            frameAt.getAbsolutePath(), frameBefore.getAbsolutePath());
         BugpunchCrashHandler.setLogsPath(logsFile.getAbsolutePath());
         BugpunchCrashHandler.setInputPath(inputFile.getAbsolutePath());
+
+        File storyboardBase = new File(crashDir, "storyboard");
+        BugpunchCrashHandler.setStoryboardPathBase(storyboardBase.getAbsolutePath());
+        BugpunchStoryboard.initialise();
 
         // Input breadcrumb ring — allocates a direct ByteBuffer and hands
         // its address to bp.c so the signal handler can dump the last ~128
@@ -350,6 +386,21 @@ public class BugpunchRuntime {
         // 3) Cache the SurfaceView for ANR screenshot capture.
         BugpunchScreenshot.cacheSurfaceView();
 
+        // 3a-prep) Hook the upload-status banner so the user sees a small
+        // "Sending crash report…" indicator while the drain works through
+        // pending uploads. Observer fires on the uploader's worker thread;
+        // the banner posts to main and renders a translucent pill on top
+        // of whatever activity is currently resumed.
+        BugpunchUploader.setStatusObserver(new BugpunchUploader.StatusObserver() {
+            @Override public void onUploadStatus(int pending, String phaseHint) {
+                if (pending > 0) {
+                    BugpunchUploadStatusBanner.showOrUpdate(pending, phaseHint);
+                } else {
+                    BugpunchUploadStatusBanner.hide();
+                }
+            }
+        });
+
         // 3a) Previous-session work — AEI scan + crash drain. Both do disk I/O
         // (file reads, JPEG encoding, system service calls) that used to
         // synchronously block the host activity's onCreate, costing hundreds
@@ -370,12 +421,6 @@ public class BugpunchRuntime {
                 drainThread.quitSafely();
             }
         });
-
-        // 3b) Start the rolling screenshot buffer — captures the GPU
-        // surface via PixelCopy ~1/sec, writes a JPEG to the next slot, and
-        // notifies native which slot is "at crash". Only activates on high-end
-        // devices with enough RAM.
-        BugpunchScreenshot.startRollingBuffer();
 
         // 4) Shake detector (opt-in).
         JSONObject shake = sConfig != null ? sConfig.optJSONObject("shake") : null;
@@ -461,8 +506,12 @@ public class BugpunchRuntime {
                     int prev = sStartedActivityCount++;
                     if (prev == 0) onForegrounded();
                 }
-                @Override public void onActivityResumed(Activity a) {}
-                @Override public void onActivityPaused(Activity a) {}
+                @Override public void onActivityResumed(Activity a) { sResumedActivity = new java.lang.ref.WeakReference<>(a); }
+                @Override public void onActivityPaused(Activity a) {
+                    if (sResumedActivity != null && sResumedActivity.get() == a) {
+                        sResumedActivity = null;
+                    }
+                }
                 @Override public void onActivityStopped(Activity a) {
                     if (sStartedActivityCount > 0) sStartedActivityCount--;
                     if (sStartedActivityCount == 0) onBackgrounded();
@@ -474,20 +523,41 @@ public class BugpunchRuntime {
 
     private static void onBackgrounded() {
         sBackgroundedAtMs = android.os.SystemClock.elapsedRealtime();
+        // Close the analytics session immediately. If the user comes back
+        // within RESUME_THRESHOLD_MS we'll open a fresh one in onForegrounded;
+        // anything shorter than that is below the noise floor for retention
+        // / DAU / session-length math anyway.
+        try { emitSessionEnd(); } catch (Throwable t) { Log.w(TAG, "emitSessionEnd on bg failed", t); }
     }
 
     private static void onForegrounded() {
         long bg = sBackgroundedAtMs;
-        if (bg <= 0) return;        // first foreground after launch
+        if (bg <= 0) {
+            // First foreground after launch — kick off the cold-launch session.
+            try { emitSessionStart(); } catch (Throwable t) { Log.w(TAG, "emitSessionStart cold failed", t); }
+            return;
+        }
         long away = android.os.SystemClock.elapsedRealtime() - bg;
         sBackgroundedAtMs = 0;
-        if (away < RESUME_THRESHOLD_MS) return;
+        if (away < RESUME_THRESHOLD_MS) {
+            // Brief interruption — re-open the session under the same id so
+            // logs and analytics stay coherent.
+            try { emitSessionStart(); } catch (Throwable t) { Log.w(TAG, "emitSessionStart short bg failed", t); }
+            return;
+        }
         // Rotate. Every resume points at the same root so the dashboard can
         // collapse them under one launch regardless of how many times the
         // user backgrounds during a play day.
         sSessionId = UUID.randomUUID().toString();
         sParentSessionId = sRootSessionId;
+        // Push the new id into the native crash handler so a SIGSEGV mid-resume
+        // stamps the *current* session into the .crash header (not the prior
+        // launch's). The next-launch drain reads this to know which log_session
+        // to append the recovered tail to.
+        try { BugpunchCrashHandler.setSessionId(sSessionId); }
+        catch (Throwable t) { Log.w(TAG, "setSessionId on resume failed", t); }
         Log.i(TAG, "session resumed after " + (away / 1000) + "s background → " + sSessionId);
+        try { emitSessionStart(); } catch (Throwable t) { Log.w(TAG, "emitSessionStart resume failed", t); }
     }
 
     /** Has the Activity-bound init completed? */
@@ -532,11 +602,6 @@ public class BugpunchRuntime {
     public static void updateScene(String scene) {
         if (scene != null) sMetadata.put("scene", scene);
         BugpunchPerfMonitor.onSceneChange(scene);
-        // Opportunistic freshness: scene changes are highly correlated with
-        // crashes (asset loads, init code). Kick the rolling buffer so the
-        // "at crash" slot reflects the new scene within a few hundred ms
-        // rather than waiting up to a second for the next tick.
-        BugpunchScreenshot.kickCapture();
         // Timeline marker in the breadcrumb ring — drain surfaces these so
         // the storyboard can show "Tapped Buy → scene changed to Shop → …".
         BugpunchInput.pushSceneChange(System.currentTimeMillis(), scene == null ? "" : scene);
@@ -573,40 +638,164 @@ public class BugpunchRuntime {
         sAnalyticsHandler.postDelayed(sFlushRunnable, ANALYTICS_FLUSH_MS);
     }
 
+    /**
+     * Stable per-install id. UUID generated lazily on first call and persisted
+     * in app-private SharedPreferences. Cleared only by an app uninstall.
+     * On Android we don't try to use ANDROID_ID (no longer device-stable since
+     * Oreo) or build a fingerprint — install-stable is what every retention
+     * model needs and it's all we ever read.
+     */
+    public static String getInstallId() {
+        if (sInstallId != null) return sInstallId;
+        if (sAppContext == null) return "";
+        synchronized (BugpunchRuntime.class) {
+            if (sInstallId != null) return sInstallId;
+            try {
+                android.content.SharedPreferences prefs =
+                    sAppContext.getSharedPreferences(INSTALL_PREFS, Context.MODE_PRIVATE);
+                String id = prefs.getString(INSTALL_KEY, null);
+                if (id == null) {
+                    id = UUID.randomUUID().toString();
+                    prefs.edit().putString(INSTALL_KEY, id).apply();
+                }
+                sInstallId = id;
+            } catch (Throwable t) {
+                Log.w(TAG, "install_id init failed", t);
+                sInstallId = UUID.randomUUID().toString();
+            }
+            return sInstallId;
+        }
+    }
+
+    /** Set the app-supplied user id (e.g. after login). Pass null to clear. */
+    public static void setUserId(String userId) {
+        sUserId = userId;
+    }
+
+    /** Set/clear a user property in the in-memory bag. */
+    public static void setUserProperty(String key, String value) {
+        if (key == null || key.isEmpty()) return;
+        if (value == null) sUserProps.remove(key);
+        else sUserProps.put(key, value);
+    }
+
+    /** Free-form 'design' event — back-compat with the pre-rework SDK shape. */
     public static void trackEvent(String name, String propertiesJson) {
         if (name == null || name.isEmpty() || !sStarted) return;
         try {
-            JSONObject ev = new JSONObject();
+            JSONObject ev = baseEvent("design");
             ev.put("name", name);
             if (propertiesJson != null && !propertiesJson.isEmpty()) {
                 try { ev.put("properties", new JSONObject(propertiesJson)); }
                 catch (JSONException ignore) {}
             }
-            ev.put("timestamp", java.time.Instant.now().toString());
-            ev.put("deviceId", sMetadata.getOrDefault("deviceId", ""));
-            ev.put("sessionId", sSessionId);
-            ev.put("platform", "android");
-            ev.put("buildVersion", sMetadata.getOrDefault("appVersion", ""));
-            ev.put("branch", sMetadata.getOrDefault("branch", ""));
-            ev.put("changeset", sMetadata.getOrDefault("changeset", ""));
-            ev.put("scene", sMetadata.getOrDefault("scene", ""));
-            String userId = sCustomData.get("userId");
-            if (userId != null) ev.put("userId", userId);
+            enqueueEvent(ev);
+        } catch (Throwable t) {
+            Log.w(TAG, "trackEvent failed", t);
+        }
+    }
 
-            boolean shouldFlush;
-            synchronized (sAnalyticsLock) {
-                if (sAnalyticsBuffer.size() >= ANALYTICS_BUFFER_MAX) {
-                    sAnalyticsBuffer.remove(0);
-                }
-                sAnalyticsBuffer.add(ev);
-                shouldFlush = sAnalyticsBuffer.size() >= ANALYTICS_FLUSH_SIZE;
+    /**
+     * Typed analytics event. {@code payloadJson} is the per-type field set
+     * (amountMicros / currency / itemId / adAction / progPath / etc) — merged
+     * onto the base event before enqueue. Identity (install_id, session_id,
+     * country, locale, user_id) is filled in here so the SDK caller doesn't
+     * have to thread it through every site.
+     */
+    public static void logTypedEvent(String type, String payloadJson) {
+        if (type == null || type.isEmpty() || !sStarted) return;
+        try {
+            JSONObject ev = baseEvent(type);
+            if (payloadJson != null && !payloadJson.isEmpty()) {
+                try {
+                    JSONObject payload = new JSONObject(payloadJson);
+                    java.util.Iterator<String> keys = payload.keys();
+                    while (keys.hasNext()) {
+                        String k = keys.next();
+                        ev.put(k, payload.get(k));
+                    }
+                } catch (JSONException ignore) {}
             }
+            enqueueEvent(ev);
+        } catch (Throwable t) {
+            Log.w(TAG, "logTypedEvent failed", t);
+        }
+    }
+
+    private static JSONObject baseEvent(String type) throws JSONException {
+        JSONObject ev = new JSONObject();
+        ev.put("type", type);
+        ev.put("name", type);
+        ev.put("timestamp", java.time.Instant.now().toString());
+        ev.put("installId", getInstallId());
+        ev.put("deviceId", sMetadata.getOrDefault("deviceId", ""));
+        ev.put("sessionId", sSessionId);
+        ev.put("platform", "android");
+        ev.put("buildVersion", sMetadata.getOrDefault("appVersion", ""));
+        ev.put("branch", sMetadata.getOrDefault("branch", ""));
+        ev.put("changeset", sMetadata.getOrDefault("changeset", ""));
+        ev.put("scene", sMetadata.getOrDefault("scene", ""));
+        try {
+            java.util.Locale loc = java.util.Locale.getDefault();
+            ev.put("country", loc.getCountry());
+            ev.put("locale", loc.toLanguageTag());
+        } catch (Throwable ignore) {}
+        if (sUserId != null) ev.put("userId", sUserId);
+        else {
+            String fallback = sCustomData.get("userId");
+            if (fallback != null) ev.put("userId", fallback);
+        }
+        return ev;
+    }
+
+    private static void enqueueEvent(JSONObject ev) {
+        boolean shouldFlush;
+        synchronized (sAnalyticsLock) {
+            if (sAnalyticsBuffer.size() >= ANALYTICS_BUFFER_MAX) {
+                sAnalyticsBuffer.remove(0);
+            }
+            sAnalyticsBuffer.add(ev);
+            shouldFlush = sAnalyticsBuffer.size() >= ANALYTICS_FLUSH_SIZE;
+        }
+        ensureAnalyticsHandler();
+        if (shouldFlush) sAnalyticsHandler.post(new Runnable() {
+            @Override public void run() { flushAnalytics(); }
+        });
+    }
+
+    /**
+     * Emit a session_start typed event. Called from the lifecycle hook on
+     * cold launch and on every resume after a long-enough background.
+     */
+    static void emitSessionStart() {
+        if (!sStarted || sSessionOpen) return;
+        try {
+            JSONObject ev = baseEvent("session_start");
+            sSessionOpen = true;
+            sSessionStartedRealtimeMs = android.os.SystemClock.elapsedRealtime();
+            enqueueEvent(ev);
+        } catch (Throwable t) {
+            Log.w(TAG, "emitSessionStart failed", t);
+        }
+    }
+
+    /** Emit a session_end typed event with the elapsed wall-time duration. */
+    static void emitSessionEnd() {
+        if (!sStarted || !sSessionOpen) return;
+        try {
+            long ms = android.os.SystemClock.elapsedRealtime() - sSessionStartedRealtimeMs;
+            int durationS = (int) Math.max(0, ms / 1000);
+            JSONObject ev = baseEvent("session_end");
+            ev.put("durationS", durationS);
+            sSessionOpen = false;
+            enqueueEvent(ev);
+            // Best-effort flush so the session_end lands before the OS suspends us.
             ensureAnalyticsHandler();
-            if (shouldFlush) sAnalyticsHandler.post(new Runnable() {
+            sAnalyticsHandler.post(new Runnable() {
                 @Override public void run() { flushAnalytics(); }
             });
         } catch (Throwable t) {
-            Log.w(TAG, "trackEvent failed", t);
+            Log.w(TAG, "emitSessionEnd failed", t);
         }
     }
 
@@ -685,6 +874,43 @@ public class BugpunchRuntime {
     public static void setSdkErrorOverlay(boolean enabled) {
         try { BugpunchSdkErrorOverlay.setOverlayEnabled(enabled); }
         catch (Throwable t) { Log.w(TAG, "setSdkErrorOverlay failed", t); }
+    }
+
+    // ── Chat banner (unread QA-message indicator) ────────────────────────
+    //
+    // Driven by C# BugpunchClient.ChatReplyHeartbeat. Show is idempotent —
+    // repeated calls just update the count text. Hide is fire-and-forget.
+
+    /** Show or update the chat banner with N unread QA messages. */
+    public static void showChatBanner(int unread) {
+        try { BugpunchChatBanner.showOrUpdate(unread); }
+        catch (Throwable t) { Log.w(TAG, "showChatBanner failed", t); }
+    }
+
+    /** Hide the chat banner. No-op if not currently shown. */
+    public static void hideChatBanner() {
+        try { BugpunchChatBanner.hide(); }
+        catch (Throwable t) { Log.w(TAG, "hideChatBanner failed", t); }
+    }
+
+    /** Banner X tapped — tell C# so it can snooze re-show until a newer message. */
+    static void onChatBannerDismissed() {
+        sendUnityMessage("OnChatBannerDismissed", "");
+    }
+
+    /** Banner body tapped — tell C# the player opened the chat. */
+    static void onChatBannerOpened() {
+        sendUnityMessage("OnChatBannerOpened", "");
+    }
+
+    private static void sendUnityMessage(String method, String arg) {
+        try {
+            Class<?> playerClass = Class.forName("com.unity3d.player.UnityPlayer");
+            playerClass.getMethod("UnitySendMessage", String.class, String.class, String.class)
+                .invoke(null, "BugpunchClient", method, arg == null ? "" : arg);
+        } catch (Throwable t) {
+            Log.w(TAG, "UnitySendMessage(" + method + ") failed", t);
+        }
     }
 
     /**

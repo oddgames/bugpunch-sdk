@@ -32,8 +32,8 @@
 //   POST /api/feedback/<id>/comments            { body, attachments }
 //   POST /api/feedback/attachments              (multipart, returns { url, mime, width, height })
 //
-// Auth: Authorization: Bearer <apiKey> + X-Device-Id: <stable> — server
-// resolves projectId from the API key.
+// Auth: X-Api-Key: <apiKey> + X-Device-Id: <stable> — server resolves
+// projectId from the API key.
 //
 // Server returns mixed PascalCase / camelCase — every field lookup falls
 // back to both keys (id / Id, title / Title, …) like the C# board.
@@ -178,8 +178,8 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
     UIColor* _cAccentFeedback;
 
     // Chrome
-    UIView*       _headerBar;
     UIView*       _bodyContainer;
+    UIButton*     _backBtn;        // floating ‹, hidden on list view
 
     // List state
     NSMutableArray<NSDictionary*>* _items;
@@ -228,6 +228,17 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
     [_session invalidateAndCancel];
 }
 
+#pragma mark – Rotation
+
+// Host games commonly lock orientation at the AppDelegate level — the
+// feedback surface should rotate freely so long-form descriptions can be
+// read in either orientation. Capped by the orientations declared in the
+// host's Info.plist; nothing we do at the SDK layer extends past that.
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskAll;
+}
+- (BOOL)shouldAutorotate { return YES; }
+
 - (void)applyTheme {
     _cBg             = [BPTheme color:@"backdrop"        fallback:[UIColor colorWithRed:0.063 green:0.071 blue:0.086 alpha:1]];
     _cHeader         = [BPTheme color:@"cardBackground"  fallback:[UIColor colorWithRed:0.106 green:0.122 blue:0.145 alpha:1]];
@@ -240,20 +251,9 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
     _cAccentFeedback = [BPTheme color:@"accentFeedback"  fallback:[UIColor colorWithRed:0.25  green:0.49  blue:0.30  alpha:1]];
 }
 
-#pragma mark – Chrome (header + body container)
+#pragma mark – Chrome (body container + floating buttons)
 
 - (void)buildChrome {
-    _headerBar = [[UIView alloc] init];
-    _headerBar.translatesAutoresizingMaskIntoConstraints = NO;
-    _headerBar.backgroundColor = _cHeader;
-    [self.view addSubview:_headerBar];
-
-    UIView* hairline = [[UIView alloc] init];
-    hairline.translatesAutoresizingMaskIntoConstraints = NO;
-    hairline.backgroundColor = _cBorder;
-    hairline.tag = 991;          // -applyHeader: keeps anything with this tag.
-    [_headerBar addSubview:hairline];
-
     _bodyContainer = [[UIView alloc] init];
     _bodyContainer.translatesAutoresizingMaskIntoConstraints = NO;
     _bodyContainer.backgroundColor = _cBg;
@@ -261,58 +261,48 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
 
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [_headerBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
-        [_headerBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [_headerBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [_headerBar.heightAnchor constraintEqualToConstant:60],
-
-        [hairline.leadingAnchor constraintEqualToAnchor:_headerBar.leadingAnchor],
-        [hairline.trailingAnchor constraintEqualToAnchor:_headerBar.trailingAnchor],
-        [hairline.bottomAnchor constraintEqualToAnchor:_headerBar.bottomAnchor],
-        [hairline.heightAnchor constraintEqualToConstant:0.5],
-
-        [_bodyContainer.topAnchor constraintEqualToAnchor:_headerBar.bottomAnchor],
+        [_bodyContainer.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [_bodyContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [_bodyContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [_bodyContainer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
     ]];
-}
 
-/** Replace the header's leading control + title text — every view-switch
- *  rebuilds its chrome row inside _headerBar so back / title text matches
- *  the active screen. Mirrors the Android replaceHeader(). */
-- (void)applyHeader:(NSString*)title leadingText:(NSString*)leading onLeading:(SEL)leadingSel {
-    // Drop everything except the tagged hairline, then re-add the leading
-    // control + title for the active view. Mirrors Android replaceHeader().
-    for (UIView* v in [_headerBar.subviews copy]) {
-        if (v.tag == 991) continue;
-        [v removeFromSuperview];
-    }
+    // Floating chrome — back chevron (top-left, hidden on list) and close X
+    // (top-right, always visible). Replaces the per-view header bar so each
+    // screen has the full surface. Both 32pt circles, 16/22pt glyphs.
+    _backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    _backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [_backBtn setTitle:@"‹" forState:UIControlStateNormal];
+    [_backBtn setTitleColor:_cTextDim forState:UIControlStateNormal];
+    _backBtn.titleLabel.font = [UIFont systemFontOfSize:22];
+    _backBtn.backgroundColor = [_cHeader colorWithAlphaComponent:0.8];
+    _backBtn.layer.cornerRadius = 16;
+    _backBtn.layer.masksToBounds = YES;
+    _backBtn.hidden = YES;
+    [_backBtn addTarget:self action:@selector(showListView) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:_backBtn];
 
-    UIButton* leadingBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    leadingBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [leadingBtn setTitle:leading forState:UIControlStateNormal];
-    [leadingBtn setTitleColor:_cTextDim forState:UIControlStateNormal];
-    leadingBtn.titleLabel.font = [UIFont systemFontOfSize:[leading isEqualToString:@"✕"] ? 22 : 28];
-    [leadingBtn addTarget:self action:leadingSel forControlEvents:UIControlEventTouchUpInside];
-    [_headerBar addSubview:leadingBtn];
-
-    UILabel* titleLbl = [[UILabel alloc] init];
-    titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLbl.text = title;
-    titleLbl.textColor = _cText;
-    titleLbl.font = [UIFont boldSystemFontOfSize:[BPTheme font:@"fontSizeTitle" fallback:17]];
-    [_headerBar addSubview:titleLbl];
+    UIButton* close = [UIButton buttonWithType:UIButtonTypeCustom];
+    close.translatesAutoresizingMaskIntoConstraints = NO;
+    [close setTitle:@"✕" forState:UIControlStateNormal];
+    [close setTitleColor:_cTextDim forState:UIControlStateNormal];
+    close.titleLabel.font = [UIFont systemFontOfSize:16];
+    close.backgroundColor = [_cHeader colorWithAlphaComponent:0.8];
+    close.layer.cornerRadius = 16;
+    close.layer.masksToBounds = YES;
+    [close addTarget:self action:@selector(onCloseTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:close];
 
     [NSLayoutConstraint activateConstraints:@[
-        [leadingBtn.leadingAnchor constraintEqualToAnchor:_headerBar.leadingAnchor constant:8],
-        [leadingBtn.centerYAnchor constraintEqualToAnchor:_headerBar.centerYAnchor],
-        [leadingBtn.widthAnchor constraintEqualToConstant:40],
-        [leadingBtn.heightAnchor constraintEqualToConstant:40],
+        [_backBtn.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
+        [_backBtn.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:8],
+        [_backBtn.widthAnchor constraintEqualToConstant:32],
+        [_backBtn.heightAnchor constraintEqualToConstant:32],
 
-        [titleLbl.leadingAnchor constraintEqualToAnchor:leadingBtn.trailingAnchor constant:8],
-        [titleLbl.centerYAnchor constraintEqualToAnchor:_headerBar.centerYAnchor],
-        [titleLbl.trailingAnchor constraintLessThanOrEqualToAnchor:_headerBar.trailingAnchor constant:-12],
+        [close.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
+        [close.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
+        [close.widthAnchor constraintEqualToConstant:32],
+        [close.heightAnchor constraintEqualToConstant:32],
     ]];
 }
 
@@ -323,9 +313,7 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
 }
 
 - (void)showListView {
-    [self applyHeader:[BPStrings text:@"feedbackTitle" fallback:@"Feedback"]
-          leadingText:@"✕"
-            onLeading:@selector(onCloseTapped)];
+    _backBtn.hidden = YES;
     [self clearBody];
     UIView* body = [self buildListBody];
     body.translatesAutoresizingMaskIntoConstraints = NO;
@@ -344,9 +332,7 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
     [_detailComments removeAllObjects];
     [_commentDraftAttachments removeAllObjects];
 
-    [self applyHeader:[BPStrings text:@"feedbackDetailTitle" fallback:@"Feedback"]
-          leadingText:@"‹"
-            onLeading:@selector(showListView)];
+    _backBtn.hidden = NO;
     [self renderDetailBody];
     NSString* itemId = BPFbStr(_detailItem, @"id", @"Id", @"");
     [self fetchComments:itemId];
@@ -357,9 +343,7 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
     _pendingDescription = @"";
     [_submitDraftAttachments removeAllObjects];
 
-    [self applyHeader:[BPStrings text:@"feedbackNewTitle" fallback:@"New feedback"]
-          leadingText:@"‹"
-            onLeading:@selector(showListView)];
+    _backBtn.hidden = NO;
     [self renderSubmitBody];
 }
 
@@ -1487,9 +1471,8 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
 #pragma mark – Similarity prompt (replaces the submit body)
 
 - (void)showSimilarityPrompt:(NSDictionary*)match resetSubmit:(void(^)(void))resetSubmit {
-    [self applyHeader:[BPStrings text:@"feedbackNewTitle" fallback:@"New feedback"]
-          leadingText:@"‹"
-            onLeading:@selector(showListView)];
+    // Stay in submit-view chrome — back chevron is already visible from
+    // -showSubmitView, no header to swap.
     [self clearBody];
 
     UIScrollView* scroll = [[UIScrollView alloc] init];
@@ -1870,7 +1853,7 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
     NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = method;
     req.timeoutInterval = 15.0;
-    [req setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
+    [req setValue:key forHTTPHeaderField:@"X-Api-Key"];
     [req setValue:BPFbDeviceId() forHTTPHeaderField:@"X-Device-Id"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
 
@@ -1916,7 +1899,7 @@ static NSString* BPFbStripMarkdownForPreview(NSString* s) {
     NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
     req.timeoutInterval = 60.0;
-    [req setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
+    [req setValue:key forHTTPHeaderField:@"X-Api-Key"];
     [req setValue:BPFbDeviceId() forHTTPHeaderField:@"X-Device-Id"];
     [req setValue:[NSString stringWithFormat:@"multipart/form-data; boundary=%@", boundary]
         forHTTPHeaderField:@"Content-Type"];

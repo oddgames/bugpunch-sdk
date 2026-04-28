@@ -199,6 +199,9 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
 #define BP_COLOR_TEXT_LABEL  [BPTheme color:@"textSecondary"  fallback:[UIColor colorWithRed:0xB8/255.0 green:0xC2/255.0 blue:0xCF/255.0 alpha:1]]
 #define BP_COLOR_ACCENT      [BPTheme color:@"accentPrimary"  fallback:[UIColor colorWithRed:0x3B/255.0 green:0x82/255.0 blue:0xF6/255.0 alpha:1]]
 #define BP_COLOR_ACCENT_DARK [BPTheme color:@"accentChat"     fallback:[UIColor colorWithRed:0x25/255.0 green:0x63/255.0 blue:0xEB/255.0 alpha:1]]
+// Send-button fill — sourced from BugpunchTheme.accentBug so studios can tint
+// the bug-report CTA independently of other accent surfaces.
+#define BP_COLOR_BUG         [BPTheme color:@"accentBug"      fallback:[UIColor colorWithRed:0xEA/255.0 green:0x7A/255.0 blue:0x2C/255.0 alpha:1]]
 
 @interface BPReportFormViewController : UIViewController<UITextFieldDelegate, UITextViewDelegate>
 @property (nonatomic, copy) NSString* screenshotPath;
@@ -293,12 +296,6 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     eyebrow.textColor = BP_COLOR_ACCENT;
     eyebrow.font = [UIFont boldSystemFontOfSize:11];
     [s addArrangedSubview:eyebrow];
-
-    UILabel* header = [UILabel new];
-    header.text = [BPStrings text:@"reportFormHeader" fallback:@"Tell us what happened"];
-    header.textColor = BP_COLOR_TEXT;
-    header.font = [UIFont boldSystemFontOfSize:22];
-    [s addArrangedSubview:header];
 
     UIView* barContainer = [UIView new];
     CAGradientLayer* bar = [CAGradientLayer layer];
@@ -669,9 +666,9 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
     UIButton* b = [UIButton buttonWithType:UIButtonTypeSystem];
     [b setTitle:t forState:UIControlStateNormal];
     [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    b.backgroundColor = BP_COLOR_ACCENT;
+    b.backgroundColor = BP_COLOR_BUG;
     b.layer.cornerRadius = 10;
-    b.layer.shadowColor = BP_COLOR_ACCENT_DARK.CGColor;
+    b.layer.shadowColor = BP_COLOR_BUG.CGColor;
     b.layer.shadowOpacity = 0.45;
     b.layer.shadowOffset = CGSizeMake(0, 4);
     b.layer.shadowRadius = 8;

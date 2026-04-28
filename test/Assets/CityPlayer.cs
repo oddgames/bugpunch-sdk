@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 /// <summary>
@@ -74,15 +75,21 @@ public class CityPlayer : MonoBehaviour
         if (moveInput == Vector2.zero)
         {
             float h = 0, v = 0;
-            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) v = 1;
-            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) v = -1;
-            if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h = -1;
-            if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h = 1;
+            var kb = Keyboard.current;
+            if (kb != null)
+            {
+                if (kb.wKey.isPressed || kb.upArrowKey.isPressed) v = 1;
+                if (kb.sKey.isPressed || kb.downArrowKey.isPressed) v = -1;
+                if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) h = -1;
+                if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) h = 1;
+            }
             moveInput = new Vector2(h, v);
         }
-        if (lookInput == Vector2.zero && Input.GetMouseButton(1))
+        var mouse = Mouse.current;
+        if (lookInput == Vector2.zero && mouse != null && mouse.rightButton.isPressed)
         {
-            lookInput = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")) * 2f;
+            var delta = mouse.delta.ReadValue();
+            lookInput = new Vector2(delta.x, delta.y) * 0.1f;
         }
 
         // Camera rotation
@@ -96,7 +103,7 @@ public class CityPlayer : MonoBehaviour
         var move = (forward * moveInput.y + right * moveInput.x).normalized;
 
         float speed = MoveSpeed;
-        if (Input.GetKey(KeyCode.LeftShift)) speed *= SprintMultiplier;
+        if (Keyboard.current != null && Keyboard.current.leftShiftKey.isPressed) speed *= SprintMultiplier;
 
         // Gravity
         if (_cc.isGrounded) _vy = -1f;

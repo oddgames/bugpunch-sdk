@@ -25,7 +25,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (i > 0) sb.Append(",");
                 var c = components[i];
                 if (c == null) { sb.Append("{\"name\":\"(Missing)\",\"id\":0}"); continue; }
-                sb.Append($"{{\"name\":\"{EscapeJson(c.GetType().Name)}\",\"fullName\":\"{EscapeJson(c.GetType().FullName)}\",\"id\":{c.GetInstanceID()}}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(c.GetType().Name)}\",\"fullName\":\"{BugpunchJson.Esc(c.GetType().FullName)}\",\"id\":{c.GetInstanceID()}}}");
             }
             sb.Append("]");
             return sb.ToString();
@@ -67,7 +67,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (!first) sb.Append(",");
                 first = false;
 
-                sb.Append($"{{\"name\":\"{EscapeJson(p.Name)}\",\"type\":\"{EscapeJson(p.PropertyType.Name)}\",\"value\":{SerializeValue(value)}{RefIdSuffix(value)},\"isPublic\":true,\"isStatic\":false,\"isProperty\":true,\"canWrite\":{(p.CanWrite ? "true" : "false")}}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(p.Name)}\",\"type\":\"{BugpunchJson.Esc(p.PropertyType.Name)}\",\"value\":{SerializeValue(value)}{RefIdSuffix(value)},\"isPublic\":true,\"isStatic\":false,\"isProperty\":true,\"canWrite\":{(p.CanWrite ? "true" : "false")}}}");
             }
 
             // Fields
@@ -91,7 +91,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 object value = null;
                 try { value = f.GetValue(component); } catch { }
 
-                sb.Append($"{{\"name\":\"{EscapeJson(f.Name)}\",\"type\":\"{EscapeJson(f.FieldType.Name)}\",\"value\":{SerializeValue(value)}{RefIdSuffix(value)},\"isPublic\":{(f.IsPublic ? "true" : "false")},\"isStatic\":{(f.IsStatic ? "true" : "false")}}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(f.Name)}\",\"type\":\"{BugpunchJson.Esc(f.FieldType.Name)}\",\"value\":{SerializeValue(value)}{RefIdSuffix(value)},\"isPublic\":{(f.IsPublic ? "true" : "false")},\"isStatic\":{(f.IsStatic ? "true" : "false")}}}");
             }
 
             sb.Append("]");
@@ -123,7 +123,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (i > 0) sb.Append(",");
                 var m = methods[i];
                 var paramStr = string.Join(", ", m.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
-                sb.Append($"{{\"name\":\"{EscapeJson(m.Name)}\",\"returnType\":\"{EscapeJson(m.ReturnType.Name)}\",\"parameters\":\"{EscapeJson(paramStr)}\",\"isStatic\":{(m.IsStatic ? "true" : "false")}}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(m.Name)}\",\"returnType\":\"{BugpunchJson.Esc(m.ReturnType.Name)}\",\"parameters\":\"{BugpunchJson.Esc(paramStr)}\",\"isStatic\":{(m.IsStatic ? "true" : "false")}}}");
             }
             sb.Append("]");
             return sb.ToString();
@@ -151,7 +151,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 var type = component.GetType();
                 var method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                if (method == null) return $"{{\"ok\":false,\"error\":\"Method '{EscapeJson(methodName)}' not found\"}}";
+                if (method == null) return $"{{\"ok\":false,\"error\":\"Method '{BugpunchJson.Esc(methodName)}' not found\"}}";
 
                 // Parse arguments
                 object[] args = null;
@@ -172,7 +172,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             catch (Exception ex)
             {
                 var inner = ex.InnerException ?? ex;
-                return $"{{\"ok\":false,\"error\":\"{EscapeJson(inner.Message)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(inner.Message)}\"}}";
             }
         }
 
@@ -193,7 +193,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     {
                         if (!first) sb.Append(",");
                         first = false;
-                        sb.Append($"{{\"name\":\"{EscapeJson(type.Name)}\",\"fullName\":\"{EscapeJson(type.FullName)}\",\"namespace\":\"{EscapeJson(type.Namespace ?? "")}\"}}");
+                        sb.Append($"{{\"name\":\"{BugpunchJson.Esc(type.Name)}\",\"fullName\":\"{BugpunchJson.Esc(type.FullName)}\",\"namespace\":\"{BugpunchJson.Esc(type.Namespace ?? "")}\"}}");
                     }
                 }
                 catch { } // Some assemblies can't be reflected
@@ -229,7 +229,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 if (!first) sb.Append(",");
                 first = false;
-                sb.Append($"\"{EscapeJson(ns)}\"");
+                sb.Append($"\"{BugpunchJson.Esc(ns)}\"");
             }
             sb.Append("]");
             return sb.ToString();
@@ -256,7 +256,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (!seen.Add($"P:{p.Name}")) continue;
                 if (!first) sb.Append(",");
                 first = false;
-                sb.Append($"{{\"name\":\"{EscapeJson(p.Name)}\",\"kind\":\"property\",\"type\":\"{EscapeJson(p.PropertyType.Name)}\",\"returnType\":\"{EscapeJson(p.PropertyType.Name)}\"}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(p.Name)}\",\"kind\":\"property\",\"type\":\"{BugpunchJson.Esc(p.PropertyType.Name)}\",\"returnType\":\"{BugpunchJson.Esc(p.PropertyType.Name)}\"}}");
             }
 
             // Fields
@@ -265,7 +265,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (!seen.Add($"F:{f.Name}")) continue;
                 if (!first) sb.Append(",");
                 first = false;
-                sb.Append($"{{\"name\":\"{EscapeJson(f.Name)}\",\"kind\":\"field\",\"type\":\"{EscapeJson(f.FieldType.Name)}\",\"returnType\":\"{EscapeJson(f.FieldType.Name)}\"}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(f.Name)}\",\"kind\":\"field\",\"type\":\"{BugpunchJson.Esc(f.FieldType.Name)}\",\"returnType\":\"{BugpunchJson.Esc(f.FieldType.Name)}\"}}");
             }
 
             // Methods — deduplicate by name, show overload count
@@ -280,7 +280,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 var paramStr = string.Join(", ", representative.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"));
                 var overloads = group.Count();
                 var detail = overloads > 1 ? $"(+{overloads - 1} overloads)" : "";
-                sb.Append($"{{\"name\":\"{EscapeJson(group.Key)}\",\"kind\":\"method\",\"type\":\"{EscapeJson(representative.ReturnType.Name)}\",\"returnType\":\"{EscapeJson(representative.ReturnType.Name)}\",\"parameters\":\"{EscapeJson(paramStr)}\",\"detail\":\"{EscapeJson(detail)}\"}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(group.Key)}\",\"kind\":\"method\",\"type\":\"{BugpunchJson.Esc(representative.ReturnType.Name)}\",\"returnType\":\"{BugpunchJson.Esc(representative.ReturnType.Name)}\",\"parameters\":\"{BugpunchJson.Esc(paramStr)}\",\"detail\":\"{BugpunchJson.Esc(detail)}\"}}");
             }
 
             sb.Append("]");
@@ -309,7 +309,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     first = false;
                     var parameters = ctor.GetParameters();
                     sb.Append("{");
-                    sb.Append($"\"label\":\"{EscapeJson(type.Name)}({string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"))})\",");
+                    sb.Append($"\"label\":\"{BugpunchJson.Esc(type.Name)}({string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"))})\",");
                     AppendParams(sb, parameters);
                     sb.Append("}");
                 }
@@ -326,7 +326,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     first = false;
                     var parameters = m.GetParameters();
                     sb.Append("{");
-                    sb.Append($"\"label\":\"{EscapeJson(m.ReturnType.Name)} {m.Name}({string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"))})\",");
+                    sb.Append($"\"label\":\"{BugpunchJson.Esc(m.ReturnType.Name)} {m.Name}({string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"))})\",");
                     AppendParams(sb, parameters);
                     sb.Append("}");
                 }
@@ -342,7 +342,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             for (int j = 0; j < parameters.Length; j++)
             {
                 if (j > 0) sb.Append(",");
-                sb.Append($"{{\"name\":\"{EscapeJson(parameters[j].Name)}\",\"type\":\"{EscapeJson(parameters[j].ParameterType.Name)}\"}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(parameters[j].Name)}\",\"type\":\"{BugpunchJson.Esc(parameters[j].ParameterType.Name)}\"}}");
             }
             sb.Append("]");
         }
@@ -404,13 +404,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 }
 
                 if (errors.Length > 0)
-                    return $"{{\"ok\":false,\"error\":\"{EscapeJson(errors.ToString())}\"}}";
+                    return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(errors.ToString())}\"}}";
 
                 return "{\"ok\":true}";
             }
             catch (Exception ex)
             {
-                return $"{{\"ok\":false,\"error\":\"{EscapeJson(ex.Message)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(ex.Message)}\"}}";
             }
         }
 
@@ -485,12 +485,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             if (info)
             {
-                return "{\"type\":\"" + EscapeJson(current.Name) + "\",\"fullName\":\"" + EscapeJson(current.FullName ?? current.Name) +
+                return "{\"type\":\"" + BugpunchJson.Esc(current.Name) + "\",\"fullName\":\"" + BugpunchJson.Esc(current.FullName ?? current.Name) +
                        "\",\"isEnum\":" + (current.IsEnum ? "true" : "false") +
                        ",\"isValueType\":" + (current.IsValueType ? "true" : "false") + "}";
             }
 
-            return "\"" + EscapeJson(current.Name) + "\"";
+            return "\"" + BugpunchJson.Esc(current.Name) + "\"";
         }
 
         /// <summary>
@@ -510,7 +510,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (elementType == null)
                 return "\"\"";
 
-            return "\"" + EscapeJson(elementType.FullName ?? elementType.Name) + "\"";
+            return "\"" + BugpunchJson.Esc(elementType.FullName ?? elementType.Name) + "\"";
         }
 
         Type ResolveChainToType(string chain)
@@ -726,7 +726,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         static string SerializeValue(object value)
         {
             if (value == null) return "null";
-            if (value is string s) return $"\"{EscapeJson(s)}\"";
+            if (value is string s) return $"\"{BugpunchJson.Esc(s)}\"";
             if (value is bool b) return b ? "true" : "false";
             if (value is int or float or double or long or short or byte)
                 return value.ToString();
@@ -735,9 +735,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (value is Color c) return $"\"({c.r:F3}, {c.g:F3}, {c.b:F3}, {c.a:F3})\"";
             if (value is Quaternion q) return $"\"({q.x:F3}, {q.y:F3}, {q.z:F3}, {q.w:F3})\"";
             if (value is Enum e) return $"\"{e}\"";
-            if (value is UnityEngine.Object uo) return $"\"{EscapeJson(uo.name)} ({uo.GetType().Name})\"";
+            if (value is UnityEngine.Object uo) return $"\"{BugpunchJson.Esc(uo.name)} ({uo.GetType().Name})\"";
 
-            try { return $"\"{EscapeJson(value.ToString())}\""; }
+            try { return $"\"{BugpunchJson.Esc(value.ToString())}\""; }
             catch { return "\"(error)\""; }
         }
 
@@ -749,7 +749,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
         static string RefIdSuffix(object value) =>
             value is UnityEngine.Object uo && uo != null ? $",\"refId\":{uo.GetInstanceID()}" : "";
 
-        static string EscapeJson(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "").Replace("\t", "\\t") ?? "";
     }
 }

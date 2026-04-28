@@ -19,6 +19,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// when a queued crash has a <c>run_script</c> action. The result is
     /// posted back through <see cref="BugpunchNative.PostDirectiveResult"/>.
     /// </summary>
+    [ODDGames.Scripting.ScriptProtected]
     public class CrashDirectiveHandler : MonoBehaviour
     {
         public static CrashDirectiveHandler Instance { get; private set; }

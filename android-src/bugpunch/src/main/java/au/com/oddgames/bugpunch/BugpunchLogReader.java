@@ -9,9 +9,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -151,6 +155,40 @@ public class BugpunchLogReader {
         return out;
     }
 
+    /**
+     * Inject a synthetic boundary line into the ring after a report has been
+     * snapshotted for upload. The next report's log buffer will include this
+     * line, and the dashboard's log viewer collapses everything above the
+     * most recent boundary into a click-to-expand band so testers can see
+     * "since last report" at a glance.
+     *
+     * <p>Format mirrors logcat threadtime so the server parser routes it
+     * through the same path as a real log entry; the dedicated tag
+     * {@code Bugpunch.Boundary} is what the parser keys off.</p>
+     */
+    public static void markBoundary(String reportType, String reportTitle) {
+        if (reportType == null) reportType = "report";
+        String safeTitle = reportTitle == null ? "" : reportTitle.replace('\n', ' ').replace('\r', ' ');
+        SimpleDateFormat fmt = new SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US);
+        fmt.setTimeZone(TimeZone.getTimeZone("UTC"));
+        String line = fmt.format(new Date()) + "     0     0 I Bugpunch.Boundary: type="
+            + reportType + " title=" + safeTitle;
+        synchronized (sLock) {
+            if (!sStartupFull) {
+                sStartupBuffer.add(line);
+                if (sStartupBuffer.size() >= STARTUP_CAPTURE) sStartupFull = true;
+            } else {
+                sBuffer.addLast(line);
+                while (sBuffer.size() > sMaxEntries) {
+                    sBuffer.removeFirst();
+                    sSkippedCount++;
+                }
+                sPendingSinceFlush++;
+            }
+        }
+        flushToNative();
+    }
+
     public static synchronized void stop() {
         sRunning.set(false);
         if (sThread != null) sThread.interrupt();
@@ -178,6 +216,43 @@ public class BugpunchLogReader {
         return sb.toString();
     }
 
+    /**
+     * Extract the level char (V/D/I/W/E/F/A) from a logcat -v UTC,threadtime
+     * line. Format is "MM-DD HH:MM:SS.mmm [+0000] PID TID L Tag: msg" with
+     * variable-width whitespace between fields. We walk past 4 fields (date,
+     * time, optional tz, pid) plus tid, and the next non-space char is the
+     * level. Returns ' ' if the line doesn't match.
+     */
+    private static char extractLevelChar(String line) {
+        int len = line.length();
+        // Walk fields: date, time, ?tz, pid, tid → then level char.
+        // Skip the first ws-delimited field cluster up to the level.
+        int i = 0;
+        // Skip date
+        while (i < len && line.charAt(i) != ' ') i++;
+        i = skipSpaces(line, i);
+        // Skip time
+        while (i < len && line.charAt(i) != ' ') i++;
+        i = skipSpaces(line, i);
+        // Optional timezone (+0000 / -0500). Detect by leading +/-.
+        if (i < len && (line.charAt(i) == '+' || line.charAt(i) == '-')) {
+            while (i < len && line.charAt(i) != ' ') i++;
+            i = skipSpaces(line, i);
+        }
+        // Skip PID
+        while (i < len && line.charAt(i) != ' ') i++;
+        i = skipSpaces(line, i);
+        // Skip TID
+        while (i < len && line.charAt(i) != ' ') i++;
+        i = skipSpaces(line, i);
+        return i < len ? line.charAt(i) : ' ';
+    }
+
+    private static int skipSpaces(String s, int i) {
+        while (i < s.length() && s.charAt(i) == ' ') i++;
+        return i;
+    }
+
     // ── Reader loop ──
 
     private static void runLoop() {
@@ -202,7 +277,17 @@ public class BugpunchLogReader {
                 // N5: tee to the native log sink. BugpunchTunnel.enqueueLogLine
                 // no-ops unless the device is tagged Internal, so this is
                 // effectively free when the device isn't QA-enrolled.
-                BugpunchTunnel.enqueueLogLine(line);
+                //
+                // Drop Verbose/Debug from the LIVE feed only — these are
+                // platform/driver chatter (vulkan, Choreographer, OpenGLRenderer,
+                // BufferQueueProducer, …) with no diagnostic value for the IDE
+                // console. Unity's own Debug.Log surfaces at Info+, so we don't
+                // lose any user logs. The crash ring buffer below stays
+                // unfiltered so exception/ANR bundles retain full context.
+                char level = extractLevelChar(line);
+                if (level != 'V' && level != 'D') {
+                    BugpunchTunnel.enqueueLogLine(line);
+                }
                 synchronized (sLock) {
                     if (!sStartupFull) {
                         sStartupBuffer.add(line);

@@ -105,6 +105,9 @@ public class BugpunchToolsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         applyTheme();
+        // Pause the rolling video ring while the tools panel is on screen so
+        // navigating our own UI doesn't push out pre-incident gameplay.
+        try { BugpunchRecorder.getInstance().pauseRing(); } catch (Throwable ignore) {}
         parseTools(getIntent().getStringExtra("tools_json"));
 
         boolean landscape = getResources().getConfiguration().orientation
@@ -282,6 +285,12 @@ public class BugpunchToolsActivity extends Activity {
     public void finish() {
         super.finish();
         overridePendingTransition(0, android.R.anim.fade_out);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try { BugpunchRecorder.getInstance().resumeRing(); } catch (Throwable ignore) {}
     }
 
     // ── Parse tool definitions from JSON ──

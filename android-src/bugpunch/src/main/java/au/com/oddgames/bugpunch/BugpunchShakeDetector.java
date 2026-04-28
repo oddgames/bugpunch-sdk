@@ -44,6 +44,8 @@ public class BugpunchShakeDetector {
                 if (spikeCount >= 2 && now - lastShakeMs > 2000) {
                     lastShakeMs = now;
                     spikeCount = 0;
+                    try { BugpunchRuntime.trackEvent("shake_fired", "{\"platform\":\"android\"}"); }
+                    catch (Throwable ignored) { }
                     try { if (sCallback != null) sCallback.run(); }
                     catch (Throwable t) { Log.w(TAG, "shake callback failed", t); }
                 }

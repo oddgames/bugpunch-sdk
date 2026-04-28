@@ -66,7 +66,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 if (i > 0) sb.Append(",");
                 var cam = cameras[i];
-                sb.Append($"{{\"name\":\"{EscapeJson(cam.name)}\",\"depth\":{cam.depth},\"enabled\":{(cam.enabled ? "true" : "false")},\"instanceId\":{cam.GetInstanceID()}}}");
+                sb.Append($"{{\"name\":\"{BugpunchJson.Esc(cam.name)}\",\"depth\":{cam.depth},\"enabled\":{(cam.enabled ? "true" : "false")},\"instanceId\":{cam.GetInstanceID()}}}");
             }
             sb.Append("]");
             return sb.ToString();
@@ -131,8 +131,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             return result;
         }
-
-        static string EscapeJson(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"") ?? "";
     }
 }

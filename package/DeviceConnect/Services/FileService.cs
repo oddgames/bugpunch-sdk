@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ODDGames.Bugpunch.DeviceConnect.Database;
 using UnityEngine;
 
 namespace ODDGames.Bugpunch.DeviceConnect
@@ -20,6 +21,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
         readonly Dictionary<string, ZipJob> _zipJobs = new Dictionary<string, ZipJob>();
         readonly object _zipJobsLock = new object();
         readonly string _tempCachePath;
+
+        /// <summary>
+        /// Optional. When set, snapshot zip jobs run every available database
+        /// plugin against the source tree and embed the parsed JSON under
+        /// <c>_databases/{relativePath}.json</c> so a viewer doesn't need a
+        /// live device to drill into the snapshot's databases.
+        /// </summary>
+        public DatabasePluginRegistry DatabasePlugins;
 
         public FileService()
         {
@@ -577,6 +586,30 @@ namespace ODDGames.Bugpunch.DeviceConnect
                             }
                         }
                         Interlocked.Increment(ref job.ProcessedFiles);
+                    }
+
+                    // Phase 3 — pre-parse databases so snapshot viewers don't
+                    // need a live device. Best-effort; failures are logged
+                    // and the zip still completes.
+                    if (DatabasePlugins != null)
+                    {
+                        try
+                        {
+                            foreach (var entry in DatabasePlugins.ScanAndParseAll(srcRoot))
+                            {
+                                var entryPath = "_databases/" + entry.RelativePath + ".json";
+                                var ze = zip.CreateEntry(entryPath, System.IO.Compression.CompressionLevel.Fastest);
+                                using (var es = ze.Open())
+                                using (var sw = new StreamWriter(es, new UTF8Encoding(false)))
+                                {
+                                    sw.Write(entry.Json);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            BugpunchNative.ReportSdkError("FileService.ZipDatabaseParse", ex);
+                        }
                     }
                 }
 

@@ -59,15 +59,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
         static AndroidJavaObject CurrentActivity()
             => JavaClass("com.unity3d.player.UnityPlayer").GetStatic<AndroidJavaObject>("currentActivity");
 
-        static void CallStatic(string cls, string method, string sourceLabel, params object[] args)
+        // Named distinctly from the generic CallStatic<T> to prevent C# overload
+        // resolution from picking the generic version (which provides a better
+        // string→string conversion for the sourceLabel arg, stealing it as 'fallback').
+        static void CallStaticVoid(string cls, string method, string sourceLabel, params object[] args)
         {
             try { JavaClass(cls).CallStatic(method, args); }
             catch (Exception e) { ReportSdkError(sourceLabel, e); }
         }
 
-        // Silent variant — used where the original code had `catch { }` (best-
-        // effort fire-and-forget paths that mustn't recurse into ReportSdkError).
-        static void CallStaticSilent(string cls, string method, params object[] args)
+        // Silent void variant — named distinctly from CallStaticSilent<T> to prevent
+        // C# overload resolution from picking the generic version for value-type args.
+        static void CallStaticSilentVoid(string cls, string method, params object[] args)
         {
             try { JavaClass(cls).CallStatic(method, args); }
             catch { /* best-effort */ }
@@ -128,7 +131,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchReportingService", "reportBug",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchReportingService", "reportBug",
                 "BugpunchNative.ReportBug",
                 type ?? "bug", title ?? "", description ?? "", extraJson ?? "");
 #elif UNITY_IOS
@@ -142,7 +145,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(key)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchRuntime", "setCustomData", key, value);
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "setCustomData", key, value);
 #elif UNITY_IOS
             try { Bugpunch_SetCustomData(key, value); } catch { }
 #endif
@@ -209,9 +212,43 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchRuntime", "setSdkErrorOverlay", enabled);
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "setSdkErrorOverlay", enabled);
 #elif UNITY_IOS
             try { Bugpunch_SetSdkErrorOverlay(enabled ? 1 : 0); } catch { }
+#endif
+        }
+
+        // ── Chat banner ────────────────────────────────────────────────────
+        // Surfaced by C# BugpunchClient.ChatReplyHeartbeat when there are
+        // unread QA messages. The banner is rendered by native (BPChatBanner
+        // on iOS, BugpunchChatBanner on Android) so it survives Unity scene
+        // load and shares the same window as the upload banner.
+
+        /// <summary>
+        /// Show or update the persistent "you have a message from a dev" pill.
+        /// Idempotent — repeated calls just update the unread count text.
+        /// </summary>
+        public static void ShowChatBanner(int unread)
+        {
+            if (unread <= 0) { HideChatBanner(); return; }
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "showChatBanner", unread);
+#elif UNITY_IOS
+            try { Bugpunch_TopBanner_ShowChat(unread); } catch { }
+#endif
+        }
+
+        /// <summary>
+        /// Hide the chat banner. Safe to call when not shown.
+        /// </summary>
+        public static void HideChatBanner()
+        {
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "hideChatBanner");
+#elif UNITY_IOS
+            try { Bugpunch_TopBanner_HideChat(); } catch { }
 #endif
         }
 
@@ -283,7 +320,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (string.IsNullOrEmpty(responseJson)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchTunnel", "sendResponse",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchTunnel", "sendResponse",
                 "BugpunchNative.TunnelSendResponse", responseJson);
 #elif UNITY_IOS
             try { Bugpunch_TunnelSendResponse(responseJson); }
@@ -435,7 +472,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(label)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchReportingService", "addTrace",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchReportingService", "addTrace",
                 "BugpunchNative.Trace", label, tagsJson);
 #elif UNITY_IOS
             try { Bugpunch_Trace(label, tagsJson); }
@@ -448,7 +485,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(label)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchReportingService", "addTraceScreenshot",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchReportingService", "addTraceScreenshot",
                 "BugpunchNative.TraceScreenshot", label, tagsJson);
 #elif UNITY_IOS
             try { Bugpunch_TraceScreenshot(label, tagsJson); }
@@ -461,15 +498,15 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchRuntime", "updateScene", scene ?? "");
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "updateScene", scene ?? "");
 #elif UNITY_IOS
             try { Bugpunch_UpdateScene(scene ?? ""); } catch { }
 #endif
         }
 
         /// <summary>
-        /// Enqueue a custom product-analytics event. Native holds an
-        /// in-memory ring buffer and flushes in batches to
+        /// Enqueue a custom product-analytics event ('design' type).
+        /// Native holds an in-memory ring buffer and flushes in batches to
         /// /api/v1/analytics/events. Fire-and-forget; cheap.
         /// </summary>
         public static void TrackEvent(string name, string propertiesJson)
@@ -477,11 +514,66 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(name)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchRuntime", "trackEvent",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "trackEvent",
                 "BugpunchNative.TrackEvent", name, propertiesJson);
 #elif UNITY_IOS
             try { Bugpunch_TrackEvent(name, propertiesJson); }
             catch (Exception e) { ReportSdkError("BugpunchNative.TrackEvent", e); }
+#endif
+        }
+
+        /// <summary>
+        /// Enqueue a typed analytics event. Native parses the JSON payload,
+        /// fills in install_id / session_id / country / locale, and adds the
+        /// row to the same upload queue as TrackEvent.
+        /// `type` is one of: business, ad, resource, progression,
+        /// screen_view, design, error. (session_start / session_end / install
+        /// are emitted natively, not via this API.)
+        /// </summary>
+        public static void LogTypedEvent(string type, string payloadJson)
+        {
+            if (!s_started || string.IsNullOrEmpty(type)) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "logTypedEvent",
+                "BugpunchNative.LogTypedEvent", type, payloadJson);
+#elif UNITY_IOS
+            try { Bugpunch_LogTypedEvent(type, payloadJson); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.LogTypedEvent", e); }
+#endif
+        }
+
+        /// <summary>
+        /// Set the app-supplied user id. Persisted natively; included on all
+        /// subsequent typed events. Pass null to clear.
+        /// </summary>
+        public static void SetUserId(string userId)
+        {
+            if (!s_started) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "setUserId",
+                "BugpunchNative.SetUserId", userId);
+#elif UNITY_IOS
+            try { Bugpunch_SetUserId(userId); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.SetUserId", e); }
+#endif
+        }
+
+        /// <summary>
+        /// Set a user property in the native bag. Included on every typed
+        /// event payload as part of the user record. Pass null value to clear.
+        /// </summary>
+        public static void SetUserProperty(string key, string value)
+        {
+            if (!s_started || string.IsNullOrEmpty(key)) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "setUserProperty",
+                "BugpunchNative.SetUserProperty", key, value);
+#elif UNITY_IOS
+            try { Bugpunch_SetUserProperty(key, value); }
+            catch (Exception e) { ReportSdkError("BugpunchNative.SetUserProperty", e); }
 #endif
         }
 
@@ -511,10 +603,43 @@ namespace ODDGames.Bugpunch.DeviceConnect
             long t = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchInput", "pushTouch",
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchInput", "pushTouch",
                 type, t, x, y, path ?? "", scene ?? "", label ?? "");
 #elif UNITY_IOS
             // iOS parity — implement Bugpunch_PushInputTouch when we port.
+#endif
+        }
+
+        /// <summary>
+        /// Push a downscaled ARGB32 frame + press metadata into the native storyboard
+        /// ring. Called by <see cref="BugpunchInputCapture"/> on every UI press after the
+        /// AsyncGPUReadback completes. Native owns the 10-slot ring; the newest slot is
+        /// the rescue path for <c>screenshot_at_crash</c> when a signal handler fires.
+        ///
+        /// <paramref name="bytes"/> is exactly <paramref name="w"/> × <paramref name="h"/>
+        /// × 4 bytes of ARGB32 pixel data, top-left origin (Unity convention). Native
+        /// memcpys into its slot — caller may discard immediately after this returns.
+        /// </summary>
+        public static void PushButtonPressFrame(long tsMs, string path, string label, string scene,
+            float x, float y, int screenW, int screenH, int w, int h, byte[] bytes)
+        {
+            if (!s_started || bytes == null || bytes.Length == 0) return;
+#if UNITY_EDITOR
+#elif UNITY_ANDROID
+            try
+            {
+                JavaClass("au.com.oddgames.bugpunch.BugpunchStoryboard")
+                    .CallStatic("pushFrame", tsMs, path ?? "", label ?? "", scene ?? "",
+                        x, y, screenW, screenH, w, h, bytes);
+            }
+            catch (Exception e) { ReportSdkError("BugpunchNative.PushButtonPressFrame", e); }
+#elif UNITY_IOS
+            try
+            {
+                Bugpunch_PushButtonPressFrame(tsMs, path ?? "", label ?? "", scene ?? "",
+                    x, y, screenW, screenH, w, h, bytes, bytes.Length);
+            }
+            catch (Exception e) { ReportSdkError("BugpunchNative.PushButtonPressFrame", e); }
 #endif
         }
 
@@ -524,7 +649,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             long t = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchInput", "pushKey",
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchInput", "pushKey",
                 type, t, keyCode, scene ?? "");
 #endif
         }
@@ -535,7 +660,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             long t = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchInput", "pushSceneChange",
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchInput", "pushSceneChange",
                 t, scene ?? "");
 #endif
         }
@@ -551,7 +676,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchInput", "pushCustom",
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchInput", "pushCustom",
                 t, category ?? "", message ?? "", scene ?? "");
 #endif
         }
@@ -583,7 +708,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(directiveId)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchRuntime", "postDirectiveResult",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchRuntime", "postDirectiveResult",
                 "BugpunchNative.PostDirectiveResult", directiveId, resultJson ?? "");
 #elif UNITY_IOS
             try { Bugpunch_PostDirectiveResult(directiveId, resultJson ?? ""); }
@@ -630,7 +755,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStaticSilent("au.com.oddgames.bugpunch.BugpunchPoller", "stop");
+            CallStaticSilentVoid("au.com.oddgames.bugpunch.BugpunchPoller", "stop");
 #elif UNITY_IOS
             try { Bugpunch_StopPoll(); } catch { /* best-effort */ }
 #endif
@@ -647,7 +772,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(scheduledScriptId)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchPoller", "postScriptResult",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchPoller", "postScriptResult",
                 "BugpunchNative.PostScriptResult",
                 scheduledScriptId, output ?? "", errors ?? "", success, durationMs);
 #elif UNITY_IOS
@@ -667,7 +792,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             if (!s_started || string.IsNullOrEmpty(pendingDirectivesJson)) return;
 #if UNITY_EDITOR
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchDirectives", "onPollDirectives",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchDirectives", "onPollDirectives",
                 "BugpunchNative.ProcessPollDirectives", pendingDirectivesJson);
 #elif UNITY_IOS
             try { BPDirectives_OnPollDirectives(pendingDirectivesJson); }
@@ -760,7 +885,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 #if UNITY_EDITOR
             BugpunchLog.Info("BugpunchNative", "Perf monitor: no-op in Editor");
 #elif UNITY_ANDROID
-            CallStatic("au.com.oddgames.bugpunch.BugpunchPerfMonitor", "start",
+            CallStaticVoid("au.com.oddgames.bugpunch.BugpunchPerfMonitor", "start",
                 "BugpunchNative.StartPerfMonitor", configJson);
 #elif UNITY_IOS
             try { Bugpunch_StartPerfMonitor(configJson); }
@@ -784,10 +909,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_EnterDebugMode(int skipConsent);
         [DllImport("__Internal")] static extern void Bugpunch_Trace(string label, string tagsJson);
         [DllImport("__Internal")] static extern void Bugpunch_TrackEvent(string name, string propertiesJson);
+        [DllImport("__Internal")] static extern void Bugpunch_LogTypedEvent(string type, string payloadJson);
+        [DllImport("__Internal")] static extern void Bugpunch_SetUserId(string userId);
+        [DllImport("__Internal")] static extern void Bugpunch_SetUserProperty(string key, string value);
         [DllImport("__Internal")] static extern void Bugpunch_TraceScreenshot(string label, string tagsJson);
         [DllImport("__Internal")] static extern void Bugpunch_PostDirectiveResult(string directiveId, string resultJson);
         [DllImport("__Internal")] static extern void BPDirectives_OnPollDirectives(string pendingDirectivesJson);
         [DllImport("__Internal")] static extern void Bugpunch_PushLogEntry(string type, string message, string stackTrace);
+        [DllImport("__Internal")] static extern void Bugpunch_PushButtonPressFrame(long tsMs,
+            string path, string label, string scene,
+            float x, float y, int screenW, int screenH, int w, int h,
+            byte[] bytes, int byteLen);
         [DllImport("__Internal")] static extern void Bugpunch_StartPerfMonitor(string configJson);
         [DllImport("__Internal")] static extern string Bugpunch_GetInstallerMode();
         [DllImport("__Internal")] static extern void Bugpunch_StartPoll(string scriptPermission, int pollIntervalSeconds);
@@ -797,6 +929,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
         [DllImport("__Internal")] static extern void Bugpunch_PickImage();
         [DllImport("__Internal")] static extern void Bugpunch_ReportSdkError(string source, string message, string stackTrace);
         [DllImport("__Internal")] static extern void Bugpunch_SetSdkErrorOverlay(int enabled);
+        [DllImport("__Internal")] static extern void Bugpunch_TopBanner_ShowChat(int unread);
+        [DllImport("__Internal")] static extern void Bugpunch_TopBanner_HideChat();
 #endif
 
         // ── Build config JSON from BugpunchConfig ScriptableObject ──
@@ -845,8 +979,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // only if they differ from the hardcoded defaults (meaning the dev
             // intentionally set them).
             int logBuffer = DeviceTier switch { "low" => 500, "mid" => 2000, _ => 5000 };
-            int videoBuffer = c.videoBufferSeconds != 30 ? c.videoBufferSeconds
-                : DeviceTier switch { "low" => 10, "mid" => 20, _ => 30 };
+            int videoBuffer = c.videoBufferSeconds != 90 ? c.videoBufferSeconds
+                : DeviceTier switch { "low" => 30, "mid" => 60, _ => 90 };
             int videoFps = c.bugReportVideoFps != 10 ? c.bugReportVideoFps
                 : DeviceTier switch { "low" => 10, "mid" => 15, _ => 30 };
             int videoBitrate = DeviceTier switch { "low" => 1_000_000, "mid" => 1_500_000, _ => 2_000_000 };
@@ -958,29 +1092,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         static void Field(StringBuilder sb, string k, string v)
         {
-            sb.Append('"').Append(Esc(k)).Append("\":\"").Append(Esc(v)).Append('"');
-        }
-
-        static string Esc(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            var sb = new StringBuilder(s.Length + 8);
-            foreach (var c in s)
-            {
-                switch (c)
-                {
-                    case '\\': sb.Append("\\\\"); break;
-                    case '"':  sb.Append("\\\""); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < 0x20) sb.AppendFormat("\\u{0:X4}", (int)c);
-                        else sb.Append(c);
-                        break;
-                }
-            }
-            return sb.ToString();
+            sb.Append('"').Append(BugpunchJson.Esc(k)).Append("\":\"").Append(BugpunchJson.Esc(v)).Append('"');
         }
 
         static string HttpBase(string serverUrl)
@@ -1002,6 +1114,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// iOS (Android's logcat reader already captures them). Added by
     /// BugpunchClient after <see cref="BugpunchNative.Start"/>.
     /// </summary>
+    [ODDGames.Scripting.ScriptProtected]
     public class BugpunchSceneTick : MonoBehaviour
     {
         // Scene-timing state. The very first scene_change fires with from=null

@@ -31,15 +31,9 @@ import java.util.UUID;
  * describes one request end-to-end (URL, headers, multipart body, files to
  * clean up on success).
  *
- * Manifest JSON schema:
- *   {
- *     "url":      "https://.../api/issues/ingest",
- *     "headers":  { "X-Api-Key": "..." },
- *     "fields":   { "metadata": "<json string>" },
- *     "files":    [ { "field": "screenshot", "filename": "...", "contentType": "image/jpeg", "path": "/..." } ],
- *     "cleanupPaths": [ "/tmp/shot.jpg", "/..." ],
- *     "attempts": 0
- *   }
+ * Canonical manifest schema, two-stage preflight flow, and pinned constants:
+ * see sdk/docs/upload-manifest.md. The iOS BugpunchUploader.mm follows the
+ * same contract — change them together.
  */
 public class BugpunchUploader {
     private static final String TAG = "[Bugpunch.Uploader]";
@@ -171,13 +165,42 @@ public class BugpunchUploader {
     }
 
     /**
+     * Lazily-produced attachment. Kept out of the multipart upload until
+     * the server's phase-1 {@code collect} list confirms it wants this kind
+     * of artifact; only then does {@link #produce} run (typically an
+     * expensive encode/remux step).
+     *
+     * <p>Concrete implementations are wired into {@link #produceDeferred}
+     * by {@code kind} string. New kinds need a switch arm there + a
+     * matching {@code DeferredAttachment} subclass.
+     */
+    public static class DeferredAttachment {
+        public final String field;
+        public final String filename;
+        public final String contentType;
+        public final String requires;
+        public final String kind;
+        public final String sourcePath;
+        public DeferredAttachment(String field, String filename, String contentType,
+                                  String requires, String kind, String sourcePath) {
+            this.field = field;
+            this.filename = filename;
+            this.contentType = contentType;
+            this.requires = requires;
+            this.kind = kind;
+            this.sourcePath = sourcePath;
+        }
+    }
+
+    /**
      * Enqueue a two-phase upload. Phase 1 POSTs {@code jsonBody} to
      * {@code preflightUrl}; server response carries {@code eventId} +
      * {@code collect[]}. On success we rewrite the manifest to phase 2:
      * multipart POST to {@code enrichUrlTemplate} (with {id} substituted)
      * carrying only files whose {@link FileAttachment#requires} appears in
-     * {@code collect}. An empty {@code collect} skips phase 2 entirely and
-     * cleans up all attachments immediately.
+     * {@code collect}, plus any {@link DeferredAttachment} that's
+     * accepted (produced on demand). An empty {@code collect} skips phase
+     * 2 entirely and cleans up all attachments immediately.
      *
      * Either phase can fail + retry independently; the worker pages through
      * attempts without losing the other phase's state.
@@ -186,6 +209,15 @@ public class BugpunchUploader {
                                         final String enrichUrlTemplate, final String apiKey,
                                         final String jsonBody,
                                         final List<FileAttachment> attachments) {
+        enqueuePreflight(ctx, preflightUrl, enrichUrlTemplate, apiKey, jsonBody,
+            attachments, null);
+    }
+
+    public static void enqueuePreflight(Context ctx, final String preflightUrl,
+                                        final String enrichUrlTemplate, final String apiKey,
+                                        final String jsonBody,
+                                        final List<FileAttachment> attachments,
+                                        final List<DeferredAttachment> deferred) {
         ensureStarted(ctx);
         sHandler.post(new Runnable() {
             @Override public void run() {
@@ -215,6 +247,45 @@ public class BugpunchUploader {
                         }
                     }
                     m.put("files", files);
+                    // Serialise deferred attachments alongside the regular
+                    // file list. They're resolved in transitionToEnrich
+                    // (phase-2 transition) — only the ones the server's
+                    // `collect` list accepts will actually produce + upload.
+                    JSONArray deferredArr = new JSONArray();
+                    if (deferred != null) {
+                        for (DeferredAttachment d : deferred) {
+                            if (d.sourcePath == null || d.sourcePath.isEmpty()) continue;
+                            JSONObject o = new JSONObject();
+                            o.put("field", d.field);
+                            o.put("filename", d.filename);
+                            o.put("contentType", d.contentType);
+                            o.put("requires", d.requires);
+                            o.put("kind", d.kind);
+                            o.put("sourcePath", d.sourcePath);
+                            deferredArr.put(o);
+                            cleanup.put(d.sourcePath);
+                        }
+                    }
+                    java.util.HashSet<String> available =
+                        collectAvailableRequires(attachments, deferred);
+                    if (deferredArr.length() > 0) m.put("deferredFiles", deferredArr);
+                    // Inform the server which expensive-to-produce attachments
+                    // are available so its budget logic can decide whether
+                    // to ask for them in the phase-1 collect[] response.
+                    if (!available.isEmpty()) {
+                        JSONArray availArr = new JSONArray();
+                        for (String s : available) availArr.put(s);
+                        // Surface in the phase-1 body, not just the manifest,
+                        // so the server actually sees it. rawJsonBody is the
+                        // string sent verbatim — patch it if it's valid JSON.
+                        try {
+                            JSONObject body = new JSONObject(jsonBody != null ? jsonBody : "{}");
+                            body.put("attachmentsAvailable", availArr);
+                            m.put("rawJsonBody", body.toString());
+                        } catch (JSONException ignored) {
+                            // Body wasn't JSON — leave rawJsonBody untouched.
+                        }
+                    }
                     m.put("cleanupPaths", cleanup);
                     m.put("attempts", 0);
 
@@ -259,11 +330,51 @@ public class BugpunchUploader {
         });
     }
 
+    // ── Status observer (used by the in-app upload-progress banner) ──
+    //
+    // Single observer slot — the banner is the only consumer. Fires after
+    // every meaningful queue change: enqueue, terminal success, terminal
+    // failure. Posts via a Handler the observer supplies (typically the
+    // main looper) so the consumer doesn't have to thread-jump itself.
+    public interface StatusObserver {
+        /**
+         * @param pending  Number of {@code .upload.json} manifests still in
+         *                 the queue dir (i.e. work not yet finished).
+         * @param phaseHint One of "preflight", "enrich", "idle" — best-effort
+         *                  stage of the *most recently touched* manifest, for
+         *                  status-text rendering. Always "idle" when pending
+         *                  is 0.
+         */
+        void onUploadStatus(int pending, String phaseHint);
+    }
+    private static volatile StatusObserver sStatusObserver;
+    public static void setStatusObserver(StatusObserver o) { sStatusObserver = o; }
+
+    private static int countPendingManifests() {
+        File[] files = sQueueDir != null ? sQueueDir.listFiles() : null;
+        if (files == null) return 0;
+        int n = 0;
+        for (File f : files) if (f.getName().endsWith(".upload.json")) n++;
+        return n;
+    }
+
+    private static void publishStatus(String phaseHint) {
+        StatusObserver o = sStatusObserver;
+        if (o == null) return;
+        int pending = countPendingManifests();
+        try { o.onUploadStatus(pending, pending == 0 ? "idle" : phaseHint); }
+        catch (Throwable t) { Log.w(TAG, "status observer threw", t); }
+    }
+
     // ── Worker (runs on sThread) ──
 
     private static void drainInternal() {
         File[] files = sQueueDir.listFiles();
         if (files == null) return;
+        // Status: announce work pending before we start the loop so the
+        // banner can pop up immediately; announce again after each one
+        // finishes so the count decrements visibly.
+        publishStatus("preflight");
         for (File f : files) {
             if (!f.getName().endsWith(".upload.json")) continue;
             try {
@@ -272,7 +383,9 @@ public class BugpunchUploader {
                 Log.w(TAG, "processOne failed: " + f.getName(), t);
                 BugpunchSdkErrorOverlay.reportThrowable("BugpunchUploader", "processOne(" + f.getName() + ")", t);
             }
+            publishStatus("preflight");
         }
+        publishStatus("idle");
     }
 
     private static void processOne(File manifestFile) throws IOException, JSONException {
@@ -390,6 +503,59 @@ public class BugpunchUploader {
                 if (req.isEmpty() || collect.contains(req)) outFiles.put(f);
             }
         }
+
+        // Deferred attachments: produce only the ones the server's `collect`
+        // list accepts, then add the produced file to outFiles. Skipped
+        // entries get cleaned up via the existing cleanupPaths machinery
+        // (their sourcePath was registered there at enqueue time).
+        //
+        // When a deferred attachment fails with a known reason (e.g. video
+        // ring has no IDR yet), write the reason to a tiny text file and
+        // upload it under a non-builtin multipart field. The server's enrich
+        // route (issues.routes.ts) routes any non-builtin field through to
+        // gameAttachments, so the diagnostic surfaces automatically in the
+        // event detail without server-side changes.
+        JSONArray deferredArr = manifest.optJSONArray("deferredFiles");
+        if (deferredArr != null) {
+            for (int i = 0; i < deferredArr.length(); i++) {
+                JSONObject d = deferredArr.getJSONObject(i);
+                String req = d.optString("requires", "");
+                if (!req.isEmpty() && !collect.contains(req)) continue;
+                DeferredResult dr = produceDeferred(d);
+                JSONArray cleanup = manifest.optJSONArray("cleanupPaths");
+                if (cleanup == null) {
+                    cleanup = new JSONArray();
+                    manifest.put("cleanupPaths", cleanup);
+                }
+                if (dr.path != null) {
+                    JSONObject f = new JSONObject();
+                    f.put("field", d.optString("field"));
+                    f.put("filename", d.optString("filename"));
+                    f.put("contentType", d.optString("contentType"));
+                    f.put("path", dr.path);
+                    if (!req.isEmpty()) f.put("requires", req);
+                    outFiles.put(f);
+                    cleanup.put(dr.path);
+                } else if (dr.reason != null) {
+                    String diagPath = writeDiagFile(d.optString("field", "deferred"), dr.reason);
+                    if (diagPath != null) {
+                        JSONObject f = new JSONObject();
+                        // Field name is non-builtin (camelCase prefixed with
+                        // `bugpunchDiag_`) so the server treats it as a game
+                        // attachment. Filename + contentType keep it readable
+                        // in the dashboard's attachment viewer.
+                        f.put("field", "bugpunchDiag_" + d.optString("field", "deferred"));
+                        f.put("filename", d.optString("field", "deferred") + "_unavailable.txt");
+                        f.put("contentType", "text/plain");
+                        f.put("path", diagPath);
+                        outFiles.put(f);
+                        cleanup.put(diagPath);
+                    }
+                }
+            }
+            manifest.remove("deferredFiles");
+        }
+
         if (outFiles.length() == 0) return false;
 
         // Strip the JSON-only bits and rewrite headers (drop Content-Type so
@@ -415,6 +581,90 @@ public class BugpunchUploader {
      * Enqueue a JSON POST. Used by directive enrichment \u2014 same retry +
      * app-kill survival as crash/bug multipart uploads.
      */
+    /**
+     * Build the {@code attachmentsAvailable} set advertised on the phase-1
+     * preflight body. THE RULE: every attachment with a non-empty
+     * {@code requires} key, regardless of whether it's regular or deferred,
+     * MUST be included. The server's per-fingerprint budget filter
+     * ({@code issues/ingest.ts}: {@code if (offered.has(f))}) drops any
+     * field absent from this set, which is silent on the client side —
+     * regressions here look like "logs / screenshots randomly missing on
+     * crashes" with no error.
+     *
+     * <p>Centralised here so callers can't forget one of the lists; the
+     * iOS uploader follows the same contract (see
+     * {@code sdk/docs/upload-manifest.md}).
+     */
+    static java.util.HashSet<String> collectAvailableRequires(
+            List<FileAttachment> attachments, List<DeferredAttachment> deferred) {
+        java.util.HashSet<String> available = new java.util.HashSet<>();
+        if (attachments != null) {
+            for (FileAttachment a : attachments) {
+                if (a.requires != null && !a.requires.isEmpty()) {
+                    available.add(a.requires);
+                }
+            }
+        }
+        if (deferred != null) {
+            for (DeferredAttachment d : deferred) {
+                if (d.requires != null && !d.requires.isEmpty()) {
+                    available.add(d.requires);
+                }
+            }
+        }
+        return available;
+    }
+
+    /** Outcome of a deferred-attachment produce step. Either {@code path} is
+     *  non-null (success — file ready to upload) or {@code reason} is non-null
+     *  (failure with a stable token; surfaced as a diagnostic text attachment).
+     *  Both null means "skip silently" (legacy / unknown kinds). */
+    private static final class DeferredResult {
+        final String path;
+        final String reason;
+        DeferredResult(String path, String reason) { this.path = path; this.reason = reason; }
+    }
+
+    private static DeferredResult produceDeferred(JSONObject d) {
+        String kind = d.optString("kind", "");
+        String src  = d.optString("sourcePath", "");
+        if (kind.isEmpty() || src.isEmpty()) {
+            return new DeferredResult(null, "missing_kind_or_source");
+        }
+        try {
+            switch (kind) {
+                case "video_ring": {
+                    BugpunchVideoRingRemuxer.Result r =
+                        BugpunchVideoRingRemuxer.remux(src, sQueueDir);
+                    return new DeferredResult(r.path, r.reason);
+                }
+                default:
+                    Log.w(TAG, "produceDeferred: unknown kind=" + kind);
+                    return new DeferredResult(null, "unknown_kind_" + kind);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "produceDeferred(" + kind + ") failed", t);
+            return new DeferredResult(null, "produce_threw");
+        }
+    }
+
+    /** Write a one-line diagnostic txt for a deferred attachment that failed
+     *  to produce. Returns the absolute path, or null if the write failed
+     *  (in which case we silently skip — diagnostics are best-effort). */
+    private static String writeDiagFile(String fieldName, String reason) {
+        try {
+            File out = new File(sQueueDir,
+                "bugpunch_diag_" + fieldName + "_" + UUID.randomUUID() + ".txt");
+            FileOutputStream fos = new FileOutputStream(out);
+            fos.write(reason.getBytes(StandardCharsets.UTF_8));
+            fos.close();
+            return out.getAbsolutePath();
+        } catch (Throwable t) {
+            Log.w(TAG, "writeDiagFile failed", t);
+            return null;
+        }
+    }
+
     public static void enqueueJson(final Context ctx, final String url,
                                    final String apiKey, final String jsonBody) {
         ensureStarted(ctx);

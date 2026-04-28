@@ -304,7 +304,7 @@ static const NSTimeInterval kBPAutoHideSec = 6.0;
     [stack addArrangedSubview:title];
 
     UILabel* subtitle = [[UILabel alloc] init];
-    subtitle.text = @"Internal SDK problems. Tap dismiss to hide; toggle off via Bugpunch.SetSdkErrorOverlay(false).";
+    subtitle.text = @"Internal SDK problems. Tap Send to upload them as an exception report; toggle off via Bugpunch.SetSdkErrorOverlay(false).";
     subtitle.textColor = [UIColor colorWithWhite:0.72 alpha:1];
     subtitle.font = [UIFont systemFontOfSize:11];
     subtitle.numberOfLines = 0;
@@ -329,6 +329,19 @@ static const NSTimeInterval kBPAutoHideSec = 6.0;
     [clear setTitleColor:[UIColor colorWithWhite:0.6 alpha:1] forState:UIControlStateNormal];
     [clear addTarget:self action:@selector(onClearTap) forControlEvents:UIControlEventTouchUpInside];
     [footer addArrangedSubview:clear];
+
+    BOOL hasEntries;
+    [_ringLock lock]; hasEntries = _ring.count > 0; [_ringLock unlock];
+    UIButton* sendBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [sendBtn setTitle:@"Send to Bugpunch" forState:UIControlStateNormal];
+    [sendBtn setTitleColor:(hasEntries
+        ? [UIColor colorWithRed:1.0 green:0.72 blue:0.30 alpha:1]
+        : [UIColor colorWithWhite:0.33 alpha:1])
+        forState:UIControlStateNormal];
+    sendBtn.titleLabel.font = [UIFont boldSystemFontOfSize:13];
+    sendBtn.enabled = hasEntries;
+    [sendBtn addTarget:self action:@selector(onSendTap:) forControlEvents:UIControlEventTouchUpInside];
+    [footer addArrangedSubview:sendBtn];
 
     UIButton* dismissBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [dismissBtn setTitle:@"Dismiss" forState:UIControlStateNormal];
@@ -364,6 +377,76 @@ static const NSTimeInterval kBPAutoHideSec = 6.0;
 - (void)onClearTap {
     [_ringLock lock]; [_ring removeAllObjects]; [_ringLock unlock];
     [self hideExpanded];
+}
+
+// Bypasses the auto-report cooldown (defined in BugpunchDebugMode.mm) for
+// user-initiated sends — the cooldown exists only to throttle exception
+// floods, not deliberate button presses.
+extern void Bugpunch_ResetAutoReportCooldown(void);
+extern void Bugpunch_ReportBug(const char* type, const char* title,
+                               const char* description, const char* extraJson);
+
+- (void)onSendTap:(UIButton*)sender {
+    NSArray<BPSdkErrorEntry*>* snap = [self snapshot];
+    if (snap.count == 0) return;
+    BPSdkErrorEntry* top = snap.firstObject;
+
+    NSString* title = [NSString stringWithFormat:@"[SDK] %@: %@",
+        top.source ?: @"Bugpunch", top.message ?: @""];
+    if (title.length > 200) title = [title substringToIndex:200];
+
+    NSMutableString* desc = [NSMutableString stringWithCapacity:1024];
+    [desc appendFormat:@"Bugpunch SDK errors collected during session (%lu entries):\n",
+        (unsigned long)snap.count];
+    for (NSUInteger i = 0; i < snap.count; i++) {
+        BPSdkErrorEntry* e = snap[i];
+        [desc appendFormat:@"\n[%lu] [%@] %@", (unsigned long)(i + 1),
+            e.source ?: @"", e.message ?: @""];
+        if (e.count > 1) [desc appendFormat:@"  ×%ld", (long)e.count];
+        [desc appendString:@"\n"];
+        if (e.stack.length) {
+            [desc appendString:e.stack];
+            if (![e.stack hasSuffix:@"\n"]) [desc appendString:@"\n"];
+        }
+    }
+
+    NSMutableDictionary* extra = [NSMutableDictionary dictionary];
+    extra[@"bugpunchSdkError"] = @YES;
+    extra[@"sdkError.count"] = @(snap.count);
+    extra[@"sdkError.source"] = top.source ?: @"";
+    extra[@"sdkError.message"] = top.message ?: @"";
+    NSUInteger limit = MIN(snap.count, (NSUInteger)10);
+    for (NSUInteger i = 0; i < limit; i++) {
+        BPSdkErrorEntry* e = snap[i];
+        NSString* p = [NSString stringWithFormat:@"sdkError.entry.%lu", (unsigned long)i];
+        extra[[p stringByAppendingString:@".source"]] = e.source ?: @"";
+        extra[[p stringByAppendingString:@".message"]] = e.message ?: @"";
+        extra[[p stringByAppendingString:@".count"]] = @(e.count);
+    }
+    NSData* json = [NSJSONSerialization dataWithJSONObject:extra options:0 error:nil];
+    NSString* extraJson = json
+        ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]
+        : @"{}";
+
+    @try {
+        Bugpunch_ResetAutoReportCooldown();
+        Bugpunch_ReportBug("exception",
+            [title UTF8String],
+            [desc UTF8String],
+            [extraJson UTF8String]);
+    } @catch (NSException* e) {
+        NSLog(@"[Bugpunch.SdkError] onSendTap exception: %@", e);
+        return;
+    }
+
+    [_ringLock lock]; [_ring removeAllObjects]; [_ringLock unlock];
+
+    [sender setTitle:@"Sent" forState:UIControlStateNormal];
+    [sender setTitleColor:[UIColor colorWithRed:0.40 green:0.73 blue:0.42 alpha:1]
+                 forState:UIControlStateNormal];
+    sender.enabled = NO;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{ [self hideExpanded]; });
 }
 
 - (void)rebuildExpanded {

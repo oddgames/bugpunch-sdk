@@ -13,6 +13,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
     /// Main Bugpunch client. Auto-connects to the server, routes requests to services.
     /// Starts in lightweight poll mode; upgrades to WebSocket + WebRTC on demand.
     /// </summary>
+    [ODDGames.Scripting.ScriptProtected]
     public class BugpunchClient : MonoBehaviour
     {
         public static BugpunchClient Instance { get; private set; }
@@ -161,9 +162,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     if (!first) sb.Append(',');
                     first = false;
                     sb.Append('"');
-                    sb.Append(RequestRouter.EscapeJson(kv.Key));
+                    sb.Append(BugpunchJson.Esc(kv.Key));
                     sb.Append("\":\"");
-                    sb.Append(RequestRouter.EscapeJson(kv.Value));
+                    sb.Append(BugpunchJson.Esc(kv.Value));
                     sb.Append('"');
                 }
                 sb.Append('}');
@@ -297,11 +298,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             BuildLazyServices();
             StartConnectionMode();
 
-            // QA → player chat reply heartbeat. Cheap poll every 30s; if a
-            // thread has unread QA messages AND we're not suppressed, surface
-            // the chat board. Guarded so we don't re-pop every 30s if the
-            // user dismisses without replying (guard resets server-side when
-            // the unread count drops to 0).
+            // QA → player chat reply heartbeat. Runs on every platform so
+            // the auto-fulfill side (PlayerPrefs / file / SystemInfo reads
+            // — Unity-dependent) fires regardless of lane. The banner
+            // trigger inside the loop is platform-gated: native pollers own
+            // the banner on Android / iOS player; C# owns it on Editor +
+            // Standalone. See project_sdk_three_lanes memory.
             StartCoroutine(ChatReplyHeartbeat());
         }
 
@@ -322,6 +324,13 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // Scene name push + scene_change analytics events. Native can
             // measure FPS itself but it can't see SceneManager.
             gameObject.AddComponent<BugpunchSceneTick>();
+
+            // Storyboard input capture — captures a downscaled frame + press metadata
+            // into the native ring on every UI press. Replaces the older 1 Hz rolling
+            // buffer; the newest ring slot is the rescue path for screenshot_at_crash.
+            // Has to be eager because input that happens before any IDE / report request
+            // still needs to be captured into the ring for crashes that follow it.
+            gameObject.AddComponent<BugpunchInputCapture>();
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Fallback video source for when MediaProjection consent is denied —
@@ -371,9 +380,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var console          = new ConsoleService();
             var inspector        = new InspectorService();
             var perf             = new PerformanceService();
-            var files            = new FileService();
-            var deviceInfo       = new DeviceInfoService();
             var dbPlugins        = new DatabasePluginRegistry();
+            var files            = new FileService { DatabasePlugins = dbPlugins };
+            var deviceInfo       = new DeviceInfoService();
             IScriptRunner runner = new ScriptRunner();
             var textures         = new TextureService();
             var memorySnapshots  = new MemorySnapshotService();
@@ -490,7 +499,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
         // tunnel is the long-term home for this push, but v2 just polls —
         // one request every 30s is trivial cost.
 
-        bool _chatReplyPopupShown;
+        // Tracks the createdAt timestamp of the newest QA message we've
+        // already surfaced via the native chat banner. A newer-than-this
+        // unread QA message re-shows the banner, so a player who dismisses
+        // it can't accidentally miss subsequent replies.
+        string _lastShownQaAt;
+
+        // Snooze high-watermark — set when the player taps X on the banner.
+        // The banner stays hidden as long as the newest unread QA is at or
+        // before this timestamp. A newer QA message clears the snooze
+        // implicitly (the gating compare in CheckChatUnreadCoroutine).
+        string _bannerDismissedAt;
 
         IEnumerator ChatReplyHeartbeat()
         {
@@ -503,7 +522,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 // server while suppressed — feels more polite and saves bytes.
                 if (!SuppressInteractions)
                     yield return CheckChatUnreadCoroutine();
-                yield return new WaitForSeconds(30f);
+                // 60s — chat is conversational, not real-time. At 10k users
+                // this halves chat-heartbeat QPS vs the previous 30s without
+                // a noticeable UX difference (banner appears within a minute
+                // of the QA reply landing).
+                yield return new WaitForSeconds(60f);
             }
         }
 
@@ -514,9 +537,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             // Single-thread-per-device API: GET /chat/thread returns
             // { thread, messages } when a thread exists, 404 when none does.
-            // We only need to know if ANY message has Sender=qa AND
-            // ReadBySdkAt=null — if so, auto-open the board (subject to the
-            // suppression gate) and stop rechecking until the user clears it.
+            // We scan messages for two things on each tick:
+            //   1. Unread QA messages (drives the persistent re-open behaviour).
+            //   2. Pending typed dataRequest rows whose request_kind is in the
+            //      auto-fulfill set (playerprefs / file / deviceinfo) — those
+            //      run without a player prompt.
             var url = Config.HttpBaseUrl + "/api/v1/chat/thread";
             using var req = UnityWebRequest.Get(url);
             req.SetRequestHeader("Authorization", "Bearer " + (Config.apiKey ?? ""));
@@ -531,25 +556,53 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // any) re-arms the auto-open.
             if (req.responseCode == 404)
             {
-                _chatReplyPopupShown = false;
+                _lastShownQaAt = null;
                 yield break;
             }
             if (req.responseCode < 200 || req.responseCode >= 300) yield break;
 
-            bool unread = false;
+            string newestUnreadQaAt = null;
+            int unreadCount = 0;
+            var autoFulfill = new List<(string id, string kind, string body)>();
             try
             {
-                var body = req.downloadHandler != null ? req.downloadHandler.text : "";
-                var obj = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(body) ? "{}" : body);
+                var bodyStr = req.downloadHandler != null ? req.downloadHandler.text : "";
+                var obj = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(bodyStr) ? "{}" : bodyStr);
                 var arr = obj["messages"] as Newtonsoft.Json.Linq.JArray;
                 if (arr != null)
                 {
                     foreach (var m in arr)
                     {
-                        var sender = (string)m["Sender"] ?? (string)m["sender"];
+                        var sender = (string)m["sender"] ?? (string)m["Sender"];
                         if (!string.Equals(sender, "qa", StringComparison.Ordinal)) continue;
-                        var readAt = (string)m["ReadBySdkAt"] ?? (string)m["readBySdkAt"];
-                        if (string.IsNullOrEmpty(readAt)) { unread = true; break; }
+
+                        var msgId       = (string)m["id"] ?? (string)m["Id"];
+                        var msgType     = (string)m["type"] ?? (string)m["Type"];
+                        var requestKind = (string)m["requestKind"] ?? (string)m["RequestKind"];
+                        var requestState= (string)m["requestState"] ?? (string)m["RequestState"];
+                        var msgBody     = (string)m["body"] ?? (string)m["Body"] ?? "";
+                        var readAt      = (string)m["readBySdkAt"] ?? (string)m["ReadBySdkAt"];
+                        var createdAt   = (string)m["createdAt"] ?? (string)m["CreatedAt"];
+
+                        // Track unread for persistent-show.
+                        if (string.IsNullOrEmpty(readAt))
+                        {
+                            unreadCount++;
+                            if (newestUnreadQaAt == null
+                                || string.CompareOrdinal(createdAt ?? "", newestUnreadQaAt) > 0)
+                                newestUnreadQaAt = createdAt;
+                        }
+
+                        // Auto-fulfill kinds — collect for execution after the
+                        // parse loop (run outside the try so exceptions there
+                        // don't blow up parsing).
+                        if (msgType == "dataRequest"
+                            && requestState == "pending"
+                            && (requestKind == "playerprefs" || requestKind == "file" || requestKind == "deviceinfo"))
+                        {
+                            if (!string.IsNullOrEmpty(msgId))
+                                autoFulfill.Add((msgId, requestKind, msgBody));
+                        }
                     }
                 }
             }
@@ -559,19 +612,49 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield break;
             }
 
-            if (!unread)
+            // Run auto-fulfill handlers — fire-and-forget; PostRequestResult
+            // handles its own retries/logging.
+            foreach (var entry in autoFulfill)
+                _ = AutoFulfillRequestAsync(entry.id, entry.kind, entry.body);
+
+            // Banner ownership lives in BugpunchPoller.java / .mm on device
+            // — native polls /api/v1/chat/unread on its own loop and shows
+            // / hides the pill. The C# heartbeat only drives the banner on
+            // Editor + Standalone, where no native lane exists.
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_STANDALONE_LINUX
+            if (newestUnreadQaAt == null)
             {
-                // Server-side guard reset — when the user catches up or QA
-                // clears the queue, we re-arm the popup.
-                _chatReplyPopupShown = false;
+                // QA queue is fully read — hide banner and re-arm so the
+                // next QA message re-shows.
+                _lastShownQaAt = null;
+                _bannerDismissedAt = null;
+                BugpunchNative.HideChatBanner();
                 yield break;
             }
-            if (_chatReplyPopupShown) yield break;
-            if (SuppressInteractions) yield break; // double-check — state may have flipped during request
+            if (SuppressInteractions) { BugpunchNative.HideChatBanner(); yield break; }
 
-            _chatReplyPopupShown = true;
-            UI.BugpunchChatBoard.Show();
+            // Snooze gate — if the player tapped X on the banner, don't
+            // re-show until a QA message newer than the snoozed one arrives.
+            if (_bannerDismissedAt != null
+                && string.CompareOrdinal(newestUnreadQaAt, _bannerDismissedAt) <= 0)
+                yield break;
+
+            // Already-shown gate — don't churn the banner if nothing new.
+            if (_lastShownQaAt != null
+                && string.CompareOrdinal(newestUnreadQaAt, _lastShownQaAt) <= 0
+                && unreadCount == _lastShownUnreadCount)
+                yield break;
+
+            _lastShownQaAt = newestUnreadQaAt;
+            _lastShownUnreadCount = unreadCount;
+            BugpunchNative.ShowChatBanner(unreadCount);
+#endif
         }
+
+        // Tracks the unread count we last passed to the banner so a tick
+        // with the same newest timestamp but a different unread count still
+        // updates the visible label.
+        int _lastShownUnreadCount;
 
         IEnumerator ConnectLoop()
         {
@@ -971,7 +1054,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 {
                     var err = actionTask.Exception?.InnerException?.Message ?? "Unknown error";
                     Tunnel?.SendResponse(requestId, 500,
-                        $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(err)}\",\"elapsedMs\":0}}",
+                        $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(err)}\",\"elapsedMs\":0}}",
                         "application/json");
                 }
                 else
@@ -979,7 +1062,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var result = actionTask.Result;
                     var okStr = result.Success ? "true" : "false";
                     var errStr = result.Error != null
-                        ? $",\"error\":\"{RequestRouter.EscapeJson(result.Error)}\""
+                        ? $",\"error\":\"{BugpunchJson.Esc(result.Error)}\""
                         : "";
                     Tunnel?.SendResponse(requestId, result.Success ? 200 : 422,
                         $"{{\"ok\":{okStr}{errStr},\"elapsedMs\":{result.ElapsedMs:F0}}}",
@@ -1045,7 +1128,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var tapTask = InputInjector.InjectPointerTap(screenPos);
                     while (!tapTask.IsCompleted) yield return null;
                     if (tapTask.IsFaulted)
-                        Tunnel?.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(tapTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
+                        Tunnel?.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(tapTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
                     else
                         Tunnel?.SendResponse(requestId, 200, $"{{\"ok\":true,\"screen\":[{screenPos.x:F0},{screenPos.y:F0}]}}", "application/json");
                     yield break;
@@ -1063,7 +1146,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var swipeTask = InputInjector.InjectPointerDrag(from, to, durationMs / 1000f);
                     while (!swipeTask.IsCompleted) yield return null;
                     if (swipeTask.IsFaulted)
-                        Tunnel?.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{RequestRouter.EscapeJson(swipeTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
+                        Tunnel?.SendResponse(requestId, 500, $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(swipeTask.Exception?.InnerException?.Message ?? "Unknown")}\"}}", "application/json");
                     else
                         Tunnel?.SendResponse(requestId, 200, "{\"ok\":true}", "application/json");
                     yield break;
@@ -1137,6 +1220,26 @@ namespace ODDGames.Bugpunch.DeviceConnect
         public void OnRecordingBarChatTapped(string _)
         {
             UI.BugpunchChatBoard.Show();
+        }
+
+        /// <summary>
+        /// UnitySendMessage receiver. Fired by the native chat banner when
+        /// the player taps the X. Snoozes re-show until a QA message newer
+        /// than the one we last surfaced arrives.
+        /// </summary>
+        public void OnChatBannerDismissed(string _)
+        {
+            _bannerDismissedAt = _lastShownQaAt;
+        }
+
+        /// <summary>
+        /// UnitySendMessage receiver. Fired by the native chat banner when the
+        /// player taps the body (which also opens the chat board natively).
+        /// We only need to clear the snooze so the banner re-arms on next QA.
+        /// </summary>
+        public void OnChatBannerOpened(string _)
+        {
+            _bannerDismissedAt = null;
         }
 
         /// <summary>
@@ -1231,26 +1334,47 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         /// <summary>
         /// UnitySendMessage receiver. Fired by native chat when the user
-        /// approves a dataRequest bubble. v1 just acknowledges so the
-        /// approve flow completes end-to-end — the tunnel-based collector
-        /// pipeline is the next slice (#31 follow-up).
+        /// approves a dataRequest bubble. Branches on the request kind
+        /// embedded in the payload (screenshot / video / file / etc.) and
+        /// fans out to the appropriate fulfilment path. Newer native
+        /// chats send "messageId|kind|base64(body)"; older builds send
+        /// the legacy "messageId|base64(body)" — TryParseApprovedPayload
+        /// handles both shapes.
         /// </summary>
         public void OnApprovedDataRequest(string payload)
         {
-            if (!TryParseApprovedPayload(payload, out var messageId, out var source)) return;
-            _ = ApprovedDataRequestAsync(messageId, source);
+            if (!TryParseApprovedPayload(payload, out var messageId, out var kind, out var source)) return;
+            _ = ApprovedDataRequestAsync(messageId, kind, source);
         }
 
-        static bool TryParseApprovedPayload(string payload, out string messageId, out string body)
+        /// <summary>
+        /// Parse the pipe-delimited payload native sends after an approval.
+        /// Two shapes supported:
+        ///   • "messageId|base64(body)"        — legacy, no kind
+        ///   • "messageId|kind|base64(body)"   — current
+        /// `kind` is "" when absent, never null. UUID messageIds and the
+        /// known kind enum values never contain raw pipes, so the count of
+        /// pipes alone disambiguates the shape.
+        /// </summary>
+        static bool TryParseApprovedPayload(string payload, out string messageId, out string kind, out string body)
         {
-            messageId = null; body = null;
+            messageId = null; kind = ""; body = null;
             if (string.IsNullOrEmpty(payload)) return false;
-            var pipe = payload.IndexOf('|');
-            if (pipe <= 0) return false;
-            messageId = payload.Substring(0, pipe);
+            var parts = payload.Split('|');
+            if (parts.Length < 2) return false;
+            messageId = parts[0];
+            string b64;
+            if (parts.Length >= 3)
+            {
+                kind = parts[1] ?? "";
+                b64 = parts[parts.Length - 1] ?? "";
+            }
+            else
+            {
+                b64 = parts[1] ?? "";
+            }
             try
             {
-                var b64 = payload.Substring(pipe + 1);
                 body = string.IsNullOrEmpty(b64) ? "" : Encoding.UTF8.GetString(Convert.FromBase64String(b64));
                 return !string.IsNullOrEmpty(messageId);
             }
@@ -1261,9 +1385,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
+        // The legacy two-arg signature is preserved for OnApprovedScriptRequest,
+        // which never carried a kind (script is the kind).
+        static bool TryParseApprovedPayload(string payload, out string messageId, out string body)
+        {
+            return TryParseApprovedPayload(payload, out messageId, out _, out body);
+        }
+
         async Task ApprovedScriptRequestAsync(string messageId, string source)
         {
             string envelope;
+            bool ok = true;
+            string error = null;
             try
             {
                 envelope = new ScriptRunner().Execute(source ?? "") ?? "";
@@ -1271,44 +1404,266 @@ namespace ODDGames.Bugpunch.DeviceConnect
             catch (Exception ex)
             {
                 BugpunchNative.ReportSdkError("BugpunchClient.ApprovedScriptRequest", ex);
-                envelope = "{\"ok\":false,\"errors\":[{\"message\":\"" + RequestRouter.EscapeJson(ex.Message) + "\"}]}";
+                ok = false;
+                envelope = null;
+                error = ex.Message + "\n" + (ex.StackTrace ?? "");
             }
-            await PostChatReplyAsync(messageId, envelope);
+            await PostRequestResultAsync(messageId, ok ? "ok" : "error", envelope, error);
         }
 
-        async Task ApprovedDataRequestAsync(string messageId, string source)
+        // QA-issued screenshot / video requests are fulfilled entirely in
+        // native code — see the kind branch in BugpunchChatViewController.mm
+        // (iOS) and BugpunchChatActivity.java (Android). Native owns the
+        // capture, upload, and result POST so it works without Mono and
+        // reuses the existing native upload queue + retry policy. C# never
+        // sees the kind for those.
+        //
+        // This C# path serves only the legacy / untyped dataRequest fallback
+        // for older dashboards that didn't pick a kind.
+        async Task ApprovedDataRequestAsync(string messageId, string kind, string source)
         {
-            // v1 stub — tunnel-based data collectors are the next slice.
-            // Keep the shape identical to scriptRequest so the dashboard
-            // can render the reply uniformly.
+            kind = kind ?? "";
+            // Newer dashboards always set a kind. If the C# layer ever
+            // receives a screenshot / video kind, the native handler that
+            // should have served it isn't on this build — post a typed
+            // error so QA sees an explicit "not available" rather than the
+            // legacy "Got your data request" stub.
+            if (kind.Equals("screenshot", StringComparison.OrdinalIgnoreCase)
+                || kind.Equals("video", StringComparison.OrdinalIgnoreCase))
+            {
+                await PostRequestResultAsync(messageId, "error",
+                    log: null,
+                    error: $"{kind} capture not available on this SDK build");
+                return;
+            }
+            // Legacy / untyped dataRequest — kept around so older dashboards
+            // that didn't pick a request kind still get a reply.
             var preview = string.IsNullOrEmpty(source) ? "" : source.Trim();
             if (preview.Length > 200) preview = preview.Substring(0, 200) + "…";
             var body = string.IsNullOrEmpty(preview)
-                ? "Got your data request — tunnel-based collectors are next."
-                : "Got your data request: " + preview + "\n\nTunnel-based collectors are next.";
-            await PostChatReplyAsync(messageId, body);
+                ? "Got your data request."
+                : "Got your data request: " + preview;
+            await PostRequestResultAsync(messageId, "ok", body, null);
+        }
+
+        // ─── Auto-fulfill data requests ─────────────────────────────────
+        //
+        // When QA picks a "Player prefs", "Device info", or "File" request
+        // from the dashboard, the SDK runs it without a player prompt
+        // (these read back the player's own data; no privacy gate). The
+        // chat heartbeat scans incoming messages on each tick and runs any
+        // auto-fulfillable kind that hasn't been served yet — the result
+        // gets POSTed to /api/v1/chat/request/result, which promotes the
+        // request to "approved" and stamps the captured payload onto the
+        // source row.
+
+        readonly HashSet<string> _autoFulfilledIds = new HashSet<string>();
+
+        async Task AutoFulfillRequestAsync(string messageId, string kind, string body)
+        {
+            if (string.IsNullOrEmpty(messageId)) return;
+            if (!_autoFulfilledIds.Add(messageId)) return;
+
+            string log = null;
+            string error = null;
+            string status = "ok";
+            try
+            {
+                switch (kind)
+                {
+                    case "deviceinfo":
+                        log = BuildDeviceInfoJson();
+                        break;
+                    case "playerprefs":
+                        log = BuildPlayerPrefsJson(body);
+                        break;
+                    case "file":
+                        log = ReadRequestedFile(body, out var fileError);
+                        if (log == null)
+                        {
+                            error = fileError ?? "File not readable";
+                            status = "error";
+                        }
+                        break;
+                    default:
+                        error = "Unsupported auto-fulfill kind: " + kind;
+                        status = "error";
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                BugpunchNative.ReportSdkError("BugpunchClient.AutoFulfill." + kind, ex);
+                error = ex.Message + "\n" + (ex.StackTrace ?? "");
+                status = "error";
+            }
+            await PostRequestResultAsync(messageId, status, log, error);
+        }
+
+        static string BuildDeviceInfoJson()
+        {
+            var obj = new Newtonsoft.Json.Linq.JObject
+            {
+                ["deviceModel"]            = SystemInfo.deviceModel,
+                ["deviceName"]             = SystemInfo.deviceName,
+                ["deviceType"]             = SystemInfo.deviceType.ToString(),
+                ["operatingSystem"]        = SystemInfo.operatingSystem,
+                ["operatingSystemFamily"]  = SystemInfo.operatingSystemFamily.ToString(),
+                ["systemMemorySize"]       = SystemInfo.systemMemorySize,
+                ["processorType"]          = SystemInfo.processorType,
+                ["processorCount"]         = SystemInfo.processorCount,
+                ["processorFrequency"]     = SystemInfo.processorFrequency,
+                ["graphicsDeviceName"]     = SystemInfo.graphicsDeviceName,
+                ["graphicsDeviceVendor"]   = SystemInfo.graphicsDeviceVendor,
+                ["graphicsDeviceVersion"]  = SystemInfo.graphicsDeviceVersion,
+                ["graphicsMemorySize"]     = SystemInfo.graphicsMemorySize,
+                ["graphicsShaderLevel"]    = SystemInfo.graphicsShaderLevel,
+                ["screenWidth"]            = Screen.width,
+                ["screenHeight"]           = Screen.height,
+                ["screenDpi"]              = Screen.dpi,
+                ["screenOrientation"]      = Screen.orientation.ToString(),
+                ["batteryLevel"]           = SystemInfo.batteryLevel,
+                ["batteryStatus"]          = SystemInfo.batteryStatus.ToString(),
+                ["unityVersion"]           = Application.unityVersion,
+                ["bundleId"]               = Application.identifier,
+                ["productName"]            = Application.productName,
+                ["companyName"]            = Application.companyName,
+                ["version"]                = Application.version,
+                ["installMode"]            = Application.installMode.ToString(),
+                ["genuine"]                = Application.genuine,
+                ["systemLanguage"]         = Application.systemLanguage.ToString(),
+                ["internetReachability"]   = Application.internetReachability.ToString(),
+                ["targetFrameRate"]        = Application.targetFrameRate,
+                ["activeScene"]            = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name,
+            };
+            return obj.ToString(Newtonsoft.Json.Formatting.Indented);
+        }
+
+        // Best-effort PlayerPrefs dump. Unity's PlayerPrefs API doesn't
+        // expose key enumeration, so we read the platform-specific backing
+        // store directly when possible. On platforms where we can't, we
+        // fall back to "explicit-keys" mode: the QA's body is treated as a
+        // newline-separated list of keys to look up (one per line).
+        static string BuildPlayerPrefsJson(string body)
+        {
+            var explicitKeys = new List<string>();
+            if (!string.IsNullOrEmpty(body))
+            {
+                foreach (var raw in body.Split('\n'))
+                {
+                    var k = raw.Trim();
+                    if (!string.IsNullOrEmpty(k) && k.Length < 200) explicitKeys.Add(k);
+                }
+            }
+
+            // If we can read the backing file, dump it raw — most useful for
+            // diagnosis (preserves type-tagged values, etc.).
+            string platformDump = TryReadPlayerPrefsFile();
+            var obj = new Newtonsoft.Json.Linq.JObject();
+            if (platformDump != null) obj["raw"] = platformDump;
+
+            if (explicitKeys.Count > 0)
+            {
+                var values = new Newtonsoft.Json.Linq.JObject();
+                foreach (var k in explicitKeys)
+                {
+                    if (PlayerPrefs.HasKey(k))
+                    {
+                        // PlayerPrefs.GetString defaults to empty; try int/float too.
+                        var s = PlayerPrefs.GetString(k, null);
+                        if (s != null) { values[k] = s; continue; }
+                        values[k] = PlayerPrefs.GetFloat(k, 0f);
+                    }
+                    else values[k] = null;
+                }
+                obj["values"] = values;
+            }
+
+            return obj.ToString(Newtonsoft.Json.Formatting.Indented);
+        }
+
+        static string TryReadPlayerPrefsFile()
+        {
+            try
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // SharedPreferences XML at /data/data/{pkg}/shared_prefs/{pkg}.v2.playerprefs.xml.
+                // Sandbox path is private; we can read our own file via standard IO.
+                var pkg = Application.identifier;
+                var path = "/data/data/" + pkg + "/shared_prefs/" + pkg + ".v2.playerprefs.xml";
+                if (System.IO.File.Exists(path)) return System.IO.File.ReadAllText(path);
+#elif UNITY_IOS && !UNITY_EDITOR
+                var bundle = Application.identifier;
+                var path = System.IO.Path.Combine(
+                    Application.persistentDataPath, "..", "Library", "Preferences", bundle + ".plist");
+                if (System.IO.File.Exists(path)) return System.IO.File.ReadAllText(path);
+#endif
+            }
+            catch { /* fall through */ }
+            return null;
+        }
+
+        static string ReadRequestedFile(string path, out string error)
+        {
+            error = null;
+            if (string.IsNullOrEmpty(path)) { error = "no path supplied"; return null; }
+            try
+            {
+                // Allow the QA to use the persistentDataPath/ shorthand for
+                // anything inside the app sandbox — most save files live there.
+                string resolved = path.Trim();
+                if (resolved.StartsWith("persistentDataPath/", StringComparison.OrdinalIgnoreCase))
+                    resolved = System.IO.Path.Combine(Application.persistentDataPath, resolved.Substring("persistentDataPath/".Length));
+                else if (resolved.StartsWith("dataPath/", StringComparison.OrdinalIgnoreCase))
+                    resolved = System.IO.Path.Combine(Application.dataPath, resolved.Substring("dataPath/".Length));
+                else if (resolved.StartsWith("temporaryCachePath/", StringComparison.OrdinalIgnoreCase))
+                    resolved = System.IO.Path.Combine(Application.temporaryCachePath, resolved.Substring("temporaryCachePath/".Length));
+
+                if (!System.IO.File.Exists(resolved)) { error = "file not found: " + resolved; return null; }
+                var info = new System.IO.FileInfo(resolved);
+                // Cap inline payload — anything bigger needs to go via /upload
+                // (next slice); for now we report size + a head sample so QA
+                // can see the file exists.
+                const int MAX = 64 * 1024;
+                var bytes = System.IO.File.ReadAllBytes(resolved);
+                if (bytes.Length > MAX)
+                {
+                    var head = Encoding.UTF8.GetString(bytes, 0, MAX);
+                    return $"[file: {resolved} ({bytes.Length} bytes — showing first {MAX})]\n\n{head}";
+                }
+                // Try utf-8 text first so logs / json render readably.
+                try { return Encoding.UTF8.GetString(bytes); }
+                catch { return Convert.ToBase64String(bytes); }
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return null;
+            }
         }
 
         /// <summary>
-        /// POST a chat message linked to the source request via
-        /// <c>inReplyTo</c>. Mirrors the helper in
-        /// <see cref="UI.BugpunchChatBoard"/> but lives here so the
-        /// approved-request path doesn't depend on the chat board class
-        /// being open.
+        /// POST the captured output of an approved (or auto-fulfilled)
+        /// request back to the server. Promotes pending → approved on the
+        /// auto-fulfill path and stamps the result on the source message so
+        /// the dashboard can render an inline log viewer.
         /// </summary>
-        async Task PostChatReplyAsync(string inReplyToMessageId, string body)
+        async Task PostRequestResultAsync(string messageId, string status, string log, string error)
         {
             if (Config == null || string.IsNullOrEmpty(Config.HttpBaseUrl) || string.IsNullOrEmpty(Config.apiKey))
                 return;
+            if (string.IsNullOrEmpty(messageId)) return;
 
             var payload = new Newtonsoft.Json.Linq.JObject
             {
-                ["body"] = body ?? "",
-                ["inReplyTo"] = inReplyToMessageId ?? "",
+                ["messageId"] = messageId,
+                ["status"]    = status ?? "ok",
             };
+            if (log != null)   payload["log"]   = log;
+            if (error != null) payload["error"] = error;
             var json = payload.ToString(Newtonsoft.Json.Formatting.None);
 
-            var url = Config.HttpBaseUrl + "/api/v1/chat/message";
+            var url = Config.HttpBaseUrl + "/api/v1/chat/request/result";
             using var req = new UnityWebRequest(url, "POST");
             var bytes = Encoding.UTF8.GetBytes(json);
             req.uploadHandler = new UploadHandlerRaw(bytes) { contentType = "application/json" };
@@ -1324,7 +1679,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             if (req.result != UnityWebRequest.Result.Success || req.responseCode < 200 || req.responseCode >= 300)
             {
-                BugpunchLog.Warn("BugpunchClient", $"PostChatReply failed: HTTP {req.responseCode} {req.error}");
+                BugpunchLog.Warn("BugpunchClient", $"PostRequestResult failed: HTTP {req.responseCode} {req.error}");
             }
         }
 

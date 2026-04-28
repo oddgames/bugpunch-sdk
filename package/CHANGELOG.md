@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **"Send to Bugpunch" button on the SDK error overlay** — the expanded SDK-error card (`BugpunchSdkErrorOverlay`) now has a Send button alongside Clear/Dismiss. Tapping it bundles the captured ring buffer (source, message, count, stack for each entry) and enqueues it as an `"exception"` report through the standard upload pipeline. The most-recent entry's stack anchors the server-side fingerprint so recurring SDK errors group into one issue; all entries land in customData with flat `sdkError.entry.N.*` keys + a `bugpunchSdkError: true` flag for dashboard filtering. Disabled when the ring is empty; bypasses the exception-type cooldown since it's user-initiated. Wired on Android (`BugpunchSdkErrorOverlay.enqueueRingAsExceptionReport` → `BugpunchReportingService.reportBug`) and iOS (`-[BPSdkErrorOverlay onSendTap:]` → `Bugpunch_ReportBug`); new `Bugpunch_ResetAutoReportCooldown` C export added to `BugpunchDebugMode.mm` for the cooldown bypass.
+
+### Added
+- **Persistent chat-message banner** — when a dev replies in chat the SDK now surfaces a small top pill ("💬 N new messages from a dev") instead of force-opening the full chat board. Tap the pill to open the chat (which marks read); tap the X to snooze until a newer dev message arrives. Shares the visual style of the crash-upload banner, sits just below it so both can be visible at once.
+  - Android: new `BugpunchChatBanner` (mirrors `BugpunchUploadStatusBanner`), driven via `BugpunchRuntime.showChatBanner(int)` / `hideChatBanner()`.
+  - iOS: new `BugpunchTopBanner.mm` with two singletons (`BPUploadBanner`, `BPChatBanner`). Wires the iOS uploader to render an upload progress pill that previously only existed on Android — feature parity with `BugpunchUploadStatusBanner.java`. Driven via `Bugpunch_TopBanner_ShowChat` / `_HideChat`.
+  - C#: `BugpunchClient.ChatReplyHeartbeat` now counts unread QA messages and calls `BugpunchNative.ShowChatBanner(unread)` instead of `UI.BugpunchChatBoard.Show()`. New `OnChatBannerDismissed` / `OnChatBannerOpened` UnitySendMessage receivers handle the snooze-until-newer behaviour.
+
+### Fixed
+- **Multi-minute video uploads on exception/crash reports.** The Android recorder's pause-time compensation (`mAccumPausedUs`) was accumulating across every pause/resume cycle (bug form, chat, annotate, tools panel each pause once), and the trim/dump cutoff subtracted it — so after several UI interactions the dump cutoff could drift back several minutes and the resulting video covered the entire session up to that point. The compensation now SETS (not adds) on each post-resume sample and is clamped at `windowSeconds`, so the dump duration is bounded at 2× the configured window even after a single long pause.
+
+### Changed
+- **Default `videoBufferSeconds` raised from 30 → 90.** Tier-based fallback (used when the inspector default isn't overridden) becomes 30/60/90s for low/mid/high. Affects in-RAM ring dumps for exception/bug reports; the crash-survivable native ring is still clamped to [30, 90]s.
+
+### Added
+- **Per-report log boundary marker.** After a report's logs are snapshotted for upload, the SDK injects a synthetic `Bugpunch.Boundary` line into the live log ring. The next report's log buffer carries that line, and the dashboard's log viewer collapses everything above the most recent boundary into a click-to-expand divider — so testers can see "since last report" at a glance without losing access to earlier context. Wired on Android (`BugpunchLogReader.markBoundary`) and iOS (`BPLogReader markBoundaryWithType:title:`); fires from both auto-reports (`reportBug`) and user-submitted reports (`submitReport` / `Bugpunch_SubmitReport`).
+
+### Added
+- **Crash video diagnostic.** When a crash event has no usable video the SDK now uploads a short `bugpunchDiag_video` text attachment with a stable reason token (`ring_missing`, `no_csd_yet`, `no_samples`, `ring_overwritten`, `no_keyframe`, `ring_bad_header`, `ring_truncated`, `remux_threw`) so the dashboard can show *why* video is unavailable instead of silently omitting it. Lands as a game attachment on the issue event — no server schema change. (Android only this round; iOS to follow.)
+
+### Changed
+- **Encoder primes with a synthetic black frame on every recorder start (buffer mode + projection mode).** Previously a crash within ~1 second of `EnterDebugMode` produced a video ring with no SPS/PPS (encoder hadn't emitted its first format yet) and the remuxer rejected it as `no_csd_yet`. Both startup paths now push one black frame the moment the encoder is started: buffer mode queues a cached NV12 array via `queueFrame`; projection mode draws onto the input Surface via `lockHardwareCanvas` *before* `createVirtualDisplay` attaches the screen mirror. Either way CSD + first IDR land in ~100-200 ms, so a startup-time crash still has playable video. Black frame slides out of the rolling window as soon as real content arrives.
+
+### Fixed
+- **`attachmentsAvailable` builder centralised** in `BugpunchUploader.collectAvailableRequires(attachments, deferred)` (Java) and `BPCollectAvailableRequires` + `BPInjectAttachmentsAvailable` (Obj-C++). Both platforms now patch the phase-1 JSON body with the union of every non-empty `requires` key on the attachments list before write. iOS was previously relying on the server's "absent → admit everything" legacy fallback; that worked at the time but would have broken silently the moment iOS gained any preflight attachment with a `requires` key. Contract is documented in `sdk/docs/upload-manifest.md`.
+- **Crash events were uploading without logs / screenshots / breadcrumbs.** The new preflight/enrich flow filters phase-2 multipart fields by the server's `collect[]` response, and the server only includes a field in `collect[]` if the SDK advertised it in `attachmentsAvailable`. The SDK was building that list from `DeferredAttachment.requires` only — regular `FileAttachment.requires` keys (`logs`, `screenshot`, etc.) were never advertised, so every crash event uploaded with just the JSON body and was missing every heavy attachment. Exceptions weren't affected because they go through `BugpunchReportingService` which used the older one-stage path. Now `enqueuePreflight` walks both `attachments` and `deferred` when building `available`, so logs/screenshots come through for crashes too.
+- **`startBufferMode` / `start` (projection) now block until the encoder publishes CSD into the ring.** A `CountDownLatch` released from `publishVideoFormat` gates EnterDebugMode return, with a 750 ms safety timeout. Combined with the black-frame primer from this same release, this closes the timing race where a fast crash (e.g. `Marshal.WriteInt32(IntPtr.Zero, 0)` on the first Update after EnterDebugMode) hit the signal handler before any encoded sample existed and produced a `no_csd_yet` ring. Slower crashes (stack overflow's recursion, abort) already worked because they spent enough cycles for CSD to land naturally.
+- **Duplicate native crash events.** AEI synthesis was emitting `type:CRASH_NATIVE` while bp.c writes `type:NATIVE_SIGNAL`, so the merge step in `findMatchingCrashFile` never matched and every native crash uploaded twice (once from bp.c, once from AEI). Aligned `mapReasonToType` to bp.c's names so AEI augments the existing .crash with `---AEI---` metadata instead of synthesising a duplicate. Also fixes the dashboard's "Unknown: CRASH_NATIVE" labels — those rows were the duplicates the dashboard didn't recognise.
+
+### Removed
+- **Standalone SDK dashboard (`sdk/web/`) deleted.** The package no longer ships a separate React dashboard — `server/web` (bugpunch.com) is the only browser surface. `sdk/web/` had drifted from the server dashboard (its own `authFetch`, login flow, Vite + Tailwind config) without ever reaching parity. Anything that used to live there moves into `server/web` or the Remote IDE; the SDK itself stays focused on the package + native uploaders + CLI.
+
+### Added
+- **`sdk/docs/` cross-platform contracts.** New canonical specs that pin shared behavior across the Android Java and iOS Obj-C++ implementations:
+  - `sdk/docs/upload-manifest.md` — the on-disk multipart manifest schema (single-stage + two-stage preflight + enrich), pinned constants (`MAX_ATTEMPTS`, timeouts, queue dir), and the field-by-field reference. Both `BugpunchUploader.java` and `BugpunchUploader.mm` link to this doc instead of duplicating the schema in their own headers.
+  - `sdk/docs/shake-spec.md` — accelerometer-shake algorithm, pinned constants (500 ms spike window, 2 s cooldown, 2 spikes to fire), and the m/s² magnitude formula on each platform. Both shake detectors now emit a `shake_fired` analytics event with `{platform}` so dashboards surface drift if one side stops firing.
+
+### Changed
+- **`BugpunchJson` is now the only JSON-string escape path in the SDK.** Removed 14 redeclared `Esc` / `EscapeJson` / `EscJson` private helpers in service / editor / config files (they all delegate to `BugpunchJson.Esc` now). Dropped one minor behavior divergence: callsites that used to strip `\r` from output now emit a proper `\r` escape — JSON parsers see a literal CR instead of "the CR was here" silently disappearing. Also removed the public `RequestRouter.EscapeJson` API since `BugpunchJson.Esc` covers the same job; `BugpunchClient.cs` callers updated.
+- **`BugpunchRetry.ExponentialBackoff(attempt, initialMs, capMs)`.** New helper at `sdk/package/DeviceConnect/BugpunchRetry.cs` replaces two divergent inline backoff formulas (`Math.Pow`-based in `IdeTunnel`, bitshift-based in `SymbolUploadClient`). One implementation, overflow-guarded, used by both call sites. Java/Obj-C++ uploaders pin to the same shape via `sdk/docs/upload-manifest.md`.
+- **`Bugpunch.cs` dictionary serializer uses `BugpunchJson.Esc`.** `SerializeTags` / `SerializeDict` / `AppendJsonValue` previously had their own `EscJson` whose control-char output disagreed with the rest of the SDK; that's gone.
+
 ## [1.8.0] - 2026-04-26
 
 ### Changed

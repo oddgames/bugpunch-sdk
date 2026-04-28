@@ -48,12 +48,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
             sb.Append($"\"vsync\":{QualitySettings.vSyncCount},");
 
             // Platform info
-            sb.Append($"\"platform\":\"{Esc(Application.platform.ToString())}\",");
-            sb.Append($"\"unityVersion\":\"{Esc(Application.unityVersion)}\",");
-            sb.Append($"\"graphicsDevice\":\"{Esc(SystemInfo.graphicsDeviceName)}\",");
+            sb.Append($"\"platform\":\"{BugpunchJson.Esc(Application.platform.ToString())}\",");
+            sb.Append($"\"unityVersion\":\"{BugpunchJson.Esc(Application.unityVersion)}\",");
+            sb.Append($"\"graphicsDevice\":\"{BugpunchJson.Esc(SystemInfo.graphicsDeviceName)}\",");
             sb.Append($"\"graphicsMemory\":{SystemInfo.graphicsMemorySize},");
             sb.Append($"\"systemMemory\":{SystemInfo.systemMemorySize},");
-            sb.Append($"\"processorType\":\"{Esc(SystemInfo.processorType)}\",");
+            sb.Append($"\"processorType\":\"{BugpunchJson.Esc(SystemInfo.processorType)}\",");
             sb.Append($"\"processorCount\":{SystemInfo.processorCount},");
 
             // Screen
@@ -69,7 +69,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 qualityName = "Unknown";
             }
-            sb.Append($"\"quality\":\"{Esc(qualityName)}\",");
+            sb.Append($"\"quality\":\"{BugpunchJson.Esc(qualityName)}\",");
 
             // Battery
             sb.Append(string.Format(CultureInfo.InvariantCulture, "\"batteryLevel\":{0:F2},", SystemInfo.batteryLevel));
@@ -79,7 +79,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return sb.ToString();
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

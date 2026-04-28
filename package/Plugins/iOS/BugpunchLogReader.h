@@ -20,6 +20,10 @@
 // plugins call explicitly — same role gating as everywhere else lives
 // inside Bugpunch_TunnelEnqueueLogLine.
 + (void)appendLineLive:(NSString*)line;
+// Inject a synthetic boundary line into the ring after a report has been
+// snapshotted for upload. The dashboard's log viewer collapses everything
+// above the most recent boundary into a click-to-expand band.
++ (void)markBoundaryWithType:(NSString*)reportType title:(NSString*)title;
 @end
 
 // Implemented in BugpunchTunnel.mm. Declared here so BPLogReader can tee

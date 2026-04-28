@@ -1,6 +1,0 @@
-sessionId=cli-12E34
-pid=77364
-startedAt=2026-04-26T02:17:59.7148503Z
-command=PING
-dataSummary=
-cwd=C:\\Workspaces\\odddev

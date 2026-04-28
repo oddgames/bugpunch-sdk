@@ -57,14 +57,14 @@ namespace ODDGames.Bugpunch.DeviceConnect
             {
                 MemoryProfiler.TakeSnapshot(_currentPath, OnSnapshotComplete);
                 BugpunchLog.Info("MemorySnapshotService", $"Memory snapshot started → {_currentPath}");
-                return $"{{\"ok\":true,\"state\":\"in_progress\",\"path\":\"{Esc(_currentPath)}\"}}";
+                return $"{{\"ok\":true,\"state\":\"in_progress\",\"path\":\"{BugpunchJson.Esc(_currentPath)}\"}}";
             }
             catch (Exception ex)
             {
                 _state = SnapshotState.Failed;
                 _error = ex.Message;
                 BugpunchNative.ReportSdkError("MemorySnapshotService.Start", ex);
-                return $"{{\"ok\":false,\"error\":\"{Esc(ex.Message)}\",\"state\":\"failed\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(ex.Message)}\",\"state\":\"failed\"}}";
             }
         }
 
@@ -102,10 +102,10 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     return $"{{\"state\":\"in_progress\",\"elapsed\":{elapsed:F1}}}";
 
                 case SnapshotState.Done:
-                    return $"{{\"state\":\"done\",\"path\":\"{Esc(_currentPath)}\",\"sizeKB\":{_fileSize / 1024}}}";
+                    return $"{{\"state\":\"done\",\"path\":\"{BugpunchJson.Esc(_currentPath)}\",\"sizeKB\":{_fileSize / 1024}}}";
 
                 case SnapshotState.Failed:
-                    return $"{{\"state\":\"failed\",\"error\":\"{Esc(_error ?? "Unknown error")}\"}}";
+                    return $"{{\"state\":\"failed\",\"error\":\"{BugpunchJson.Esc(_error ?? "Unknown error")}\"}}";
 
                 default:
                     return "{\"state\":\"unknown\"}";
@@ -132,7 +132,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                     var info = new FileInfo(f);
                     if (!first) sb.Append(",");
                     first = false;
-                    sb.Append($"{{\"path\":\"{Esc(f)}\",\"name\":\"{Esc(info.Name)}\",\"sizeKB\":{info.Length / 1024},\"created\":\"{info.CreationTime:yyyy-MM-ddTHH:mm:ss}\"}}");
+                    sb.Append($"{{\"path\":\"{BugpunchJson.Esc(f)}\",\"name\":\"{BugpunchJson.Esc(info.Name)}\",\"sizeKB\":{info.Length / 1024},\"created\":\"{info.CreationTime:yyyy-MM-ddTHH:mm:ss}\"}}");
                 }
             }
 
@@ -159,7 +159,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
             catch (Exception ex)
             {
-                return $"{{\"ok\":false,\"error\":\"{Esc(ex.Message)}\"}}";
+                return $"{{\"ok\":false,\"error\":\"{BugpunchJson.Esc(ex.Message)}\"}}";
             }
         }
 
@@ -215,7 +215,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 $"\"gcUsedMB\":{monoUsed / (1024.0 * 1024.0):F1}," +
                 $"\"gfxMB\":{gfxTotal / (1024.0 * 1024.0):F1}," +
                 $"\"tempAllocatorMB\":{tempAllocator / (1024.0 * 1024.0):F1}," +
-                $"\"scene\":\"{Esc(sceneName)}\"," +
+                $"\"scene\":\"{BugpunchJson.Esc(sceneName)}\"," +
                 $"\"breakdown\":{{" +
                     $"\"texturesMB\":{texMem / (1024.0 * 1024.0):F1},\"textureCount\":{textures.Length}," +
                     $"\"meshesMB\":{meshMem / (1024.0 * 1024.0):F1},\"meshCount\":{meshes.Length}," +
@@ -295,12 +295,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (i > 0) sb.Append(",");
                 sb.Append("{");
                 sb.Append($"\"id\":{e.id}");
-                sb.Append($",\"name\":\"{Esc(e.name)}\"");
+                sb.Append($",\"name\":\"{BugpunchJson.Esc(e.name)}\"");
                 sb.Append($",\"sizeKB\":{(e.sz + 512) / 1024}");
                 sb.Append($",\"width\":{e.w}");
                 sb.Append($",\"height\":{e.h}");
-                sb.Append($",\"format\":\"{Esc(e.fmt)}\"");
-                sb.Append($",\"type\":\"{Esc(e.typeName)}\"");
+                sb.Append($",\"format\":\"{BugpunchJson.Esc(e.fmt)}\"");
+                sb.Append($",\"type\":\"{BugpunchJson.Esc(e.typeName)}\"");
                 sb.Append("}");
             }
             sb.Append("]");
@@ -333,7 +333,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (i > 0) sb.Append(",");
                 sb.Append("{");
                 sb.Append($"\"id\":{e.id}");
-                sb.Append($",\"name\":\"{Esc(e.name)}\"");
+                sb.Append($",\"name\":\"{BugpunchJson.Esc(e.name)}\"");
                 sb.Append($",\"sizeKB\":{(e.sz + 512) / 1024}");
                 sb.Append($",\"vertexCount\":{e.verts}");
                 sb.Append($",\"subMeshCount\":{e.subs}");
@@ -367,9 +367,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 if (i > 0) sb.Append(",");
                 sb.Append("{");
                 sb.Append($"\"id\":{e.id}");
-                sb.Append($",\"name\":\"{Esc(e.name)}\"");
+                sb.Append($",\"name\":\"{BugpunchJson.Esc(e.name)}\"");
                 sb.Append($",\"sizeKB\":{(e.sz + 512) / 1024}");
-                sb.Append($",\"shader\":\"{Esc(e.shader)}\"");
+                sb.Append($",\"shader\":\"{BugpunchJson.Esc(e.shader)}\"");
                 sb.Append("}");
             }
             sb.Append("]");
@@ -631,16 +631,16 @@ namespace ODDGames.Bugpunch.DeviceConnect
             var sb = new StringBuilder();
             sb.Append("{");
             sb.Append($"\"id\":{id}");
-            sb.Append($",\"name\":\"{Esc(name)}\"");
+            sb.Append($",\"name\":\"{BugpunchJson.Esc(name)}\"");
             sb.Append(",\"users\":[");
             for (int i = 0; i < users.Count; i++)
             {
                 var u = users[i];
                 if (i > 0) sb.Append(",");
                 sb.Append("{");
-                sb.Append($"\"path\":\"{Esc(u.Path)}\"");
-                sb.Append($",\"component\":\"{Esc(u.Component)}\"");
-                sb.Append($",\"via\":\"{Esc(u.Via)}\"");
+                sb.Append($"\"path\":\"{BugpunchJson.Esc(u.Path)}\"");
+                sb.Append($",\"component\":\"{BugpunchJson.Esc(u.Component)}\"");
+                sb.Append($",\"via\":\"{BugpunchJson.Esc(u.Via)}\"");
                 sb.Append("}");
             }
             sb.Append("]}");
@@ -661,7 +661,5 @@ namespace ODDGames.Bugpunch.DeviceConnect
             return sb.ToString();
         }
 
-        static string Esc(string s) =>
-            s?.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "") ?? "";
     }
 }

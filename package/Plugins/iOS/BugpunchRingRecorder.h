@@ -57,6 +57,14 @@ double BugpunchRing_GetLastDumpStartHostTime(void);
 /// Host time of the last frame in the most recent successful dump.
 double BugpunchRing_GetLastDumpEndHostTime(void);
 
+/// Encoded video frame width in pixels (0 until BugpunchRing_Start has resolved
+/// dimensions). This is the canonical coordinate frame for touches recorded by
+/// BugpunchTouchRecorder — touches and video share the same pixel space.
+int BugpunchRing_GetVideoWidth(void);
+
+/// Encoded video frame height in pixels.
+int BugpunchRing_GetVideoHeight(void);
+
 #ifdef __cplusplus
 }
 #endif
