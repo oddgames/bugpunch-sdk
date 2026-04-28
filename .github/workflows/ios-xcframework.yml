@@ -47,7 +47,10 @@ jobs:
 
       - name: Build xcframework
         working-directory: ios-src/Bugpunch
-        run: ./build-xcframework.sh
+        # Invoke via `bash` because git on Windows doesn't preserve the
+        # executable bit, so the script's +x is gone by the time it
+        # lands on the runner.
+        run: bash build-xcframework.sh
 
       - name: Show output
         run: |
