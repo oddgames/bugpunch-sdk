@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.8.7] - 2026-04-29
+
+### Fixed
+- **Player builds no longer fail with `Failed to resolve assembly: 'nunit.framework'` during IL2CPP linking.** `UIAutomationTestFixture` was compiled into the runtime DLL via `UNITY_INCLUDE_TESTS`, which baked NUnit type references into the IL — fine for tests, fatal for player builds where `nunit.framework.dll` isn't shipped. The fixture has moved to `Tests/UIAutomationTestFixture.cs` under a new `ODDGames.Bugpunch.Tests` asmdef gated on `UNITY_INCLUDE_TESTS` with `nunit.framework.dll` as a precompiled reference, so it only compiles in the consumer's test-runner context. The runtime's `TestReport` now exposes an `internal SetOutcome(bool)` hook the fixture pushes NUnit's outcome through, keeping pass/fail semantics identical without the runtime DLL referencing NUnit.
+
 ## [1.8.6] - 2026-04-28
 
 ### Changed
