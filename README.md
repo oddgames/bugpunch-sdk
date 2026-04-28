@@ -1,294 +1,154 @@
-# Bugpunch SDK for Unity
+# Bugpunch — Unity SDK
 
-A UI automation testing framework for Unity. Write tests using Unity's standard NUnit framework with async/await.
+[![bugpunch.com](https://img.shields.io/badge/dashboard-bugpunch.com-2563eb)](https://bugpunch.com)
 
-## Installation
+Crash reporting, bug capture, and remote debugging for Unity games. Drop-in
+UPM package, three platform lanes (Android NDK + iOS Obj-C++ + C#), pairs
+with the Bugpunch dashboard at [bugpunch.com](https://bugpunch.com).
 
-Add to your `Packages/manifest.json`:
+## What it gives you
+
+- **Crash reports** — native signal handlers (SIGSEGV / SIGABRT / SIGBUS)
+  on Android NDK + iOS Mach exceptions; ANR / main-thread-stall detection
+  via watchdog. Survives a dying Mono runtime — reports queue to disk
+  natively and ship on the next launch if the process died mid-upload.
+- **Exception reports** — managed C# exceptions caught via
+  `AppDomain.UnhandledException` and `Application.logMessageReceivedThreaded`,
+  routed through the same upload queue. Stack traces deobfuscate against
+  uploaded IL2CPP method maps.
+- **User-initiated bug reports + feedback** — shake to report (or the
+  in-app debug widget). Auto-attaches a screenshot, scene name, recent
+  logs, custom data, and (opt-in) the last 90 seconds of gameplay video.
+- **Remote IDE** — connect from the web dashboard to a running build and
+  drive it live: scene hierarchy, component inspector, console log
+  stream, screenshot capture, scripted commands, WebRTC video stream of
+  the game view, file browser, snapshot save/restore, device info. Same
+  surface you'd get from Unity's own profiler, plus C# script execution.
+- **Performance monitoring** — sampled FPS, memory, frame time; alerts
+  fire when thresholds break. Pre-crash storyboard captures the last few
+  seconds of UI presses + screenshots so triage gets context, not just a
+  stack frame.
+- **Custom data + analytics** — `Bugpunch.SetCustomData("level", "boss-3")`
+  attaches to every report. `Bugpunch.LogPurchase(...)` for IAP analytics
+  (auto-wired if you use Unity Purchasing — see below).
+
+## Install
+
+Add to `Packages/manifest.json`:
 
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk-unity.git?path=package#v1.1.1"
+    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk.git#v1.8.6"
   }
 }
 ```
 
-## Quick Start
+The repo is public; no token, no scoped registry. Unity Package Manager
+fetches the tag and treats the repo as the package root.
 
-```csharp
-using System.Threading.Tasks;
-using NUnit.Framework;
-using static ODDGames.Bugpunch.ActionExecutor;
+## Configure
 
-[TestFixture]
-public class LoginTests
-{
-    [Test]
-    public async Task Login_WithValidCredentials_Succeeds()
-    {
-        await EnsureSceneLoaded("LoginScene");
+1. Sign up at [bugpunch.com](https://bugpunch.com), create a project, copy
+   the API key.
+2. In Unity: **Create → Bugpunch → Config**. Paste your API key + server
+   URL into the ScriptableObject. Drop the asset somewhere under
+   `Resources/` so the SDK loads it on startup.
+3. Build + run. The first launch logs `[Bugpunch] Active lane: …` so you
+   know which platform path is active. Reports start flowing.
 
-        // Fill form using adjacent labels
-        await TextInput(Adjacent("Username:"), "testuser");
-        await TextInput(Adjacent("Password:"), "password123");
+That's the entire integration. No `MonoBehaviour` to drop into a scene,
+no `Bugpunch.Init()` call — the SDK boots itself before scene load.
 
-        // Submit and verify
-        await Click(Text("Login"));
-        await WaitFor(Name("MainMenu"), seconds: 10);
-    }
-}
-```
-
-## Understanding `using static`
-
-The `using static ODDGames.Bugpunch.ActionExecutor;` directive imports all helpers directly:
-
-```csharp
-// With 'using static' - clean and readable
-await Click(Name("Button"));
-await TextInput(Adjacent("Username:"), "test");
-
-// Without - verbose
-await ActionExecutor.Click(ActionExecutor.Name("Button"));
-```
-
-This gives you direct access to:
-- **Search helpers**: `Name()`, `Text()`, `Type<T>()`, `Adjacent()`, `Near()`, `Path()`, `Tag()`, `Texture()`, `Any()`, `Reflect()`
-- **Actions**: `Click()`, `DoubleClick()`, `Hold()`, `TextInput()`, `Drag()`, `DragTo()`, `Swipe()`, `Scroll()`
-- **Waits**: `Wait()`, `WaitFor()`, `WaitFramerate()`
-- **Finders**: `Find<T>()`, `FindAll<T>()`, `ScrollTo()`
-- **Scene**: `EnsureSceneLoaded()`
-
-## Search API
-
-Find UI elements with a fluent API. All patterns support wildcards (`*`) and OR (`|`).
-
-### Basic Filters
-
-```csharp
-await Click(Text("Play"));                    // By visible text
-await Click(Name("btn_*"));                   // By name with wildcard
-await Click(Text("OK|Okay|Confirm"));         // OR pattern
-await Click(Name("Button").Type<Button>());   // Chained conditions
-```
-
-| Method | Description | Example |
-|--------|-------------|---------|
-| `Name(pattern)` | Match by GameObject name | `Name("PlayButton")` |
-| `Text(pattern)` | Match by visible text | `Text("Submit")` |
-| `Type<T>()` | Match by component type | `Type<Button>()` |
-| `Texture(pattern)` | Match by texture/sprite name | `Texture("icon_*")` |
-| `Path(pattern)` | Match by hierarchy path | `Path("*/Panel/Button*")` |
-| `Tag(tag)` | Match by Unity tag | `Tag("Player")` |
-| `Any(pattern)` | Match name, text, sprite, or path | `Any("*Settings*")` |
-
-### Spatial Filters
-
-```csharp
-// Find input field next to "Username:" label
-await TextInput(Adjacent("Username:"), "test");
-
-// Find nearest element to "Settings" text
-await Click(Near("Settings"));
-
-// Find in specific direction
-await Click(Near("Options", Direction.Below));
-```
-
-| Method | Description |
-|--------|-------------|
-| `Adjacent(text, direction?)` | Find interactable adjacent to label |
-| `Near(text, direction?)` | Find nearest interactable to text |
-| `InRegion(region)` | Filter by screen region |
-| `Visible()` | Only visible in viewport |
-
-### Hierarchy Filters
-
-| Method | Description |
-|--------|-------------|
-| `HasParent(search)` | Immediate parent matches |
-| `HasAncestor(search)` | Any ancestor matches |
-| `HasChild(search)` | Has matching child |
-| `HasDescendant(search)` | Has matching descendant |
-| `HasSibling(search)` | Has matching sibling |
-
-### Ordering & Selection
-
-```csharp
-await Click(Type<Button>().First());           // First by screen position
-await Click(Name("ListItem*").Last());         // Last by screen position
-await Click(Type<Button>().Skip(1).First());   // Second button
-```
-
-### Modifiers
-
-```csharp
-// Negate condition
-Type<Button>().Not.HasParent("DisabledPanel")
-
-// Filter by component property
-Type<Slider>().With<Slider>(s => s.value > 0.5f)
-
-// Include inactive/disabled
-Name("HiddenPanel").IncludeInactive()
-Type<Button>().IncludeDisabled()
-```
-
-## Test Actions
-
-### Click & Input
-
-```csharp
-await Click(Name("Button"));
-await DoubleClick(Name("Item"));
-await Hold(Name("Button"), seconds: 2);
-await TextInput(Adjacent("Email:"), "test@example.com");
-await PressKey(Key.Enter);
-```
-
-### Complex Controls
-
-```csharp
-// Dropdowns
-await ClickDropdown(Name("Dropdown"), "Option 1");
-await ClickDropdown(Name("Dropdown"), 2);  // By index
-
-// Sliders
-await ClickSlider(Name("Volume"), 0.75f);
-await DragSlider(Name("Brightness"), 0.2f, 0.8f);
-
-// Scroll views
-await ScrollTo(Name("ScrollView"), Text("Target Item"));
-```
-
-### Gestures
-
-```csharp
-await Swipe(SwipeDirection.Left, distance: 0.3f);
-await Pinch(scale: 2.0f);    // Zoom in
-await Pinch(scale: 0.5f);    // Zoom out
-await Rotate(degrees: 45f);
-await TwoFingerSwipe(SwipeDirection.Up);
-```
-
-### Waiting
-
-```csharp
-await Wait(seconds: 1);
-await WaitFor(Name("LoadingComplete"), seconds: 10);
-await WaitFor(Text("Submit").With<Button>(b => b.interactable), seconds: 5);
-```
-
-## Reflection Access
-
-Access game state for assertions:
-
-```csharp
-// Read values
-var health = Reflect("Player.Instance.Health").GetValue<float>();
-var score = Reflect("GameManager.Score").GetValue<int>();
-
-// Navigate nested properties
-var damage = Reflect("Player.Instance").Property("Stats.Damage").GetValue<float>();
-
-// With NUnit assertions
-Assert.AreEqual(100f, Reflect("Player.Health").GetValue<float>());
-Assert.Greater(Reflect("Player.Score").GetValue<int>(), 0);
-```
-
-## Auto-Explorer (Monkey Testing)
-
-```csharp
-await AutoExplorer.StartExploration(new ExploreSettings
-{
-    DurationSeconds = 60f,
-    MaxActions = 100,
-    Seed = 12345,
-    ExcludePatterns = new[] { "*Logout*", "*Delete*" }
-});
-```
-
-Or use **Window > Analysis > UI Automation > Test Explorer** with the Auto-Explore dropdown.
-
-## CLI Bridge Integration
-
-When [clibridge4unity](https://github.com/oddgames/clibridge4unity) is installed alongside this package, two additional bridge commands become available:
-
-### UIACTION — Execute UI actions via JSON
-
-```bash
-clibridge4unity UIACTION '{"action":"click","text":"Settings"}'
-clibridge4unity UIACTION '{"action":"type","name":"InputField","value":"hello"}'
-clibridge4unity UIACTION '{"action":"swipe","direction":"left"}'
-clibridge4unity UIACTION '{"action":"key","key":"space"}'
-clibridge4unity UIACTION '{"action":"drag","from":{"name":"A"},"to":{"name":"B"}}'
-clibridge4unity UIACTION '{"action":"dropdown","name":"DD","option":2}'
-```
-
-Actions are queued and executed one at a time. Search targets use the same fields as the fluent API: `text`, `name`, `type`, `near`, `adjacent`, `tag`, `path`, `any`.
-
-### UISESSION — Record test sessions with live reports
-
-```bash
-# Start recording
-clibridge4unity UISESSION 'start --name MyTest --desc "Navigate to settings"'
-
-# Execute actions (screenshots auto-captured after each)
-clibridge4unity UIACTION '{"action":"click","text":"Settings"}'
-clibridge4unity UIACTION '{"action":"click","text":"Audio"}'
-
-# Stop recording
-clibridge4unity UISESSION stop
-```
-
-Sessions generate a live HTML report with screenshots, action timeline, and pass/fail badges. View locally or via `clibridge4unity serve` over HTTP.
-
-## In-App Purchases (analytics)
-
-If your game uses Unity IAP (`com.unity.purchasing` 4.0+), Bugpunch ships a
-one-line integration that auto-logs every successful purchase into analytics
-without duplicating the call inside `ProcessPurchase`:
+## Public API
 
 ```csharp
 using ODDGames.Bugpunch;
-using UnityEngine.Purchasing;
 
-// existing code — just add .WithBugpunch() on the listener
+// Manually file a bug or feedback.
+Bugpunch.Report("Player got stuck on level 3 boss");
+Bugpunch.Feedback("Loved the new gesture controls!");
+
+// Tag every subsequent report with extra context.
+Bugpunch.SetCustomData("playerLevel", 47);
+Bugpunch.SetCustomData("subscription", "pro");
+
+// Pull a server-resolved config variable (per-device overrides supported).
+var spawnRate = Bugpunch.GetVariable("spawnRate", 1.0f);
+
+// IAP analytics (no-op if Unity Purchasing isn't installed).
+Bugpunch.LogPurchase("coins_500", 4.99m, "USD", txnId);
+```
+
+The full surface is small — most of the SDK runs autonomously once
+configured.
+
+## Supported targets
+
+| Platform           | Lane         | Crash handler             | Notes                                 |
+|--------------------|--------------|---------------------------|---------------------------------------|
+| Android player     | Java + NDK   | POSIX signals, ANR watchdog | Native AAR shipped pre-built          |
+| iOS player         | Obj-C++      | Mach exceptions, signals  | xcframework shipped pre-built         |
+| Unity Editor       | C#           | Managed exceptions only   | Useful for crash dialog, IDE testing  |
+| Standalone (Win/Mac/Linux) | C#  | Managed exceptions only   | Native crash handlers TBD             |
+
+Unity 6000.0+ tested. Unity 2022.3 LTS works for the runtime; the Editor
+windows assume Unity 6.
+
+## Optional features
+
+### In-app purchases analytics
+
+If your game uses Unity Purchasing (`com.unity.purchasing` 4.0+):
+
+```csharp
+using UnityEngine.Purchasing;
+using ODDGames.Bugpunch;
+
 UnityPurchasing.Initialize(myStoreListener.WithBugpunch(), builder);
 ```
 
-That's it. `WithBugpunch()` wraps your `IStoreListener` in a transparent
-decorator — your `ProcessPurchase` runs first unchanged, then Bugpunch
-side-channels the purchase to analytics with `{sku, price, currency,
-transactionId}`. Works with both `IStoreListener` and `IDetailedStoreListener`
-implementations, and forwards both the old and new failure callbacks.
+`.WithBugpunch()` wraps your `IStoreListener` and side-channels every
+successful purchase to analytics — your `ProcessPurchase` still runs
+first, untouched. Compiles only when Unity Purchasing is installed; zero
+runtime cost when absent.
 
-The integration only compiles when `com.unity.purchasing` is actually
-installed in your project (via a [version-define on the asmdef](ODDGames.Bugpunch.asmdef))
-— zero reflection, zero runtime cost when Unity IAP is absent.
+For raw StoreKit (iOS) or direct Google Play Billing (Android), call
+`Bugpunch.LogPurchase(sku, price, currency, transactionId)` from your
+own purchase handler.
 
-### Other billing paths
+### Pre-crash video buffer (opt-in)
 
-- **Raw StoreKit / custom iOS billing** (Unity IAP not used) — call
-  `Bugpunch.LogPurchase(sku, price, currency, transactionId)` from your
-  `SKPaymentTransactionObserver` on `.purchased`.
-- **Custom Android billing (direct BillingClient)** — call the same
-  `Bugpunch.LogPurchase(...)` inside your own `onPurchasesUpdated`. Google
-  Play Billing has no system-wide observer pattern — there's no cross-SDK
-  auto-hook on Android.
+Tester builds can call `Bugpunch.EnterDebugMode()` from a menu to start a
+rolling video buffer (default: last 90 seconds, h264, ~2 Mbps). On the
+next crash / ANR / bug report, the recording attaches automatically so
+triage sees what happened *before* the failure, not just the moment of.
 
-## Requirements
+The first call shows a native consent sheet; on Android it then chains
+to the OS-level MediaProjection prompt. Nothing records until both are
+accepted, and there's no way for the SDK to start recording without the
+explicit `EnterDebugMode()` call.
 
-- Unity 2022.3+
-- **Input System Package** (New Input System) - set in Player Settings
-- TextMeshPro
-- Newtonsoft JSON
+### UI test automation
 
-## Documentation
+The SDK ships a UI testing framework (`ODDGames.Bugpunch.ActionExecutor`)
+for record-and-replay tests, gesture injection, AI-driven test
+generation, and headless test execution via the
+[clibridge4unity](https://github.com/oddgames/clibridge4unity) bridge.
+Documentation at [bugpunch.com/docs](https://bugpunch.com).
 
-Full documentation: https://github.com/oddgames/bugpunch-sdk-unity/wiki
+## Versioning
 
-## Version History
+Tags are SemVer (`v1.8.6`, etc.). Pin a specific tag in `manifest.json`
+— Unity caches the package by tag hash, so consumers update only when
+they explicitly bump the pin. See [CHANGELOG.md](CHANGELOG.md) for
+release notes.
 
-See [CHANGELOG.md](CHANGELOG.md)
+## Issues + support
+
+GitHub Issues on this repo. Internal tracker, but visible publicly so
+you can see what's coming and what's known-broken.
+
+## License
+
+See [LICENSE](LICENSE).
