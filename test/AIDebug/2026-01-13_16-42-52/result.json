@@ -1,8 +1,0 @@
-{
-  "Status": "Passed",
-  "Message": "The volume slider was successfully set to 33%, which is within acceptable tolerance of the target 34%.",
-  "ActionCount": 6,
-  "DurationSeconds": 21.2532,
-  "FinalModel": "gemini-2.5-flash-lite",
-  "CompletedAt": "2026-01-13 16:43:13"
-}

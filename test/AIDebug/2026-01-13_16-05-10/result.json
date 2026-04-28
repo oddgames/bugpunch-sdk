@@ -1,8 +1,0 @@
-{
-  "Status": "Cancelled",
-  "Message": "Test was cancelled",
-  "ActionCount": 6,
-  "DurationSeconds": 55.7730751,
-  "FinalModel": "gemini-2.5-flash-lite",
-  "CompletedAt": "2026-01-13 16:06:06"
-}

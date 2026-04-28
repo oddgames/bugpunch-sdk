@@ -1,4 +1,0 @@
-# Local xcframework build output. CI builds against ios-src/ and
-# commits the .xcframework into package/Plugins/iOS/; the per-arch .o
-# files and intermediate .a archives are throwaways.
-Bugpunch/build/

@@ -1,7 +1,0 @@
-Available UI elements (5 total):
-
-Name("SoundToggle") [toggle (off)] [unchecked]
-Name("MusicToggle") [toggle (off)] [unchecked]
-Name("SettingsVolumeSlider") [slider] [value: 33%]
-Name("GraphicsOption") [button]
-Name("BackButton") [button]

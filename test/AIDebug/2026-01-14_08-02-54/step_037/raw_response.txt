@@ -1,7 +1,0 @@
-```json
-{
-  "reasoning": "I am back to the main menu. I have now tested all the buttons on the main menu: 'SettingsButton', 'ButtonsButton', 'FormsButton', 'DragButton', 'KeyboardButton', and 'AdvancedButton'. Since the test goal is to test the entire menu and all sub-menus, buttons, sliders, toggles, dragging, and whatever else the screen implies, and I have interacted with all the main menu options, I can consider the test complete.",
-  "action": "pass",
-  "reason": "All buttons on the main menu and their respective sub-menus/elements have been interacted with and tested."
-}
-```

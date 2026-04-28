@@ -1,9 +1,0 @@
-[
-  {
-    "Id": "a55ec931-6e8b-4f38-aa0b-9e71a75c01cb",
-    "Name": "fail",
-    "Arguments": {
-      "reason": "Unable to find or interact with volume control elements. The element list does not reflect the UI shown in the screenshot, and previous navigation attempts were unsuccessful."
-    }
-  }
-]

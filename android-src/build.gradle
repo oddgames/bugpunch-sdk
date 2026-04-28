@@ -1,2 +1,0 @@
-// Root-level build.gradle — empty by design. All config lives in the
-// bugpunch subproject. Kept for Gradle to resolve the project tree.

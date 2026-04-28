@@ -1,8 +1,0 @@
-Available UI elements (6 total):
-
-Text("Settings") [button]
-Text("Buttons") [button]
-Text("Forms") [button]
-Text("Drag & Drop") [button]
-Text("Keyboard") [button]
-Text("Advanced Input") [button]
