@@ -1,0 +1,5 @@
+# Local build output. CI builds the DLL on /deploy-sdk and commits the
+# result into package/Plugins/; intermediates are throwaways.
+Bugpunch/build/
+Bugpunch/obj/
+*.binlog

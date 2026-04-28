@@ -12,8 +12,10 @@ const sdkRoot = path.resolve(__dirname, "..");                 // sdk/
 const pkgRoot = path.join(sdkRoot, "package");                 // sdk/package
 const androidSrc = path.join(sdkRoot, "android-src");          // sdk/android-src
 const iosSrc = path.join(sdkRoot, "ios-src");                  // sdk/ios-src
+const csharpSrc = path.join(sdkRoot, "csharp-src");            // sdk/csharp-src
 const aarPath = path.join(pkgRoot, "Plugins/Android/BugpunchPlugin.aar");
 const xcframeworkPath = path.join(pkgRoot, "Plugins/iOS/Bugpunch.xcframework");
+const dllPath = path.join(pkgRoot, "Plugins/ODDGames.Bugpunch.dll");
 
 const failures = [];
 const fail = (check, msg) => failures.push({ check, msg });
@@ -197,6 +199,36 @@ function checkXcframeworkFreshness() {
 }
 
 // ---------------------------------------------------------------------------
+// C# DLL freshness — if anything under csharp-src/ is newer than the
+// shipped DLL, the local `dotnet build` wasn't run. Mirrors the AAR check.
+// ---------------------------------------------------------------------------
+function checkCsharpDllFreshness() {
+  if (!fs.existsSync(dllPath)) {
+    fail("dll",
+      `${path.relative(sdkRoot, dllPath)} is missing — run \`cd csharp-src/Bugpunch && dotnet build -c Release && cp build/ODDGames.Bugpunch.dll ../../package/Plugins/\``);
+    return;
+  }
+  if (!fs.existsSync(csharpSrc)) return;
+  const dllMtime = fs.statSync(dllPath).mtimeMs;
+
+  let newest = 0, newestFile = "";
+  walkFiles(csharpSrc, file => {
+    const rel = path.relative(csharpSrc, file).replace(/\\/g, "/");
+    // Ignore build intermediates + the refs cache (those mtimes are noise).
+    if (rel.includes("/build/") || rel.startsWith("Bugpunch/build/")) return;
+    if (rel.includes("/obj/") || rel.startsWith("Bugpunch/obj/")) return;
+    if (rel.startsWith("Bugpunch/refs/")) return;
+    const m = fs.statSync(file).mtimeMs;
+    if (m > newest) { newest = m; newestFile = file; }
+  });
+
+  if (newest > dllMtime + 1000) {
+    fail("dll",
+      `DLL is older than ${path.relative(sdkRoot, newestFile)} — run \`cd csharp-src/Bugpunch && dotnet build -c Release && cp build/ODDGames.Bugpunch.dll ../../package/Plugins/\``);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CHANGELOG ↔ package.json version match. The topmost numbered heading
 // (skipping [Unreleased]) must equal package.json version.
 // ---------------------------------------------------------------------------
@@ -252,7 +284,7 @@ const THREE_LANE_MIRRORS = [
 const javaLaneRoot = path.join(androidSrc,
   "bugpunch/src/main/java/au/com/oddgames/bugpunch");
 const iosLaneRoot  = path.join(iosSrc, "Bugpunch/Sources");
-const csLaneRoot   = pkgRoot;
+const csLaneRoot   = path.join(csharpSrc, "Bugpunch/Sources");
 
 function checkThreeLaneMirror() {
   for (const m of THREE_LANE_MIRRORS) {
@@ -361,6 +393,7 @@ checkUnityEditorLeak();
 checkSdkAuthHeader();
 checkAarFreshness();
 checkXcframeworkFreshness();
+checkCsharpDllFreshness();
 checkChangelogVersionMatch();
 checkMetaCompanions();
 checkThreeLaneMirror();

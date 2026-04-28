@@ -6,15 +6,11 @@ name: Build Android AAR
 # NDK locally; CI keeps the committed AAR in sync with android-src/.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'android-src/**'
-      - '.github/workflows/android-aar.yml'
-  pull_request:
-    paths:
-      - 'android-src/**'
-      - '.github/workflows/android-aar.yml'
+  # Manual-trigger only. The AAR is built locally as part of `/deploy-sdk`
+  # (David runs the VS Code "Build Android AAR" task during normal dev),
+  # so the auto-rebuild here was duplicating work and burning Actions
+  # minutes for no benefit. Kept available via workflow_dispatch as a
+  # fallback for clean-machine rebuilds and as a sanity check.
   workflow_dispatch: {}
 
 concurrency:
