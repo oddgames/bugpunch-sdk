@@ -17,7 +17,8 @@
 //         measure FPS itself but it can't see SceneManager.
 //       · capture downscaled UI press frames into the input ring
 //         (BugpunchInputCapture) — rescue path for screenshot_at_crash.
-//       · install the managed exception forwarder — only Mono/IL2CPP can
+//       · install BugpunchCrashHandler (C# managed-exception flavor; mirrors
+//         BugpunchCrashHandler.java/.mm by name) — only Mono/IL2CPP can
 //         hook AppDomain.UnhandledException + TaskScheduler.UnobservedTask
 //         Exception, so this stays C# regardless of lane.
 //       · mount CrashDirectiveHandler so "Request More Info" UnitySendMessage
@@ -99,7 +100,7 @@ namespace ODDGames.Bugpunch
                 // game has explicitly set Full.
                 if (Application.GetStackTraceLogType(LogType.Exception) == StackTraceLogType.None)
                     Application.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
-                UnityExceptionForwarder.Install();
+                BugpunchCrashHandler.Install();
             }
         }
     }

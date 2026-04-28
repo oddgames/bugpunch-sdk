@@ -9,9 +9,16 @@ using UnityEngine;
 namespace ODDGames.Bugpunch
 {
     /// <summary>
-    /// Forwards uncaught C# managed exceptions to the native coordinator via
-    /// <see cref="BugpunchNative.ReportBug"/>. Subscribes to three Unity / .NET
-    /// events because no single hook covers every path:
+    /// C# lane's crash handler — catches uncaught managed exceptions and
+    /// routes them through <see cref="BugpunchNative.ReportBug"/>. Mirrors
+    /// <c>BugpunchCrashHandler.java</c> and <c>BugpunchCrashHandler.mm</c>
+    /// by name; the native siblings handle native signals (SIGSEGV / SIGABRT /
+    /// Mach exceptions / ANR), this one handles the managed-exception flavor.
+    /// On native lanes the two run side by side; on Editor + Standalone this
+    /// is the only crash path.
+    ///
+    /// Subscribes to three Unity / .NET events because no single hook covers
+    /// every path:
     /// <list type="bullet">
     ///   <item><c>Application.logMessageReceivedThreaded</c> with
     ///     <c>LogType.Exception</c> — covers the common case of exceptions
@@ -31,11 +38,8 @@ namespace ODDGames.Bugpunch
     /// Because Unity's <c>logMessageReceivedThreaded</c> callback only provides
     /// strings (no Exception object), we use <c>FirstChanceException</c> to
     /// cache the last exception's Data per thread.</para>
-    ///
-    /// Native signal/Mach/ANR crashes are handled entirely in native code — no
-    /// C# involvement.
     /// </summary>
-    public static class UnityExceptionForwarder
+    public static class BugpunchCrashHandler
     {
         static bool s_installed;
         // Re-entrancy guard: forwarding to native triggers JNI/P-Invoke that
@@ -102,7 +106,7 @@ namespace ODDGames.Bugpunch
                 // the SDK itself throws (vs. game code throwing through the SDK).
                 if (IsSdkOrigin(stackTrace))
                 {
-                    BugpunchNative.ReportSdkError("UnityExceptionForwarder", title, stackTrace);
+                    BugpunchNative.ReportSdkError("BugpunchCrashHandler", title, stackTrace);
                 }
             }
             catch { }
@@ -145,7 +149,7 @@ namespace ODDGames.Bugpunch
                 BugpunchNative.ReportBug("exception", title, stack, extraJson);
                 if (IsSdkOrigin(stack))
                 {
-                    BugpunchNative.ReportSdkError("UnityExceptionForwarder", title, stack);
+                    BugpunchNative.ReportSdkError("BugpunchCrashHandler", title, stack);
                 }
             }
             catch { }

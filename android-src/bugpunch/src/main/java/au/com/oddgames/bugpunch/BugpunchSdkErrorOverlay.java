@@ -525,7 +525,7 @@ public class BugpunchSdkErrorOverlay {
             }
         }
 
-        // Flat customData — mirrors UnityExceptionForwarder's serialization
+        // Flat customData — mirrors BugpunchCrashHandler.cs's serialization
         // style so the dashboard's Custom Data tab renders entries cleanly.
         org.json.JSONObject extra = new org.json.JSONObject();
         try {

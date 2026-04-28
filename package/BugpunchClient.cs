@@ -328,58 +328,16 @@ namespace ODDGames.Bugpunch
 
         // ── Phase 2 — lazy services ────────────────────────────────────────
         //
-        // Construction is cheap: no field beyond defaults, no scene scans, no
-        // event subscriptions. The first request the router routes to a
-        // service triggers any heavy init that service needs (see e.g.
-        // DatabasePluginRegistry.ScanIfNeeded, WatchService._declaredDirty).
-        // ConsoleService is the one exception — it eagerly hooks
-        // logMessageReceivedThreaded in its ctor because logs emitted before
-        // the IDE connects would otherwise be lost.
+        // Delegates to BugpunchUnity.BuildServices — the single public
+        // entry point of the RemoteIDE module. The actual construction
+        // (managed services + AddComponent for MonoBehaviour services +
+        // RequestRouter wiring) lives there so BugpunchClient doesn't
+        // reach into individual service types.
         void BuildLazyServices()
         {
-            var hierarchy        = new HierarchyService();
-            var console          = new ConsoleService();
-            var inspector        = new InspectorService();
-            var perf             = new PerformanceService();
-            var dbPlugins        = new DatabasePluginRegistry();
-            var files            = new FileService { DatabasePlugins = dbPlugins };
-            var deviceInfo       = new DeviceInfoService();
-            IScriptRunner runner = new ScriptRunner();
-            var textures         = new TextureService();
-            var memorySnapshots  = new MemorySnapshotService();
-            var playerPrefs      = new PlayerPrefsService();
-            var settings         = new SettingsService();
-
-            var screenCapture    = gameObject.AddComponent<ScreenCaptureService>();
-            var materials        = gameObject.AddComponent<MaterialService>();
-            var shaderProfiler   = gameObject.AddComponent<ShaderProfilerService>();
-            var watch            = gameObject.AddComponent<WatchService>();
-            SceneCamera          = gameObject.AddComponent<SceneCameraService>();
-
-            // Streamer is null until a debug session is requested — the
-            // Unity.WebRTC assembly + libwebrtc.so are heavy to load and most
-            // sessions never need them.
-            Router = new RequestRouter
-            {
-                Hierarchy        = hierarchy,
-                Console          = console,
-                ScreenCapture    = screenCapture,
-                Inspector        = inspector,
-                Performance      = perf,
-                ScriptRunner     = runner,
-                SceneCamera      = SceneCamera,
-                Files            = files,
-                DeviceInfo       = deviceInfo,
-                DatabasePlugins  = dbPlugins,
-                Textures         = textures,
-                Materials        = materials,
-                Watch            = watch,
-                MemorySnapshots  = memorySnapshots,
-                PlayerPrefs      = playerPrefs,
-                ShaderProfiler   = shaderProfiler,
-                Settings         = settings,
-                Streamer         = null,
-            };
+            var ide = BugpunchUnity.BuildServices(this);
+            Router = ide.Router;
+            SceneCamera = ide.SceneCamera;
         }
 
         // ── Phase 3 — connection mode ──────────────────────────────────────
