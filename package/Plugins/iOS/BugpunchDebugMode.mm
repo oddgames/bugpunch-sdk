@@ -66,6 +66,12 @@ extern "C" {
     void Bugpunch_DrainUploadQueue(void);
     void Bugpunch_PresentReportForm(const char* screenshotPath,
         const char* title, const char* description);
+    void Bugpunch_EnqueuePreflight(const char* preflightUrl, const char* enrichTemplate,
+        const char* apiKey, const char* metadataJson, const char* attachmentsJson);
+    const char* Bugpunch_GetPendingCrashFiles(void);
+    const char* Bugpunch_ReadCrashFile(const char* path);
+    bool Bugpunch_DeleteCrashFile(const char* path);
+    void Bugpunch_SetStoryboardPathBase(const char* base);
     // Ring recorder (iOS):
     bool BugpunchRing_HasFootage(void);
     bool BugpunchRing_Dump(const char* outputPath);
@@ -627,7 +633,6 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
         NSString* attachJson = attachJsonData
             ? [[NSString alloc] initWithData:attachJsonData encoding:NSUTF8StringEncoding]
             : @"[]";
-        extern "C" void Bugpunch_EnqueuePreflight(const char*, const char*, const char*, const char*, const char*);
         Bugpunch_EnqueuePreflight([preflightUrl UTF8String], [enrichTemplate UTF8String],
             [apiKey UTF8String], [metadataJson UTF8String], [attachJson UTF8String]);
         return;
@@ -729,7 +734,6 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
     // Storyboard ring base path — signal/Mach handlers dump the ring's per-slot
     // RGBA + packed-header files at this path on crash; the next-launch drain
     // encodes JPEGs and ships them with the manifest. Mirrors Android.
-    extern void Bugpunch_SetStoryboardPathBase(const char*);
     NSString* sbBase = [crashDir stringByAppendingPathComponent:@"storyboard"];
     Bugpunch_SetStoryboardPathBase([sbBase UTF8String]);
 
@@ -783,10 +787,6 @@ bool Bugpunch_StartDebugMode(const char* configJson) {
             NSString* preflightUrl = [base stringByAppendingString:@"/api/issues/ingest"];
             NSString* enrichTemplate = [base
                 stringByAppendingString:@"/api/issues/events/{id}/enrich"];
-            extern const char* Bugpunch_GetPendingCrashFiles(void);
-            extern const char* Bugpunch_ReadCrashFile(const char*);
-            extern bool Bugpunch_DeleteCrashFile(const char*);
-            extern void Bugpunch_EnqueuePreflight(const char*, const char*, const char*, const char*, const char*);
 
             const char* listC = Bugpunch_GetPendingCrashFiles();
             if (listC && *listC) {

@@ -9,6 +9,10 @@
 
 #import <Foundation/Foundation.h>
 
+// Forward declaration for the static drain helper defined later in the file —
+// called from earlier sites so the declaration must precede them.
+static void BPDrainQueueSync(void);
+
 // Defined in BugpunchDirectives.mm. Forward-declared at file scope because
 // `extern "C"` is only valid at namespace/file scope in Obj-C++ — putting
 // it inside a method body fails to compile (clang: "expected unqualified-id").

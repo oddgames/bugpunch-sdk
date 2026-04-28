@@ -13,7 +13,14 @@
 // baseline. No third-party dependency.
 
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <sys/sysctl.h>
+
+// Forward declarations for static helpers defined later in the file —
+// they're called from earlier sites and C++ requires the declaration to
+// be visible at the call.
+static void BPCompileRedactionRules(NSDictionary* config);
+static void BPHookSessionLifecycle(void);
 
 // Returns the iOS model identifier (e.g. "iPhone15,2"). Falls back to the
 // generic UIDevice.model string if sysctl is unavailable.

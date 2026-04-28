@@ -505,7 +505,7 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
         [frame.heightAnchor constraintEqualToConstant:64].active = YES;
 
         UIImageView* img = [UIImageView new];
-        img.contentMode = UIViewContentModeScaleAspectCover;
+        img.contentMode = UIViewContentModeScaleAspectFill;
         img.clipsToBounds = YES;
         img.layer.cornerRadius = 6;
         img.image = [UIImage imageWithContentsOfFile:path];
@@ -763,6 +763,11 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
 @end
 
 // ── Presenter API (called from BugpunchDebugMode.mm) ──
+
+extern "C" void Bugpunch_PresentReportFormWithExtras(const char* screenshotPath,
+                                                      const char* title,
+                                                      const char* description,
+                                                      const char* extraPathsCsv);
 
 extern "C" void Bugpunch_PresentReportForm(const char* screenshotPath,
                                            const char* title,
