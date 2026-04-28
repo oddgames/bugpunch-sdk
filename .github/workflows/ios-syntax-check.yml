@@ -1,0 +1,85 @@
+name: iOS Plugin Syntax Check
+
+# Edit-time compile coverage for the iOS plugin sources. iOS code only ever
+# compiles when a consumer builds an iOS player from Unity, so structural
+# typos in `.mm` files (the kind that come from cross-file refactors —
+# renaming a class, moving a property, mistyping a category) hide for days
+# until somebody actually runs an Xcode build. This workflow runs
+# `clang -fsyntax-only` against every `.mm` in `package/Plugins/iOS/` on
+# every PR + push that touches that tree, using the real iOS SDK on a
+# GitHub-hosted macOS runner.
+#
+# Cost: macOS runners are 10x against private-repo minutes, but this is
+# ~30s per run — well under the noise floor of normal SDK CI.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package/Plugins/iOS/**'
+      - '.github/workflows/ios-syntax-check.yml'
+  pull_request:
+    paths:
+      - 'package/Plugins/iOS/**'
+      - '.github/workflows/ios-syntax-check.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ios-syntax-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  syntax-check:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcrun --show-sdk-path --sdk iphoneos
+          xcrun clang --version
+
+      - name: Syntax-check every .mm
+        working-directory: package/Plugins/iOS
+        # `-fsyntax-only` parses + type-checks but emits no object file.
+        # `-arch arm64` matches the on-device architecture; the simulator
+        # SDK would also parse but iOS-arm64 is what ships, so check that.
+        # `-fobjc-arc` mirrors Unity's iOS player setting (ARC enabled).
+        # `-fmodules` lets `@import Foo` work; we mostly use `#import`.
+        # `-w` silences all warnings — we only want hard errors here, the
+        # game's actual Xcode build is where warnings get triaged.
+        # `-x objective-c++` forces Obj-C++ mode (the .mm extension does
+        # this automatically, but being explicit keeps the invocation
+        # equivalent if we ever lint .m files too).
+        run: |
+          set -u
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          FAILED=0
+          FAILED_FILES=""
+          shopt -s nullglob
+          for f in *.mm; do
+            echo "::group::$f"
+            if ! xcrun clang \
+                -fsyntax-only \
+                -arch arm64 \
+                -isysroot "$SDK" \
+                -fobjc-arc \
+                -fmodules \
+                -std=gnu++17 \
+                -x objective-c++ \
+                -w \
+                -I . \
+                "$f"; then
+              FAILED=$((FAILED + 1))
+              FAILED_FILES="$FAILED_FILES $f"
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$FAILED" -gt 0 ]; then
+            echo ""
+            echo "::error::iOS syntax check failed for $FAILED file(s):$FAILED_FILES"
+            exit 1
+          fi
+          echo "iOS syntax check: all .mm files clean."
