@@ -29,13 +29,13 @@ namespace ODDGames.Bugpunch.Editor
             {
                 if (IsEnabled)
                 {
-                    var config = DeviceConnect.BugpunchConfig.Load();
-                    if (config != null && DeviceConnect.BugpunchClient.Instance == null)
-                        DeviceConnect.BugpunchClient.Initialize(config);
+                    var config = BugpunchConfig.Load();
+                    if (config != null && BugpunchClient.Instance == null)
+                        BugpunchClient.Initialize(config);
                 }
-                else if (DeviceConnect.BugpunchClient.Instance != null)
+                else if (BugpunchClient.Instance != null)
                 {
-                    Object.Destroy(DeviceConnect.BugpunchClient.Instance.gameObject);
+                    Object.Destroy(BugpunchClient.Instance.gameObject);
                 }
             }
         }

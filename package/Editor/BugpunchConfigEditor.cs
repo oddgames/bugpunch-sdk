@@ -1,4 +1,4 @@
-using ODDGames.Bugpunch.DeviceConnect;
+using ODDGames.Bugpunch.RemoteIDE;
 using UnityEditor;
 using UnityEngine;
 

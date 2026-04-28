@@ -28,7 +28,7 @@ namespace ODDGames.Bugpunch.Editor
 
         static bool ExportAndUpload(bool force, bool showProgress)
         {
-            var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
+            var config = ODDGames.Bugpunch.BugpunchConfig.Load();
             if (config == null || string.IsNullOrEmpty(config.apiKey))
             {
                 if (force)
@@ -346,7 +346,7 @@ namespace ODDGames.Bugpunch.Editor
             sb.Append("}");
         }
 
-        static bool UploadToServer(ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config, byte[] gzBytes, TypeDatabase db)
+        static bool UploadToServer(ODDGames.Bugpunch.BugpunchConfig config, byte[] gzBytes, TypeDatabase db)
         {
             var url = config.serverUrl.TrimEnd('/');
             if (url.StartsWith("ws://")) url = "http://" + url.Substring(5);

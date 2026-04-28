@@ -267,7 +267,7 @@ namespace ODDGames.Bugpunch.Editor
 
         void RegisterBuild()
         {
-            var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
+            var config = ODDGames.Bugpunch.BugpunchConfig.Load();
             if (config == null || string.IsNullOrEmpty(config.apiKey))
             {
                 statusMessage = "Error: BugpunchConfig not configured. Set server URL and API key.";

@@ -1,5 +1,5 @@
-using ODDGames.Bugpunch.DeviceConnect;
-using ODDGames.Bugpunch.DeviceConnect.UI;
+using ODDGames.Bugpunch.RemoteIDE;
+using ODDGames.Bugpunch.UI;
 using UnityEngine;
 
 namespace ODDGames.Bugpunch

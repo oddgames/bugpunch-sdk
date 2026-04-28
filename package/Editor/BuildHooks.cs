@@ -42,7 +42,7 @@ namespace ODDGames.Bugpunch.Editor
             // intentionally do NOT fire on every Play: the connect event fires
             // on every Play in the Editor regardless of whether a Remote IDE is
             // actually attached, so blasting the upload each time is wasteful.
-            ODDGames.Bugpunch.DeviceConnect.BugpunchClient.OnAnyConnected += OnClientConnected;
+            ODDGames.Bugpunch.BugpunchClient.OnAnyConnected += OnClientConnected;
         }
 
         static void OnClientConnected()
@@ -182,7 +182,7 @@ namespace ODDGames.Bugpunch.Editor
                 $"totalErrors={s.totalErrors} totalWarnings={s.totalWarnings} " +
                 $"totalTimeMs={(long)s.totalTime.TotalMilliseconds}");
 
-            var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
+            var config = ODDGames.Bugpunch.BugpunchConfig.Load();
             if (config == null || string.IsNullOrEmpty(config.apiKey)) return;
 
             // Unity's BuildAndRun path leaves report.summary.result == Unknown at this
@@ -272,7 +272,7 @@ namespace ODDGames.Bugpunch.Editor
         // detection aborts the request if throughput drops to zero for
         // StallTimeoutSeconds so CI jobs can't hang forever.
         static void UploadArtifactSync(
-            ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config,
+            ODDGames.Bugpunch.BugpunchConfig config,
             string filePath, string fileName, string platform, string changeset, string branch,
             string buildFingerprint)
         {
@@ -342,7 +342,7 @@ namespace ODDGames.Bugpunch.Editor
             }
         }
 
-        static string ResolveUploadUrl(ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config)
+        static string ResolveUploadUrl(ODDGames.Bugpunch.BugpunchConfig config)
         {
             var url = config.serverUrl.TrimEnd('/');
             if (url.StartsWith("ws://")) url = "http://" + url.Substring(5);
@@ -406,7 +406,7 @@ namespace ODDGames.Bugpunch.Editor
         static double s_lastProgressTime;
 
         static void StartArtifactUpload(
-            ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config,
+            ODDGames.Bugpunch.BugpunchConfig config,
             string filePath, string fileName, string platform, string changeset, string branch,
             string buildFingerprint)
         {

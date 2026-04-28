@@ -2,8 +2,8 @@ using System.Collections;
 using System.IO;
 using System.IO.Compression;
 using NUnit.Framework;
-using ODDGames.Bugpunch.DeviceConnect;
-using ODDGames.Bugpunch.DeviceConnect.Database;
+using ODDGames.Bugpunch.RemoteIDE;
+using ODDGames.Bugpunch.RemoteIDE.Database;
 using UnityEngine;
 using UnityEngine.TestTools;
 

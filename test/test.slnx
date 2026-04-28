@@ -17,9 +17,9 @@
   <Project Path="Unity.VisualScripting.State.Editor.csproj" />
   <Project Path="Unity.Burst.CodeGen.csproj" />
   <Project Path="Unity.VisualScripting.Flow.csproj" />
-  <Project Path="ODDGames.Bugpunch.csproj" />
   <Project Path="Unity.WebRTC.csproj" />
   <Project Path="Unity.PerformanceTesting.csproj" />
+  <Project Path="ODDGames.Bugpunch.csproj" />
   <Project Path="Unity.Burst.Editor.csproj" />
   <Project Path="Unity.VisualScripting.State.csproj" />
   <Project Path="ODDGames.Bugpunch.Editor.csproj" />

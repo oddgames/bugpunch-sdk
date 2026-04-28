@@ -39,7 +39,7 @@ namespace ODDGames.Bugpunch.Editor
         internal const int SymStagingBuffer = 4 * 1024 * 1024;
 
         public static void UploadSymbols(
-            ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config,
+            ODDGames.Bugpunch.BugpunchConfig config,
             List<SymbolFile> files,
             string projectRoot,
             bool interactive,

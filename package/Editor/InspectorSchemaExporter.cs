@@ -16,7 +16,7 @@ namespace ODDGames.Bugpunch.Editor
     /// <summary>
     /// Emits a per-type whitelist of inspector-visible member names to
     /// Assets/BugpunchResources/Resources/BugpunchInspectorSchema.json.
-    /// Runtime side: <see cref="ODDGames.Bugpunch.DeviceConnect.InspectorSchema"/>
+    /// Runtime side: <see cref="ODDGames.Bugpunch.RemoteIDE.InspectorSchema"/>
     /// loads this TextAsset and merges it on top of the hardcoded built-in map.
     ///
     /// Three entry points, one export body:

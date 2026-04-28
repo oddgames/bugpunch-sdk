@@ -1,6 +1,6 @@
 using System.IO;
 using System.Text;
-using ODDGames.Bugpunch.DeviceConnect;
+using ODDGames.Bugpunch.RemoteIDE;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;

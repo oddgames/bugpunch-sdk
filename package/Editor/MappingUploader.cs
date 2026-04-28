@@ -44,7 +44,7 @@ namespace ODDGames.Bugpunch.Editor
                 report.summary.result == BuildResult.Cancelled) return;
             if (report.summary.platform != BuildTarget.Android) return;
 
-            var config = ODDGames.Bugpunch.DeviceConnect.BugpunchConfig.Load();
+            var config = ODDGames.Bugpunch.BugpunchConfig.Load();
             if (config == null || string.IsNullOrEmpty(config.apiKey)) return;
             if (!config.symbolUploadEnabled) return; // same gate as symbol upload
             if (string.IsNullOrWhiteSpace(config.serverUrl)) return;
@@ -76,7 +76,7 @@ namespace ODDGames.Bugpunch.Editor
         }
 
         static void FindAndUpload(
-            ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config,
+            ODDGames.Bugpunch.BugpunchConfig config,
             string outputPath, string projectRoot,
             string bundleId, string version, string buildCode, string gitSha,
             bool interactive)
@@ -194,7 +194,7 @@ namespace ODDGames.Bugpunch.Editor
         }
 
         static void UploadOne(
-            ODDGames.Bugpunch.DeviceConnect.BugpunchConfig config,
+            ODDGames.Bugpunch.BugpunchConfig config,
             string mappingPath, string bundleId, string version, string buildCode, string gitSha)
         {
             var baseUrl = NormalizeBaseUrl(
