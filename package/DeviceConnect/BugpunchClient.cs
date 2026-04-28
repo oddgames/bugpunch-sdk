@@ -294,7 +294,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             BugpunchLog.Info("BugpunchClient", $"Initializing — server: {Config.serverUrl}");
 
-            InitAlwaysOn();
+            // Phase 1 — always-on coordinator. Mirrors BugpunchDebugMode on
+            // Java + iOS. See BugpunchDebugMode.cs for what this lane owns.
+            BugpunchDebugMode.Start(this);
+
+            // Game config (perf thresholds, variables, overrides). Game code
+            // can call Bugpunch.GetVariable at any time, so the fetch has to
+            // start at boot rather than wait for an IDE session. Non-blocking
+            // — game runs normally if the fetch fails. Coroutine lives on the
+            // BugpunchClient host; the work is Unity-bound (UnityWebRequest +
+            // managed config-state population).
+            StartCoroutine(FetchGameConfig());
+
             BuildLazyServices();
             StartConnectionMode();
 
@@ -304,64 +315,6 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // The banner trigger inside the poller is gated to the managed
             // lane; native pollers own the banner on Android / iOS.
             BugpunchPoller.Start(this, AutoFulfillRequestAsync);
-        }
-
-        // ── Phase 1 — always-on init ───────────────────────────────────────
-        //
-        // Everything here MUST be eager. Either it hooks an event source the
-        // SDK can't replay (logs, exceptions, scene changes) or it owns
-        // process-wide state native depends on (config, custom data, FPS).
-        // If you find yourself adding to this method, double-check the work
-        // can't move into Phase 2's lazy services.
-        void InitAlwaysOn()
-        {
-            // Native runtime — owns crash handlers, log capture, shake
-            // detection, screenshot ring, video ring buffer, upload queue.
-            // C# just pushes scene/fps and forwards managed exceptions.
-            BugpunchNative.Start(Config);
-
-            // Scene name push + scene_change analytics events. Native can
-            // measure FPS itself but it can't see SceneManager.
-            gameObject.AddComponent<BugpunchSceneTick>();
-
-            // Storyboard input capture — captures a downscaled frame + press metadata
-            // into the native ring on every UI press. Replaces the older 1 Hz rolling
-            // buffer; the newest ring slot is the rescue path for screenshot_at_crash.
-            // Has to be eager because input that happens before any IDE / report request
-            // still needs to be captured into the ring for crashes that follow it.
-            gameObject.AddComponent<BugpunchInputCapture>();
-
-#if UNITY_ANDROID && !UNITY_EDITOR
-            // Fallback video source for when MediaProjection consent is denied —
-            // the native recorder switches to buffer mode and this component
-            // feeds it NV12 frames from a mirror RenderTexture. Always mounted;
-            // it polls native state and stays idle until buffer mode activates.
-            gameObject.AddComponent<BugpunchSurfaceRecorder>();
-#endif
-
-            // UnitySendMessage receiver for native "Request More Info" directives.
-            // The component itself is the target — no Init() needed; Awake binds
-            // the singleton.
-            gameObject.AddComponent<CrashDirectiveHandler>();
-
-            // Managed exception forwarder — must hook AppDomain events at boot
-            // to catch exceptions thrown before any IDE session opens.
-            if (Config.enableNativeCrashHandler)
-            {
-                // Ensure exception logs include stack traces. Default in
-                // release builds can be None, which would leave us with just
-                // the message and no frames at all. Don't downgrade if the
-                // game has explicitly set Full.
-                if (Application.GetStackTraceLogType(LogType.Exception) == StackTraceLogType.None)
-                    Application.SetStackTraceLogType(LogType.Exception, StackTraceLogType.ScriptOnly);
-                UnityExceptionForwarder.Install();
-            }
-
-            // Game config (perf thresholds, variables, overrides). Game code
-            // can call Bugpunch.GetVariable at any time, so the fetch has to
-            // start at boot rather than wait for an IDE session. Non-blocking
-            // — game runs normally if the fetch fails.
-            StartCoroutine(FetchGameConfig());
         }
 
         // ── Phase 2 — lazy services ────────────────────────────────────────
