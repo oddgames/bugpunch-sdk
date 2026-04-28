@@ -185,6 +185,96 @@ function checkChangelogVersionMatch() {
 }
 
 // ---------------------------------------------------------------------------
+// Three-lane mirror. The SDK ships across three platform lanes (Java + NDK,
+// Obj-C++, C# Editor + Standalone — see sdk/package/BugpunchPlatform.cs).
+// Every cross-lane class is supposed to exist with the same name on each
+// lane it ships on, so a feature owner can grep one identifier across all
+// three. The manifest below pins the expected files; missing/renamed mirrors
+// are the failure mode that hid `BugpunchRuntime.mm` for months.
+//
+// Each entry: { name, java?, ios?, cs? } — set the platform key to the
+// expected file (relative to its lane root), or `null` if the lane doesn't
+// host this feature (e.g. `BugpunchClient` is C# only by design).
+// ---------------------------------------------------------------------------
+const THREE_LANE_MIRRORS = [
+  // Always-on coordinators + shared state. Must exist on every lane.
+  { name: "BugpunchRuntime",      java: "BugpunchRuntime.java",      ios: "BugpunchRuntime.mm",      cs: "BugpunchRuntime.cs" },
+  { name: "BugpunchDebugMode",    java: "BugpunchDebugMode.java",    ios: "BugpunchDebugMode.mm",    cs: "BugpunchDebugMode.cs" },
+  { name: "BugpunchPoller",       java: "BugpunchPoller.java",       ios: "BugpunchPoller.mm",       cs: "BugpunchPoller.cs" },
+  { name: "BugpunchCrashHandler", java: "BugpunchCrashHandler.java", ios: "BugpunchCrashHandler.mm", cs: "BugpunchCrashHandler.cs" },
+
+  // Native-only mirrors (no Editor / Standalone implementation — the
+  // feature is meaningless off-device or the C# lane delegates entirely
+  // to BugpunchNative).
+  { name: "BugpunchUploader",     java: "BugpunchUploader.java",     ios: "BugpunchUploader.mm",     cs: null },
+  { name: "BugpunchTunnel",       java: "BugpunchTunnel.java",       ios: "BugpunchTunnel.mm",       cs: null },
+  { name: "BugpunchScreenshot",   java: "BugpunchScreenshot.java",   ios: "BugpunchScreenshot.mm",   cs: null },
+];
+
+const javaLaneRoot = path.join(androidSrc,
+  "bugpunch/src/main/java/au/com/oddgames/bugpunch");
+const iosLaneRoot  = path.join(pkgRoot, "Plugins/iOS");
+const csLaneRoot   = pkgRoot;
+
+function checkThreeLaneMirror() {
+  for (const m of THREE_LANE_MIRRORS) {
+    const checks = [
+      { lane: "java", root: javaLaneRoot, name: m.java },
+      { lane: "ios",  root: iosLaneRoot,  name: m.ios },
+      { lane: "cs",   root: csLaneRoot,   name: m.cs },
+    ];
+    for (const c of checks) {
+      if (c.name === null) continue;
+      if (!c.name) {
+        fail("three-lane",
+          `${m.name}: manifest entry missing \`${c.lane}\` field — set to a filename or null`);
+        continue;
+      }
+      const full = path.join(c.root, c.name);
+      if (!fs.existsSync(full)) {
+        fail("three-lane",
+          `${m.name}: ${c.lane} mirror \`${c.name}\` missing at ${path.relative(sdkRoot, full)}`);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-lane C# classes (those with a Java/iOS sibling per the manifest
+// above) must NOT depend on `BugpunchClient` — the cross-lane rule is that
+// shared state lives on `BugpunchRuntime`, which both BugpunchClient AND
+// the cross-lane class talk to. A C# `BugpunchClient.X` reference inside
+// a mirror file means we've broken that rule and the file no longer
+// parallels its Java/iOS sibling.
+//
+// Comments and `using` directives are ignored. The `BugpunchClient` class
+// itself is exempt (the rule is about *other* mirrors leaking into it).
+// ---------------------------------------------------------------------------
+function checkCrossLaneClientLeak() {
+  const csMirrors = THREE_LANE_MIRRORS
+    .filter(m => m.cs && m.name !== "BugpunchClient")
+    .map(m => path.join(csLaneRoot, m.cs));
+
+  for (const file of csMirrors) {
+    if (!fs.existsSync(file)) continue;
+    const text = fs.readFileSync(file, "utf8");
+    const stripped = text
+      .replace(/\/\/[^\n]*/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    const lines = stripped.split(/\r?\n/);
+    lines.forEach((line, i) => {
+      // Skip `using` directives — they're declarations, not references.
+      if (/^\s*using\b/.test(line)) return;
+      if (/\bBugpunchClient\b/.test(line)) {
+        fail("cross-lane-client",
+          `${path.relative(pkgRoot, file)}:${i + 1}: cross-lane mirror references BugpunchClient — ` +
+          `read state from BugpunchRuntime instead (Java/iOS siblings depend on BugpunchRuntime, not the client)`);
+      }
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Meta-file companion check. Every asset under sdk/package/ needs a sibling
 // `.meta` file or Unity will warn on every consumer import.
 // ---------------------------------------------------------------------------
@@ -221,6 +311,8 @@ checkSdkAuthHeader();
 checkAarFreshness();
 checkChangelogVersionMatch();
 checkMetaCompanions();
+checkThreeLaneMirror();
+checkCrossLaneClientLeak();
 
 if (failures.length) {
   console.error(`Preflight failed (${failures.length}):`);
