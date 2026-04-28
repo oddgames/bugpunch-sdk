@@ -57,14 +57,16 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// UIs, or any other gameplay sequence the user shouldn't be yanked
         /// out of — multiple systems can nest their suppression scopes safely.
         /// </summary>
-        public int SuppressInteractionsCount { get; private set; }
+        public int SuppressInteractionsCount => BugpunchRuntime.SuppressCount;
 
         /// <summary>
         /// True whenever something on this client is currently holding a
         /// suppression scope. Getter-only — use <see cref="PushSuppression"/>
-        /// to modify.
+        /// to modify. Backed by <see cref="BugpunchRuntime"/> so cross-lane
+        /// classes (e.g. <see cref="BugpunchPoller"/>) read the same state
+        /// without taking a reference to BugpunchClient.
         /// </summary>
-        public bool SuppressInteractions => SuppressInteractionsCount > 0;
+        public bool SuppressInteractions => BugpunchRuntime.SuppressActive;
 
         /// <summary>
         /// Push a new suppression scope. Each call increments
@@ -79,21 +81,17 @@ namespace ODDGames.Bugpunch.DeviceConnect
         /// }
         /// </code>
         /// </summary>
-        public IDisposable PushSuppression() => new SuppressionHandle(this);
+        public IDisposable PushSuppression() => new SuppressionHandle();
 
         sealed class SuppressionHandle : IDisposable
         {
-            BugpunchClient _owner;
-            public SuppressionHandle(BugpunchClient owner)
-            {
-                _owner = owner;
-                if (_owner != null) _owner.SuppressInteractionsCount++;
-            }
+            bool _disposed;
+            public SuppressionHandle() { BugpunchRuntime.IncrementSuppress(); }
             public void Dispose()
             {
-                if (_owner == null) return;
-                _owner.SuppressInteractionsCount = Math.Max(0, _owner.SuppressInteractionsCount - 1);
-                _owner = null;
+                if (_disposed) return;
+                _disposed = true;
+                BugpunchRuntime.DecrementSuppress();
             }
         }
 
@@ -294,9 +292,18 @@ namespace ODDGames.Bugpunch.DeviceConnect
         {
             BugpunchLog.Info("BugpunchClient", $"Initializing — server: {Config.serverUrl}");
 
+            // Populate the C#-lane runtime singleton FIRST. Cross-lane
+            // classes (BugpunchPoller, BugpunchDebugMode) read their config
+            // / host / suppress state from BugpunchRuntime — they don't
+            // import BugpunchClient. This mirrors how the Java + iOS
+            // siblings depend on `BugpunchRuntime`, not on any "client"
+            // class.
+            BugpunchRuntime.Init(Config, this);
+            BugpunchRuntime.RegisterAutoFulfill(AutoFulfillRequestAsync);
+
             // Phase 1 — always-on coordinator. Mirrors BugpunchDebugMode on
             // Java + iOS. See BugpunchDebugMode.cs for what this lane owns.
-            BugpunchDebugMode.Start(this);
+            BugpunchDebugMode.Start();
 
             // Game config (perf thresholds, variables, overrides). Game code
             // can call Bugpunch.GetVariable at any time, so the fetch has to
@@ -314,7 +321,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // / file / SystemInfo — Unity-bound) fires regardless of lane.
             // The banner trigger inside the poller is gated to the managed
             // lane; native pollers own the banner on Android / iOS.
-            BugpunchPoller.Start(this, AutoFulfillRequestAsync);
+            BugpunchPoller.Start();
         }
 
         // ── Phase 2 — lazy services ────────────────────────────────────────

@@ -37,21 +37,27 @@ using UnityEngine;
 namespace ODDGames.Bugpunch.DeviceConnect
 {
     /// <summary>
-    /// Always-on init for the managed lane. Called once from
-    /// <see cref="BugpunchClient.Setup"/> after the config has resolved.
+    /// Always-on init for the managed lane.
+    ///
+    /// Cross-lane rule: this class reads its inputs from
+    /// <see cref="BugpunchRuntime"/> only — no <see cref="BugpunchClient"/>
+    /// reference. Mirrors how <c>BugpunchDebugMode.java</c> reads from
+    /// <c>BugpunchRuntime</c> on Android.
     /// </summary>
     public static class BugpunchDebugMode
     {
         /// <summary>
-        /// Run the Phase 1 (always-on) init steps. Idempotent — re-calling
-        /// is harmless because the underlying components / native start
-        /// guard against double-init themselves.
+        /// Run the Phase 1 (always-on) init steps. Reads config + host
+        /// gameObject from <see cref="BugpunchRuntime"/>. Idempotent —
+        /// re-calling is harmless because the underlying components /
+        /// native start guard against double-init themselves.
         /// </summary>
-        public static void Start(BugpunchClient host)
+        public static void Start()
         {
-            if (host == null) { BugpunchLog.Warn("BugpunchDebugMode", "Start: null host"); return; }
-            var config = host.Config;
-            if (config == null) { BugpunchLog.Warn("BugpunchDebugMode", "Start: null config"); return; }
+            var config = BugpunchRuntime.Config;
+            var hostGo = BugpunchRuntime.HostGameObject;
+            if (config == null) { BugpunchLog.Warn("BugpunchDebugMode", "Start: BugpunchRuntime.Config not set — call BugpunchRuntime.Init first"); return; }
+            if (hostGo == null) { BugpunchLog.Warn("BugpunchDebugMode", "Start: BugpunchRuntime.HostGameObject not set — call BugpunchRuntime.Init first"); return; }
 
             // Native runtime — owns crash handlers, log capture, shake
             // detection, screenshot ring, video ring buffer, upload queue.
@@ -60,7 +66,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
             // Scene name push + scene_change analytics events. Native can
             // measure FPS itself but it can't see SceneManager.
-            host.gameObject.AddComponent<BugpunchSceneTick>();
+            hostGo.AddComponent<BugpunchSceneTick>();
 
             // Storyboard input capture — captures a downscaled frame + press
             // metadata into the native ring on every UI press. Replaces the
@@ -68,20 +74,20 @@ namespace ODDGames.Bugpunch.DeviceConnect
             // path for screenshot_at_crash. Has to be eager because input
             // that happens before any IDE / report request still needs to
             // be captured into the ring for crashes that follow it.
-            host.gameObject.AddComponent<BugpunchInputCapture>();
+            hostGo.AddComponent<BugpunchInputCapture>();
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             // Fallback video source for when MediaProjection consent is denied
             // — the native recorder switches to buffer mode and this component
             // feeds it NV12 frames from a mirror RenderTexture. Always mounted;
             // it polls native state and stays idle until buffer mode activates.
-            host.gameObject.AddComponent<BugpunchSurfaceRecorder>();
+            hostGo.AddComponent<BugpunchSurfaceRecorder>();
 #endif
 
             // UnitySendMessage receiver for native "Request More Info" directives.
             // The component itself is the target — no Init() needed; Awake binds
             // the singleton.
-            host.gameObject.AddComponent<CrashDirectiveHandler>();
+            hostGo.AddComponent<CrashDirectiveHandler>();
 
             // Managed exception forwarder — must hook AppDomain events at boot
             // to catch exceptions thrown before any IDE session opens.

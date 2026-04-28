@@ -22,25 +22,23 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 
 namespace ODDGames.Bugpunch.DeviceConnect
 {
     /// <summary>
-    /// Async callback the host (BugpunchClient) provides for executing the
-    /// Unity-bound side of an auto-fulfill data request. Touches PlayerPrefs
-    /// / FileService / SystemInfo, so the implementation must live in
-    /// managed code; the poller hands it the message id, kind, and body
-    /// extracted from the polled thread.
-    /// </summary>
-    public delegate Task BugpunchAutoFulfillCallback(string messageId, string kind, string body);
-
-    /// <summary>
     /// Always-on QA chat-reply heartbeat for the C# lane. Static — there's
     /// only ever one device-scoped poll loop running at a time, mirroring
     /// the singleton-style design of the native pollers.
+    ///
+    /// Cross-lane rule: this class reads its inputs (config, host, suppress
+    /// state, auto-fulfill delegate) from <see cref="BugpunchRuntime"/>
+    /// only. It does not import or reference <see cref="BugpunchClient"/>,
+    /// the same way `BugpunchPoller.java` doesn't import any "client"
+    /// class — it just calls `BugpunchRuntime.getServerUrl()`. The C#
+    /// lane mirrors that shape so feature owners see the same
+    /// dependency graph on every lane.
     /// </summary>
     public static class BugpunchPoller
     {
@@ -68,19 +66,21 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         static bool s_started;
 
-        // ─── Public API — invoked from BugpunchClient ────────────────────
+        // ─── Public API ─────────────────────────────────────────────────
 
         /// <summary>
-        /// Start the poll loop on the supplied host MonoBehaviour. Idempotent
-        /// — repeat calls are silently ignored. The host owns the coroutine
-        /// lifecycle (it stops when the host is destroyed).
+        /// Start the poll loop. Reads its host + config + auto-fulfill
+        /// callback from <see cref="BugpunchRuntime"/>; do not pass them
+        /// in. Idempotent — repeat calls are silently ignored. The
+        /// coroutine lifetime is tied to the runtime's host MonoBehaviour.
         /// </summary>
-        public static void Start(MonoBehaviour host, BugpunchAutoFulfillCallback autoFulfill)
+        public static void Start()
         {
             if (s_started) return;
-            if (host == null) { BugpunchLog.Warn("BugpunchPoller", "Start: null host"); return; }
+            var host = BugpunchRuntime.Host;
+            if (host == null) { BugpunchLog.Warn("BugpunchPoller", "Start: BugpunchRuntime.Host not set — call BugpunchRuntime.Init first"); return; }
             s_started = true;
-            host.StartCoroutine(HeartbeatLoop(host, autoFulfill));
+            host.StartCoroutine(HeartbeatLoop());
         }
 
         /// <summary>Player tapped X on the chat banner — snooze until a
@@ -100,9 +100,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
 
         // ─── Internal poll loop ──────────────────────────────────────────
 
-        static IEnumerator HeartbeatLoop(
-            MonoBehaviour host,
-            BugpunchAutoFulfillCallback autoFulfill)
+        static IEnumerator HeartbeatLoop()
         {
             // Small initial delay so we don't race the very first connect.
             yield return new WaitForSeconds(10f);
@@ -111,8 +109,8 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 // Skip the check if the user's in a no-interrupt state; we'll
                 // check again on the next tick. Don't even bother hitting the
                 // server while suppressed — feels more polite and saves bytes.
-                if (host is BugpunchClient client && !client.SuppressInteractions)
-                    yield return Tick(client, autoFulfill);
+                if (!BugpunchRuntime.SuppressActive)
+                    yield return Tick();
                 // 60s — chat is conversational, not real-time. At 10k users
                 // this halves chat-heartbeat QPS vs the previous 30s without
                 // a noticeable UX difference (banner appears within a minute
@@ -121,14 +119,11 @@ namespace ODDGames.Bugpunch.DeviceConnect
             }
         }
 
-        static IEnumerator Tick(
-            BugpunchClient client,
-            BugpunchAutoFulfillCallback autoFulfill)
+        static IEnumerator Tick()
         {
-            var config = client.Config;
-            if (config == null
-                || string.IsNullOrEmpty(config.HttpBaseUrl)
-                || string.IsNullOrEmpty(config.apiKey))
+            var baseUrl = BugpunchRuntime.HttpBaseUrl;
+            var apiKey = BugpunchRuntime.ApiKey;
+            if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(apiKey))
                 yield break;
 
             // Single-thread-per-device API: GET /chat/thread returns
@@ -138,9 +133,9 @@ namespace ODDGames.Bugpunch.DeviceConnect
             //   2. Pending typed dataRequest rows whose request_kind is in the
             //      auto-fulfill set (playerprefs / file / deviceinfo) — those
             //      run without a player prompt.
-            var url = config.HttpBaseUrl + "/api/v1/chat/thread";
+            var url = baseUrl + "/api/v1/chat/thread";
             using var req = UnityWebRequest.Get(url);
-            req.SetRequestHeader("Authorization", "Bearer " + (config.apiKey ?? ""));
+            req.SetRequestHeader("Authorization", "Bearer " + apiKey);
             req.SetRequestHeader("X-Device-Id", DeviceIdentity.GetDeviceId() ?? "");
             req.SetRequestHeader("Accept", "application/json");
             req.timeout = 10;
@@ -208,10 +203,12 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 yield break;
             }
 
-            // Run auto-fulfill handlers — fire-and-forget; the host's
-            // PostRequestResult handles its own retries / logging. The
-            // fulfill callback is Unity-bound (PlayerPrefs / FileService /
-            // SystemInfo) so it has to ride managed code regardless of lane.
+            // Run auto-fulfill handlers — fire-and-forget; the registered
+            // handler manages its own retries / logging. The fulfill
+            // callback is Unity-bound (PlayerPrefs / FileService / SystemInfo)
+            // so it has to ride managed code regardless of lane; it's
+            // registered on BugpunchRuntime by BugpunchClient at startup.
+            var autoFulfill = BugpunchRuntime.AutoFulfill;
             if (autoFulfill != null)
             {
                 foreach (var entry in autoFulfillBatch)
@@ -233,7 +230,7 @@ namespace ODDGames.Bugpunch.DeviceConnect
                 BugpunchNative.HideChatBanner();
                 yield break;
             }
-            if (client.SuppressInteractions) { BugpunchNative.HideChatBanner(); yield break; }
+            if (BugpunchRuntime.SuppressActive) { BugpunchNative.HideChatBanner(); yield break; }
 
             // Snooze gate — if the player tapped X on the banner, don't
             // re-show until a QA message newer than the snoozed one arrives.
