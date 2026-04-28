@@ -58,11 +58,13 @@ build_slice() {
   for src in "$SRC"/*.mm; do
     local base
     base="$(basename "$src" .mm)"
+    # ${extra[@]+"${extra[@]}"} is the strict-mode-safe array expansion —
+    # under `set -u`, a plain ${extra[@]} on an empty array errors out.
     xcrun --sdk "$sdk" clang \
       -c "${CFLAGS_COMMON[@]}" \
       -arch "$arch" \
       -isysroot "$sysroot" \
-      "${extra[@]}" \
+      ${extra[@]+"${extra[@]}"} \
       "$src" \
       -o "$out_dir/obj/$base.o"
   done
