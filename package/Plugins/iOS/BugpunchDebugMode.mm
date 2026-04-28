@@ -46,8 +46,6 @@ extern "C" {
     bool Bugpunch_BackbufferReady(void);
     bool Bugpunch_WriteBackbufferJPEG(const char* outputPath, float quality);
     void Bugpunch_ShutdownBackbuffer(void);
-    void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
-        int quality, void (*cb)(const char*, int, const char*));
     void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
         const char* metadataJson, const char* screenshotPath, const char* videoPath,
         const char* annotationsPath);
@@ -89,6 +87,13 @@ extern "C" {
     void BugpunchTouch_GetCaptureSize(int* outWidth, int* outHeight);
     const char* BugpunchTouch_GetLiveTouches(int trailMs);
 }
+
+// Bugpunch_CaptureScreenshot's callback is a block (not a C function pointer),
+// so its declaration sits outside the extern "C" block above. Lives in
+// BugpunchScreenshot.mm.
+typedef void (^BugpunchScreenshotCallback)(const char* requestId, int success, const char* payload);
+void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
+    int quality, BugpunchScreenshotCallback cb);
 
 // BPLogReader (log ring + OSLogStore pull) lives in BugpunchLogReader.{h,mm}.
 // BPShake (CoreMotion shake detector) lives in BugpunchShake.{h,mm}.
@@ -622,7 +627,7 @@ static void BPFireReport(NSString* type, NSString* title, NSString* description,
         NSString* attachJson = attachJsonData
             ? [[NSString alloc] initWithData:attachJsonData encoding:NSUTF8StringEncoding]
             : @"[]";
-        extern void Bugpunch_EnqueuePreflight(const char*, const char*, const char*, const char*, const char*);
+        extern "C" void Bugpunch_EnqueuePreflight(const char*, const char*, const char*, const char*, const char*);
         Bugpunch_EnqueuePreflight([preflightUrl UTF8String], [enrichTemplate UTF8String],
             [apiKey UTF8String], [metadataJson UTF8String], [attachJson UTF8String]);
         return;
@@ -1371,7 +1376,7 @@ static NSMutableDictionary* BPBaseEvent(NSString* type) {
 
     NSString* uid = nil;
     @synchronized (gUserLock) { uid = gUserId; }
-    if (uid.length == 0) uid = dbg.customData[@"userId"];
+    if (uid.length == 0) uid = r.customData[@"userId"];
     if (uid.length > 0) ev[@"userId"] = uid;
     return ev;
 }
@@ -1513,7 +1518,7 @@ void Bugpunch_TraceScreenshot(const char* label, const char* tagsJson) {
     Bugpunch_CaptureScreenshot(
         [[NSString stringWithFormat:@"tr_%f", [NSDate timeIntervalSinceReferenceDate]] UTF8String],
         [shotPath UTF8String], 80,
-        NULL);
+        nil);
     // The screenshot writes synchronously-or-async depending on the native
     // impl; if it lands by the time a report fires, the file check in
     // BPPrepareTraceAttachments will include it. Tag the event with the

@@ -52,10 +52,11 @@ extern "C" const char* Bugpunch_GetStableDeviceId(void);
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg);
 
 // Native screenshot — writes a JPEG to disk and fires the callback on the
-// main thread. Lives in BugpunchScreenshot.mm.
-typedef void (*BugpunchScreenshotCallback)(const char* requestId, int success, const char* payload);
-extern "C" void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
-                                           int quality, BugpunchScreenshotCallback cb);
+// main thread. Lives in BugpunchScreenshot.mm. Callback is a block so call
+// sites can capture local state (self / message id / file path).
+typedef void (^BugpunchScreenshotCallback)(const char* requestId, int success, const char* payload);
+void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
+                                int quality, BugpunchScreenshotCallback cb);
 
 // ODDRecorder — single-segment ReplayKit-backed MP4 recorder. Used for the
 // chat video attachment flow (issue #30). ReplayKit's startCapture itself

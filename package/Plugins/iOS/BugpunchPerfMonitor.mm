@@ -13,10 +13,13 @@
 #import <os/proc.h>
 #import <sys/sysctl.h>
 
-// Sibling file symbols
+// Sibling file symbols. Bugpunch_CaptureScreenshot's callback is a block
+// (not a C function pointer) — see BugpunchScreenshot.mm. The other two
+// stay extern "C" because they take only POD args.
+typedef void (^BugpunchScreenshotCallback)(const char* requestId, int success, const char* payload);
+void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
+    int quality, BugpunchScreenshotCallback cb);
 extern "C" {
-    void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
-        int quality, void (*cb)(const char*, int, const char*));
     void Bugpunch_EnqueueReport(const char* url, const char* apiKey,
         const char* metadataJson, const char* screenshotPath, const char* videoPath,
         const char* annotationsPath);
@@ -185,19 +188,17 @@ static void BPUploadEvent(NSString* jsonStr, NSString* screenshotPath) {
 
 // ── Screenshot capture callback ──
 
-static void BPPerfScreenshotCallback(const char* reqId, int ok, const char* path) {
-    if (!ok || !path) return;
-    NSString* json = BPBuildEventJson([NSString stringWithUTF8String:reqId]);
-    BPUploadEvent(json, [NSString stringWithUTF8String:path]);
-}
-
 static void BPFirePerfEvent(NSString* trigger, BOOL withScreenshot) {
     if (withScreenshot) {
         NSString* dir = NSTemporaryDirectory();
         NSString* filename = [NSString stringWithFormat:@"bp_perf_%f.jpg", CACurrentMediaTime()];
         NSString* outPath = [dir stringByAppendingPathComponent:filename];
         Bugpunch_CaptureScreenshot(trigger.UTF8String, outPath.UTF8String, 80,
-            BPPerfScreenshotCallback);
+            ^(const char* reqId, int ok, const char* path) {
+                if (!ok || !path) return;
+                NSString* json = BPBuildEventJson([NSString stringWithUTF8String:reqId]);
+                BPUploadEvent(json, [NSString stringWithUTF8String:path]);
+            });
     } else {
         NSString* json = BPBuildEventJson(trigger);
         BPUploadEvent(json, nil);

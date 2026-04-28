@@ -6,7 +6,11 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 
-typedef void (*BugpunchScreenshotCallback)(const char* requestId, int success, const char* payload);
+// Block-typed (not C function pointer) so call sites can capture local
+// state — chat / feedback both need `^{ ... }` closures over `self`,
+// the message id, the file path. Existing C-only callers (perf monitor,
+// trace) wrap their static functions in a one-liner block.
+typedef void (^BugpunchScreenshotCallback)(const char* requestId, int success, const char* payload);
 
 static UIWindow* BPFindKeyWindow(void) {
     if (@available(iOS 13.0, *)) {
@@ -73,10 +77,14 @@ static void BPCaptureOnMain(NSString* requestId, NSString* outputPath, int quali
     }
 }
 
-extern "C" {
-
 /// Capture the key UIWindow to a JPEG. Async — callback invoked on main thread
-/// once the file is written (or on failure).
+/// once the file is written (or on failure). Callback may be nil for fire-and-
+/// forget captures (e.g. trace pre-shots that are read off disk later).
+///
+/// Not wrapped in `extern "C"` because `BugpunchScreenshotCallback` is an
+/// Objective-C block type, which doesn't have a stable C-only ABI. All
+/// callers are iOS Obj-C++ siblings forward-declaring the block typedef +
+/// function, so C-linkage isn't actually buying us anything here.
 void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
                                 int quality, BugpunchScreenshotCallback cb) {
     if (!requestId || !outputPath) {
@@ -89,6 +97,4 @@ void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
     dispatch_async(dispatch_get_main_queue(), ^{
         BPCaptureOnMain(rid, path, quality, cb);
     });
-}
-
 }

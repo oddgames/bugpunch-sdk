@@ -53,10 +53,11 @@
 extern "C" const char* Bugpunch_GetStableDeviceId(void);
 
 // Native screenshot — writes a JPEG to disk and fires the callback on the
-// main thread. Lives in BugpunchScreenshot.mm.
-typedef void (*BugpunchScreenshotCallback)(const char* requestId, int success, const char* payload);
-extern "C" void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
-                                           int quality, BugpunchScreenshotCallback cb);
+// main thread. Lives in BugpunchScreenshot.mm. Callback is a block so call
+// sites can capture local state.
+typedef void (^BugpunchScreenshotCallback)(const char* requestId, int success, const char* payload);
+void Bugpunch_CaptureScreenshot(const char* requestId, const char* outputPath,
+                                int quality, BugpunchScreenshotCallback cb);
 
 // Shared coordinator config — read from BPRuntime, the cross-lane state
 // holder (mirrors BugpunchRuntime.java + BugpunchRuntime.cs).
