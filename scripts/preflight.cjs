@@ -11,7 +11,9 @@ const path = require("path");
 const sdkRoot = path.resolve(__dirname, "..");                 // sdk/
 const pkgRoot = path.join(sdkRoot, "package");                 // sdk/package
 const androidSrc = path.join(sdkRoot, "android-src");          // sdk/android-src
+const iosSrc = path.join(sdkRoot, "ios-src");                  // sdk/ios-src
 const aarPath = path.join(pkgRoot, "Plugins/Android/BugpunchPlugin.aar");
+const xcframeworkPath = path.join(pkgRoot, "Plugins/iOS/Bugpunch.xcframework");
 
 const failures = [];
 const fail = (check, msg) => failures.push({ check, msg });
@@ -159,6 +161,42 @@ function checkAarFreshness() {
 }
 
 // ---------------------------------------------------------------------------
+// xcframework freshness — if anything under ios-src/ is newer than the
+// shipped xcframework, the build wasn't run. Mirrors the AAR check.
+// ---------------------------------------------------------------------------
+function checkXcframeworkFreshness() {
+  if (!fs.existsSync(xcframeworkPath)) {
+    fail("xcframework",
+      `${path.relative(sdkRoot, xcframeworkPath)} is missing — push the iOS source change so CI can build it (or run \`ios-src/Bugpunch/build-xcframework.sh\` on a Mac)`);
+    return;
+  }
+  if (!fs.existsSync(iosSrc)) return;
+
+  // The xcframework is a directory tree; use the newest file inside as the
+  // "build time" since stat on the dir itself only updates when entries are
+  // added/removed.
+  let xcfNewest = 0;
+  walkFiles(xcframeworkPath, file => {
+    const m = fs.statSync(file).mtimeMs;
+    if (m > xcfNewest) xcfNewest = m;
+  });
+
+  let srcNewest = 0, srcNewestFile = "";
+  walkFiles(iosSrc, file => {
+    const rel = path.relative(iosSrc, file).replace(/\\/g, "/");
+    // Ignore build artefacts from local builds.
+    if (rel.includes("/build/") || rel.startsWith("build/")) return;
+    const m = fs.statSync(file).mtimeMs;
+    if (m > srcNewest) { srcNewest = m; srcNewestFile = file; }
+  });
+
+  if (srcNewest > xcfNewest + 1000) {
+    fail("xcframework",
+      `xcframework is older than ${path.relative(sdkRoot, srcNewestFile)} — push to trigger CI rebuild (or run \`ios-src/Bugpunch/build-xcframework.sh\` on a Mac)`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CHANGELOG ↔ package.json version match. The topmost numbered heading
 // (skipping [Unreleased]) must equal package.json version.
 // ---------------------------------------------------------------------------
@@ -213,7 +251,7 @@ const THREE_LANE_MIRRORS = [
 
 const javaLaneRoot = path.join(androidSrc,
   "bugpunch/src/main/java/au/com/oddgames/bugpunch");
-const iosLaneRoot  = path.join(pkgRoot, "Plugins/iOS");
+const iosLaneRoot  = path.join(iosSrc, "Bugpunch/Sources");
 const csLaneRoot   = pkgRoot;
 
 function checkThreeLaneMirror() {
@@ -309,6 +347,7 @@ checkRenderPipelineApis();
 checkUnityEditorLeak();
 checkSdkAuthHeader();
 checkAarFreshness();
+checkXcframeworkFreshness();
 checkChangelogVersionMatch();
 checkMetaCompanions();
 checkThreeLaneMirror();
