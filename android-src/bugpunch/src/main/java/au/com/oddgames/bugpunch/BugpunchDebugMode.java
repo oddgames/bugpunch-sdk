@@ -1,3 +1,20 @@
+// =============================================================================
+// LANE: Android (Java + NDK)
+//
+// This file lives in the Android lane of the Bugpunch SDK. The lane router
+// (sdk/package/DeviceConnect/BugpunchPlatform.cs) declares the architecture:
+//
+//   • Android player        → Java + NDK   (this lane)
+//   • iOS player            → Obj-C++      (sdk/package/Plugins/iOS/*.mm)
+//   • Editor + Standalone   → C#           (sdk/package/DeviceConnect/*.cs)
+//
+// Class names mirror across lanes — `BugpunchPoller`, `BugpunchDebugMode`,
+// `BugpunchUploader`, etc. exist in all three. Features that don't read
+// Unity APIs live native (chat heartbeat / banner, crash handlers, upload
+// queue, log capture, screenshots, video recording, native dialogs).
+// Anything that does read Unity APIs lives C#.
+// =============================================================================
+
 package au.com.oddgames.bugpunch;
 
 import android.app.Activity;

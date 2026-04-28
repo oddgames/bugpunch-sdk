@@ -1,3 +1,20 @@
+// =============================================================================
+// LANE: iOS (Obj-C++)
+//
+// This file lives in the iOS lane of the Bugpunch SDK. The lane router
+// (sdk/package/DeviceConnect/BugpunchPlatform.cs) declares the architecture:
+//
+//   • Android player        → Java + NDK   (sdk/android-src/bugpunch/...)
+//   • iOS player            → Obj-C++      (this lane)
+//   • Editor + Standalone   → C#           (sdk/package/DeviceConnect/*.cs)
+//
+// Class names mirror across lanes — `BugpunchPoller`, `BugpunchDebugMode`,
+// `BugpunchUploader`, etc. exist in all three. Features that don't read
+// Unity APIs live native (chat heartbeat / banner, crash handlers, upload
+// queue, log capture, screenshots, video recording, native dialogs).
+// Anything that does read Unity APIs lives C#.
+// =============================================================================
+//
 // BugpunchDebugMode.mm — master coordinator for debug mode on iOS.
 //
 // Unity C# calls Bugpunch_StartDebugMode once with a config JSON. Native owns
