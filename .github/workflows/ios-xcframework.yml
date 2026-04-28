@@ -57,6 +57,17 @@ jobs:
           ls -la package/Plugins/iOS/Bugpunch.xcframework
           find package/Plugins/iOS/Bugpunch.xcframework -type f | head -20
 
+      - name: Ensure .xcframework.meta exists
+        # Mirrors the Android workflow's `.aar.meta` step. Unity would
+        # generate one on first import, but committing it from CI keeps
+        # the package consumable from a fresh git pull (no Unity needed).
+        run: |
+          META=package/Plugins/iOS/Bugpunch.xcframework.meta
+          if [ ! -f "$META" ]; then
+            GUID=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
+            sed "s/__GUID__/$GUID/" ios-src/Bugpunch.xcframework.meta.template > "$META"
+          fi
+
       - name: Upload xcframework artifact (always, even on PRs from forks)
         uses: actions/upload-artifact@v4
         with:
@@ -71,6 +82,6 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'ci: rebuild iOS xcframework'
-          file_pattern: 'package/Plugins/iOS/Bugpunch.xcframework'
+          file_pattern: 'package/Plugins/iOS/Bugpunch.xcframework package/Plugins/iOS/Bugpunch.xcframework.meta'
           commit_user_name: 'bugpunch-ci'
           commit_user_email: 'ci@oddgames.com.au'

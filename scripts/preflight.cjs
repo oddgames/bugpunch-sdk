@@ -318,10 +318,17 @@ function checkCrossLaneClientLeak() {
 // ---------------------------------------------------------------------------
 function checkMetaCompanions() {
   const missing = [];
+  // Inside an .xcframework, Unity treats the bundle as a single import
+  // unit and never reads .meta files for its internals. Skip everything
+  // beneath any path component ending in `.xcframework`.
+  const isXcframeworkInternal = (rel) =>
+    rel.split("/").some((seg, i, arr) => seg.endsWith(".xcframework") && i < arr.length - 1);
+
   walkFiles(pkgRoot, file => {
     if (file.endsWith(".meta")) return;
     const rel = path.relative(pkgRoot, file).replace(/\\/g, "/");
     if (rel.split("/").includes("node_modules")) return;
+    if (isXcframeworkInternal(rel)) return;
     if (!fs.existsSync(file + ".meta")) missing.push(rel);
   });
   // Also check directories.
@@ -331,6 +338,12 @@ function checkMetaCompanions() {
       if (e.name === "node_modules") continue;
       const full = path.join(dir, e.name);
       const rel = path.relative(pkgRoot, full).replace(/\\/g, "/");
+      // Don't descend into .xcframework internals (Unity treats the
+      // bundle as one import unit; only the top-level dir needs .meta).
+      if (e.name.endsWith(".xcframework")) {
+        if (!fs.existsSync(full + ".meta")) missing.push(rel + "/");
+        continue;
+      }
       if (!fs.existsSync(full + ".meta")) missing.push(rel + "/");
       walkDirs(full);
     }
