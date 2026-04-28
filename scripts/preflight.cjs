@@ -16,6 +16,8 @@ const csharpSrc = path.join(sdkRoot, "csharp-src");            // sdk/csharp-src
 const aarPath = path.join(pkgRoot, "Plugins/Android/BugpunchPlugin.aar");
 const xcframeworkPath = path.join(pkgRoot, "Plugins/iOS/Bugpunch.xcframework");
 const dllPath = path.join(pkgRoot, "Plugins/ODDGames.Bugpunch.dll");
+const editorDllPath = path.join(pkgRoot, "Plugins/Editor/ODDGames.Bugpunch.Editor.dll");
+const bridgeDllPath = path.join(pkgRoot, "Plugins/Editor/ODDGames.Bugpunch.Bridge.dll");
 
 const failures = [];
 const fail = (check, msg) => failures.push({ check, msg });
@@ -203,28 +205,35 @@ function checkXcframeworkFreshness() {
 // shipped DLL, the local `dotnet build` wasn't run. Mirrors the AAR check.
 // ---------------------------------------------------------------------------
 function checkCsharpDllFreshness() {
-  if (!fs.existsSync(dllPath)) {
-    fail("dll",
-      `${path.relative(sdkRoot, dllPath)} is missing — run \`cd csharp-src/Bugpunch && dotnet build -c Release && cp build/ODDGames.Bugpunch.dll ../../package/Plugins/\``);
-    return;
-  }
-  if (!fs.existsSync(csharpSrc)) return;
-  const dllMtime = fs.statSync(dllPath).mtimeMs;
+  // Three projects, each with its own source subtree + DLL output target.
+  // Mtimes compare against just their own source dir — a runtime change
+  // doesn't invalidate the Editor DLL, etc.
+  const projects = [
+    { name: "ODDGames.Bugpunch.dll",        srcDir: "Bugpunch",        dllPath: dllPath,       built: "build/ODDGames.Bugpunch.dll",        out: "package/Plugins/ODDGames.Bugpunch.dll" },
+    { name: "ODDGames.Bugpunch.Editor.dll", srcDir: "Bugpunch.Editor", dllPath: editorDllPath, built: "build/ODDGames.Bugpunch.Editor.dll", out: "package/Plugins/Editor/ODDGames.Bugpunch.Editor.dll" },
+    { name: "ODDGames.Bugpunch.Bridge.dll", srcDir: "Bugpunch.Bridge", dllPath: bridgeDllPath, built: "build/ODDGames.Bugpunch.Bridge.dll", out: "package/Plugins/Editor/ODDGames.Bugpunch.Bridge.dll" },
+  ];
 
-  let newest = 0, newestFile = "";
-  walkFiles(csharpSrc, file => {
-    const rel = path.relative(csharpSrc, file).replace(/\\/g, "/");
-    // Ignore build intermediates + the refs cache (those mtimes are noise).
-    if (rel.includes("/build/") || rel.startsWith("Bugpunch/build/")) return;
-    if (rel.includes("/obj/") || rel.startsWith("Bugpunch/obj/")) return;
-    if (rel.startsWith("Bugpunch/refs/")) return;
-    const m = fs.statSync(file).mtimeMs;
-    if (m > newest) { newest = m; newestFile = file; }
-  });
+  for (const p of projects) {
+    if (!fs.existsSync(p.dllPath)) {
+      fail("dll",
+        `${path.relative(sdkRoot, p.dllPath)} is missing — run \`cd csharp-src/${p.srcDir} && dotnet build -c Release && cp ${p.built} ../../${p.out}\``);
+      continue;
+    }
+    const srcRoot = path.join(csharpSrc, p.srcDir, "Sources");
+    if (!fs.existsSync(srcRoot)) continue;
+    const dllMtime = fs.statSync(p.dllPath).mtimeMs;
 
-  if (newest > dllMtime + 1000) {
-    fail("dll",
-      `DLL is older than ${path.relative(sdkRoot, newestFile)} — run \`cd csharp-src/Bugpunch && dotnet build -c Release && cp build/ODDGames.Bugpunch.dll ../../package/Plugins/\``);
+    let newest = 0, newestFile = "";
+    walkFiles(srcRoot, file => {
+      const m = fs.statSync(file).mtimeMs;
+      if (m > newest) { newest = m; newestFile = file; }
+    });
+
+    if (newest > dllMtime + 1000) {
+      fail("dll",
+        `${p.name} is older than ${path.relative(sdkRoot, newestFile)} — run \`cd csharp-src/${p.srcDir} && dotnet build -c Release && cp ${p.built} ../../${p.out}\``);
+    }
   }
 }
 
