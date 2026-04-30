@@ -50,6 +50,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// for the next-launch crash drain). nil disables the periodic flush.
 @property (nonatomic, copy, nullable) NSString* ctxShotDiskPath;
 
+/// Player auth identity — set after a successful POST to
+/// /api/v1/chat/auth/verify (driven from the C# Bugpunch.SetPlayerAuthSession
+/// path). Mirrors the four fields on the Java + C# runtimes so chat HTTP
+/// calls on every lane stamp the same X-Player-Auth-* / X-Player-Email
+/// headers. nil when the player hasn't signed in yet.
+@property (nonatomic, copy, nullable) NSString* playerAuthProvider;
+@property (nonatomic, copy, nullable) NSString* playerAuthId;
+@property (nonatomic, copy, nullable) NSString* playerEmail;
+@property (nonatomic, copy, nullable) NSString* playerName;
+
 + (instancetype)shared;
 
 /// Start the CADisplayLink frame tick. Drives FPS measurement and the

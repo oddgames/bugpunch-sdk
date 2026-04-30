@@ -39,7 +39,7 @@ Add to `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk.git#v1.8.6"
+    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk.git#v1.8.8"
   }
 }
 ```
@@ -139,7 +139,7 @@ Documentation at [bugpunch.com/docs](https://bugpunch.com).
 
 ## Versioning
 
-Tags are SemVer (`v1.8.6`, etc.). Pin a specific tag in `manifest.json`
+Tags are SemVer (`v1.8.8`, etc.). Pin a specific tag in `manifest.json`
 — Unity caches the package by tag hash, so consumers update only when
 they explicitly bump the pin. See [CHANGELOG.md](CHANGELOG.md) for
 release notes.

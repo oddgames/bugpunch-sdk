@@ -21,6 +21,7 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include "UnityPluginAPI/IUnityGraphicsD3D11.h"
 #include <mutex>
 #include <string>
 #include <atomic>
@@ -35,6 +36,8 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "ole32.lib")
 
 // ============================================================================
 // Debug logging
@@ -106,7 +109,11 @@ struct RecorderState
     // D3D11 native capture resources
     ID3D11Device*        d3dDevice  = nullptr;  // Borrowed from Unity, do NOT Release
     ID3D11DeviceContext*  d3dContext = nullptr;  // Borrowed from Unity, do NOT Release
+    ComPtr<IMFDXGIDeviceManager> dxgiDeviceManager;
+    UINT dxgiResetToken = 0;
     ComPtr<ID3D11Texture2D> stagingTexture;
+    ComPtr<ID3D11Texture2D> encoderTexture;
+    bool gpuSurfaceInput = false;
 
     // COM/MF lifecycle tracking
     bool comInitialized = false;
@@ -115,8 +122,9 @@ struct RecorderState
 
 static RecorderState g_state;
 
-// Unity graphics interface (set in UnityPluginLoad)
+// Unity graphics interfaces (set in UnityPluginLoad)
 static IUnityGraphics* g_unityGraphics = nullptr;
+static IUnityGraphicsD3D11* g_unityD3D11 = nullptr;
 
 // ============================================================================
 // Forward declarations (internal helpers)
@@ -132,6 +140,7 @@ static HRESULT ConfigureAudioInput(IMFSinkWriter* writer, DWORD streamIndex,
                                    int sampleRate, int channels);
 static void    CleanupRecorder();
 static void    CaptureBackbufferD3D11();
+static bool    WriteTextureSampleD3D11(ID3D11Texture2D* texture);
 
 // ============================================================================
 // Unity plugin lifecycle
@@ -163,28 +172,27 @@ static void* g_unityInterfacesRaw = nullptr;
 // This matches Unity's UNITY_REGISTER_INTERFACE_GUID(0x7CBA0A9CA4DDB544ULL, 0xA3A230D3F1D00099ULL, IUnityGraphics)
 
 static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType);
+static void AcquireUnityD3D11Device();
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces)
 {
     DebugLog("UnityPluginLoad called");
     g_unityInterfacesRaw = unityInterfaces;
+    if (!unityInterfaces)
+        return;
 
-    // Unity's IUnityInterfaces layout in the native plugin API:
-    // The GetInterface method is at vtable index 0. We need to call it with
-    // the IUnityGraphics GUID. Since we don't have the full SDK, we use a
-    // function pointer approach.
-    //
-    // For D3D11 device access, Unity also provides IUnityGraphicsD3D11 with
-    // GetDevice(). We'll attempt to get the D3D11 device in the graphics
-    // device event callback instead, using QueryInterface on the device.
-    //
-    // SIMPLIFIED APPROACH: Since full vtable manipulation without the SDK is
-    // fragile, we'll get the D3D11 device in StartWithCapture by querying
-    // Unity's current render thread state. The render event callback is the
-    // correct place to access D3D11 resources.
-    //
-    // For now, just log that we loaded. The actual D3D11 device will be
-    // obtained when native capture is requested.
+    g_unityGraphics = unityInterfaces->Get<IUnityGraphics>();
+    g_unityD3D11 = unityInterfaces->Get<IUnityGraphicsD3D11>();
+
+    if (g_unityGraphics)
+    {
+        g_unityGraphics->RegisterDeviceEventCallback(OnGraphicsDeviceEvent);
+        OnGraphicsDeviceEvent(kUnityGfxDeviceEventInitialize);
+    }
+    else
+    {
+        DebugLog("IUnityGraphics unavailable");
+    }
 }
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
@@ -195,8 +203,11 @@ extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
         DebugLog("Recording still active during unload, forcing stop");
         CleanupRecorder();
     }
+    if (g_unityGraphics)
+        g_unityGraphics->UnregisterDeviceEventCallback(OnGraphicsDeviceEvent);
     g_unityInterfacesRaw = nullptr;
     g_unityGraphics = nullptr;
+    g_unityD3D11 = nullptr;
 }
 
 static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType)
@@ -205,12 +216,14 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
     {
     case kUnityGfxDeviceEventInitialize:
         DebugLog("Graphics device initialized");
+        AcquireUnityD3D11Device();
         break;
     case kUnityGfxDeviceEventShutdown:
         DebugLog("Graphics device shutting down");
         g_state.d3dDevice  = nullptr;
         g_state.d3dContext = nullptr;
         g_state.stagingTexture.Reset();
+        g_state.encoderTexture.Reset();
         break;
     default:
         break;
@@ -390,12 +403,16 @@ static void CleanupRecorder()
 {
     g_state.isRecording.store(false);
     g_state.sinkWriter.Reset();
+    g_state.dxgiDeviceManager.Reset();
+    g_state.dxgiResetToken = 0;
     g_state.stagingTexture.Reset();
+    g_state.encoderTexture.Reset();
     g_state.d3dDevice  = nullptr;
     g_state.d3dContext = nullptr;
     g_state.videoFrameCount   = 0;
     g_state.audioSampleOffset = 0;
     g_state.nativeCapture     = false;
+    g_state.gpuSurfaceInput   = false;
 
     if (g_state.mfStarted)
     {
@@ -453,6 +470,64 @@ static void CaptureBackbufferD3D11()
     // Ensure staging texture exists and matches dimensions
     D3D11_TEXTURE2D_DESC bbDesc;
     backbuffer->GetDesc(&bbDesc);
+
+    if (g_state.gpuSurfaceInput)
+    {
+        if (bbDesc.SampleDesc.Count > 1)
+        {
+            DebugLog("Native GPU capture: MSAA backbuffer detected (samples=%u); falling back to CPU path",
+                     bbDesc.SampleDesc.Count);
+        }
+        else
+        {
+            if (bbDesc.Width == static_cast<UINT>(g_state.width) &&
+                bbDesc.Height == static_cast<UINT>(g_state.height) &&
+                (bbDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM ||
+                 bbDesc.Format == DXGI_FORMAT_B8G8R8A8_TYPELESS))
+            {
+                if (WriteTextureSampleD3D11(backbuffer.Get()))
+                    return;
+            }
+            else
+            {
+                if (!g_state.encoderTexture)
+                {
+                    D3D11_TEXTURE2D_DESC encDesc = {};
+                    encDesc.Width              = static_cast<UINT>(g_state.width);
+                    encDesc.Height             = static_cast<UINT>(g_state.height);
+                    encDesc.MipLevels          = 1;
+                    encDesc.ArraySize          = 1;
+                    encDesc.Format             = DXGI_FORMAT_B8G8R8A8_UNORM;
+                    encDesc.SampleDesc.Count   = 1;
+                    encDesc.SampleDesc.Quality = 0;
+                    encDesc.Usage              = D3D11_USAGE_DEFAULT;
+                    encDesc.BindFlags          = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+                    encDesc.MiscFlags          = 0;
+                    HRESULT ehr = g_state.d3dDevice->CreateTexture2D(&encDesc, nullptr,
+                                                                     &g_state.encoderTexture);
+                    if (FAILED(ehr))
+                    {
+                        DebugLog("Native GPU capture: failed to create encoder texture (0x%08X); falling back to CPU path",
+                                 (unsigned int)ehr);
+                    }
+                }
+
+                if (g_state.encoderTexture &&
+                    bbDesc.Width == static_cast<UINT>(g_state.width) &&
+                    bbDesc.Height == static_cast<UINT>(g_state.height))
+                {
+                    g_state.d3dContext->CopyResource(g_state.encoderTexture.Get(), backbuffer.Get());
+                    if (WriteTextureSampleD3D11(g_state.encoderTexture.Get()))
+                        return;
+                }
+                else
+                {
+                    DebugLog("Native GPU capture: source size/format mismatch (%ux%u fmt=%u), CPU fallback for this frame",
+                             bbDesc.Width, bbDesc.Height, (unsigned int)bbDesc.Format);
+                }
+            }
+        }
+    }
 
     if (!g_state.stagingTexture)
     {
@@ -702,7 +777,7 @@ static void StartRecordingInternal(const char* outputPath, int width, int height
 
     // Create sink writer attributes for hardware acceleration
     ComPtr<IMFAttributes> writerAttributes;
-    hr = MFCreateAttributes(&writerAttributes, 2);
+    hr = MFCreateAttributes(&writerAttributes, 3);
     if (SUCCEEDED(hr))
     {
         // Enable hardware MFT (Media Foundation Transform) for H.264 encoding
@@ -718,6 +793,29 @@ static void StartRecordingInternal(const char* outputPath, int width, int height
         if (FAILED(hr))
         {
             DebugLog("Warning: Could not set low latency mode (0x%08X)", (unsigned int)hr);
+        }
+
+        if (nativeCapture && g_state.d3dDevice)
+        {
+            hr = MFCreateDXGIDeviceManager(&g_state.dxgiResetToken, &g_state.dxgiDeviceManager);
+            if (SUCCEEDED(hr))
+                hr = g_state.dxgiDeviceManager->ResetDevice(g_state.d3dDevice, g_state.dxgiResetToken);
+            if (SUCCEEDED(hr))
+            {
+                hr = writerAttributes->SetUnknown(MF_SINK_WRITER_D3D_MANAGER, g_state.dxgiDeviceManager.Get());
+                if (SUCCEEDED(hr))
+                {
+                    g_state.gpuSurfaceInput = true;
+                    DebugLog("D3D manager attached to sink writer; native capture will use GPU texture samples");
+                }
+            }
+            if (FAILED(hr))
+            {
+                g_state.dxgiDeviceManager.Reset();
+                g_state.dxgiResetToken = 0;
+                g_state.gpuSurfaceInput = false;
+                DebugLog("Warning: D3D manager setup failed (0x%08X); falling back to CPU readback", (unsigned int)hr);
+            }
         }
     }
 
@@ -968,6 +1066,100 @@ extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_AppendVideoFrame(
             g_state.videoFrameCount++;
         }
     }
+}
+
+static void AcquireUnityD3D11Device()
+{
+    if (!g_unityGraphics)
+        return;
+
+    UnityGfxRenderer renderer = g_unityGraphics->GetRenderer();
+    if (renderer != kUnityGfxRendererD3D11)
+    {
+        DebugLog("Unity renderer is not D3D11 (%d); native GPU capture disabled", (int)renderer);
+        return;
+    }
+
+    if (!g_unityD3D11)
+    {
+        DebugLog("IUnityGraphicsD3D11 unavailable despite D3D11 renderer");
+        return;
+    }
+
+    ID3D11Device* device = g_unityD3D11->GetDevice();
+    if (!device)
+    {
+        DebugLog("IUnityGraphicsD3D11::GetDevice returned null");
+        return;
+    }
+
+    g_state.d3dDevice = device;
+    g_state.d3dDevice->GetImmediateContext(&g_state.d3dContext);
+    DebugLog("Acquired Unity D3D11 device (0x%p), context (0x%p)",
+             g_state.d3dDevice, g_state.d3dContext);
+}
+
+static bool WriteTextureSampleD3D11(ID3D11Texture2D* texture)
+{
+    if (!texture || !g_state.sinkWriter)
+        return false;
+
+    ComPtr<IMFMediaBuffer> buffer;
+    HRESULT hr = MFCreateDXGISurfaceBuffer(__uuidof(ID3D11Texture2D), texture, 0, FALSE, &buffer);
+    if (FAILED(hr))
+    {
+        DebugLog("Native GPU capture: MFCreateDXGISurfaceBuffer failed (0x%08X)", (unsigned int)hr);
+        return false;
+    }
+
+    ComPtr<IMFSample> sample;
+    hr = MFCreateSample(&sample);
+    if (FAILED(hr))
+    {
+        DebugLog("Native GPU capture: MFCreateSample failed (0x%08X)", (unsigned int)hr);
+        return false;
+    }
+
+    hr = sample->AddBuffer(buffer.Get());
+    if (FAILED(hr))
+    {
+        DebugLog("Native GPU capture: AddBuffer failed (0x%08X)", (unsigned int)hr);
+        return false;
+    }
+
+    int64_t sampleTime = g_state.videoFrameCount * 10000000LL / g_state.fps;
+    int64_t duration   = 10000000LL / g_state.fps;
+
+    hr = sample->SetSampleTime(sampleTime);
+    if (FAILED(hr))
+    {
+        DebugLog("Native GPU capture: SetSampleTime failed (0x%08X)", (unsigned int)hr);
+        return false;
+    }
+
+    hr = sample->SetSampleDuration(duration);
+    if (FAILED(hr))
+    {
+        DebugLog("Native GPU capture: SetSampleDuration failed (0x%08X)", (unsigned int)hr);
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_state.writerMutex);
+        if (!g_state.sinkWriter || !g_state.isRecording.load())
+            return false;
+
+        hr = g_state.sinkWriter->WriteSample(g_state.videoStreamIndex, sample.Get());
+        if (FAILED(hr))
+        {
+            DebugLog("Native GPU capture: WriteSample failed (0x%08X) at frame %lld",
+                     (unsigned int)hr, g_state.videoFrameCount);
+            return false;
+        }
+        g_state.videoFrameCount++;
+    }
+
+    return true;
 }
 
 // ============================================================================

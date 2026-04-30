@@ -9,55 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// ----------------------------------------------------------------------------
-// Unity Native Plugin Interface (subset)
-// These declarations mirror Unity's IUnityInterface.h / IUnityGraphics.h
-// so we don't require the user to have the Unity plugin SDK headers locally.
-// ----------------------------------------------------------------------------
-
-#if defined(_WIN32) || defined(_WIN64)
-    #define UNITY_INTERFACE_EXPORT __declspec(dllexport)
-    #define UNITY_INTERFACE_API __stdcall
-#else
-    #define UNITY_INTERFACE_EXPORT __attribute__((visibility("default")))
-    #define UNITY_INTERFACE_API
-#endif
-
-// Unity graphics device event types
-enum UnityGfxDeviceEventType
-{
-    kUnityGfxDeviceEventInitialize = 0,
-    kUnityGfxDeviceEventShutdown   = 1,
-    kUnityGfxDeviceEventBeforeReset = 2,
-    kUnityGfxDeviceEventAfterReset = 3,
-};
-
-// Unity graphics renderer types
-enum UnityGfxRenderer
-{
-    kUnityGfxRendererNull            = 4,
-    kUnityGfxRendererD3D11           = 2,
-    kUnityGfxRendererD3D12           = 18,
-    kUnityGfxRendererVulkan          = 21,
-    kUnityGfxRendererOpenGLCore      = 17,
-};
-
-// Forward declarations for Unity interfaces
-struct IUnityInterfaces;
-
-struct IUnityGraphics
-{
-    UnityGfxRenderer(UNITY_INTERFACE_API* GetRenderer)();
-    void(UNITY_INTERFACE_API* RegisterDeviceEventCallback)(void(UNITY_INTERFACE_API*)(UnityGfxDeviceEventType));
-    void(UNITY_INTERFACE_API* UnregisterDeviceEventCallback)(void(UNITY_INTERFACE_API*)(UnityGfxDeviceEventType));
-};
-
-// Render event callback signature
-typedef void(UNITY_INTERFACE_API* UnityRenderingEvent)(int eventID);
-
-// Unity plugin load/unload entry points (called automatically by Unity)
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces);
-extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload();
+#include "UnityPluginAPI/IUnityGraphics.h"
 
 // ----------------------------------------------------------------------------
 // Render event IDs used with GL.IssuePluginEvent

@@ -1,6 +1,6 @@
 {
   "name": "au.com.oddgames.bugpunch",
-  "version": "1.8.7",
+  "version": "1.8.8",
   "displayName": "Bugpunch",
   "description": "Debugging, remote code execution, and automated UI testing for Unity games. Click buttons, fill forms, navigate menus, scroll lists, and perform touch gestures - all through real Input System events. Find elements by name, text content, type, or spatial relationship.",
   "unity": "6000.0",
@@ -12,7 +12,7 @@
   "changelogUrl": "https://raw.githubusercontent.com/oddgames/bugpunch-sdk-unity/main/package/CHANGELOG.md",
   "documentationUrl": "https://github.com/oddgames/bugpunch-sdk-unity/wiki",
   "license": "SEE LICENSE IN LICENSE",
-  "_commitHash": "d8c506e",
+  "_commitHash": "d1e535f",
   "dependencies": {
     "com.unity.textmeshpro": "3.0.0",
     "com.unity.inputsystem": "1.7.0",

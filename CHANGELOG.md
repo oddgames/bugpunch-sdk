@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.8.8] - 2026-04-30
+
+### Changed
+- **Unity Editor F12 video ring now targets 60 FPS and ships a Windows native recorder build.** The Editor recorder backend now honours `RecorderSettings` width/height/fps instead of forcing 1280x720 @ 15 FPS, and the F12 ring requests 1280x720 @ 60 FPS. The package now includes `Plugins/Windows/ODDRecorder.dll` plus a `build-odd-recorder.ps1` helper; the VS Code `Build SDK DLLs` task rebuilds the native DLL after the managed DLLs.
+- **Windows native recorder can write D3D11 GPU texture samples to Media Foundation.** `ODDRecorder` now vendors Unity's official PluginAPI headers, acquires `IUnityGraphicsD3D11::GetDevice()` during `UnityPluginLoad`, attaches an `IMFDXGIDeviceManager` when native capture starts, writes `ID3D11Texture2D` frames via `MFCreateDXGISurfaceBuffer`, and falls back to the old staging/`Map()` CPU path only when GPU sample submission is unavailable for that frame. On Windows Editor, the recorder backend now selects this native D3D11 path when `ODDRecorder.dll` is present, with Unity Recorder kept as the fallback.
+
 ## [1.8.7] - 2026-04-29
 
 ### Fixed
