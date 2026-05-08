@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.10] - 2026-05-08
+
+### Added
+- **Storyboard UI-state per press.** Every storyboard frame now carries a compact JSON snapshot of the visible UI at press time: scene, timeScale, frame, focused element, top modal, ≤50 selectables (Button/Toggle/Slider/InputField/Dropdown/Scrollbar w/ values + interactable flag), ≤8 input field values. <2 ms capture cost (cached canvas list, no `FindObjectsByType` on the press path). Surfaces in the dashboard storyboard rail behind a Standard/Detailed toggle.
+- **Inverse locator suggestions (`Search.SuggestFor`).** Public C# API: pass a `GameObject`, get back up to 5 ranked `LocatorSuggestion`s — bare-text, type+text, name, type+name, has-parent+text, hierarchy path, plus a normalized-coord `ClickAt` fallback as the last entry. Top candidates verified via `Search.Matches` over a 200-node bounded DFS (≤2 verifications/press). `ActionExecutor.LocatorsFor(GameObject)` is a one-liner forwarder. Used internally by storyboard capture so each press records the locator(s) that would replay it.
+- **Editor-only 50-slot storyboard ring.** Editor + Standalone get a managed-side ring (raw ARGB32 in RAM, ~130 MB peak, PNG on dump) so dev-machine reports preserve far more press history than the device-side native ring. Files dump as `bugpunch_storyboard_<i>.png` + `bugpunch_storyboard.json` under `<persistentDataPath>/bugpunch/storyboard/<type>_<tsMs>/`.
+- **Clipboard helper for AI hand-off.** On editor `Bugpunch.Report` / `Bugpunch.Feedback`, the SDK copies a paste-ready block to the clipboard naming the dump folder, the JSON shape, and the local `Packages/au.com.oddgames.bugpunch/README.md` API reference. Re-copy any time via the Editor menu `Tools/Bugpunch/Copy Last Storyboard For AI`.
+- **`uiState` upload field on Android + iOS storyboard rings.** Mobile lanes now accept and persist a `uiState` string per press (header extended 356 → 2404 bytes, `MAX_SLOTS` unchanged at 10). Server ingests the field and the dashboard renders it in the storyboard drilldown.
+
 ## [Unreleased]
 
 ### Fixed
