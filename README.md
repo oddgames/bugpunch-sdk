@@ -99,18 +99,18 @@ windows assume Unity 6.
 
 ### In-app purchases analytics
 
-If your game uses Unity Purchasing (`com.unity.purchasing` 4.0+):
+If your game uses Unity Purchasing (`com.unity.purchasing` 5.0+):
 
 ```csharp
 using UnityEngine.Purchasing;
 using ODDGames.Bugpunch;
 
-UnityPurchasing.Initialize(myStoreListener.WithBugpunch(), builder);
+m_PurchaseService = UnityIAPServices.DefaultPurchase().WithBugpunch();
 ```
 
-`.WithBugpunch()` wraps your `IStoreListener` and side-channels every
-successful purchase to analytics — your `ProcessPurchase` still runs
-first, untouched. Compiles only when Unity Purchasing is installed; zero
+`.WithBugpunch()` subscribes to `OnPurchaseConfirmed` and side-channels
+every confirmed purchase to analytics — your own event handlers run
+unchanged. Compiles only when Unity Purchasing 5.0+ is installed; zero
 runtime cost when absent.
 
 For raw StoreKit (iOS) or direct Google Play Billing (Android), call

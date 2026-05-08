@@ -1,9 +1,9 @@
 {
-    "name": "ODDGames.Bugpunch.Purchasing",
+    "name": "ODDGames.Bugpunch.Ads",
     "rootNamespace": "ODDGames.Bugpunch",
     "references": [
         "ODDGames.Bugpunch",
-        "Unity.Purchasing"
+        "GoogleMobileAds.Api"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -12,13 +12,13 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [
-        "BUGPUNCH_HAS_UNITY_IAP"
+        "BUGPUNCH_HAS_ADMOB"
     ],
     "versionDefines": [
         {
-            "name": "com.unity.purchasing",
-            "expression": "5.0.0",
-            "define": "BUGPUNCH_HAS_UNITY_IAP"
+            "name": "com.google.ads.mobile",
+            "expression": "9.0.0",
+            "define": "BUGPUNCH_HAS_ADMOB"
         }
     ],
     "noEngineReferences": false

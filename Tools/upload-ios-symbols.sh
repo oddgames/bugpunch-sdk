@@ -6,7 +6,7 @@
 # `xcodebuild archive` completes — that's when the dSYMs actually exist.
 #
 # Usage:
-#   BUGPUNCH_SERVER_URL=https://bugpunchserver-xxxx.b4a.run \
+#   BUGPUNCH_SERVER_URL=https://api.bugpunch.com \
 #   BUGPUNCH_API_KEY=<your-key> \
 #   upload-ios-symbols.sh <dsym-path-or-dir> [more paths...]
 #

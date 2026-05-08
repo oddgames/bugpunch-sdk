@@ -1,9 +1,9 @@
 Shader "Hidden/Bugpunch/Overdraw"
 {
-    // URP
+    // URP — kept for completeness; URP ignores Camera.SetReplacementShader.
     SubShader
     {
-        Tags { "RenderType"="Opaque" "Queue"="Geometry" "RenderPipeline"="UniversalPipeline" "IgnoreProjector"="True" }
+        Tags { "RenderType"="Transparent" "Queue"="Transparent+10" "RenderPipeline"="UniversalPipeline" "IgnoreProjector"="True" }
         Pass
         {
             Name "UniversalForward"
@@ -35,36 +35,60 @@ Shader "Hidden/Bugpunch/Overdraw"
         }
     }
 
-    // Built-in
-    SubShader
-    {
-        Tags { "RenderType"="Opaque" "Queue"="Geometry" "IgnoreProjector"="True" }
-        ZTest Always
-        ZWrite Off
-        Cull Off
-        Blend One One
-        Pass
-        {
+    // ─── Built-in: one SubShader per RenderType the camera replacement
+    //     shader needs to match. Body is identical; only the Tag differs.
+
+    SubShader { Tags { "RenderType"="Opaque" "IgnoreProjector"="True" }
+        Pass { ZTest Always ZWrite Off Cull Off Blend One One
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"
-
             struct v2f { float4 pos : SV_POSITION; };
-
-            v2f vert(appdata_base v)
-            {
-                v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                return o;
-            }
-
-            fixed4 frag(v2f i) : SV_Target
-            {
-                return fixed4(0.10, 0.035, 0.015, 0);
-            }
+            v2f vert(appdata_base v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
+            fixed4 frag(v2f i) : SV_Target { return fixed4(0.10, 0.035, 0.015, 0); }
             ENDCG
         }
     }
+
+    SubShader { Tags { "RenderType"="Transparent" "IgnoreProjector"="True" }
+        Pass { ZTest Always ZWrite Off Cull Off Blend One One
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+            struct v2f { float4 pos : SV_POSITION; };
+            v2f vert(appdata_base v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
+            fixed4 frag(v2f i) : SV_Target { return fixed4(0.10, 0.035, 0.015, 0); }
+            ENDCG
+        }
+    }
+
+    SubShader { Tags { "RenderType"="TransparentCutout" "IgnoreProjector"="True" }
+        Pass { ZTest Always ZWrite Off Cull Off Blend One One
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+            struct v2f { float4 pos : SV_POSITION; };
+            v2f vert(appdata_base v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
+            fixed4 frag(v2f i) : SV_Target { return fixed4(0.10, 0.035, 0.015, 0); }
+            ENDCG
+        }
+    }
+
+    SubShader { Tags { "RenderType"="Overlay" "IgnoreProjector"="True" }
+        Pass { ZTest Always ZWrite Off Cull Off Blend One One
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+            struct v2f { float4 pos : SV_POSITION; };
+            v2f vert(appdata_base v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
+            fixed4 frag(v2f i) : SV_Target { return fixed4(0.10, 0.035, 0.015, 0); }
+            ENDCG
+        }
+    }
+
     Fallback Off
 }

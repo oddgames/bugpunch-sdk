@@ -1,131 +1,83 @@
-// BugpunchPurchasing.cs — Unity IAP integration.
+// BugpunchPurchasing.cs — Unity IAP v5 integration.
 //
-// Optional: only compiles when the game has `com.unity.purchasing` installed.
-// The `BUGPUNCH_HAS_UNITY_IAP` symbol is set by a version-define on
-// ODDGames.Bugpunch.asmdef, so when Unity IAP is absent this file is just
-// not part of the build — no reflection, no failed dynamic loads, no runtime
-// overhead.
+// Optional: only compiles when the game has `com.unity.purchasing` >= 5.0.0.
+// The `BUGPUNCH_HAS_UNITY_IAP` symbol is set by a version-define on the
+// asmdef, so when Unity IAP is absent (or below 5.0.0) this file is just
+// not part of the build — no reflection, no failed dynamic loads, no
+// runtime overhead.
 //
-// Integration (one line at the dev's UnityPurchasing.Initialize call site):
+// Integration (one line at the dev's IPurchaseService creation site):
 //
 //     using ODDGames.Bugpunch;
 //     ...
-//     UnityPurchasing.Initialize(myListener.WithBugpunch(), builder);
+//     m_PurchaseService = UnityIAPServices.DefaultPurchase().WithBugpunch();
 //
-// The wrapper forwards every callback to the game's listener unchanged, and
-// side-channels successful purchases to `Bugpunch.LogPurchase(...)` so they
-// land in the analytics pipeline without the game having to duplicate the
-// call inside ProcessPurchase.
+// Bugpunch subscribes to `OnPurchaseConfirmed` and side-channels every
+// confirmed purchase to `Bugpunch.LogPurchase(...)` so they land in the
+// analytics pipeline without the game having to duplicate the call.
 //
-// Pattern cribbed from Unity IAP's own StoreListenerProxy (which is `internal`
-// and therefore not a supported extension point — we wrap *outside* their
-// proxy, not alongside it).
+// Note: v4 IStoreListener support was removed when Unity IAP shipped v5,
+// since `IStoreListener` / `IDetailedStoreListener` no longer exist.
 
 #if BUGPUNCH_HAS_UNITY_IAP
 
 using System;
 using UnityEngine;
 using UnityEngine.Purchasing;
-using UnityEngine.Purchasing.Extension;
 
 namespace ODDGames.Bugpunch
 {
     /// <summary>
-    /// Extension-method surface for wrapping an existing <see cref="IStoreListener"/>
-    /// so purchases are automatically logged to Bugpunch analytics.
+    /// Extension-method surface for hooking Bugpunch purchase logging into
+    /// a Unity IAP v5 <see cref="IPurchaseService"/>.
     /// </summary>
     public static class BugpunchPurchasing
     {
         /// <summary>
-        /// Wrap an existing listener so Bugpunch gets notified of every
-        /// successful purchase. The inner listener's <c>ProcessPurchase</c>
-        /// runs first; Bugpunch logs only if that returned a result (so a
-        /// listener that throws won't silently double-count).
+        /// Subscribe Bugpunch's purchase logger to the given service.
+        /// Idempotent — re-subscription is detached first so multiple calls
+        /// won't double-log. Returns the same service for chaining.
         /// </summary>
-        public static IStoreListener WithBugpunch(this IStoreListener inner)
+        public static IPurchaseService WithBugpunch(this IPurchaseService service)
         {
-            if (inner == null) return null;
-            if (inner is BugpunchStoreListener) return inner;  // idempotent
-            return new BugpunchStoreListener(inner);
-        }
-    }
-
-    /// <summary>
-    /// Decorator around the game's <see cref="IStoreListener"/>. Implements
-    /// <see cref="IDetailedStoreListener"/> so it sits cleanly under Unity
-    /// IAP's internal <c>StoreListenerProxy</c> on both the old (reason-only)
-    /// and new (detailed) failure paths.
-    /// </summary>
-    internal sealed class BugpunchStoreListener : IDetailedStoreListener
-    {
-        readonly IStoreListener m_Inner;
-
-        public BugpunchStoreListener(IStoreListener inner)
-        {
-            m_Inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            if (service == null) return null;
+            service.OnPurchaseConfirmed -= OnPurchaseConfirmed;
+            service.OnPurchaseConfirmed += OnPurchaseConfirmed;
+            return service;
         }
 
-        public PurchaseProcessingResult ProcessPurchase(PurchaseEventArgs e)
+        static void OnPurchaseConfirmed(Order order)
         {
-            // Game's handler runs first — Bugpunch is a side-channel, never
-            // in the critical path of fulfilment.
-            var result = m_Inner.ProcessPurchase(e);
-            try { LogPurchase(e?.purchasedProduct); }
+            // OnPurchaseConfirmed can fire with a FailedOrder per the docs;
+            // only ConfirmedOrder counts toward analytics.
+            if (order is not ConfirmedOrder) return;
+            try { LogPurchase(order); }
             catch (Exception ex) { Debug.LogWarning($"[Bugpunch] purchase log failed: {ex.Message}"); }
-            return result;
         }
 
-        static void LogPurchase(Product product)
+        static void LogPurchase(Order order)
         {
-            if (product == null || product.definition == null || product.metadata == null) return;
-            if (product.metadata.isoCurrencyCode == null) return;  // mirrors Unity IAP's own guard
+            var transactionId = order?.Info?.TransactionID ?? string.Empty;
+            var items = order?.CartOrdered?.Items();
+            if (items == null) return;
 
-            var sku = !string.IsNullOrEmpty(product.definition.id)
-                ? product.definition.id
-                : product.definition.storeSpecificId;
-            if (string.IsNullOrEmpty(sku)) return;
-
-            Bugpunch.LogPurchase(
-                sku: sku,
-                price: (double)product.metadata.localizedPrice,
-                currency: product.metadata.isoCurrencyCode,
-                transactionId: product.transactionID
-            );
-        }
-
-        // ── Pass-through plumbing ────────────────────────────────────────
-
-        public void OnInitialized(IStoreController controller, IExtensionProvider extensions)
-            => m_Inner.OnInitialized(controller, extensions);
-
-#pragma warning disable 0618  // Obsolete — kept because IStoreListener still declares it.
-        public void OnInitializeFailed(InitializationFailureReason error)
-            => m_Inner.OnInitializeFailed(error);
-#pragma warning restore 0618
-
-        public void OnInitializeFailed(InitializationFailureReason error, string message)
-            => m_Inner.OnInitializeFailed(error, message);
-
-#pragma warning disable 0618  // Obsolete reason-only overload — IStoreListener requires it.
-        public void OnPurchaseFailed(Product product, PurchaseFailureReason failureReason)
-            => m_Inner.OnPurchaseFailed(product, failureReason);
-#pragma warning restore 0618
-
-        // Newer failure callback from IDetailedStoreListener. If the inner
-        // listener is also detailed, forward to its detailed overload;
-        // otherwise collapse to the deprecated reason-only one so the game
-        // still sees the failure.
-        public void OnPurchaseFailed(Product product, PurchaseFailureDescription failureDescription)
-        {
-            if (m_Inner is IDetailedStoreListener detailed)
+            foreach (var item in items)
             {
-                detailed.OnPurchaseFailed(product, failureDescription);
-            }
-            else
-            {
-#pragma warning disable 0618
-                m_Inner.OnPurchaseFailed(product, failureDescription.reason);
-#pragma warning restore 0618
+                var product = item?.Product;
+                if (product?.definition == null || product.metadata == null) continue;
+                if (product.metadata.isoCurrencyCode == null) continue;  // mirrors Unity IAP's own guard
+
+                var sku = !string.IsNullOrEmpty(product.definition.id)
+                    ? product.definition.id
+                    : product.definition.storeSpecificId;
+                if (string.IsNullOrEmpty(sku)) continue;
+
+                Bugpunch.LogPurchase(
+                    sku: sku,
+                    price: (double)product.metadata.localizedPrice,
+                    currency: product.metadata.isoCurrencyCode,
+                    transactionId: transactionId
+                );
             }
         }
     }

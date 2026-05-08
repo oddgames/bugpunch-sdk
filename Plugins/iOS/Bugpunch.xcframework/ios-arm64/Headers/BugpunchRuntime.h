@@ -62,6 +62,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (instancetype)shared;
 
+/// Merge server-authored attachment rules into `config[@"attachmentRules"]`.
+/// Idempotent across polls — entries with an `id` field replace any prior
+/// server-authored entry; game-declared rules (no id) are kept untouched.
+/// Tokens (`[PersistentDataPath]`, `[TemporaryCachePath]`, `[DataPath]`) in
+/// the rule's `target` field are resolved against the runtime's `paths`
+/// object before being persisted.
++ (void)mergeServerAttachmentRules:(NSArray*)serverRules;
+
 /// Start the CADisplayLink frame tick. Drives FPS measurement and the
 /// periodic backbuffer flush. Idempotent — called once from
 /// `Bugpunch_StartDebugMode`; re-entry is a no-op.
