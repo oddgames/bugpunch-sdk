@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.13] - 2026-05-11
+
+### Fixed
+- **"Screen position out of view frustum" warning when raycasting through the scene camera.** `SceneCameraService.Raycast` scaled normalized click coords by `Screen.width` / `Screen.height`, but the scene camera renders to a RenderTexture whose `pixelWidth` / `pixelHeight` differs from `Screen.*` (e.g. Editor with docked game view). Switched to `cam.pixelWidth` / `cam.pixelHeight` so coords land inside the camera's actual pixel rect.
+
 ## [1.8.12] - 2026-05-11
 
 ### Added
