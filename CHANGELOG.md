@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.18] - 2026-05-12
+
+### Fixed
+- **Device now registers on every build.** Previously only release-public builds called `POST /api/devices/register` — debug + cached-internal builds opened the IDE WebSocket directly and never created a `Device` row in the dashboard. Result: bug reports flowed but the device was invisible in the Devices page and couldn't be assigned a tester role. `BugpunchClient.StartConnectionMode()` now always invokes `StartPollMode()` first; the WS opens eagerly for debug + cached-internal devices on top of that.
+- **Android HTTP 403 from `/api/v1/perf/events` + `/api/v1/analytics/events`.** Default `HttpURLConnection` `User-Agent: Java/x.x.x` tripped Cloudflare's browser-integrity check (error 1010) and some carrier middleboxes. Every Android HTTP entry point now sets `User-Agent: Bugpunch-Android-SDK` (uploader, poller, chat, crash drain, generic helper).
+- **Tools button in floating debug widget did nothing.** The widget bounced through Unity (`UnitySendMessage("BugpunchToolsBridge", "OnShowTools", "")`) targeting a MonoBehaviour that was never auto-spawned. Flow inverted: widget now launches the native panel directly (Android Activity / iOS view controller), which then asks Unity for fresh tool data via `OnRequestTools` and re-paints when C# pushes back via `BugpunchNative.UpdateTools(json)`. The panel always opens, regardless of game-code wiring.
+
+### Changed
+- **`BugpunchPoller.start` skips its duplicate immediate poll.** The native register call already returns the full bootstrap payload (roleConfig + gameConfig + scripts + directives + upgradeToWebSocket); the recurring poll now starts one interval (60s) after register instead of firing twice on the same data.
+- **`DebugToolsBridge` rewritten as a static utility class.** No longer a `MonoBehaviour`; no GameObject named `BugpunchToolsBridge` needed. Internal contract — game code doesn't call it directly.
+
 ## [1.8.17] - 2026-05-12
 
 ### Changed
