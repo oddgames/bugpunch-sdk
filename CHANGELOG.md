@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.16] - 2026-05-11
+
+### Changed
+- **`BugpunchRequestHelpPicker` is now `internal`.** Call `Bugpunch.RequestHelp()` instead — the picker class is an implementation detail. No behavioural change; the public facade has always been the supported entry point.
+
 ## [1.8.15] - 2026-05-11
 
 ### Added
