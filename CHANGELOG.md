@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.12] - 2026-05-11
+
+### Added
+- **Build metadata auto-fill (Changeset + Branch).** `BuildVcsMeta` resolves VCS info for the Register Build window and the post-build artifact uploader. Order: code-side `ChangesetProvider` / `BranchProvider` callbacks → env vars `BP_CHANGESET` / `BP_BRANCH` → Plastic SCM → git. Plastic-only consumers see no behavioural change; git repos now auto-fill too.
+- **Placeholder interpolation in build metadata fields.** Changeset, Branch (and anything passed to `BuildVcsMeta.Expand`) accept `${ENV_VAR}` and `[Type.Member.Member(args)]` placeholders. Reflection-evaluated against `UnityEngine`, `UnityEditor`, `System`, `System.IO` roots — e.g. `[Application.version]`, `[DateTime.UtcNow.ToString("yyyyMMdd")]`, `[Environment.GetEnvironmentVariable("GITHUB_SHA")]`. Editor-only, runs at submit time.
+- **Register Build window help text.** HelpBox + per-field tooltips document the auto-fill chain, placeholder syntax, and the code-side `BuildVcsMeta.ChangesetProvider` / `BranchProvider` override.
+
 ## [1.8.11] - 2026-05-11
 
 ### Fixed
