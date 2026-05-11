@@ -2,10 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.8.19] - 2026-05-12
+## [1.8.20] - 2026-05-12
 
 ### Changed
 - **Public facade reverted from `BugpunchSdk` back to `Bugpunch`.** The namespace `ODDGames.Bugpunch` is renamed to `ODDGames.BugpunchSdk` instead — that removes the collision the v1.8.17 class rename was meant to solve. Call sites now read as `Bugpunch.Report(...)` after `using ODDGames.BugpunchSdk;` (no name shadowing because `BugpunchSdk` is the namespace and `Bugpunch` is the class — full path `ODDGames.BugpunchSdk.Bugpunch`). Sub-namespaces follow: `ODDGames.BugpunchSdk.UI`, `.RemoteIDE`, `.Editor`, `.Bridge`, `.Samples`. Assembly + DLL filenames stay `ODDGames.Bugpunch.dll` etc. so Unity asmdef references don't break. **Breaking** for game code that adopted v1.8.17/v1.8.18's `BugpunchSdk.Foo()` — revert call sites to `Bugpunch.Foo()` and update any `using ODDGames.Bugpunch;` → `using ODDGames.BugpunchSdk;`.
+
+## [1.8.19] - 2026-05-12
 
 ### Fixed
 - **iOS dSYM upload fails build with HTTP 400, killing the Xcode archive.** Two bugs in the post-process build phase script installed by `iOSSymbolUploadHook`:
