@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.11] - 2026-05-11
+
+### Fixed
+- **Built-in render pipeline shader compile errors.** Six SDK shaders (`Hidden/Bugpunch/{ColliderWire,UV,Wireframe,Depth,Normals,Overdraw}`) referenced `Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl` in their URP SubShader. Unity compiles every SubShader regardless of which one the active RP picks, so projects without the URP package failed to compile. Swapped the URP SubShader bodies from `HLSLPROGRAM` + `Core.hlsl` to `CGPROGRAM` + `UnityCG.cginc` — works under URP (legacy include preserved) and Built-in alike. URP still selects the URP SubShader via `RenderPipeline=UniversalPipeline` + `LightMode=UniversalForward` tags.
+
 ## [1.8.10] - 2026-05-08
 
 ### Added

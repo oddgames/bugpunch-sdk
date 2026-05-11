@@ -24,27 +24,24 @@ Shader "Hidden/Bugpunch/ColliderWire"
             Cull Off
             Blend SrcAlpha OneMinusSrcAlpha
 
-            HLSLPROGRAM
+            CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "UnityCG.cginc"
 
-            CBUFFER_START(UnityPerMaterial)
-                float4 _TintColor;
-            CBUFFER_END
+            float4 _TintColor;
 
-            struct Attributes { float4 positionOS : POSITION; };
-            struct Varyings   { float4 positionHCS : SV_POSITION; };
+            struct v2f { float4 pos : SV_POSITION; };
 
-            Varyings vert(Attributes v)
+            v2f vert(appdata_base v)
             {
-                Varyings o;
-                o.positionHCS = TransformObjectToHClip(v.positionOS.xyz);
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
                 return o;
             }
 
-            half4 frag(Varyings i) : SV_Target { return _TintColor; }
-            ENDHLSL
+            fixed4 frag(v2f i) : SV_Target { return _TintColor; }
+            ENDCG
         }
     }
 
