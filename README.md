@@ -28,8 +28,8 @@ with the Bugpunch dashboard at [bugpunch.com](https://bugpunch.com).
   fire when thresholds break. Pre-crash storyboard captures the last few
   seconds of UI presses + screenshots so triage gets context, not just a
   stack frame.
-- **Custom data + analytics** — `Bugpunch.SetCustomData("level", "boss-3")`
-  attaches to every report. `Bugpunch.LogPurchase(...)` for IAP analytics
+- **Custom data + analytics** — `BugpunchSdk.SetCustomData("level", "boss-3")`
+  attaches to every report. `BugpunchSdk.LogPurchase(...)` for IAP analytics
   (auto-wired if you use Unity Purchasing — see below).
 
 ## Install
@@ -58,7 +58,7 @@ fetches the tag and treats the repo as the package root.
    know which platform path is active. Reports start flowing.
 
 That's the entire integration. No `MonoBehaviour` to drop into a scene,
-no `Bugpunch.Init()` call — the SDK boots itself before scene load.
+no `BugpunchSdk.Init()` call — the SDK boots itself before scene load.
 
 ## Public API
 
@@ -66,18 +66,18 @@ no `Bugpunch.Init()` call — the SDK boots itself before scene load.
 using ODDGames.Bugpunch;
 
 // Manually file a bug or feedback.
-Bugpunch.Report("Player got stuck on level 3 boss");
-Bugpunch.Feedback("Loved the new gesture controls!");
+BugpunchSdk.Report("Player got stuck on level 3 boss");
+BugpunchSdk.Feedback("Loved the new gesture controls!");
 
 // Tag every subsequent report with extra context.
-Bugpunch.SetCustomData("playerLevel", 47);
-Bugpunch.SetCustomData("subscription", "pro");
+BugpunchSdk.SetCustomData("playerLevel", 47);
+BugpunchSdk.SetCustomData("subscription", "pro");
 
 // Pull a server-resolved config variable (per-device overrides supported).
-var spawnRate = Bugpunch.GetVariable("spawnRate", 1.0f);
+var spawnRate = BugpunchSdk.GetVariable("spawnRate", 1.0f);
 
 // IAP analytics (no-op if Unity Purchasing isn't installed).
-Bugpunch.LogPurchase("coins_500", 4.99m, "USD", txnId);
+BugpunchSdk.LogPurchase("coins_500", 4.99m, "USD", txnId);
 ```
 
 The full surface is small — most of the SDK runs autonomously once
@@ -114,12 +114,12 @@ unchanged. Compiles only when Unity Purchasing 5.0+ is installed; zero
 runtime cost when absent.
 
 For raw StoreKit (iOS) or direct Google Play Billing (Android), call
-`Bugpunch.LogPurchase(sku, price, currency, transactionId)` from your
+`BugpunchSdk.LogPurchase(sku, price, currency, transactionId)` from your
 own purchase handler.
 
 ### Pre-crash video buffer (opt-in)
 
-Tester builds can call `Bugpunch.EnterDebugMode()` from a menu to start a
+Tester builds can call `BugpunchSdk.EnterDebugMode()` from a menu to start a
 rolling video buffer (default: last 90 seconds, h264, ~2 Mbps). On the
 next crash / ANR / bug report, the recording attaches automatically so
 triage sees what happened *before* the failure, not just the moment of.

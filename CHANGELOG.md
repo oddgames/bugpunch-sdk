@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.17] - 2026-05-12
+
+### Changed
+- **Public facade renamed `Bugpunch` → `BugpunchSdk`.** Resolves the class-name vs namespace-tail collision (`ODDGames.Bugpunch.Bugpunch`) that forced consumers to fully qualify every call. With `using ODDGames.Bugpunch;` the facade is now reachable as `BugpunchSdk.Foo()` without ambiguity. **Breaking** for game code — every call site must be updated (`Bugpunch.Report(...)` → `BugpunchSdk.Report(...)`, etc.).
+
 ## [1.8.16] - 2026-05-11
 
 ### Changed
