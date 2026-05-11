@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
-namespace ODDGames.Bugpunch.Samples
+namespace ODDGames.BugpunchSdk.Samples
 {
     /// <summary>
     /// Sample component that responds to touch gestures (pinch, rotate, two-finger swipe).

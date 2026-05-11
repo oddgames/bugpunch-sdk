@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace ODDGames.Bugpunch.Samples
+namespace ODDGames.BugpunchSdk.Samples
 {
     /// <summary>
     /// Handles panel switching for the comprehensive sample scene.

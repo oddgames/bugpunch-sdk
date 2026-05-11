@@ -1,6 +1,6 @@
 {
     "name": "ODDGames.Bugpunch.Purchasing",
-    "rootNamespace": "ODDGames.Bugpunch",
+    "rootNamespace": "ODDGames.BugpunchSdk",
     "references": [
         "ODDGames.Bugpunch",
         "Unity.Purchasing"

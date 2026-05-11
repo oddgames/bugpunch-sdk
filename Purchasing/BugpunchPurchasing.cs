@@ -8,12 +8,12 @@
 //
 // Integration (one line at the dev's IPurchaseService creation site):
 //
-//     using ODDGames.Bugpunch;
+//     using ODDGames.BugpunchSdk;
 //     ...
 //     m_PurchaseService = UnityIAPServices.DefaultPurchase().WithBugpunch();
 //
 // Bugpunch subscribes to `OnPurchaseConfirmed` and side-channels every
-// confirmed purchase to `BugpunchSdk.LogPurchase(...)` so they land in the
+// confirmed purchase to `Bugpunch.LogPurchase(...)` so they land in the
 // analytics pipeline without the game having to duplicate the call.
 //
 // Note: v4 IStoreListener support was removed when Unity IAP shipped v5,
@@ -25,7 +25,7 @@ using System;
 using UnityEngine;
 using UnityEngine.Purchasing;
 
-namespace ODDGames.Bugpunch
+namespace ODDGames.BugpunchSdk
 {
     /// <summary>
     /// Extension-method surface for hooking Bugpunch purchase logging into
@@ -72,7 +72,7 @@ namespace ODDGames.Bugpunch
                     : product.definition.storeSpecificId;
                 if (string.IsNullOrEmpty(sku)) continue;
 
-                BugpunchSdk.LogPurchase(
+                Bugpunch.LogPurchase(
                     sku: sku,
                     price: (double)product.metadata.localizedPrice,
                     currency: product.metadata.isoCurrencyCode,

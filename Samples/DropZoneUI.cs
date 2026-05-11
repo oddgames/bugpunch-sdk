@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace ODDGames.Bugpunch.Samples
+namespace ODDGames.BugpunchSdk.Samples
 {
     /// <summary>
     /// Simple drop zone UI component for sample scenes.

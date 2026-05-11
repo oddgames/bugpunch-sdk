@@ -2,13 +2,13 @@
 //
 // Optional: only compiles when the game has `com.google.ads.mobile` installed.
 // The `BUGPUNCH_HAS_ADMOB` symbol is set by a version-define on
-// ODDGames.Bugpunch.Ads.asmdef, so when the AdMob package is absent this file
+// ODDGames.BugpunchSdk.Ads.asmdef, so when the AdMob package is absent this file
 // is not part of the build — no reflection, no failed dynamic loads, no
 // runtime overhead.
 //
 // Integration (one line per ad instance, right after Load):
 //
-//     using ODDGames.Bugpunch;
+//     using ODDGames.BugpunchSdk;
 //     ...
 //     RewardedAd.Load(adUnitId, request, (ad, err) => {
 //         if (err != null) { /* handle */ return; }
@@ -29,13 +29,13 @@
 using System.Runtime.CompilerServices;
 using GoogleMobileAds.Api;
 
-namespace ODDGames.Bugpunch
+namespace ODDGames.BugpunchSdk
 {
     /// <summary>
     /// Extension-method surface for attaching Bugpunch telemetry to existing
     /// AdMob ad instances. One call per ad — typically right after the Load
     /// callback hands you the ad. Forwards lifecycle events to
-    /// <see cref="BugpunchSdk.LogAd"/> as the standard
+    /// <see cref="Bugpunch.LogAd"/> as the standard
     /// <c>shown / click / fail / paid / close</c> action vocabulary.
     /// </summary>
     public static class BugpunchAdMob
@@ -69,19 +69,19 @@ namespace ODDGames.Bugpunch
         /// Note: rewarded reward delivery happens via the user-supplied
         /// callback on <c>Show(Action&lt;Reward&gt;)</c>, NOT an event on the
         /// ad — Bugpunch can't see it from this wrapper. Game code should
-        /// call <c>BugpunchSdk.LogAd("reward", "rewarded", "admob", placement)</c>
+        /// call <c>Bugpunch.LogAd("reward", "rewarded", "admob", placement)</c>
         /// inside that callback if reward attribution is needed.
         /// </summary>
         public static RewardedAd WithBugpunch(this RewardedAd ad, string placement = null)
         {
             if (!TryMarkAttached(ad)) return ad;
             string adType = "rewarded";
-            ad.OnAdFullScreenContentOpened += () => BugpunchSdk.LogAd("shown",  adType, SdkName, placement);
-            ad.OnAdFullScreenContentClosed += () => BugpunchSdk.LogAd("close",  adType, SdkName, placement);
-            ad.OnAdFullScreenContentFailed += err => BugpunchSdk.LogAd("fail",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentOpened += () => Bugpunch.LogAd("shown",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentClosed += () => Bugpunch.LogAd("close",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentFailed += err => Bugpunch.LogAd("fail",  adType, SdkName, placement);
             ad.OnAdImpressionRecorded     += () => { /* impression == shown above */ };
-            ad.OnAdClicked                += () => BugpunchSdk.LogAd("click",  adType, SdkName, placement);
-            ad.OnAdPaid                   += value => BugpunchSdk.LogAd("paid", adType, SdkName, placement, ToUsd(value));
+            ad.OnAdClicked                += () => Bugpunch.LogAd("click",  adType, SdkName, placement);
+            ad.OnAdPaid                   += value => Bugpunch.LogAd("paid", adType, SdkName, placement, ToUsd(value));
             return ad;
         }
 
@@ -91,11 +91,11 @@ namespace ODDGames.Bugpunch
         {
             if (!TryMarkAttached(ad)) return ad;
             string adType = "interstitial";
-            ad.OnAdFullScreenContentOpened += () => BugpunchSdk.LogAd("shown",  adType, SdkName, placement);
-            ad.OnAdFullScreenContentClosed += () => BugpunchSdk.LogAd("close",  adType, SdkName, placement);
-            ad.OnAdFullScreenContentFailed += err => BugpunchSdk.LogAd("fail",  adType, SdkName, placement);
-            ad.OnAdClicked                += () => BugpunchSdk.LogAd("click",  adType, SdkName, placement);
-            ad.OnAdPaid                   += value => BugpunchSdk.LogAd("paid", adType, SdkName, placement, ToUsd(value));
+            ad.OnAdFullScreenContentOpened += () => Bugpunch.LogAd("shown",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentClosed += () => Bugpunch.LogAd("close",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentFailed += err => Bugpunch.LogAd("fail",  adType, SdkName, placement);
+            ad.OnAdClicked                += () => Bugpunch.LogAd("click",  adType, SdkName, placement);
+            ad.OnAdPaid                   += value => Bugpunch.LogAd("paid", adType, SdkName, placement, ToUsd(value));
             return ad;
         }
 
@@ -105,11 +105,11 @@ namespace ODDGames.Bugpunch
         {
             if (!TryMarkAttached(ad)) return ad;
             string adType = "app_open";
-            ad.OnAdFullScreenContentOpened += () => BugpunchSdk.LogAd("shown",  adType, SdkName, placement);
-            ad.OnAdFullScreenContentClosed += () => BugpunchSdk.LogAd("close",  adType, SdkName, placement);
-            ad.OnAdFullScreenContentFailed += err => BugpunchSdk.LogAd("fail",  adType, SdkName, placement);
-            ad.OnAdClicked                += () => BugpunchSdk.LogAd("click",  adType, SdkName, placement);
-            ad.OnAdPaid                   += value => BugpunchSdk.LogAd("paid", adType, SdkName, placement, ToUsd(value));
+            ad.OnAdFullScreenContentOpened += () => Bugpunch.LogAd("shown",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentClosed += () => Bugpunch.LogAd("close",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentFailed += err => Bugpunch.LogAd("fail",  adType, SdkName, placement);
+            ad.OnAdClicked                += () => Bugpunch.LogAd("click",  adType, SdkName, placement);
+            ad.OnAdPaid                   += value => Bugpunch.LogAd("paid", adType, SdkName, placement, ToUsd(value));
             return ad;
         }
 
@@ -119,11 +119,11 @@ namespace ODDGames.Bugpunch
         {
             if (!TryMarkAttached(ad)) return ad;
             string adType = "rewarded_interstitial";
-            ad.OnAdFullScreenContentOpened += () => BugpunchSdk.LogAd("shown",  adType, SdkName, placement);
-            ad.OnAdFullScreenContentClosed += () => BugpunchSdk.LogAd("close",  adType, SdkName, placement);
-            ad.OnAdFullScreenContentFailed += err => BugpunchSdk.LogAd("fail",  adType, SdkName, placement);
-            ad.OnAdClicked                += () => BugpunchSdk.LogAd("click",  adType, SdkName, placement);
-            ad.OnAdPaid                   += value => BugpunchSdk.LogAd("paid", adType, SdkName, placement, ToUsd(value));
+            ad.OnAdFullScreenContentOpened += () => Bugpunch.LogAd("shown",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentClosed += () => Bugpunch.LogAd("close",  adType, SdkName, placement);
+            ad.OnAdFullScreenContentFailed += err => Bugpunch.LogAd("fail",  adType, SdkName, placement);
+            ad.OnAdClicked                += () => Bugpunch.LogAd("click",  adType, SdkName, placement);
+            ad.OnAdPaid                   += value => Bugpunch.LogAd("paid", adType, SdkName, placement, ToUsd(value));
             return ad;
         }
 
@@ -139,11 +139,11 @@ namespace ODDGames.Bugpunch
         {
             if (!TryMarkAttached(ad)) return ad;
             string adType = "banner";
-            ad.OnBannerAdLoaded            += () => BugpunchSdk.LogAd("shown", adType, SdkName, placement);
-            ad.OnBannerAdLoadFailed        += err => BugpunchSdk.LogAd("fail",  adType, SdkName, placement);
+            ad.OnBannerAdLoaded            += () => Bugpunch.LogAd("shown", adType, SdkName, placement);
+            ad.OnBannerAdLoadFailed        += err => Bugpunch.LogAd("fail",  adType, SdkName, placement);
             ad.OnAdImpressionRecorded     += () => { /* impression covered by load */ };
-            ad.OnAdClicked                += () => BugpunchSdk.LogAd("click",  adType, SdkName, placement);
-            ad.OnAdPaid                   += value => BugpunchSdk.LogAd("paid", adType, SdkName, placement, ToUsd(value));
+            ad.OnAdClicked                += () => Bugpunch.LogAd("click",  adType, SdkName, placement);
+            ad.OnAdPaid                   += value => Bugpunch.LogAd("paid", adType, SdkName, placement, ToUsd(value));
             return ad;
         }
 

@@ -1,6 +1,6 @@
 {
     "name": "ODDGames.Bugpunch.Ads",
-    "rootNamespace": "ODDGames.Bugpunch",
+    "rootNamespace": "ODDGames.BugpunchSdk",
     "references": [
         "ODDGames.Bugpunch",
         "GoogleMobileAds.Api"

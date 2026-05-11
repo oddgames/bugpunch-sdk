@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-namespace ODDGames.Bugpunch.Samples
+namespace ODDGames.BugpunchSdk.Samples
 {
     /// <summary>
     /// 3D cube that responds to touch gestures for visual demonstration.

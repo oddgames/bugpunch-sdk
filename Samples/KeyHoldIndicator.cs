@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
-namespace ODDGames.Bugpunch.Samples
+namespace ODDGames.BugpunchSdk.Samples
 {
     /// <summary>
     /// Visual indicator for key hold state. Shows which WASD keys are currently pressed.

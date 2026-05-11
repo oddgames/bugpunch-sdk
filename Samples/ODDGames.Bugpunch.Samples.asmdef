@@ -1,6 +1,6 @@
 {
     "name": "ODDGames.Bugpunch.Samples",
-    "rootNamespace": "ODDGames.Bugpunch.Samples",
+    "rootNamespace": "ODDGames.BugpunchSdk.Samples",
     "references": [
         "ODDGames.Bugpunch",
         "Unity.InputSystem",

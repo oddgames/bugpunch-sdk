@@ -6,7 +6,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
-namespace ODDGames.Bugpunch.Samples.Editor
+namespace ODDGames.BugpunchSdk.Samples.Editor
 {
     /// <summary>
     /// Editor tool to generate the comprehensive sample test scene for UITest demonstration.
