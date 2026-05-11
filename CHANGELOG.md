@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.19] - 2026-05-12
+
+### Fixed
+- **iOS dSYM upload fails build with HTTP 400, killing the Xcode archive.** Two bugs in the post-process build phase script installed by `iOSSymbolUploadHook`:
+  1. The S3 part ETag captured from `UploadPart`'s response header had its surrounding quotes stripped before being sent to `/api/symbols/upload-direct/complete`. AWS's `CompleteMultipartUpload` matches the ETag byte-for-byte against what S3 returned (quotes-and-all), so the upload was rejected. The Android/C# `SymbolUploadClient` already kept the quotes — iOS now matches.
+  2. Even when the upload genuinely failed, `curl`'s diagnostic ("curl: (22) The requested URL returned error: 400") was bleeding the literal substring `error:` into Xcode's build log. Jenkins (and other CI wrappers) commonly `grep -q error:` the log to decide whether the Archive succeeded, so the surrounding build was being failed by our script's text even though we exited 0. The script now (a) drops `set -e` so a single bad command doesn't abort, (b) rewrites `error:` → `issue:` on its own stderr via `exec 2> >(sed …)`, and (c) hard-forces `exit 0` in the `EXIT` trap. Symbol upload remains best-effort; it can never fail the surrounding build again.
+
 ## [1.8.18] - 2026-05-12
 
 ### Fixed
