@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.14] - 2026-05-11
+
+### Added
+- **Scene-camera draw-distance API.** `POST /scene-camera/draw-distance` with `{far}` sets the scene camera's far clip plane (clamped to [10, 100000]). `GetState` now reports `near` + `far` so dashboards can seed a slider. Scene camera no longer inherits the main camera's clip planes on start — it uses wide defaults (`near=0.05`, `far=10000`) so big scenes don't clip on free-fly. Pairs with the new dashboard slider in the IDE scene-camera toolbar.
+- **Editor log-capture toggle.** New `LogCaptureState.EditorEnabled` (runtime) + `BugpunchLogCaptureToggle` (Editor) mirror an `EditorPrefs` flag into the runtime DLL on every domain reload. Lets a developer mute Editor-session log streaming to the IDE tunnel without dropping the tunnel itself. Device builds ignore the flag — their log push is still gated by `RoleState.IsInternal`.
+
+### Changed
+- **ConsoleService** consults `LogCaptureState.EditorEnabled` when forwarding logs to the IDE tunnel.
+
 ## [1.8.13] - 2026-05-11
 
 ### Fixed
