@@ -32,6 +32,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// and stamped onto every report.
 @property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* customData;
 
+/// SystemInfo blob pushed by C# (`BugpunchSystemInfo.CaptureFull` at init,
+/// `CaptureVolatile` on each scene change). Stamped onto every uploaded
+/// crash / exception / bug-report manifest under the top-level
+/// `systemInfo` key. Stored as the raw merged dict so `NSJSONSerialization`
+/// embeds it as nested JSON without re-parsing.
+@property (nonatomic, strong, nullable) NSMutableDictionary<NSString*, id>* systemInfo;
+
 /// Has Bugpunch_StartDebugMode completed?
 @property (nonatomic, assign) BOOL started;
 

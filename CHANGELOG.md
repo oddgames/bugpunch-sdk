@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.15] - 2026-05-11
+
+### Added
+- **`BugpunchSystemInfo`** — full + volatile `SystemInfo` snapshots get pushed to native at SDK start and on every scene change. Crash, exception, ANR, and bug-report uploads now carry the rich device-info blob the Remote IDE's `DeviceInfoService` already exposes.
+
+### Changed
+- **Native storyboard capture.** `BugpunchInputCapture` now asks native to capture the current Unity surface (Android `PixelCopy` / iOS `drawViewHierarchyInRect`) instead of running `AsyncGPUReadback` in C# and shipping ARGB32 pixel bytes across the JNI / P-Invoke boundary. Sidesteps Y-flip / orientation bugs in `ScreenCapture.CaptureScreenshotIntoRenderTexture` on Vulkan / Metal and stops paying GPU bus bandwidth per press.
+- **Editor sessions default to `TesterRole.Internal`.** `RoleState` initializes Editor as Internal so the Console log push to the IDE tunnel is on by default — toolbar toggle drops to Public to mute it. `LogCaptureState` (separate Editor flag) is removed; the single role gate covers Editor + device.
+
+### Fixed
+- **iOS linker errors** — undefined-symbol failures for `Bugpunch_ReportBug`, `Bugpunch_TrackEvent`, `BugpunchRing_*`, `BugpunchPerfMonitor_OnSceneChange`, `UnitySendMessage`, etc. Cross-file forward declarations were missing `extern "C"`, so callers used C++ name mangling and missed the C-linkage definitions. Hoisted all forward decls to file scope and wrapped `BugpunchPerfMonitor_*` definitions in `extern "C"`.
+
 ## [1.8.14] - 2026-05-11
 
 ### Added
