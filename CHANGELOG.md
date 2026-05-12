@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.23] - 2026-05-12
+
+### Changed
+- **Bug-report form rework (Android + iOS).** Adds a mandatory **Title** input (replaces the programmatic title that was never user-editable). Existing **Description** field renamed to **Reproduce steps** and stays mandatory. Empty title or empty repro steps surfaces an inline warning on Send. Screenshot card and video timeline now share the same slot via a segmented **Screenshot / Video** tab at the top of the media area; no video footage → tab hides, screenshot card behaves as before. Landscape layout wraps the media column in a scrollview so the taller video section fits without clipping. Inner "VIDEO RANGE" sublabel removed (tab labels it).
+- **New string keys** on `BugpunchStrings`: `reportFormReproStepsLabel`, `reportFormReproStepsRequired`, `reportFormTitleRequired`, `reportFormMediaScreenshot`, `reportFormMediaVideo`. Translation overrides can supply per-locale strings; defaults match English.
+
 ## [1.8.22] - 2026-05-12
 
 ### Changed
