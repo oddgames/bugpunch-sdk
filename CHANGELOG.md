@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.21] - 2026-05-12
+
+### Changed
+- **Uploader drop log now includes server response body snippet** (Android `BugpunchUploader`). `[Bugpunch.Uploader]: dropping after 1 attempts (HTTP 403): https://api.bugpunch.com/api/v1/perf/events` was opaque — the actual cause (project-id-required, forbidden, invalid-key, etc.) lived in the response body that we discarded. Now logs ` — body: <first 200 chars of response>` so logcat reveals which gate fired without needing server-side log access. Diagnostic only; no behavioural change.
+
 ## [1.8.20] - 2026-05-12
 
 ### Changed
