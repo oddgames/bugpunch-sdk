@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.22] - 2026-05-12
+
+### Changed
+- **Native-first poller startup.** `BugpunchPoller.start` now runs from the Android `BugpunchInitProvider` / iOS `+load` bootstrap, before Unity boots — `POST /api/devices/register` fires immediately and the device appears in the dashboard's Devices page within a second of process start (not 30s+ after Unity is ready). The register response's bootstrap envelope (roleConfig + gameConfig + scripts + directives + upgradeToWebSocket) is cached natively and replayed to Unity via `UnitySendMessage` once `UnityPlayer` boots, so `OnGameConfig` / `OnPollScripts` / etc. land on the managed client without waiting for the next 60s poll tick.
+- **`BugpunchPoller.start(Context, ...)`** signature on Android — the prior `Activity` overload is kept for back-compat (the C# JNI bridge still passes one) but internal methods are `Context`-based so the ContentProvider can drive registration before any Activity exists.
+- **`BugpunchClient.StartConnectionMode` skips `StartPollMode`** when the native poller is already running (`BugpunchNative.IsPollerRunning()`), then calls a new `ReplayCachedBootstrap()` that pulls the cached envelope via `BugpunchNative.GetCachedBootstrap()` and re-dispatches it through the existing managed receivers. Belt-and-braces with the native `attachActivity` replay path on Android; sole replay path on iOS.
+
 ## [1.8.21] - 2026-05-12
 
 ### Changed
