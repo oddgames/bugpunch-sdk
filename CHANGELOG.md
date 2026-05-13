@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-05-13
+
+### Changed (BREAKING)
+- **Goal API reduced to one method.** Replaces `Bugpunch.RegisterGoal` /
+  `Bugpunch.GoalReached` / `Bugpunch.GoalProgress`. Three call shapes:
+  - **Declare:** `Bugpunch.Goal(id, text, expected, priority?, description?)` — no-op at runtime; Cecil scanner extracts at build.
+  - **Observe:** `Bugpunch.Goal(id, observedValue)` — fires `goal.observed`. `id` may be dynamic.
+  - **Declare + poll:** `Bugpunch.Goal(id, text, expected, () => value, priority?, description?)` — sync or async lambda polled every ~10 s.
+  Type `T` ∈ { string, int, long, float, double, bool }. `Priority` enum: `Normal` (default) or `Important`. Optional `description` for QA notes.
+- **One goal per item** — covers / multi-step expected sets removed. For "every X" coverage, declare one goal per X (use `BugpunchEditorGoals.Add` in an editor script when X is dynamic).
+- Server matches incoming `goal.observed` events on equality against the catalog goal's `expected` value. Only one goal kind exists now (`goal`); the prior `expression` / `manual` / `callback` kinds are gone.
+
+### Added
+- **`Bugpunch.Priority`** enum (`Normal`, `Important`) on every declare overload — drives QA Goals dashboard sort order. NEW badges remain auto-computed by age, not authored.
+- **Optional `description`** parameter on every declare overload — long-form QA notes shown in the dashboard ? popover.
+- **`BugpunchEditorGoals.Add(id, text, expected, priority?)`** in the Editor DLL — programmatic build-time goal registration for editor scripts (`IPreprocessBuildWithReport` hooks scanning a ScriptableObject inventory). Drained into `BugpunchBuildCatalog.json` after the Cecil scan.
+- **Edit-time hook** — `Bugpunch.Goal(...)` calls executed in the Editor (static initializers, build hooks, asset post-processors) divert through `EditorGoalHookBootstrap` into the same edit-time registry. Lets editor scripts use the runtime API for dynamic ids.
+- **Source-location metadata** captured per goal — file path + line via Mono.Cecil sequence points (Cecil scan) or `System.Diagnostics.StackTrace` (edit-time hook). Surfaces in the dashboard "?" popover.
+- **`Bugpunch.Goal` evaluator polling** via `GoalReporter` — replaces the old `CallbackGoalRegistry`. Fires `goal.observed` whenever the lambda's value changes (deduped against the previous value).
+
+### Removed
+- `Bugpunch.RegisterGoal`, `Bugpunch.GoalReached`, `Bugpunch.GoalProgress` — folded into `Bugpunch.Goal`.
+- `BugpunchGoals` ScriptableObject + `Assets/Resources/BugpunchGoals.asset` authoring path. Goals come exclusively from build-time call sites + `BugpunchEditorGoals.Add` now.
+- `Operator` enum (Equals / GreaterThan / Contains / …) — equality is the only matching mode; thresholds are expressed in the evaluator lambda (`() => score >= 1000`).
+- Server `kind: "expression" | "manual" | "callback"` evaluators + DSL — `goal` is the only kind.
+
 ## [1.9.0] - 2026-05-13
 
 ### Added
