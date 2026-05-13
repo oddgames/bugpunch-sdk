@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.0] - 2026-05-13
+
+### Added
+- **`Bugpunch.RegisterGoal(key, value, predicate)`** — predicate-driven runtime goal API. Pair a `(key, value)` literal tuple with a predicate the SDK polls (every ~10s + on scene change + on app focus); on first true, fires `goal.reached(key, value)`. String + numeric value overloads. Cecil scanner extracts the literals at build time so the dashboard sees the goal before any tester runs.
+- **`Bugpunch.GoalReached(key, value)`** — direct one-shot programmatic goal event. Use when the game observes the condition without needing a polled predicate. String + numeric overloads.
+- **`Bugpunch.GoalProgress(key, value)`** — accumulating progress event for thresholds and counters. String + numeric overloads. Server-side goals match against the running max / min as appropriate.
+- **QA Goals dashboard page** (`/coverage`, under the *Tasks* group) — single-build detail grid plus a multi-build helicopter heatmap. Per-platform progress cells, per-tester role chips (Internal / External / Public), category grouping, contributors leaderboard with email lookup, IMPORTANT priority + auto NEW badge, completion confetti, sidebar colour stripe.
+
+### Removed
+- **`ODDGames.BugpunchSdk.Editor.BugpunchEditorGoals`** entire class — including `RegisterBuildGoal`, `AddCoversGoal`, `AddCountGoal`, `AddSumGoal`, `ProgrammaticGoal`, `GoalDefinitionDto`, etc. The DSL grew faster than its usefulness; replaced by the simpler runtime API. For data-driven goal sets, fall back to a loop of `Bugpunch.RegisterGoal(key, value, predicate)` calls — the Cecil scanner reads each literal pair as a separate goal.
+
+### Changed
+- `BuildCatalogExporter` slimmed: only `BugpunchGoals.asset` (designer SO) + `CallbackGoalScanner` (Cecil scan of `Bugpunch.RegisterGoal` call sites) feed the catalog `goals[]` payload now. Procedural editor-side registration path retired.
+- `BugpunchBuildFingerprintHook` writes a JSON stamp `{ buildHash, version, commit, builtAt }` instead of a raw UUID. `Bugpunch.LogDesign` now injects `_bp_buildHash` + `_bp_buildBuiltAt` into every event's properties dict so the server can disambiguate two builds shipped with the same `Application.version`.
+- `Bugpunch.MarkCoverage` doc rewritten — fires `coverage.method` events; pair with an expression goal in `BugpunchGoals.asset` to count hits.
+
+### Fixed
+- Symbol-upload progress dialog stuck on a generic "Uploading symbols to server (N files)…" line during the `/check` round-trip — now reports file count, total MB, and elapsed seconds while the live tracker spins up.
+
 ## [1.8.24] - 2026-05-13
 
 ### Changed

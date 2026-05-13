@@ -89,6 +89,68 @@ BugpunchSdk.LogPurchase("coins_500", 4.99m, "USD", txnId);
 The full surface is small — most of the SDK runs autonomously once
 configured.
 
+## QA Goals
+
+The dashboard's **QA Goals** page (`/coverage`, under the *Tasks* group)
+shows a grid: rows = goals you authored, columns = platforms (Android,
+iOS, Steam, Editor, …), cells = % progress per platform. Each cell also
+carries hit count + first/last hitter so QA can see who's been driving
+the work.
+
+Two ways to declare a goal — both extracted from your game at build
+time so the dashboard knows about every goal before any tester runs:
+
+Goals are programmatic — game code declares them via one of the
+runtime APIs, the build-time Cecil scanner extracts the literal labels
+so the dashboard sees the goal immediately, and the runtime fires the
+matching event when the criteria are met.
+
+### 1. Predicate goals — the SDK polls game state
+
+Pair a `(key, value)` tuple with a predicate the SDK polls on a
+coalesced timer (every ~10s + on scene change + on app focus). First
+true fires `goal.reached(key, value)` and latches. Both `key` and
+`value` MUST be string / numeric literals so Cecil can extract them.
+
+```csharp
+Bugpunch.RegisterGoal("level_complete", 5,
+    () => SceneManager.GetActiveScene().name == "Level5Win");
+
+Bugpunch.RegisterGoal("skin_owned", "skin_red",
+    () => PlayerPrefs.GetInt("skin_red_owned", 0) == 1);
+```
+
+### 2. Direct goal events — fire when something happens
+
+Skip the predicate poll and just fire the event when the game observes
+the condition directly:
+
+```csharp
+// One-shot — server marks the matching goal complete on first hit.
+Bugpunch.GoalReached("level_complete", 5);
+Bugpunch.GoalReached("skin_owned", "skin_red");
+
+// Accumulating — game reports current value; goal threshold matches
+// when running max / min crosses the bound.
+totalCoins += amount;
+Bugpunch.GoalProgress("coins_earned", totalCoins);
+```
+
+### 3. Manual QA tasks — tested by hand
+
+For visual / locale / "vibes" checks that no event captures cleanly,
+declare the goal as `manual` in `BugpunchGoals.asset` (*Assets →
+Create → Bugpunch → Goals*). QA ticks them off from the dashboard.
+
+### Build identity
+
+Every event the SDK ships carries a stable build hash —
+`sha1(Application.version + git commit + UTC build time)` truncated to
+12 hex chars, stamped at editor build time. The QA Goals page picker
+shows `version · hash · YYYY-MM-DD` so two builds with the same
+`Application.version` (e.g. an Android rebuild after a tiny code fix)
+get separate entries instead of conflating their data.
+
 ## Supported targets
 
 | Platform           | Lane         | Crash handler             | Notes                                 |

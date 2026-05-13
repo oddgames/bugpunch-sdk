@@ -17,8 +17,18 @@
     "versionDefines": [
         {
             "name": "com.unity.purchasing",
-            "expression": "5.0.0",
+            "expression": "4.0.0",
             "define": "BUGPUNCH_HAS_UNITY_IAP"
+        },
+        {
+            "name": "com.unity.purchasing",
+            "expression": "[4.0.0,5.0.0)",
+            "define": "BUGPUNCH_HAS_UNITY_IAP_V4"
+        },
+        {
+            "name": "com.unity.purchasing",
+            "expression": "5.0.0",
+            "define": "BUGPUNCH_HAS_UNITY_IAP_V5"
         }
     ],
     "noEngineReferences": false

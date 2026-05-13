@@ -1,27 +1,36 @@
-// BugpunchPurchasing.cs — Unity IAP v5 integration.
+// BugpunchPurchasing.cs — Unity IAP integration (v4 and v5).
 //
-// Optional: only compiles when the game has `com.unity.purchasing` >= 5.0.0.
-// The `BUGPUNCH_HAS_UNITY_IAP` symbol is set by a version-define on the
-// asmdef, so when Unity IAP is absent (or below 5.0.0) this file is just
-// not part of the build — no reflection, no failed dynamic loads, no
-// runtime overhead.
+// Optional: only compiles when the game has `com.unity.purchasing` >= 4.0.0.
+// The `BUGPUNCH_HAS_UNITY_IAP` umbrella define is set by a version-define on
+// the asmdef; `BUGPUNCH_HAS_UNITY_IAP_V4` / `_V5` split the implementations.
 //
-// Integration (one line at the dev's IPurchaseService creation site):
+// v5 integration (one line, IPurchaseService):
 //
 //     using ODDGames.BugpunchSdk;
-//     ...
 //     m_PurchaseService = UnityIAPServices.DefaultPurchase().WithBugpunch();
 //
-// Bugpunch subscribes to `OnPurchaseConfirmed` and side-channels every
-// confirmed purchase to `Bugpunch.LogPurchase(...)` so they land in the
-// analytics pipeline without the game having to duplicate the call.
+// v4 integration (IStoreController + IStoreListener):
 //
-// Note: v4 IStoreListener support was removed when Unity IAP shipped v5,
-// since `IStoreListener` / `IDetailedStoreListener` no longer exist.
+//     using ODDGames.BugpunchSdk;
+//     public void OnInitialized(IStoreController c, IExtensionProvider e) {
+//         c.WithBugpunch();        // declares catalog SKUs for coverage
+//         m_Controller = c;
+//     }
+//     public void OnPurchaseFailed(Product p, PurchaseFailureReason r) {
+//         BugpunchPurchasing.LogPurchaseFailed(p, r);
+//     }
+//     public PurchaseProcessingResult ProcessPurchase(PurchaseEventArgs args) {
+//         BugpunchPurchasing.LogPurchase(args);
+//         return PurchaseProcessingResult.Complete;
+//     }
+//     // and at InitiatePurchase call sites:
+//     BugpunchPurchasing.BeginPurchase(sku);
+//     m_Controller.InitiatePurchase(sku);
 
 #if BUGPUNCH_HAS_UNITY_IAP
 
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Purchasing;
 
@@ -29,65 +38,68 @@ namespace ODDGames.BugpunchSdk
 {
     /// <summary>
     /// Extension-method surface for hooking Bugpunch purchase logging into
-    /// a Unity IAP v5 <see cref="IPurchaseService"/>.
+    /// Unity IAP. v4 attaches to <see cref="IStoreController"/>; v5 attaches
+    /// to <c>IPurchaseService</c>.
     /// </summary>
     public static class BugpunchPurchasing
     {
         /// <summary>
+        /// Pre-declare an IAP catalog so every SKU appears on the Coverage
+        /// page as an untested unit before any tester buys it.
+        /// </summary>
+        public static void DeclareIapCatalog(params string[] skus)
+        {
+            if (skus == null) return;
+            foreach (var sku in skus)
+                if (!string.IsNullOrEmpty(sku)) Bugpunch.DeclareIapSku(sku);
+        }
+
+        static void TryHook(Action act, string what)
+        {
+            try { act(); }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Bugpunch] WithBugpunch hook '{what}' skipped: {ex.Message}");
+            }
+        }
+
+#if BUGPUNCH_HAS_UNITY_IAP_V5
+        // ─── Unity IAP v5 (IPurchaseService) ────────────────────────────────
+
+        /// <summary>
         /// One-line auto-wire for Unity IAP v5. Hooks every observable
         /// event so the game side never has to call Bugpunch APIs
         /// explicitly. Idempotent — re-subscription detaches first.
-        ///
-        /// Wires:
-        ///   • <c>OnProductsFetched</c>  → <see cref="Bugpunch.DeclareIapSku"/>
-        ///     for every catalog product so SKUs appear on the Coverage
-        ///     page as untested *before* any tester buys.
-        ///   • <c>OnPurchasePending</c>  → <see cref="Bugpunch.BeginPurchase"/>
-        ///     marks the initiation event so the Coverage page's IAP
-        ///     call-site axis registers the attempt.
-        ///   • <c>OnPurchaseConfirmed</c> → <see cref="Bugpunch.LogPurchase"/>
-        ///     emits the typed business event (revenue / ARPPU / ARPDAU)
-        ///     and also seeds <c>iap_sku</c> coverage via
-        ///     <see cref="Bugpunch.DeclareIapSku"/> in case
-        ///     <c>OnProductsFetched</c> wasn't observed.
-        ///   • <c>OnPurchaseFailed</c>   → emits a <c>coverage.iap_failed</c>
-        ///     design event so failed attempts surface as a separate signal
-        ///     on the Coverage page without polluting the revenue stream.
         /// </summary>
         public static IPurchaseService WithBugpunch(this IPurchaseService service)
         {
             if (service == null) return null;
 
-            service.OnPurchaseConfirmed -= OnPurchaseConfirmed;
-            service.OnPurchaseConfirmed += OnPurchaseConfirmed;
+            service.OnPurchaseConfirmed -= OnPurchaseConfirmed_V5;
+            service.OnPurchaseConfirmed += OnPurchaseConfirmed_V5;
 
-            // The remaining events are optional — Unity IAP v5 ships them
-            // but specific minor versions may rename. Hook them in a
-            // try/catch so a version skew doesn't break WithBugpunch.
             TryHook(() => {
-                service.OnProductsFetched -= OnProductsFetched;
-                service.OnProductsFetched += OnProductsFetched;
+                service.OnProductsFetched -= OnProductsFetched_V5;
+                service.OnProductsFetched += OnProductsFetched_V5;
             }, nameof(service.OnProductsFetched));
             TryHook(() => {
-                service.OnPurchasePending -= OnPurchasePending;
-                service.OnPurchasePending += OnPurchasePending;
+                service.OnPurchasePending -= OnPurchasePending_V5;
+                service.OnPurchasePending += OnPurchasePending_V5;
             }, "OnPurchasePending");
             TryHook(() => {
-                service.OnPurchaseFailed -= OnPurchaseFailed;
-                service.OnPurchaseFailed += OnPurchaseFailed;
+                service.OnPurchaseFailed -= OnPurchaseFailed_V5;
+                service.OnPurchaseFailed += OnPurchaseFailed_V5;
             }, "OnPurchaseFailed");
 
             return service;
         }
 
-        static void OnProductsFetched(Products products)
+        static void OnProductsFetched_V5(List<Product> products)
         {
             try
             {
                 if (products == null) return;
-                var all = products.all;
-                if (all == null) return;
-                foreach (var p in all)
+                foreach (var p in products)
                 {
                     if (p?.definition == null) continue;
                     var sku = !string.IsNullOrEmpty(p.definition.id)
@@ -98,7 +110,7 @@ namespace ODDGames.BugpunchSdk
             catch (Exception ex) { Debug.LogWarning($"[Bugpunch] DeclareIapSku batch failed: {ex.Message}"); }
         }
 
-        static void OnPurchasePending(PendingOrder order)
+        static void OnPurchasePending_V5(PendingOrder order)
         {
             try
             {
@@ -113,7 +125,7 @@ namespace ODDGames.BugpunchSdk
             catch (Exception ex) { Debug.LogWarning($"[Bugpunch] BeginPurchase failed: {ex.Message}"); }
         }
 
-        static void OnPurchaseFailed(FailedOrder order)
+        static void OnPurchaseFailed_V5(FailedOrder order)
         {
             try
             {
@@ -127,7 +139,7 @@ namespace ODDGames.BugpunchSdk
                         if (!string.IsNullOrEmpty(sku)) break;
                     }
                 }
-                var props = new System.Collections.Generic.Dictionary<string, object>(2)
+                var props = new Dictionary<string, object>(2)
                 {
                     ["sku"] = sku,
                     ["reason"] = order?.FailureReason.ToString() ?? "",
@@ -137,38 +149,16 @@ namespace ODDGames.BugpunchSdk
             catch (Exception ex) { Debug.LogWarning($"[Bugpunch] IAP failure log failed: {ex.Message}"); }
         }
 
-        static void TryHook(Action act, string what)
-        {
-            try { act(); }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[Bugpunch] WithBugpunch hook '{what}' skipped: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Pre-declare an IAP catalog so every SKU appears on the Coverage
-        /// page as an untested unit before any tester buys it. Pass the
-        /// catalog the game registers with Unity IAP (typically a
-        /// <c>ProductCatalog.LoadDefaultCatalog()</c> result).
-        /// </summary>
-        public static void DeclareIapCatalog(params string[] skus)
-        {
-            if (skus == null) return;
-            foreach (var sku in skus)
-                if (!string.IsNullOrEmpty(sku)) Bugpunch.DeclareIapSku(sku);
-        }
-
-        static void OnPurchaseConfirmed(Order order)
+        static void OnPurchaseConfirmed_V5(Order order)
         {
             // OnPurchaseConfirmed can fire with a FailedOrder per the docs;
             // only ConfirmedOrder counts toward analytics.
             if (order is not ConfirmedOrder) return;
-            try { LogPurchase(order); }
+            try { LogConfirmedOrder_V5(order); }
             catch (Exception ex) { Debug.LogWarning($"[Bugpunch] purchase log failed: {ex.Message}"); }
         }
 
-        static void LogPurchase(Order order)
+        static void LogConfirmedOrder_V5(Order order)
         {
             var transactionId = order?.Info?.TransactionID ?? string.Empty;
             var items = order?.CartOrdered?.Items();
@@ -178,7 +168,7 @@ namespace ODDGames.BugpunchSdk
             {
                 var product = item?.Product;
                 if (product?.definition == null || product.metadata == null) continue;
-                if (product.metadata.isoCurrencyCode == null) continue;  // mirrors Unity IAP's own guard
+                if (product.metadata.isoCurrencyCode == null) continue;
 
                 var sku = !string.IsNullOrEmpty(product.definition.id)
                     ? product.definition.id
@@ -193,7 +183,93 @@ namespace ODDGames.BugpunchSdk
                 );
             }
         }
+#endif // BUGPUNCH_HAS_UNITY_IAP_V5
+
+#if BUGPUNCH_HAS_UNITY_IAP_V4
+        // ─── Unity IAP v4 (IStoreController + IStoreListener) ───────────────
+
+        /// <summary>
+        /// Call from <c>IStoreListener.OnInitialized</c> with the controller
+        /// Unity hands you. Declares every catalog SKU so they appear on
+        /// the Coverage page as untested before any tester buys.
+        /// </summary>
+        public static IStoreController WithBugpunch(this IStoreController controller)
+        {
+            if (controller == null) return null;
+            try
+            {
+                var all = controller.products?.all;
+                if (all == null) return controller;
+                foreach (var p in all)
+                {
+                    if (p?.definition == null) continue;
+                    var sku = !string.IsNullOrEmpty(p.definition.id)
+                        ? p.definition.id : p.definition.storeSpecificId;
+                    if (!string.IsNullOrEmpty(sku)) Bugpunch.DeclareIapSku(sku);
+                }
+            }
+            catch (Exception ex) { Debug.LogWarning($"[Bugpunch] DeclareIapSku batch failed: {ex.Message}"); }
+            return controller;
+        }
+
+        /// <summary>
+        /// Call before <c>IStoreController.InitiatePurchase(sku)</c> so the
+        /// Coverage page's IAP call-site axis registers the attempt.
+        /// </summary>
+        public static void BeginPurchase(string sku)
+        {
+            if (!string.IsNullOrEmpty(sku)) Bugpunch.BeginPurchase(sku);
+        }
+
+        /// <summary>
+        /// Call from <c>IStoreListener.ProcessPurchase(PurchaseEventArgs)</c>
+        /// to emit the typed business event (revenue / ARPPU / ARPDAU).
+        /// Safe to call before returning <c>PurchaseProcessingResult.Complete</c>.
+        /// </summary>
+        public static void LogPurchase(PurchaseEventArgs args)
+        {
+            try
+            {
+                var product = args?.purchasedProduct;
+                if (product?.definition == null || product.metadata == null) return;
+                if (product.metadata.isoCurrencyCode == null) return;
+
+                var sku = !string.IsNullOrEmpty(product.definition.id)
+                    ? product.definition.id
+                    : product.definition.storeSpecificId;
+                if (string.IsNullOrEmpty(sku)) return;
+
+                Bugpunch.DeclareIapSku(sku);
+                Bugpunch.LogPurchase(
+                    sku: sku,
+                    price: (double)product.metadata.localizedPrice,
+                    currency: product.metadata.isoCurrencyCode,
+                    transactionId: product.transactionID ?? string.Empty
+                );
+            }
+            catch (Exception ex) { Debug.LogWarning($"[Bugpunch] purchase log failed: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// Call from <c>IStoreListener.OnPurchaseFailed(Product, PurchaseFailureReason)</c>
+        /// so failed attempts surface as a separate signal on the Coverage page.
+        /// </summary>
+        public static void LogPurchaseFailed(Product product, PurchaseFailureReason reason)
+        {
+            try
+            {
+                var sku = product?.definition?.id ?? string.Empty;
+                var props = new Dictionary<string, object>(2)
+                {
+                    ["sku"] = sku,
+                    ["reason"] = reason.ToString(),
+                };
+                Bugpunch.LogDesign("coverage.iap_failed", props);
+            }
+            catch (Exception ex) { Debug.LogWarning($"[Bugpunch] IAP failure log failed: {ex.Message}"); }
+        }
+#endif // BUGPUNCH_HAS_UNITY_IAP_V4
     }
 }
 
-#endif
+#endif // BUGPUNCH_HAS_UNITY_IAP
