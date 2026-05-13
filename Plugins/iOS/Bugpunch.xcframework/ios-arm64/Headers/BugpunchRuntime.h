@@ -67,6 +67,17 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString* playerEmail;
 @property (nonatomic, copy, nullable) NSString* playerName;
 
+/// Video capture status — set when video is unavailable for a
+/// known reason so the upload manifest can surface a placeholder
+/// card on the dashboard instead of a silent miss. Cleared on
+/// successful recorder start. Mirrors `BugpunchRuntime.setVideoStatus`
+/// on Android. `videoStatus` is one of: "declined" (user dismissed
+/// ReplayKit permission), "init_error" (compression session /
+/// startCapture failed). `videoStatusMessage` is a human-readable
+/// summary.
+@property (nonatomic, copy, nullable) NSString* videoStatus;
+@property (nonatomic, copy, nullable) NSString* videoStatusMessage;
+
 + (instancetype)shared;
 
 /// Merge server-authored attachment rules into `config[@"attachmentRules"]`.

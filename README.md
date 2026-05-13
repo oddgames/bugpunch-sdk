@@ -47,6 +47,12 @@ Add to `Packages/manifest.json`:
 The repo is public; no token, no scoped registry. Unity Package Manager
 fetches the tag and treats the repo as the package root.
 
+Dependencies (`com.unity.webrtc`, `com.unity.inputsystem`, etc. declared in
+`package.json`) resolve from the default Unity Registry. The Android-
+native pieces of the SDK (Remote IDE live stream peer) reuse the
+`libwebrtc.aar` that `com.unity.webrtc` already ships in your APK — no
+extra dependency manager and no extra `.aar` to vendor in your project.
+
 ## Configure
 
 1. Sign up at [bugpunch.com](https://bugpunch.com), create a project, copy

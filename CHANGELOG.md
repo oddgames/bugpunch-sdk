@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.24] - 2026-05-13
+
+### Changed
+- **Goal system refactor — kind-discriminated expressions.** Coverage goals are now tasks with one of three kinds: `expression` (server evaluates a match+complete predicate over analytics events via DuckDB), `manual` (QA tick-off via dashboard with a `requiredCompleters` threshold), or `callback` (game registers `Bugpunch.RegisterGoal(literalLabel, predicate)` — Cecil scans the literal at build time, runtime polls the predicate, dashboard sees the goal before any tester completes it). Single-event semantics (button / scene / iap / ad) are gone — those become expression goals over the matching analytics event types.
+
+### Added
+- **`Bugpunch.RegisterGoal(label, predicate)`** — runtime callback goal API with sync + async overloads. Predicate is polled every 10s + on scene change + on app focus; latches per session on first true. Label MUST be a string literal so the build-time scanner can extract it for catalog seeding.
+- **`BugpunchGoals` ScriptableObject** — designer-authored expression / manual goals, custom Inspector loads from any `Resources/` folder.
+- **`BugpunchEditorGoals.RegisterBuildGoal(ProgrammaticGoal)`** — procedural editor API with the new `GoalDefinitionDto` shape (match.where[] predicates with props/context source, complete agg/op/value or covers-set).
+- **`BuildCatalogExporter`** merges goals from all three sources into `BugpunchBuildCatalog.json` for catalog upload.
+
+### Removed
+- `[BugpunchCoverage]` and `[BugpunchGoal]` attributes.
+- `CoverageGoalWeaver`, `CoverageGoalILPostProcessor`, `CoverageStaticScanner` — the static IL-weave path is gone in favour of `MarkCoverage` + a matching expression goal.
+
+### Fixed
+- **iOS:** `BugpunchPoller.mm` forward-declares its internal `BPDoPoll` / `BPParseIso8601` / `BPPersistChatActivity` so earlier-in-the-file dispatch handlers compile under Clang.
+- **iOS:** `BugpunchRingRecorder.mm` imports `BugpunchRuntime.h` so `BPRuntime` is visible to the writer side.
+
 ## [1.8.23] - 2026-05-12
 
 ### Changed
