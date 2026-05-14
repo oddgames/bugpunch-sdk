@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.4] - 2026-05-14
+
+### Changed
+- **IL2CPP method-map upload is now one POST regardless of ABI count.** New endpoint `POST /api/symbols/il2cpp-mapping/upload-multi` accepts `{ buildIds: [...], file }`. Server hashes the gzipped mapping (SHA-256) and stores it content-addressed at `symbols/mappings/{sha}.il2cpp.json.gz`; every matching `debug_symbols` row is pointed at the shared blob in one DB pass. The client-side `IL2CppMappingUploader` was rewritten around the new endpoint — sends one multipart body with a JSON array of build-IDs in the `buildIds` form field. Previous per-build-ID loop (parallelised to 6-way in v2.1.3) is gone. End-to-end IL2CPP-map phase now ~5-10 s flat regardless of ABI count or stale build-ID accumulation. Server endpoint requires v2.1.4 server (deployed alongside this release).
+
 ## [2.1.3] - 2026-05-14
 
 ### Changed
