@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.6] - 2026-05-14
+
+### Fixed
+- **Catalog upload now stamps the APK's version, not the next build's.** `BugpunchPostBuildHook` deferred catalog + artifact uploads via `EditorApplication.delayCall`, which fired AFTER `BuildVersionIncrementer` (cbOrder=9999) bumped `PlayerSettings.bundleVersion`. Catalog landed under v+1 while the shipped APK emitted events at v → goals stuck at 0%. Snapshot `Application.version` synchronously at hook entry and thread through.
+- **Symbol upload "An item with the same key has already been added. Key: Expect" crash.** Setting `DefaultRequestHeaders.ExpectContinue=false` on Mono's HttpClient mutates a shared dict that throws on the second request. Moved the per-request setting onto each S3 part PUT instead.
+
+### Added
+- **`BugpunchNative.FlushAnalyticsNow()`** (Java + iOS + C#). Goal observations call it after `LogDesign("goal.observed", …)` so the dashboard reaction lands within a second instead of waiting for the 15 s native flush timer. Cross-lane.
+- **"Goal Reached" log line.** `GoalReporter.FireObserved` emits `Goal Reached: id="…" name="…" value=…` (visible in adb logcat under the Unity tag) the moment a goal observation lands — QA gets local confirmation without waiting for the dashboard round-trip.
+
+### Changed
+- **Editor `BuildHooks.cs` split into six focused files** (`IdeConnectAutoUploads`, `BugpunchServerReachabilityPreprocessor`, `BugpunchBuildFingerprintPreprocessor`, `BugpunchCatalogUploadPostprocessor`, `BugpunchTypeDatabaseUploadPostprocessor`, `BugpunchArtifactUploadPostprocessor`). Post-build uploads now run synchronously in the post-build phase — no `delayCall` indirection.
+- **Fingerprint preprocessor moved to `int.MaxValue` callbackOrder** so it runs last among preprocessors; ensures the stamped version / commit / built-at reflect any earlier preprocess-hook mutations.
+- **Symbol upload throughput.** `PartsPerFileConcurrency` 4 → 8; `HttpClientHandler.MaxConnectionsPerServer` + `ServicePointManager.DefaultConnectionLimit` raised to 64 (Mono legacy default of 2 was choking parallel part PUTs); `ExpectContinue=false` on each part PUT saves 1 RTT; smallest-first ordering so the file-count progress moves early.
+
 ## [2.1.5] - 2026-05-14
 
 ### Fixed
