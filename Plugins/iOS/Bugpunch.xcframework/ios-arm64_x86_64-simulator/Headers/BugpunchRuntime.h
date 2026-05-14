@@ -32,13 +32,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// and stamped onto every report.
 @property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* customData;
 
-/// SystemInfo blob pushed by C# (`BugpunchSystemInfo.CaptureFull` at init,
-/// `CaptureVolatile` on each scene change). Stamped onto every uploaded
-/// crash / exception / bug-report manifest under the top-level
-/// `systemInfo` key. Stored as the raw merged dict so `NSJSONSerialization`
-/// embeds it as nested JSON without re-parsing.
-@property (nonatomic, strong, nullable) NSMutableDictionary<NSString*, id>* systemInfo;
-
 /// Has Bugpunch_StartDebugMode completed?
 @property (nonatomic, assign) BOOL started;
 
@@ -57,36 +50,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// for the next-launch crash drain). nil disables the periodic flush.
 @property (nonatomic, copy, nullable) NSString* ctxShotDiskPath;
 
-/// Player auth identity — set after a successful POST to
-/// /api/v1/chat/auth/verify (driven from the C# Bugpunch.SetPlayerAuthSession
-/// path). Mirrors the four fields on the Java + C# runtimes so chat HTTP
-/// calls on every lane stamp the same X-Player-Auth-* / X-Player-Email
-/// headers. nil when the player hasn't signed in yet.
-@property (nonatomic, copy, nullable) NSString* playerAuthProvider;
-@property (nonatomic, copy, nullable) NSString* playerAuthId;
-@property (nonatomic, copy, nullable) NSString* playerEmail;
-@property (nonatomic, copy, nullable) NSString* playerName;
-
-/// Video capture status — set when video is unavailable for a
-/// known reason so the upload manifest can surface a placeholder
-/// card on the dashboard instead of a silent miss. Cleared on
-/// successful recorder start. Mirrors `BugpunchRuntime.setVideoStatus`
-/// on Android. `videoStatus` is one of: "declined" (user dismissed
-/// ReplayKit permission), "init_error" (compression session /
-/// startCapture failed). `videoStatusMessage` is a human-readable
-/// summary.
-@property (nonatomic, copy, nullable) NSString* videoStatus;
-@property (nonatomic, copy, nullable) NSString* videoStatusMessage;
-
 + (instancetype)shared;
-
-/// Merge server-authored attachment rules into `config[@"attachmentRules"]`.
-/// Idempotent across polls — entries with an `id` field replace any prior
-/// server-authored entry; game-declared rules (no id) are kept untouched.
-/// Tokens (`[PersistentDataPath]`, `[TemporaryCachePath]`, `[DataPath]`) in
-/// the rule's `target` field are resolved against the runtime's `paths`
-/// object before being persisted.
-+ (void)mergeServerAttachmentRules:(NSArray*)serverRules;
 
 /// Start the CADisplayLink frame tick. Drives FPS measurement and the
 /// periodic backbuffer flush. Idempotent — called once from

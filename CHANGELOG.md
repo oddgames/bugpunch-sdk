@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-05-14
+
+### Added
+- **Internal-tester profile picker** — first launch on a new internal device prompts for username + password (verified against the dashboard auth backend); subsequent launches show a top-N picker of testers who have authenticated on this device, no password required. New table `device_authenticated_users` (sha1(deviceId|userId)) keys the picker. Native dialogs (`BugpunchProfilePicker.java/.mm`) mirror the existing `BugpunchConsentSheet` styling. Public API: `Bugpunch.ShowProfilePicker()` for debug-menu binding; auto-triggers from `RestorePlayerAuth` when no identity is persisted on internal devices.
+- **External / public email-entry auth** — external testers MUST supply an email on first launch (non-cancellable dialog); public players follow a per-project setting (`email_required` / `email_optional` / `none`). New endpoints `GET /api/v1/projects/:projectId/profiles/auth-config` + `POST /api/v1/projects/:projectId/profiles/email-signin`. Native dialogs `BugpunchEmailEntry.java/.mm`. Identity persists to `PlayerPrefs` under the existing `Bugpunch.PlayerAuth.*` keys.
+- **Profile avatars** — dashboard `/me/avatar` endpoints (POST/GET/DELETE, 256×256 PNG) + `app_users.avatar_s3_key` column. `AccountTab.tsx` got a drag-drop / file-picker uploader. Identity envelopes from `/profiles/top` etc. now carry presigned `avatarUrl`. SDK downloads + caches per-user avatar PNGs to a 50-entry LRU under `<deviceCacheDir>/bugpunch_avatar_cache/<userId>.png` (`BugpunchAvatarCache.java/.mm`). Picker rows fall back to initials placeholder while loading or on failure.
+- **Symbol seed cache** — `Library/Bugpunch/SymbolSeedCache/` (LRU N=3, configurable via `BugpunchConfig.symbolSeedCacheCount`) keeps the last few uploaded `.so` files on disk. When the server's `/delta/init` picks a seed build-ID we already have cached, the SDK skips the ~500 MB S3 seed download entirely. Set `symbolSeedCacheCount = 0` on CI workspaces to disable caching and save disk.
+- **Symbol upload deduplication folded into `/upload-direct/init`** — replaces the upfront `/api/symbols/check` round-trip that contended on `better-sqlite3`'s synchronous event loop and routinely took 90+ s under prod load. Server now returns `{ skip: true }` when the build-ID already exists for the project; SDK skips the PUT entirely. Per-file dedup parallelises via the existing 6-way init concurrency (~150 ms wall time vs 94 s before for a 14-file batch).
+- **Source-location metadata on goals** — Cecil scanner extracts file + line via PDB sequence points; `BugpunchEditorGoals` runtime hook captures `StackTrace` for edit-time-registered goals. Surfaces in the dashboard ? popover.
+
+### Changed (BREAKING)
+- **`Bugpunch.Goal` description parameter renamed to `instructions`** — text shown in the QA dashboard ? popover. Existing call sites must rename `description:` to `instructions:`.
+- **`Bugpunch.Goal` 2-arg observation form is now scanner-extracted** — `Bugpunch.Goal(id, observedValue)` at any inline site self-registers via the build-time scanner; no separate `Bugpunch.Goal(id, text, expected)` declaration required for simple boolean / scalar checks. Server falls back to title-cased id when no label provided. Dynamic ids (`$"buy_{sku.Id}"`) still work through the runtime `EditorGoalHookBootstrap` path.
+- **`BugpunchEditorGoals.Add` is now `internal`** — game-side editor scripts use `Bugpunch.Goal(...)` directly; the runtime hook diverts edit-time calls into the catalog.
+
+### Fixed
+- **`xdelta3` binary path on Windows** — `Process.Start` couldn't resolve the relative `Packages/au.com.oddgames.bugpunch/Tools~/xdelta3/windows/xdelta3.exe` even though `File.Exists` returned true. `XdeltaBinary.Resolve()` now returns `Path.GetFullPath(...)` so the spawn finds it.
+- **Symbol-upload Cancel button now actually cancels** — was 100 ms `Thread.Sleep` polling on the Editor main thread, which serialised input delivery. Now 10 ms poll + force `HttpClient.CancelPendingRequests` + `Dispose()` on cancel so Mono's HttpClientHandler can't stall the dismiss.
+- **Symbol-upload `/check` 15 s deadline + treat-all-as-missing fallback** — moot once `/check` is gone (this release retires the endpoint), but defensive against any remaining client paths.
+- **Reflective `UnitySendMessage` in new Java dialogs** — was importing `com.unity3d.player.UnityPlayer` directly, which doesn't exist on the standalone AAR classpath. Now uses the same `Class.forName(...)` reflection pattern as `BugpunchImagePicker`.
+- **Preflight no longer warns on `Tools~/` and other Unity-hidden directories** — `~`-suffixed and dotfile-prefixed paths skipped in the meta-companion check.
+
+### Removed
+- `POST /api/symbols/check` endpoint usage on the SDK side. Server endpoint remains for back-compat with older shipped builds; new SDK never calls it.
+
 ## [2.0.0] - 2026-05-13
 
 ### Changed (BREAKING)
