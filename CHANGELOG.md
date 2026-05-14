@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.2] - 2026-05-14
+
+### Fixed
+- **Symbol upload progress dialog now reports the actual sub-phase.** The "Checking server for missing symbols — N files, X MB total (Ys elapsed)" line was a catch-all that fired for every state between Extracting and final teardown, so a multi-minute xdelta3 seed download or IL2CPP method-map upload would render as "Checking server" with a stale file count. `SymbolUploadClient` now publishes a `CurrentStage` label at every transition (`filtering local cache`, `parallel upload starting`, `<file>: hashing for delta /init`, `<file>: POST /delta/init`, `<file>: downloading seed from S3`, `<file>: xdelta3 encoding patch`, `<file>: PUT patch to S3`, `<file>: POST /delta/complete`, `<file>: direct upload`, `uploading IL2CPP method-map for source-line resolution`). `SymbolUploader.PumpInteractive` prefers the stage label over the generic message and shows it as a prefix when per-file live progress is also available. Every stage is also logged at INFO so offline diagnosis works from the editor log.
+- **Symbol upload no longer re-ships stale artifacts from prior builds.** Discovery now applies an mtime floor anchored to `BuildReport.summary.buildStartedAt` (minus 30 s of clock-skew slack):
+  - Pass 1 skips `*symbols*.zip` files in the build output dir that pre-date the current build (Unity rotates them but doesn't delete the previous zip).
+  - Pass 2 skips `*.so` files under `Library/Bee/Android/Prj/.../merged_native_libs/` that pre-date the current build (Bee keeps per-variant folders around).
+  - Result: a workspace that's been built five times no longer tries to upload all five generations' libil2cpp every time. Previously seen as a 1.5 GB+ symbol upload on a SymbolTable-level build that should have been ~280 MB.
+- New diagnostic log lines surface `Pass N: added X file(s), Y MB` and `Pass 2: skipped N stale .so file(s)` so you can audit what's being shipped.
+
+### Tooling
+- VS Code `Build SDK DLLs` task hardened: each DLL copy now strips `read-only` first (`attrib -r`) and fails loud with `errorlevel 1` if the destination is locked (e.g. Unity holding a file handle). Avoids the prior silent-skip case where the build step would succeed but the destination DLL stayed stale.
+- `Tools~/xdelta3/macos/{arm64,x86_64}/xdelta3` and `Tools~/xdelta3/windows/xdelta3.exe` now have the executable bit set in the git index (100755). Stops `cp -r` from failing with permission-denied when syncing staging → distribution on Unix-y filesystems, and makes the macOS binaries actually executable when checked out on macOS without a manual `chmod`.
+
 ## [2.1.1] - 2026-05-14
 
 ### Changed
