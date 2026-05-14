@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2026-05-14
+
+### Changed
+- **SDK CPU/disk reductions across all three lanes.**
+  - `PerformanceService.Sample` now only fires when the IDE tunnel is connected — public-role release builds skip the 1 Hz Profiler queries entirely.
+  - WebRTC blit + encode pauses when `RTCPeerConnectionState != Connected` — no GPU spent during `Connecting` or transient `Disconnected` limbo.
+  - `ConsoleService` flush cadence 100 → 250 ms; Android tunnel log drain 200 → 500 ms. Error-burst overflow path (32 KB) and per-line E/F severity flush unchanged so error visibility is preserved.
+  - Android MediaCodec defaults 30 fps / 2 Mbps → 24 fps / 1.2 Mbps; iOS ring recorder matches. `BugpunchFpsGovernor` still scales further on thermal pressure. Server-side `video.fps` / `video.bitrate` config override unchanged.
+  - Upload queue capped at 50 oldest manifests (Android + iOS) with attached-file cleanup on prune so an offline device can't fill the cache dir.
+  - `closeVideoRing()` deletes `bp_video.dat` on clean exit — an app uninstalled before upload no longer leaves a ~30 MB orphan in the cache dir.
+
+### Added
+- In-flight changes already on master (BuildHooks, SymbolUploader, BuildUploadGate, IdeTunnel resilience, BugpunchTunnel native diagnostics, BugpunchPoller, BugpunchRetry, BugpunchScreenPipeline).
+
 ## [2.1.0] - 2026-05-14
 
 ### Added

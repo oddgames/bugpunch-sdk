@@ -4,10 +4,11 @@
 // The `BUGPUNCH_HAS_UNITY_IAP` umbrella define is set by a version-define on
 // the asmdef; `BUGPUNCH_HAS_UNITY_IAP_V4` / `_V5` split the implementations.
 //
-// v5 integration (one line, IPurchaseService):
+// v5 integration (IPurchaseService + IProductService):
 //
 //     using ODDGames.BugpunchSdk;
 //     m_PurchaseService = UnityIAPServices.DefaultPurchase().WithBugpunch();
+//     m_ProductService  = UnityIAPServices.DefaultProduct().WithBugpunch();
 //
 // v4 integration (IStoreController + IStoreListener):
 //
@@ -79,10 +80,6 @@ namespace ODDGames.BugpunchSdk
             service.OnPurchaseConfirmed += OnPurchaseConfirmed_V5;
 
             TryHook(() => {
-                service.OnProductsFetched -= OnProductsFetched_V5;
-                service.OnProductsFetched += OnProductsFetched_V5;
-            }, nameof(service.OnProductsFetched));
-            TryHook(() => {
                 service.OnPurchasePending -= OnPurchasePending_V5;
                 service.OnPurchasePending += OnPurchasePending_V5;
             }, "OnPurchasePending");
@@ -90,6 +87,23 @@ namespace ODDGames.BugpunchSdk
                 service.OnPurchaseFailed -= OnPurchaseFailed_V5;
                 service.OnPurchaseFailed += OnPurchaseFailed_V5;
             }, "OnPurchaseFailed");
+
+            return service;
+        }
+
+        /// <summary>
+        /// One-line auto-wire for Unity IAP v5 <c>IProductService</c>. Subscribes to
+        /// <c>OnProductsFetched</c> so every catalog SKU appears on the Coverage
+        /// page as an untested unit. Idempotent — re-subscription detaches first.
+        /// </summary>
+        public static IProductService WithBugpunch(this IProductService service)
+        {
+            if (service == null) return null;
+
+            TryHook(() => {
+                service.OnProductsFetched -= OnProductsFetched_V5;
+                service.OnProductsFetched += OnProductsFetched_V5;
+            }, "OnProductsFetched");
 
             return service;
         }
