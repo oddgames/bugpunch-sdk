@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.5] - 2026-05-14
+
+### Fixed
+- **Tunnel no longer force-reconnects every 35 s.** Android (`BugpunchTunnel.java`) and iOS (`BugpunchTunnel.mm`) library-level pongs now bump `mLastPongMs` / `lastPongMs`. Previously only app-level `{type:"pong"}` text frames updated it — and the SDK never sent the matching `{type:"heartbeat"}` request, so the watchdog kept timing out and dropping the socket. Reconnect storm + Caddy 502 cascade on the server should stop.
+
+### Added
+- **Multi-step set goals via `Bugpunch.Goal<TEnum>(id, text)`.** Declare once with an enum; emit one variant per hit via `Bugpunch.Goal("id", EnumValue)`. Progress = distinct(seen ∩ expected) / |expected|. Cell renders a chip strip (☑/☐ per variant) on the QA Goals dashboard. Goes fully green when every variant has been observed.
+- **Build-time set-goal coverage warning.** `BuildCatalogExporter` runs after the scan and logs every set goal that has a declared variant with no matching `Bugpunch.Goal(id, EnumType.Variant)` emit anywhere in the player assemblies. Warning only — QA can raise a task from the row.
+
+### Changed
+- **Goal observations are exception-aware.** `GoalReporter.Observe` now drops if a managed exception fired in the last 5 s and waits 500 ms after the call to re-check that no exception lands during the window. Crashes-near-success no longer paint the row green. Hook is one-line: `BugpunchCrashHandler.OnLogMessage` / `Forward` call `GoalReporter.NoteException`.
+- **`BuildVersionIncrementer` reordered.** No code change, but consumers should be aware: the catalog is uploaded with the post-bump `Application.version`, which is what the APK embeds — events from the APK match the catalog's `buildVersion` exactly. Mismatches you may see on the dashboard come from a device still running an older install.
+
 ## [2.1.4] - 2026-05-14
 
 ### Changed
