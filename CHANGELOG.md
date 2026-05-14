@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3] - 2026-05-14
+
+### Changed
+- **IL2CPP method-map upload now parallelised 6-way** (`IL2CppMappingUploader`). Previously a sequential `foreach` over every `libil2cpp` build-ID. Same ~300 KB mapping POSTed once per build-ID, server gunzip + parse + S3 sidecar PUT + DB upsert dominates wall time at ~5–10 s/call, so 10 build-IDs took ~120 s. Drops to ~20 s on the same server with no API change. Same `SemaphoreSlim` shape as the .so uploader.
+- **Batch-mode heartbeat thread.** `Application.isBatchMode` runs have no editor progress dialog, so a multi-minute upload used to render as total silence in CI logs. A daemon thread now writes one INFO line every 5 s with elapsed time, current stage label, per-file live progress (MB done / MB total / MB/s / N/total complete), and falls back to discovery / extract status when no upload is in flight. Exits when the upload returns; never throws into the upload path.
+
 ## [2.1.2] - 2026-05-14
 
 ### Fixed
