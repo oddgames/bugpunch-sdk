@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-05-15
+
+### Changed
+- log ring overhaul (Android + iOS): mmap'd ring buffer survives SIGKILL / OOM / force-stop; previous-launch ring rotated for next-launch recovery
+- log ring overhaul (Android): logdr socket protocol replaces liblog reader API; 256KB?1MB ring; native owns flush (Java drops periodic flusher)
+- log ring overhaul (iOS): OSLogStore polled into the ring every ~1s on a dispatch queue, ships logs while Unity is frozen
+- refactor: IdeTunnel dispatches frame type via one JsonUtility parse instead of eight `.Contains` checks
+- refactor: ActionExecutor uses ConcurrentDictionary for button listeners; captured exceptions list now lock-guarded
+- refactor: ActionExecutor.NavigatePath caches MemberInfo per (Type, name); WaitMethods type cache adds negative-miss cache + ConcurrentDictionary
+- refactor: InputInjector `_disabledDevices` access lock-protected across TearDown/quitting race
+- refactor: BugpunchClient split into partials (BugpunchClient.JsonHelpers.cs + BugpunchClient.Tunnel.cs); main file 2302?1966 lines
+- refactor: BugpunchEditorQuickTaskHotkey 3430?619 lines; Dialog / BrowserSettings / Runner extracted to own files
+- refactor: BugpunchAnrWatchdog extracted from BugpunchCrashHandler.java (top-level peer, same package)
+- refactor: BugpunchRuntime.updateSystemInfo wrapped in lock to prevent merge lost-update under concurrent patches
+
 ## [2.1.9] - 2026-05-15
 
 ### Changed
