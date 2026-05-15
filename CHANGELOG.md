@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.9] - 2026-05-15
+
+### Changed
+- (no commit log provided)
+
 ## [2.1.8] - 2026-05-15
 
 ### Changed
