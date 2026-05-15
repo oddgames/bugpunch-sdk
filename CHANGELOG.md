@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.2] - 2026-05-15
+
+### Changed
+- sdk: hierarchy snapshot on reports + tester-gated upload banner with issue details
+- sdk(csharp): HierarchySnapshot — full tree on Bugpunch.Report/Feedback, lean tree on scene change, staged for native upload attachment rule
+- sdk(android): upload banner shows issue type + title (two-line pill), gated to tester/internal builds or active debug recording, minimum show duration
+- sdk(ios): upload banner shows issue type + title (two-line pill), tester/recording-gated, minimum show duration
+- sdk(android): BugpunchScreenshot — drop unused display-rotation handling
+
 ## [3.0.1] - 2026-05-15
 
 ### Fixed
