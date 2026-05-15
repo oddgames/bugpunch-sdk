@@ -20,6 +20,10 @@
 // plugins call explicitly — same role gating as everywhere else lives
 // inside Bugpunch_TunnelEnqueueLogLine.
 + (void)appendLineLive:(NSString*)line;
+// Snapshot of the in-memory buffers (startup + recent) only — excludes the
+// OSLogStore 60s pull. Used by the tunnel's becameInternal replay so the
+// live viewer doesn't miss the pre-handshake window.
++ (NSArray<NSString*>*)bufferedLinesSnapshot;
 // Inject a synthetic boundary line into the ring after a report has been
 // snapshotted for upload. The dashboard's log viewer collapses everything
 // above the most recent boundary into a click-to-expand band.

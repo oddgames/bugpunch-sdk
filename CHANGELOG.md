@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.7] - 2026-05-15
+
+### Changed
+- **Native dialog polish across iOS.** `BugpunchProfilePicker`, `BugpunchEmailEntry`, `BugpunchReportForm`, `BugpunchDebugWidget`, `BugpunchConsentSheet`, and `BugpunchFeedbackViewController` reworked for consistent typography, spacing, and color tokens. New `BugpunchPretty` helper centralises the shared styling primitives.
+- **Brand logo asset shipped to native lanes.** `bp_brand_logo.png` added under Android `res/drawable/` and `package/Plugins/iOS/`, used by the native chat / feedback / consent surfaces.
+- **`WebRTCStreamer` rewrite (C#).** Major restructure of the Editor + Standalone WebRTC streamer for cleaner lifecycle, fewer races on connect/disconnect, and reduced per-frame allocations. Public `IStreamer` surface unchanged.
+- **Tunnel cleanup across all three lanes.** `BugpunchTunnel.java`, `BugpunchTunnel.mm`, and C# `IdeTunnel.cs` aligned on shared frame envelope + reconnect/backoff semantics.
+
+### Fixed
+- **iOS feedback form orphan constraints.** `BugpunchFeedbackViewController` referenced an undeclared `cancelBtn` — broke the xcframework build. Constraints removed; layout is attach + submit only for now.
+
 ## [2.1.6] - 2026-05-14
 
 ### Fixed
