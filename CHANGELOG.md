@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.1] - 2026-05-15
+
+### Fixed
+- iOS xcframework binary: v3.0.0 shipped a stale artifact because `gh run list --limit 1` raced workflow startup and picked the previous run. This release ships the correct artifact (run 25908107752, sha 32501564) with the iOS log-ring rework binary included. Script now keys lookup by HEAD sha.
+
 ## [3.0.0] - 2026-05-15
 
 ### Changed
