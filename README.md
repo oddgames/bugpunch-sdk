@@ -28,8 +28,10 @@ with the Bugpunch dashboard at [bugpunch.com](https://bugpunch.com).
   fire when thresholds break. Pre-crash storyboard captures the last few
   seconds of UI presses + screenshots so triage gets context, not just a
   stack frame.
-- **Custom data + analytics** — `BugpunchSdk.SetCustomData("level", "boss-3")`
-  attaches to every report. `BugpunchSdk.LogPurchase(...)` for IAP analytics
+- **Tags + analytics** — `BugpunchSdk.SetTag("level", "boss-3")` attaches
+  indexed segmentation data to every report. The dashboard's Impact view
+  groups events by tag value so you can see which devices share a state
+  when an issue hits. `BugpunchSdk.LogPurchase(...)` for IAP analytics
   (auto-wired if you use Unity Purchasing — see below).
 
 ## Install
@@ -76,8 +78,8 @@ BugpunchSdk.Report("Player got stuck on level 3 boss");
 BugpunchSdk.Feedback("Loved the new gesture controls!");
 
 // Tag every subsequent report with extra context.
-BugpunchSdk.SetCustomData("playerLevel", 47);
-BugpunchSdk.SetCustomData("subscription", "pro");
+BugpunchSdk.SetTag("playerLevel", 47);
+BugpunchSdk.SetTag("subscription", "pro");
 
 // Pull a server-resolved config variable (per-device overrides supported).
 var spawnRate = BugpunchSdk.GetVariable("spawnRate", 1.0f);

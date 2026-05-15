@@ -28,9 +28,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// the SDK can update fields like installerMode at startup.
 @property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* metadata;
 
-/// Game-supplied custom data (key/value). Set via `Bugpunch.SetCustomData`
-/// and stamped onto every report.
-@property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* customData;
+/// Game-supplied tags (key/value). Set via `Bugpunch.SetTag` and
+/// stamped onto every report. Drives the dashboard Impact view's
+/// "which devices share this state" diagnosis.
+@property (nonatomic, strong) NSMutableDictionary<NSString*, NSString*>* tags;
 
 /// SystemInfo blob pushed by C# (`BugpunchSystemInfo.CaptureFull` at init,
 /// `CaptureVolatile` on each scene change). Stamped onto every uploaded
@@ -66,6 +67,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString* playerAuthId;
 @property (nonatomic, copy, nullable) NSString* playerEmail;
 @property (nonatomic, copy, nullable) NSString* playerName;
+/// Optional avatar URL set by the profile-picker flow on internal devices.
+/// Empty / nil on the email-signin and public-player paths — the reporter
+/// badge falls back to hash-coloured initials in those cases.
+@property (nonatomic, copy, nullable) NSString* playerAvatarUrl;
 
 /// Video capture status — set when video is unavailable for a
 /// known reason so the upload manifest can surface a placeholder

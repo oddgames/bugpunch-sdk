@@ -2,14 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-05-15
+
+### Changed
+- sdk: rename SetCustomData ? SetTag with typed overloads (Vector2/3/4, Color, DateTime, TimeSpan, IDictionary batch); add RemoveTag / ClearTags
+- sdk: auto-tag collector (BugpunchAutoTags) ï¿½ bp.platform, bp.renderPipeline, bp.qualityLevel, bp.graphicsApi, bp.gpuTier, bp.scene, bp.focused, bp.lastUi/Button/Canvas, bp.orientation, bp.network, bp.uptimeBucket
+- sdk: post-build source upload (Assets/**/*.cs zip) so dashboard renders real source around crash blame; toggle BugpunchConfig.sourceUploadEnabled
+- sdk: stamp reporter identity (role/provider/id/email/name/avatarUrl) on every issue + crash drain manifest across all lanes; persist identity across launches
+- sdk: send device context (model/os/memory/screen/dpi) on poll register + config fetch so server sessions table feeds rule autocomplete + crash-group breakdowns
+- sdk(ios): 5-arg Bugpunch_SetPlayerIdentity variant with avatarUrl; 4-arg backcompat retained without dropping avatar
+
 ## [3.0.2] - 2026-05-15
 
 ### Changed
 - sdk: hierarchy snapshot on reports + tester-gated upload banner with issue details
-- sdk(csharp): HierarchySnapshot — full tree on Bugpunch.Report/Feedback, lean tree on scene change, staged for native upload attachment rule
+- sdk(csharp): HierarchySnapshot ï¿½ full tree on Bugpunch.Report/Feedback, lean tree on scene change, staged for native upload attachment rule
 - sdk(android): upload banner shows issue type + title (two-line pill), gated to tester/internal builds or active debug recording, minimum show duration
 - sdk(ios): upload banner shows issue type + title (two-line pill), tester/recording-gated, minimum show duration
-- sdk(android): BugpunchScreenshot — drop unused display-rotation handling
+- sdk(android): BugpunchScreenshot ï¿½ drop unused display-rotation handling
 
 ## [3.0.1] - 2026-05-15
 
