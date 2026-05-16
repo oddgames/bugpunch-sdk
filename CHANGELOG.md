@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-05-16
+
+### Changed
+- sdk(ios): fix link errors — extern "C" on BPPickerRestoreIdentityIntoRuntime def + Bugpunch_SetFeedbackUnreadCount forward decl
+- sdk(android+ios): profile picker always shown on launch; persisted identity hydrated into runtime so reports keep working until fresh pick
+- sdk(android): always-on BugpunchTouchRecorder ring (54000 events) — public-role reports get touch breadcrumbs; tester role now drives debug recorder instead of debugBuild flag
+
 ## [0.4.0] - 2026-05-16
 
 ### Changed
