@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] - 2026-05-17
+
+### Changed
+- sdk(ios): pre-build for xcframework CI
+- sdk(ios): pre-build for xcframework CI
+- sdk(ios): pre-build for xcframework CI
+- sdk: v0.6.0 - sdk: Bugpunch.SetAccount(provider, username, email?) + Bugpunch.ClearAccounts() GÇö declare extra player identities (Parse, Steam, in-game name etc.); attached to reports as reporter.extraAccounts; PII-gated to debug mode only
+- sdk(ios): pre-build for xcframework CI
+- auth: dashboard SSO + SDK SetAccount + native SDK SSO picker (P1+P2+P3)
+
 ## [0.6.0] - 2026-05-16
 
 ### Changed
