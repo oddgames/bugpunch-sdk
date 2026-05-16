@@ -72,6 +72,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// badge falls back to hash-coloured initials in those cases.
 @property (nonatomic, copy, nullable) NSString* playerAvatarUrl;
 
+/// Game-seeded email used to pre-populate BugpunchEmailEntry for public
+/// testers. Set via `Bugpunch.SetPlayerEmail` (C#) → BugpunchNative.
+/// Independent of `playerEmail` (which is the *verified* identity after
+/// an email-signin round-trip).
+@property (nonatomic, copy, nullable) NSString* prefillEmail;
+
 /// Video capture status — set when video is unavailable for a
 /// known reason so the upload manifest can surface a placeholder
 /// card on the dashboard instead of a silent miss. Cleared on

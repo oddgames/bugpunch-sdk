@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-05-16
+
+### Changed
+- sdk: tools panel migrated from Activity to View overlay (Android + iOS) — Unity stays foreground, tool callbacks fire immediately instead of queuing until panel closes
+- sdk: native debug-consent flow — dashboard "Ask Connect" surfaces a native consent sheet (Android BugpunchDebugConsentDialog + iOS counterpart) for public-role players; decision POSTed via /api/device-poll/debug-decision
+- sdk: action-gated public-role login (BugpunchEmailEntry.ensurePublicAuthThen) — chat / feedback / debug-mode entry on public devices reshows the prefilled email dialog every time and only proceeds after signin
+- sdk: new Bugpunch.SetPlayerEmail C# API — game seeds the public-role login email so players only have to tap Login (persisted in PlayerPrefs + pushed to native)
+- sdk: upload status banner ignores "quiet" manifests (analytics / perf / directive acks); count + peek only reflect user-visible issue uploads (crashes / exceptions / ANRs / bug reports / feedback)
+- sdk: C# OnDebugConsentResult receiver + DebugRequestInfo envelope parsing for the poll-upgrade path
+
 ## [0.3.1] - 2026-05-15
 
 ### Changed
