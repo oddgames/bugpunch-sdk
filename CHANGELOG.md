@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-05-16
+
+### Changed
+- sdk: Bugpunch.SetAccount(provider, username, email?) + Bugpunch.ClearAccounts() — declare extra player identities (Parse, Steam, in-game name etc.); attached to reports as reporter.extraAccounts; PII-gated to debug mode only
+- sdk: native Google + Apple sign-in in profile picker — Android Credential Manager (Google) + CustomTabs (Apple), iOS ASAuthorizationAppleIDProvider (Apple) + ASWebAuthenticationSession (Google); profile picker now reachable for external + public roles via chat/feedback/debug entry points (cold-launch auto-prompt remains internal-only)
+- sdk(config): BugpunchConfig adds googleClientIdIos, googleClientIdAndroid, appleServiceId, appleRedirectUri — empty value hides the corresponding button
+- sdk(android): new gradle deps — androidx.credentials, googleid, androidx.browser
+- sdk(ios): Sign in with Apple capability + com.apple.developer.applesignin entitlement required on host game's Apple Developer App ID
+- sdk: Apple-on-Android round-trip is scaffolded but the deep-link receiver + server callback are TODO (iOS Apple + Google both platforms fully wired today)
+
 ## [0.5.0] - 2026-05-16
 
 ### Changed

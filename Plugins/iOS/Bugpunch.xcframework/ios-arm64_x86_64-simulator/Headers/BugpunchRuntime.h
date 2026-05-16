@@ -78,6 +78,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// an email-signin round-trip).
 @property (nonatomic, copy, nullable) NSString* prefillEmail;
 
+/// Game-supplied auxiliary account identities (Parse, Steam, GameCenter,
+/// PlayFab, …) added via `Bugpunch.SetAccount(provider, username, email)`.
+/// Deduped by provider — a second SetAccount for the same provider replaces
+/// the prior entry in place, preserving insertion order. Stamped onto the
+/// upload manifest under `extraAccounts` only when the device is in tester
+/// mode (role != public) — public-role devices never forward this PII.
+/// Each entry is `{provider, username, email?}` with `email` omitted when
+/// empty / nil.
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary*>* extraAccounts;
+
 /// Video capture status — set when video is unavailable for a
 /// known reason so the upload manifest can surface a placeholder
 /// card on the dashboard instead of a silent miss. Cleared on
@@ -107,6 +117,17 @@ NS_ASSUME_NONNULL_BEGIN
 /// Tear down the frame tick. Safe to call from `Bugpunch_StopDebugMode`
 /// regardless of whether `startFrameTick` ran.
 - (void)stopFrameTick;
+
+/// Insert / overwrite an auxiliary account identity. Provider keyed; a
+/// second call with the same provider REPLACES the prior entry in place
+/// (preserving insertion order). Trims provider/username/email to 200
+/// chars; no-op when provider or username is empty after trim. Email may
+/// be nil or empty (omitted from the entry in that case).
+- (void)setAccount:(NSString*)provider username:(NSString*)username email:(nullable NSString*)email;
+
+/// Drop every account previously inserted by `setAccount:`. Safe to call
+/// when none have been set.
+- (void)clearAccounts;
 
 @end
 
