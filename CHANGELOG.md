@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.2] - 2026-05-18
+
+### Changed
+- Picker shows the profile tiles + "+" state on first launch after upgrade — if there's a persisted current identity but no auth_history_json yet, migrate the current blob into a single-entry history so the picker can render tiles + "+" instead of the bare SSO row.
+
 ## [0.7.1] - 2026-05-18
 
 ### Changed
