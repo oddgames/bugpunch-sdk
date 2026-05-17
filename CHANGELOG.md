@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2026-05-18
+
+### Changed
+- Profile picker is now the only login gate — DebugMode + chat + feedback all route through BugpunchProfilePicker.showForAutoPrompt, not BugpunchEmailEntry.ensurePublicAuthThen. EmailEntry is reachable only via the picker's Bugpunch button.
+- Dropped the green-tinted logo halo on the legacy EmailEntry sheet — both lanes now show the two-tone "Bugpunch" wordmark used by the picker.
+- Removed scroll views from picker + request-help + welcome overlays — cards size to content; tile rows distribute by weight so up to 5 profiles + "+" share card width without scrolling.
+
 ## [0.7.0] - 2026-05-18
 
 ### Changed
