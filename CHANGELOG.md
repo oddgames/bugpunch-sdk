@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-05-18
+
+### Changed
+- Profile picker redesign — two-tone Bugpunch wordmark, warning callout with glowing icon, official Google G logo + ASAuthorizationAppleIDButton (iOS) / Apple vector drawable (Android), Bugpunch button hosts email entry
+- Local-first profile history — up to 5 identities cached on-device (Keychain on iOS, SharedPreferences + Auto Backup rules on Android, PlayerPrefs on managed); no /profiles/top or /profiles/select roundtrip so debug mode can boot pre-network
+- Request-help panel redesign — How can we help? + vertical option rows with circle-wrapped icons, mockup-aligned labels (Ask A Question / Record A Bug / Request A Feature)
+- Card style unification — BugpunchPretty.cardBackground helper, 24dp radius, heavy black drop shadow, 1px white inner highlight; applied across picker, EmailEntry, DebugConsentDialog, DebugMode welcome, ToolsOverlay/Panel, ReportOverlay, ConsentSheet
+- ReportActivity header — back arrow + two-tone Bugpunch wordmark + signed-in user avatar circle, replacing the "BUG REPORT" eyebrow
+- Editor toolbar — main-toolbar inject via reflection (Unity 6000.0+ has no public MainToolbarElement API)
+- Test project — DebugModeButton auto-spawns via RuntimeInitializeOnLoadMethod so the in-game Request Help button is visible in every scene
+
 ## [0.6.1] - 2026-05-17
 
 ### Changed
