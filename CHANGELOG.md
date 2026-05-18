@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.19] - 2026-05-18
+
+### Changed
+- sdk(ios): pre-build for xcframework CI
+- sdk: v0.7.18 - Silence Unity.WebRTC EntryPointNotFoundException at Editor exit GÇö added BugpunchWebRTCQuitGuard (editor-only) that unhooks Unity.WebRTC ContextManager.Quit from EditorApplication.quitting. The native libwebrtc plugin isn't always loaded in batch-mode CI iOS builds (no debug session = no WebRTC use), so the unconditional RegisterDebugLog cleanup call inside DisposeInternal threw on Editor shutdown GÇö build exit code was already 0 but the trace made CI logs look like a failure.
+- sdk(ios): pre-build for xcframework CI
+
 ## [0.7.18] - 2026-05-18
 
 ### Changed
