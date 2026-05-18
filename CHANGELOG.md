@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] - 2026-05-18
+
+### Changed
+- Re-add BugpunchWebRTCQuitGuard editor helper (was dropped between v0.7.18 and v0.8.0). [InitializeOnLoad] unhooks Unity.WebRTC ContextManager.Quit from EditorApplication.quitting so batch-mode CI builds no longer log the EntryPointNotFoundException: RegisterDebugLog trace at editor exit when libwebrtc wasn't loaded.
+
 ## [0.8.0] - 2026-05-18
 
 ### Changed
