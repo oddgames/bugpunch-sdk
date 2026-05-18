@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.14] - 2026-05-18
+
+### Changed
+- Fix BugpunchDebugMode.enter — wraps body in activity.runOnUiThread so JNI callers from worker threads no longer throw the Looper.prepare error when the profile picker / consent dialog gets shown.
+- Fix BugpunchNative.ReportSdkError C# log label — was logging the literal placeholder instead of the source string.
+
+## [0.7.13] - 2026-05-18
+
+### Changed
+- Fix BugpunchDebugMode.enter — wraps body in activity.runOnUiThread so JNI callers from worker threads (BugpunchRequestHelpPicker ? BugpunchNative.EnterDebugMode ? JNI from Thread-3) no longer throw "Can't create handler inside thread that has not called Looper.prepare()" when the profile picker / consent dialog gets shown.
+- Fix BugpunchNative.ReportSdkError C# log label — was logging the literal "{src}" instead of the source string.
+
 ## [0.7.12] - 2026-05-18
 
 ### Changed
