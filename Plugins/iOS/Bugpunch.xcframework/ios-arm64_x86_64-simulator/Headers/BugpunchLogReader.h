@@ -56,6 +56,14 @@
 // snapshotted for upload. The dashboard's log viewer collapses everything
 // above the most recent boundary into a click-to-expand band.
 + (void)markBoundaryWithType:(NSString*)reportType title:(NSString*)title;
+// Snapshot of the first 500 KB captured since startup, frozen once the
+// buffer fills or the 60s capture window closes. Bug-report bundling
+// pairs this with the tail of the live ring so the dashboard sees both
+// boot context and the most-recent activity.
++ (NSData*)snapshotStartBytes;
+// Snapshot of the last `maxBytes` of the live ring as UTF-8 bytes. Trims
+// on a line boundary. Pass 0 for the full ring.
++ (NSData*)snapshotTailBytes:(NSInteger)maxBytes;
 // Path to the file written from `bp_logring.prev.dat` at startup — non-nil
 // only if the previous launch left a non-empty ring file behind. Crash
 // drain attaches this as `logs:` when a recovered crash record doesn't

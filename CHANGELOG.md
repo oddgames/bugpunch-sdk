@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.3] - 2026-05-18
+
+### Changed
+- sdk(android,ios): capture first 500 KB of session logs into a frozen buffer at startup so bug reports always carry boot-time context
+- sdk(android,ios): bug-report logs payload composes first 500 KB + last 500 KB of the live ring with a "skipped N bytes" separator (1 MB combined, 1.5 MB total memory ceiling including native ring); streams straight to gzip with no full-payload String alloc
+- sdk(android,ios): report form right column gains a "Bug Punch" wordmark; Data tab now surfaces Attachments / Reporter (role/email/name/id/provider) / Device (model/OS/platform/GPU/deviceId) / App (version/bundle/buildCode/fingerprint/Unity/branch/changeset/scene/fps/installer) / Context (tags count, SystemInfo property count, extra accounts, severity, type)
+- sdk(ios): expose Bugpunch_TunnelCurrentTesterRole C accessor so the report form can render the current role on the Data tab
+- sdk(csharp): per-signature exception debounce in BugpunchCrashHandler — caps JNI/P-Invoke crossings during a tight exception loop while still letting distinct exceptions through; native cooldown remains the second layer
+
 ## [0.8.2] - 2026-05-18
 
 ### Changed
