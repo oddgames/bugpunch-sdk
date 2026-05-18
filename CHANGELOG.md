@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.10] - 2026-05-18
+
+### Changed
+- Gravatar fallback wired end-to-end — SDK picker tile + dashboard ReporterBadge both fall back to Gravatar when no provider avatar URL is set. Server identityFor + profilesTop responses also fill avatarUrl from MD5-of-lowercased-email when no avatarKey is uploaded.
+- Picker profile circles grouped + centred (not weight-distributed) with a 10dp gap between each.
+- d=404 on every Gravatar URL so unregistered emails surface 404 and the tile falls through to the initials chip instead of caching a grey silhouette.
+
 ## [0.7.9] - 2026-05-18
 
 ### Changed
