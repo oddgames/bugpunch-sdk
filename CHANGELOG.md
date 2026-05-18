@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.17] - 2026-05-18
+
+### Changed
+- Report form redesign — three numbered fields (Describe the problem / Steps to reproduce / Additional details), with the screenshot/video tab toggle dropped. When video footage is available it now wins the media panel slot; thumbnail strip still hangs below for extra shots. iOS removes keyboard-inset scroll handling in favor of the new flat layout. Severity field gone (hardcoded to medium server-side).
+
 ## [0.7.16] - 2026-05-18
 
 ### Changed
