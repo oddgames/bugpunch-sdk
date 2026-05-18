@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.15] - 2026-05-18
+
+### Changed
+- ReportActivity cleanup — drops the profile avatar + Bugpunch wordmark from the header (back arrow only), removes the email + severity fields (email pulled from signed-in identity, severity hardcoded to medium), and goes full-screen with edge-to-edge system bar styling.
+- DebugMode.enter — skips the in-app consent dialog and goes straight to the OS-level MediaProjection prompt; that system dialog remains the only consent step.
+
 ## [0.7.14] - 2026-05-18
 
 ### Changed
