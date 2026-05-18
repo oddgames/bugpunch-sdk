@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.3] - 2026-05-18
+
+### Changed
+- DebugMode.enter short-circuits the profile picker when an identity is already known — cold-install users still see the SSO buttons before recording starts, but existing users go straight to consent.
+- Welcome card, request-help card and managed-lane login + request-help dialogs picked up the elevated card style + two-tone Bugpunch wordmark used by the picker.
+
 ## [0.7.2] - 2026-05-18
 
 ### Changed
