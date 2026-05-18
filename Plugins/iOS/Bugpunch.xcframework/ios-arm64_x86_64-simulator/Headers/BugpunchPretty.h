@@ -26,6 +26,10 @@ UIColor* BPLighten(UIColor* c, CGFloat amt);
 UIColor* BPDarken(UIColor* c, CGFloat amt);
 UIColor* BPWithAlpha(UIColor* c, CGFloat a);
 
+/// Brand orange used for the "punch" half of the wordmark + primary CTAs.
+/// Hardcoded so a project's customised theme can't mistint brand identity.
+UIColor* BPBrandAccent(void);
+
 #ifdef __cplusplus
 }
 #endif

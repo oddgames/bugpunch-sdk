@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.4] - 2026-05-18
+
+### Changed
+- "Punch" half of the wordmark now uses the brand orange BugpunchPretty.BRAND_ACCENT / BPBrandAccent() — hardcoded so a project-customised accentRecord can't tint the wordmark red.
+- Request-help picker drops the wordmark — 3 options fit on landscape phones without scrolling.
+- Profile-select screen tightened — wordmark 24sp, screen title 18sp, subtitle 13sp, less inter-block padding so the picker fits on smaller cards.
+- Welcome card logo halved (44dp ? 22dp on Android, 44pt ? 22pt on iOS) per the new visual weight.
+- EmailEntry adds a Password field for Bugpunch internal sign-in (UI only at this pass — back-end auth wiring still TODO).
+
 ## [0.7.3] - 2026-05-18
 
 ### Changed
