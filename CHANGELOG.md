@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.5] - 2026-05-18
+
+### Changed
+- Request-help picker drops the title and subtitle so all 3 option rows fit on landscape phones.
+- Profile tile elements 30% smaller — avatar 52?36, name 17?13, email 14?11, row min-height 86?60 — and the displayed name falls back to the email's local part when the backend handed us a long auth-provider token instead of a real name.
+- EmailEntry login button is the brand orange + 15% tighter — wordmark 28?24, button height 52?44, field heights 48?41, font 16?14, padding tightened across the column.
+
 ## [0.7.4] - 2026-05-18
 
 ### Changed
