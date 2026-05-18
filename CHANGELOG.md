@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.16] - 2026-05-18
+
+### Changed
+- DebugAutoPrompt — launch flow also fires when a persisted identity exists, not only when the server-cached role is internal/external. Once a tester signs in once, every subsequent launch shows the picker (lets them switch) and auto-enters debug mode the moment the picker dismisses.
+
 ## [0.7.15] - 2026-05-18
 
 ### Changed
