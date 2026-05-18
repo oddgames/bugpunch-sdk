@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-05-18
+
+### Changed
+- - **Apple Sign in with Apple on Android.** Full end-to-end round-trip — previously stubbed. SDK now POSTs the OAuth `state` to a new prepare endpoint, launches Apple's authorize URL with `response_type=code id_token` + `response_mode=form_post`, server validates state and 302s to `bugpunch://apple-callback?state=…&idToken=…`. New `AppleCallbackActivity` catches the deep link via `<intent-filter>` and forwards into `BugpunchAppleSignIn.onIdTokenReceived`. No client_secret JWT, no Apple p8 key needed.
+- - **Per-project SDK SSO config.** Google Android / iOS client IDs, Apple bundle ID, Apple Services ID, and Apple return URL now live on each project's settings (Project Settings ? SDK SSO) instead of server env vars. `BugpunchPoller` hoists `gameConfig.sso` into the top-level runtime config so the existing sign-in readers see them. Server's `sdkSsoSignInService` reads project-scoped values; env-var fallback retained for migration.
+- - Profile picker / email entry / report form / tunnel polish across Android + iOS lanes.
+- - Feedback board attachment + styling + submit-view refinements (C#).
+
 ## [0.7.19] - 2026-05-18
 
 ### Changed
