@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.6] - 2026-05-18
+
+### Changed
+- Profile picker converted back to circular tiles — avatar (Google/Apple picture URL ? Gravatar fallback computed from the email's MD5 ? initials chip) above a single-line display label, "+" tile follows the same circle shape. Drops the row layout that was leaking the long auth-provider token next to the email.
+- Drops "Choose a profile" title + subtitle from the picker — wordmark and circles speak for themselves.
+
 ## [0.7.5] - 2026-05-18
 
 ### Changed
