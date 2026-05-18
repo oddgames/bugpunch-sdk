@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.12] - 2026-05-18
+
+### Changed
+- SDK Bugs tab — Send to Bugpunch button in the SdkErrorOverlay now mirrors every ring entry to /api/sdk-error in addition to the per-project reportBug path, so admin Settings receives the report even when the host game's API key is empty or the customer's project ingest fails. BugpunchRuntime.postSdkErrorAsync is now package-private so the overlay can invoke it directly.
+- EmailEntry — drops the prefill on both Android + iOS so a persisted identity that carries a provider token instead of a real email never lands in the input field; user must type a clean email every time.
+
 ## [0.7.11] - 2026-05-18
 
 ### Changed
