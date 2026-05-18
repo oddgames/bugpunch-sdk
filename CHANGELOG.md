@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.2] - 2026-05-18
+
+### Changed
+- sdk(android,ios): redesign bug report form with two-column tabbed layout — left side has Screenshot/Video/Image N/Data tabs with video playback (play/pause + scrubber + mm:ss time); right side has placeholder-only textarea + Cancel/Send buttons
+- sdk(android,ios): dump ring buffer on report form open so video can be previewed and scrubbed before send; prepared MP4 reused at submit (no double-dump)
+- sdk(android,ios): add Data tab summarizing what gets sent — attachments (screenshot/annotations/video/extras/logs size), identity (email/name/player id), device (model/OS)
+
 ## [0.8.1] - 2026-05-18
 
 ### Changed
