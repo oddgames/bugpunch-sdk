@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.11] - 2026-05-18
+
+### Changed
+- SDK self-diagnostic errors POST to the server's new public /api/sdk-error sink — Android BugpunchRuntime.reportSdkError and iOS Bugpunch_ReportSdkError both fire-and-forget alongside the in-app banner. Lands in admin Settings ? SDK Bugs.
+
 ## [0.7.10] - 2026-05-18
 
 ### Changed
