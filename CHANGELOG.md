@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.7] - 2026-05-18
+
+### Changed
+- Profile circles now show a small provider badge bottom-right — Google G / Apple / Bugpunch logo so users can tell at a glance which SSO each profile belongs to.
+
 ## [0.7.6] - 2026-05-18
 
 ### Changed
