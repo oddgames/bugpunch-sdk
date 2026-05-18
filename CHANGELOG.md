@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.4] - 2026-05-18
+
+### Changed
+- sdk: diagnostic mode — Bugpunch.SetDiagnosticMode(bool) toggles a per-process flag that injects `diagnostic:true` into the upload payload. Server bypasses both per-diversity and overall sample caps without consuming budget slots, so QA/dev runs from debug tools don't crowd out real user crashes. Events tagged `is_diagnostic`, parent issue gets sticky `has_diagnostic_events` flag.
+- sdk(editor): source upload now includes Packages/ and Library/PackageCache/ entries (rewritten to virtual `Packages/<name>/...` paths matching Unity's stack-trace format) so dashboard source previews resolve frames inside UPM packages, not just project Assets/.
+
 ## [0.8.3] - 2026-05-18
 
 ### Changed
