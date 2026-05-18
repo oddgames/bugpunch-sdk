@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.18] - 2026-05-18
+
+### Changed
+- Silence Unity.WebRTC EntryPointNotFoundException at Editor exit — added BugpunchWebRTCQuitGuard (editor-only) that unhooks Unity.WebRTC ContextManager.Quit from EditorApplication.quitting. The native libwebrtc plugin isn't always loaded in batch-mode CI iOS builds (no debug session = no WebRTC use), so the unconditional RegisterDebugLog cleanup call inside DisposeInternal threw on Editor shutdown — build exit code was already 0 but the trace made CI logs look like a failure.
+
 ## [0.7.17] - 2026-05-18
 
 ### Changed
