@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.9] - 2026-05-18
+
+### Changed
+- Profile picker — horizontal row of avatar circles + plus tile distributed by weight, small subtitle restored above the row.
+- Long-press a profile circle to remove it from local history — AlertDialog confirm; if the removed profile is the active identity it gets signed out at the same time.
+
+## [0.7.8] - 2026-05-18
+
+### Changed
+- Profile picker — horizontal row of avatar circles + "+" tile distributed by weight, small subtitle "Choose a profile to continue, or tap + to add another." restored above the row.
+- Long-press a profile circle to remove it from local history — AlertDialog confirm; if the removed profile is the active identity it gets signed out at the same time.
+
 ## [0.7.7] - 2026-05-18
 
 ### Changed
