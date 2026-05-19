@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Stub manifest. This .androidlib carries no code and no assets — its only
+  job is to pull AndroidX Credential Manager, the googleid library, and
+  androidx.browser CustomTabs onto the consumer APK's runtime classpath
+  via its build.gradle. BugpunchPlugin.aar's classes.jar references those
+  classes at compile time but Unity doesn't resolve the AAR's POM
+  transitives, so without this stub the consumer's APK ships the
+  references but not the classes → NoClassDefFoundError on Google/Apple
+  sign-in. See bugpunch_sso.androidlib/build.gradle.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="au.com.oddgames.bugpunch.sso">
+    <application />
+</manifest>

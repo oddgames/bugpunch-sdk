@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.7] - 2026-05-19
+
+### Changed
+- sdk(android,ios,csharp): diagnostic mode bypasses exception cooldown/debounce — Bugpunch.SetDiagnosticMode now flows from C# to native via "diagnostic":true in extraJson and bypasses both the C# IsDuplicateReport check and the native autoReportCooldownSeconds gate so QA/dev tooling receives every event. C# debounce signature also tightened from (title + first 200 chars of stack) to (title + full stack) for exact-match dedup
+- sdk(android): bundle Credential Manager + googleid + browser as bugpunch_sso.androidlib — Unity doesn't resolve AAR POM transitives, so BugpunchPlugin.aar's compile-time deps for AndroidX Credential Manager, the googleid library, and androidx.browser CustomTabs weren't reaching the consumer APK. Google sign-in caught a NoClassDefFoundError and showed "Google sign-in unavailable"; Apple sign-in's unguarded `new CustomTabsIntent.Builder()` threw the same on the UI thread and crashed the app. The new .androidlib stub puts the four implementation deps on the consumer's runtime classpath without an AAR rebuild
+
 ## [0.8.6] - 2026-05-19
 
 ### Changed

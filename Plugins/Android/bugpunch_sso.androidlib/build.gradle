@@ -1,0 +1,35 @@
+// Carries the SSO runtime stack into the consumer's APK.
+//
+// BugpunchPlugin.aar references these libraries at compile time (see
+// android-src/bugpunch/build.gradle) but Unity doesn't resolve an AAR's
+// POM transitives, so the classes need a second route onto the consumer
+// APK's runtime classpath. Unity treats every `.androidlib` folder under
+// Assets/Plugins/Android as a Gradle subproject and adds
+// `implementation project(':unityLibrary:bugpunch_sso.androidlib')` to
+// unityLibrary, so the implementation deps here land in the final APK.
+//
+// Versions MUST match android-src/bugpunch/build.gradle so the classes
+// shipped at runtime match what classes.jar was compiled against.
+apply plugin: 'com.android.library'
+
+dependencies {
+    implementation 'androidx.credentials:credentials:1.3.0'
+    implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'
+    implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
+    implementation 'androidx.browser:browser:1.8.0'
+}
+
+android {
+    namespace 'au.com.oddgames.bugpunch.sso'
+    compileSdk 36
+    buildToolsVersion '36.0.0'
+
+    defaultConfig {
+        minSdk 25
+        targetSdk 36
+    }
+
+    lint {
+        abortOnError false
+    }
+}
