@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.6] - 2026-05-19
+
+### Changed
+- sdk(ios): add missing extern "C" to the BugpunchProfilePicker call site for Bugpunch_ShowEmailEntry — without it the Obj-C++ caller name-mangled the symbol while the C definition in BugpunchEmailEntry.mm didn't, so iOS archives failed to link
+
 ## [0.8.5] - 2026-05-19
 
 ### Changed
