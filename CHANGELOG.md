@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.11] - 2026-05-19
+
+### Changed
+- sdk(editor): F12 reporter now requires a Bugpunch login before submit — new BugpunchEditorAuth module pops a UIToolkit email + password modal on the first F12 of a session, POSTs to /api/auth/login, and caches {token, email, displayName, userId, orgId} to EditorPrefs so subsequent Editor sessions skip the modal. CaptureAndUpload sends Authorization: Bearer <jwt> alongside the existing X-API-Key so the server can attach the report to the signed-in user. HTTP 401 from the ingest endpoint clears the cached token automatically so the next F12 re-prompts instead of failing silently.
+- sdk(editor): Ambient log capture + video ring buffer are now gated on the Bugpunch toolbar toggle — Application.logMessageReceivedThreaded buffers logs only when the toggle is ON, and BugpunchEditorQuickTaskRunner subscribes to BugpunchEditorToggle.Changed to start/stop EditorVideoRing in lockstep. Matches the mobile model where ambient capture only runs once the player has entered debug mode. Toggle OFF ? no GPU/memory cost from the ring and F12 carries no log tail; toggle ON ? everything functions as if the Editor session were an internal tester device.
+
 ## [0.8.10] - 2026-05-19
 
 ### Changed
