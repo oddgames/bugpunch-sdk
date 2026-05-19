@@ -58,25 +58,19 @@ NS_ASSUME_NONNULL_BEGIN
 /// for the next-launch crash drain). nil disables the periodic flush.
 @property (nonatomic, copy, nullable) NSString* ctxShotDiskPath;
 
-/// Player auth identity — set after a successful POST to
-/// /api/v1/chat/auth/verify (driven from the C# Bugpunch.SetPlayerAuthSession
-/// path). Mirrors the four fields on the Java + C# runtimes so chat HTTP
-/// calls on every lane stamp the same X-Player-Auth-* / X-Player-Email
-/// headers. nil when the player hasn't signed in yet.
+/// Player identity — populated by the native SSO sign-in flow
+/// (BugpunchProfilePicker → BugpunchPostSsoSignIn). Mirrors the four
+/// fields on the Java + C# runtimes so chat HTTP calls and upload
+/// manifests on every lane stamp the same reporter snapshot. nil when
+/// the player hasn't signed in yet.
 @property (nonatomic, copy, nullable) NSString* playerAuthProvider;
 @property (nonatomic, copy, nullable) NSString* playerAuthId;
 @property (nonatomic, copy, nullable) NSString* playerEmail;
 @property (nonatomic, copy, nullable) NSString* playerName;
-/// Optional avatar URL set by the profile-picker flow on internal devices.
-/// Empty / nil on the email-signin and public-player paths — the reporter
-/// badge falls back to hash-coloured initials in those cases.
+/// Optional avatar URL set by the SSO profile-picker flow. Empty / nil
+/// on the public-player path — the reporter badge falls back to
+/// hash-coloured initials in those cases.
 @property (nonatomic, copy, nullable) NSString* playerAvatarUrl;
-
-/// Game-seeded email used to pre-populate BugpunchEmailEntry for public
-/// testers. Set via `Bugpunch.SetPlayerEmail` (C#) → BugpunchNative.
-/// Independent of `playerEmail` (which is the *verified* identity after
-/// an email-signin round-trip).
-@property (nonatomic, copy, nullable) NSString* prefillEmail;
 
 /// Game-supplied auxiliary account identities (Parse, Steam, GameCenter,
 /// PlayFab, …) added via `Bugpunch.SetAccount(provider, username, email)`.

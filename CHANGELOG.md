@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.9] - 2026-05-19
+
+### Changed
+- sdk(android,ios,csharp): remove the legacy email-entry login flow and PlayerPrefs-based auth caching — BugpunchEmailEntry (Java + Obj-C++) and BugpunchManagedLoginDialog (C#) are deleted, ShowEmailEntry/ShowEmailEntryIfNeeded/SetPlayerAuthSession/SetPlayerEmail/RestorePlayerAuth removed from the Bugpunch facade, and OnEmailEntrySignedIn dropped from BugpunchClient. Tester identity now comes solely from the SSO profile picker (Google / Apple); native owns persistence and pushes the identity back into Unity via OnProfilePicked / OnProfileSignedOut which mirror directly into BugpunchRuntime. Per-project OAuth client ids (googleClientIdIos, googleWebClientId, appleServiceId, appleRedirectUri) and the playerLogin sprite/title/subtitle fields are removed from BugpunchConfig — they now live in the dashboard (Settings ? SDK SSO) and are pushed to native at runtime via BugpunchRuntime.mergeServerSsoConfig, so rotating a client id no longer requires a fresh APK
+
 ## [0.8.8] - 2026-05-19
 
 ### Changed

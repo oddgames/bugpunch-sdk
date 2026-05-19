@@ -31,13 +31,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Compose the SDK's standard request headers. Returns nil when the SDK
 /// isn't configured (no API key) so callers can fail-fast without a try/catch.
-/// Always includes X-Api-Key + X-Device-Id; conditionally adds X-Player-Auth-*
-/// and X-Player-Email when player identity is configured.
+/// Always includes X-Api-Key + X-Device-Id; conditionally adds X-Player-Email
+/// when the native SSO flow has surfaced a player email.
 + (nullable NSDictionary<NSString*, NSString*>*)baseHeaders;
 
-/// Add the X-Player-* headers to {@code dst} when player identity is set.
-/// Lets callers compose player auth onto an arbitrary header map.
-+ (void)addPlayerAuthHeadersTo:(NSMutableDictionary<NSString*, NSString*>*)dst;
+/// Add the X-Player-Email header to {@code dst} when the SDK has a player
+/// email configured. Lets callers compose player identity onto an arbitrary
+/// header map.
++ (void)addPlayerIdentityHeadersTo:(NSMutableDictionary<NSString*, NSString*>*)dst;
 
 /// Synchronous multipart/form-data POST of a single file part. Reuses the
 /// caller's NSURLSession so connection-keepalive, timeout config, and
