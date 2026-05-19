@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.12] - 2026-05-19
+
+### Changed
+- sdk(ios): fix archive link error — migrate the three remaining call sites of the retired Bugpunch_EnsurePublicAuthThen (Bugpunch_EnterDebugMode, Bugpunch_ShowChatBoard, Bugpunch_ShowFeedbackBoard in BugpunchDebugMode.mm + BugpunchReportOverlay.mm) to Bugpunch_ShowProfilePickerForAutoPrompt, matching the Android-side migration done in v0.8.9 when the legacy email-entry flow was removed. Without this iOS archives failed with "Undefined symbols: _Bugpunch_EnsurePublicAuthThen".
+
 ## [0.8.11] - 2026-05-19
 
 ### Changed
