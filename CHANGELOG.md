@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.10] - 2026-05-19
+
+### Changed
+- sdk(editor): Editor SDK now defaults to enabled — EditorPrefs default flipped to true and a one-shot InitializeOnLoadMethod writes the pref explicitly on first launch so the Editor shows up as a device and streams logs out of the box.
+- sdk(editor): BUGPUNCH toolbar button next to Play / Pause / Step on Unity 6.1+ via the official `[MainToolbarElement]` API — switched from MainToolbarToggle to MainToolbarButton so there's no gray "checked" highlight around the icon when on. Custom pill + Bug/punch wordmark PNGs (orange when on, gray when off) ride inside the icon, `element.displayed = true` so it auto-appears in the toolbar, and `MainToolbar.Refresh` is called after the click so the icon visibly flips state.
+- sdk(editor): Unity 6.0 keeps a reflection-based fallback (IMGUIContainer in ToolbarZoneRightAlign — same pattern as the unity-toolbar-extender package) since the official MainToolbar API only exists on 6.1+. Uses GUIStyle.none button with the same wordmark icons so the 6.0 path visually matches the 6.1+ button (no toggle highlight either). Runtime-gated by Application.unityVersion so exactly one path fires per editor version.
+
 ## [0.8.9] - 2026-05-19
 
 ### Changed
