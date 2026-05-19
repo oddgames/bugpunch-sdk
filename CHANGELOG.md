@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.5] - 2026-05-19
+
+### Changed
+- sdk(android,ios): pause tunnel on app background, resume on foreground — backgrounded phones were staying "online + seconds ago" on the Devices page because the WS library kept the socket warm in a suspended process; now we tear down on background and reconnect on foreground so the server's idle sweep flips us to offline
+- sdk(android,ios): drop pre-filled "Shake report"/"Bug report" titles from shake + debug-widget triggers so users see an empty form
+
 ## [0.8.4] - 2026-05-18
 
 ### Changed
