@@ -18,6 +18,7 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <mferror.h>
+#include <codecapi.h>
 #include <d3d11.h>
 #include <wrl/client.h>
 
@@ -28,6 +29,8 @@
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
+#include <deque>
+#include <vector>
 
 #include "ODDRecorder.h"
 
@@ -121,6 +124,69 @@ struct RecorderState
 };
 
 static RecorderState g_state;
+
+// ============================================================================
+// In-memory video ring state
+// ============================================================================
+//
+// Ring mode runs the H.264 encoder MFT directly and keeps the last N seconds
+// of encoded NAL packets in a std::deque. No disk I/O until RingDump is
+// called. The frame source is the same as file mode — C# either pushes BGRA
+// frames via AppendVideoFrame, or the render-event callback grabs the
+// backbuffer — but instead of going to a Sink Writer, the bytes go through
+// BGRA→NV12 conversion, then ProcessInput/ProcessOutput on the encoder MFT,
+// and the resulting samples are cloned into the ring.
+//
+// On RingDump, a fresh Sink Writer is stood up to the target mp4 path with
+// H.264 passthrough media types (input == output == encoder's H.264 type)
+// and each ring packet is written through as-is. Sink Writer handles mp4
+// muxing. The ring keeps running through the dump.
+
+struct RingPacket
+{
+    int64_t time;       // 100ns presentation timestamp
+    int64_t duration;   // 100ns
+    bool    isKeyframe;
+    std::vector<uint8_t> bytes;
+};
+
+struct RingState
+{
+    std::atomic<bool> active{false};
+    int width  = 0;
+    int height = 0;
+    int fps    = 60;
+    int bitrate = 4000000;
+    int ringSeconds = 60;
+    int keyframeIntervalFrames = 120;
+
+    int64_t frameCount = 0;
+    int64_t framesSinceKey = 0;
+    int64_t totalDuration100ns = 0;
+
+    ComPtr<IMFTransform> encoder;
+    ComPtr<IMFMediaType> encodedOutputType; // captured after first output sample
+    DWORD inputStreamId  = 0;
+    DWORD outputStreamId = 0;
+    MFT_OUTPUT_STREAM_INFO outputInfo = {};
+    bool providesOutputSamples = false;
+
+    std::vector<uint8_t> nv12Scratch;
+
+    std::deque<RingPacket> packets;
+    std::mutex mutex;
+};
+
+static RingState g_ring;
+
+// Forward declarations for ring helpers
+static HRESULT RingInitEncoder();
+static void    RingShutdownEncoder();
+static HRESULT RingFeedBGRA(const uint8_t* src, int srcStride, bool srcIsBGRA);
+static HRESULT RingDrainEncoder();
+static void    RingTrim();
+static HRESULT RingMuxToFileLocked(const std::wstring& outPath);
+static void    CaptureBackbufferForRing();
 
 // Unity graphics interfaces (set in UnityPluginLoad)
 static IUnityGraphics* g_unityGraphics = nullptr;
@@ -238,6 +304,12 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventID)
 {
     if (eventID != ODDRECORDER_EVENT_CAPTURE_FRAME)
         return;
+
+    if (g_ring.active.load())
+    {
+        CaptureBackbufferForRing();
+        return;
+    }
 
     if (!g_state.isRecording.load())
         return;
@@ -703,6 +775,460 @@ static void CaptureBackbufferD3D11()
 }
 
 // ============================================================================
+// In-memory video ring implementation
+// ============================================================================
+
+static void BGRAToNV12(const uint8_t* src, int srcStride, bool isBGRA,
+                       int width, int height, uint8_t* dst)
+{
+    uint8_t* yPlane  = dst;
+    uint8_t* uvPlane = dst + width * height;
+    const int chromaH = height / 2;
+    const int chromaW = width / 2;
+
+    for (int y = 0; y < height; ++y)
+    {
+        const uint8_t* sr = src + y * srcStride;
+        uint8_t* yr = yPlane + y * width;
+        for (int x = 0; x < width; ++x)
+        {
+            int b, g, r;
+            if (isBGRA) { b = sr[x*4 + 0]; g = sr[x*4 + 1]; r = sr[x*4 + 2]; }
+            else        { r = sr[x*4 + 0]; g = sr[x*4 + 1]; b = sr[x*4 + 2]; }
+            int yv = ((66*r + 129*g + 25*b + 128) >> 8) + 16;
+            yr[x] = (uint8_t)(yv < 0 ? 0 : (yv > 255 ? 255 : yv));
+        }
+    }
+
+    for (int y = 0; y < chromaH; ++y)
+    {
+        const uint8_t* sr0 = src + (y*2 + 0) * srcStride;
+        const uint8_t* sr1 = src + (y*2 + 1) * srcStride;
+        uint8_t* uvr = uvPlane + y * width;
+        for (int x = 0; x < chromaW; ++x)
+        {
+            int sR = 0, sG = 0, sB = 0;
+            const int o0 = (x*2 + 0) * 4;
+            const int o1 = (x*2 + 1) * 4;
+            if (isBGRA)
+            {
+                sB += sr0[o0+0] + sr0[o1+0] + sr1[o0+0] + sr1[o1+0];
+                sG += sr0[o0+1] + sr0[o1+1] + sr1[o0+1] + sr1[o1+1];
+                sR += sr0[o0+2] + sr0[o1+2] + sr1[o0+2] + sr1[o1+2];
+            }
+            else
+            {
+                sR += sr0[o0+0] + sr0[o1+0] + sr1[o0+0] + sr1[o1+0];
+                sG += sr0[o0+1] + sr0[o1+1] + sr1[o0+1] + sr1[o1+1];
+                sB += sr0[o0+2] + sr0[o1+2] + sr1[o0+2] + sr1[o1+2];
+            }
+            int r = sR >> 2, g = sG >> 2, b = sB >> 2;
+            int u = ((-38*r - 74*g + 112*b + 128) >> 8) + 128;
+            int v = ((112*r -  94*g -  18*b + 128) >> 8) + 128;
+            uvr[x*2 + 0] = (uint8_t)(u < 0 ? 0 : (u > 255 ? 255 : u));
+            uvr[x*2 + 1] = (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
+        }
+    }
+}
+
+static HRESULT RingInitEncoder()
+{
+    MFT_REGISTER_TYPE_INFO outType = { MFMediaType_Video, MFVideoFormat_H264 };
+    MFT_REGISTER_TYPE_INFO inType  = { MFMediaType_Video, MFVideoFormat_NV12 };
+
+    IMFActivate** activates = nullptr;
+    UINT32 count = 0;
+    HRESULT hr = MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER,
+                           MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_SORTANDFILTER,
+                           &inType, &outType, &activates, &count);
+    if (FAILED(hr) || count == 0)
+    {
+        if (activates) CoTaskMemFree(activates);
+        DebugLog("Ring: no sync H.264 encoder MFT found (hr=0x%08X count=%u)", (unsigned)hr, count);
+        return FAILED(hr) ? hr : E_FAIL;
+    }
+
+    hr = activates[0]->ActivateObject(IID_PPV_ARGS(&g_ring.encoder));
+    for (UINT32 i = 0; i < count; ++i) activates[i]->Release();
+    CoTaskMemFree(activates);
+    if (FAILED(hr))
+    {
+        DebugLog("Ring: ActivateObject failed (0x%08X)", (unsigned)hr);
+        return hr;
+    }
+
+    DWORD inIds[1] = {0};
+    DWORD outIds[1] = {0};
+    hr = g_ring.encoder->GetStreamIDs(1, inIds, 1, outIds);
+    if (hr == E_NOTIMPL) { g_ring.inputStreamId = 0; g_ring.outputStreamId = 0; }
+    else if (FAILED(hr)) return hr;
+    else { g_ring.inputStreamId = inIds[0]; g_ring.outputStreamId = outIds[0]; }
+
+    // Output type first (required ordering for most encoder MFTs)
+    ComPtr<IMFMediaType> outMT;
+    hr = MFCreateMediaType(&outMT);
+    if (FAILED(hr)) return hr;
+    outMT->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    outMT->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+    outMT->SetUINT32(MF_MT_AVG_BITRATE, (UINT32)g_ring.bitrate);
+    MFSetAttributeSize(outMT.Get(), MF_MT_FRAME_SIZE,
+                       (UINT32)g_ring.width, (UINT32)g_ring.height);
+    MFSetAttributeRatio(outMT.Get(), MF_MT_FRAME_RATE, (UINT32)g_ring.fps, 1);
+    MFSetAttributeRatio(outMT.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    outMT->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    outMT->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main);
+
+    hr = g_ring.encoder->SetOutputType(g_ring.outputStreamId, outMT.Get(), 0);
+    if (FAILED(hr))
+    {
+        DebugLog("Ring: SetOutputType failed (0x%08X)", (unsigned)hr);
+        return hr;
+    }
+
+    ComPtr<IMFMediaType> inMT;
+    hr = MFCreateMediaType(&inMT);
+    if (FAILED(hr)) return hr;
+    inMT->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    inMT->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+    MFSetAttributeSize(inMT.Get(), MF_MT_FRAME_SIZE,
+                       (UINT32)g_ring.width, (UINT32)g_ring.height);
+    MFSetAttributeRatio(inMT.Get(), MF_MT_FRAME_RATE, (UINT32)g_ring.fps, 1);
+    MFSetAttributeRatio(inMT.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    inMT->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+
+    hr = g_ring.encoder->SetInputType(g_ring.inputStreamId, inMT.Get(), 0);
+    if (FAILED(hr))
+    {
+        DebugLog("Ring: SetInputType failed (0x%08X)", (unsigned)hr);
+        return hr;
+    }
+
+    hr = g_ring.encoder->GetOutputStreamInfo(g_ring.outputStreamId, &g_ring.outputInfo);
+    if (FAILED(hr)) return hr;
+    g_ring.providesOutputSamples =
+        (g_ring.outputInfo.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES |
+                                      MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES)) != 0;
+
+    g_ring.encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
+    g_ring.encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+
+    g_ring.nv12Scratch.assign((size_t)g_ring.width * g_ring.height * 3 / 2, 0);
+
+    DebugLog("Ring: encoder initialized (%dx%d @ %d fps, %d bps, %ds buffer, providesSamples=%d)",
+             g_ring.width, g_ring.height, g_ring.fps, g_ring.bitrate,
+             g_ring.ringSeconds, g_ring.providesOutputSamples ? 1 : 0);
+    return S_OK;
+}
+
+static void RingShutdownEncoder()
+{
+    if (g_ring.encoder)
+    {
+        g_ring.encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
+        g_ring.encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
+    }
+    g_ring.encoder.Reset();
+    g_ring.encodedOutputType.Reset();
+    g_ring.nv12Scratch.clear();
+    g_ring.nv12Scratch.shrink_to_fit();
+    g_ring.packets.clear();
+    g_ring.frameCount = 0;
+    g_ring.framesSinceKey = 0;
+    g_ring.totalDuration100ns = 0;
+}
+
+static HRESULT RingFeedBGRA(const uint8_t* src, int srcStride, bool isBGRA)
+{
+    // Caller holds g_ring.mutex.
+    if (!g_ring.encoder) return E_FAIL;
+
+    BGRAToNV12(src, srcStride, isBGRA, g_ring.width, g_ring.height,
+               g_ring.nv12Scratch.data());
+
+    ComPtr<IMFMediaBuffer> buf;
+    DWORD nv12Size = (DWORD)g_ring.nv12Scratch.size();
+    HRESULT hr = MFCreateMemoryBuffer(nv12Size, &buf);
+    if (FAILED(hr)) return hr;
+
+    BYTE* dst = nullptr;
+    hr = buf->Lock(&dst, nullptr, nullptr);
+    if (FAILED(hr)) return hr;
+    memcpy(dst, g_ring.nv12Scratch.data(), nv12Size);
+    buf->Unlock();
+    buf->SetCurrentLength(nv12Size);
+
+    ComPtr<IMFSample> sample;
+    hr = MFCreateSample(&sample);
+    if (FAILED(hr)) return hr;
+    sample->AddBuffer(buf.Get());
+
+    const int64_t pts = g_ring.frameCount * 10000000LL / g_ring.fps;
+    const int64_t dur = 10000000LL / g_ring.fps;
+    sample->SetSampleTime(pts);
+    sample->SetSampleDuration(dur);
+    g_ring.frameCount++;
+
+    bool forceKey = (g_ring.framesSinceKey >= g_ring.keyframeIntervalFrames) ||
+                    (g_ring.frameCount == 1);
+    if (forceKey)
+    {
+        sample->SetUINT32(MFSampleExtension_CleanPoint, 1);
+        g_ring.framesSinceKey = 0;
+    }
+    g_ring.framesSinceKey++;
+
+    hr = g_ring.encoder->ProcessInput(g_ring.inputStreamId, sample.Get(), 0);
+    if (FAILED(hr))
+    {
+        DebugLog("Ring: ProcessInput failed (0x%08X)", (unsigned)hr);
+        return hr;
+    }
+
+    return RingDrainEncoder();
+}
+
+static HRESULT RingDrainEncoder()
+{
+    while (true)
+    {
+        MFT_OUTPUT_DATA_BUFFER outBuf = {};
+        DWORD status = 0;
+
+        ComPtr<IMFSample> outSample;
+        if (!g_ring.providesOutputSamples)
+        {
+            HRESULT hr = MFCreateSample(&outSample);
+            if (FAILED(hr)) return hr;
+            DWORD sz = g_ring.outputInfo.cbSize > 0
+                ? g_ring.outputInfo.cbSize
+                : (DWORD)(g_ring.width * g_ring.height * 2);
+            ComPtr<IMFMediaBuffer> mb;
+            hr = MFCreateMemoryBuffer(sz, &mb);
+            if (FAILED(hr)) return hr;
+            outSample->AddBuffer(mb.Get());
+            outBuf.pSample = outSample.Get();
+        }
+
+        HRESULT hr = g_ring.encoder->ProcessOutput(g_ring.outputStreamId, 1, &outBuf, &status);
+        if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
+        {
+            if (outBuf.pEvents) outBuf.pEvents->Release();
+            break;
+        }
+        if (hr == MF_E_TRANSFORM_STREAM_CHANGE)
+        {
+            // Re-negotiate output type, retry
+            ComPtr<IMFMediaType> newType;
+            HRESULT thr = g_ring.encoder->GetOutputAvailableType(g_ring.outputStreamId, 0, &newType);
+            if (SUCCEEDED(thr))
+            {
+                g_ring.encoder->SetOutputType(g_ring.outputStreamId, newType.Get(), 0);
+                g_ring.encodedOutputType = newType;
+            }
+            if (outBuf.pEvents) outBuf.pEvents->Release();
+            continue;
+        }
+        if (FAILED(hr))
+        {
+            DebugLog("Ring: ProcessOutput failed (0x%08X)", (unsigned)hr);
+            if (outBuf.pEvents) outBuf.pEvents->Release();
+            return hr;
+        }
+
+        IMFSample* samp = outBuf.pSample;
+        if (samp)
+        {
+            if (!g_ring.encodedOutputType)
+            {
+                ComPtr<IMFMediaType> ot;
+                if (SUCCEEDED(g_ring.encoder->GetOutputCurrentType(g_ring.outputStreamId, &ot)))
+                    g_ring.encodedOutputType = ot;
+            }
+
+            ComPtr<IMFMediaBuffer> mb;
+            if (SUCCEEDED(samp->ConvertToContiguousBuffer(&mb)))
+            {
+                BYTE* p = nullptr;
+                DWORD len = 0;
+                if (SUCCEEDED(mb->Lock(&p, nullptr, &len)))
+                {
+                    RingPacket pkt;
+                    pkt.bytes.assign(p, p + len);
+                    int64_t st = 0, dur = 0;
+                    samp->GetSampleTime(&st);
+                    samp->GetSampleDuration(&dur);
+                    pkt.time = st;
+                    pkt.duration = dur > 0 ? dur : (10000000LL / g_ring.fps);
+                    UINT32 kp = 0;
+                    if (FAILED(samp->GetUINT32(MFSampleExtension_CleanPoint, &kp))) kp = 0;
+                    pkt.isKeyframe = (kp != 0);
+                    g_ring.totalDuration100ns += pkt.duration;
+                    g_ring.packets.push_back(std::move(pkt));
+                    mb->Unlock();
+                }
+            }
+        }
+
+        if (outBuf.pEvents) outBuf.pEvents->Release();
+        if (g_ring.providesOutputSamples && outBuf.pSample)
+            outBuf.pSample->Release();
+
+        RingTrim();
+    }
+    return S_OK;
+}
+
+static void RingTrim()
+{
+    const int64_t maxDuration = (int64_t)g_ring.ringSeconds * 10000000LL;
+    while (g_ring.packets.size() > 1 && g_ring.totalDuration100ns > maxDuration)
+    {
+        size_t firstKey = 0;
+        for (size_t i = 1; i < g_ring.packets.size(); ++i)
+        {
+            if (g_ring.packets[i].isKeyframe) { firstKey = i; break; }
+        }
+        if (firstKey == 0) break; // no future keyframe → can't trim without breaking decode
+        for (size_t i = 0; i < firstKey; ++i)
+        {
+            g_ring.totalDuration100ns -= g_ring.packets.front().duration;
+            g_ring.packets.pop_front();
+        }
+    }
+}
+
+static HRESULT RingMuxToFileLocked(const std::wstring& outPath)
+{
+    if (g_ring.packets.empty())
+    {
+        DebugLog("Ring mux: no packets to write");
+        return E_FAIL;
+    }
+    if (!g_ring.encodedOutputType)
+    {
+        DebugLog("Ring mux: encoder output type not yet captured");
+        return E_FAIL;
+    }
+
+    ComPtr<IMFAttributes> attrs;
+    MFCreateAttributes(&attrs, 1);
+    attrs->SetUINT32(MF_LOW_LATENCY, TRUE);
+
+    ComPtr<IMFSinkWriter> writer;
+    HRESULT hr = MFCreateSinkWriterFromURL(outPath.c_str(), nullptr, attrs.Get(), &writer);
+    if (FAILED(hr))
+    {
+        DebugLog("Ring mux: MFCreateSinkWriterFromURL failed (0x%08X)", (unsigned)hr);
+        return hr;
+    }
+
+    DWORD streamIdx = 0;
+    hr = writer->AddStream(g_ring.encodedOutputType.Get(), &streamIdx);
+    if (FAILED(hr))
+    {
+        DebugLog("Ring mux: AddStream failed (0x%08X)", (unsigned)hr);
+        return hr;
+    }
+    // Passthrough: tell the sink writer the input is already encoded H.264.
+    hr = writer->SetInputMediaType(streamIdx, g_ring.encodedOutputType.Get(), nullptr);
+    if (FAILED(hr))
+    {
+        DebugLog("Ring mux: SetInputMediaType (passthrough) failed (0x%08X)", (unsigned)hr);
+        return hr;
+    }
+    hr = writer->BeginWriting();
+    if (FAILED(hr))
+    {
+        DebugLog("Ring mux: BeginWriting failed (0x%08X)", (unsigned)hr);
+        return hr;
+    }
+
+    const int64_t baseTime = g_ring.packets.front().time;
+    for (const auto& pkt : g_ring.packets)
+    {
+        ComPtr<IMFMediaBuffer> mb;
+        if (FAILED(MFCreateMemoryBuffer((DWORD)pkt.bytes.size(), &mb))) continue;
+        BYTE* dst = nullptr;
+        if (FAILED(mb->Lock(&dst, nullptr, nullptr))) continue;
+        memcpy(dst, pkt.bytes.data(), pkt.bytes.size());
+        mb->Unlock();
+        mb->SetCurrentLength((DWORD)pkt.bytes.size());
+
+        ComPtr<IMFSample> samp;
+        MFCreateSample(&samp);
+        samp->AddBuffer(mb.Get());
+        samp->SetSampleTime(pkt.time - baseTime);
+        samp->SetSampleDuration(pkt.duration);
+        if (pkt.isKeyframe) samp->SetUINT32(MFSampleExtension_CleanPoint, 1);
+
+        HRESULT whr = writer->WriteSample(streamIdx, samp.Get());
+        if (FAILED(whr))
+            DebugLog("Ring mux: WriteSample failed (0x%08X)", (unsigned)whr);
+    }
+
+    hr = writer->Finalize();
+    if (FAILED(hr))
+        DebugLog("Ring mux: Finalize failed (0x%08X)", (unsigned)hr);
+    return hr;
+}
+
+static void CaptureBackbufferForRing()
+{
+    // Called on the render thread when ring mode is active.
+    if (!g_state.d3dDevice || !g_state.d3dContext) return;
+    if (!g_ring.active.load()) return;
+
+    ComPtr<ID3D11RenderTargetView> rtv;
+    g_state.d3dContext->OMGetRenderTargets(1, &rtv, nullptr);
+    if (!rtv) return;
+    ComPtr<ID3D11Resource> rtResource;
+    rtv->GetResource(&rtResource);
+    if (!rtResource) return;
+    ComPtr<ID3D11Texture2D> backbuffer;
+    if (FAILED(rtResource.As(&backbuffer))) return;
+
+    D3D11_TEXTURE2D_DESC bbDesc;
+    backbuffer->GetDesc(&bbDesc);
+    if (bbDesc.SampleDesc.Count > 1) return; // skip MSAA frames
+
+    if ((int)bbDesc.Width < g_ring.width || (int)bbDesc.Height < g_ring.height)
+        return; // backbuffer smaller than ring target; skip
+
+    if (!g_state.stagingTexture)
+    {
+        D3D11_TEXTURE2D_DESC sd = {};
+        sd.Width = bbDesc.Width;
+        sd.Height = bbDesc.Height;
+        sd.MipLevels = 1;
+        sd.ArraySize = 1;
+        sd.Format = bbDesc.Format;
+        sd.SampleDesc.Count = 1;
+        sd.Usage = D3D11_USAGE_STAGING;
+        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if (FAILED(g_state.d3dDevice->CreateTexture2D(&sd, nullptr, &g_state.stagingTexture)))
+            return;
+    }
+
+    g_state.d3dContext->CopyResource(g_state.stagingTexture.Get(), backbuffer.Get());
+
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    HRESULT hr = g_state.d3dContext->Map(g_state.stagingTexture.Get(), 0,
+                                          D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) return;
+
+    const bool isBGRA = (bbDesc.Format == DXGI_FORMAT_B8G8R8A8_UNORM ||
+                         bbDesc.Format == DXGI_FORMAT_B8G8R8A8_TYPELESS);
+
+    {
+        std::lock_guard<std::mutex> lock(g_ring.mutex);
+        if (g_ring.active.load())
+            RingFeedBGRA((const uint8_t*)mapped.pData, (int)mapped.RowPitch, isBGRA);
+    }
+
+    g_state.d3dContext->Unmap(g_state.stagingTexture.Get(), 0);
+}
+
+// ============================================================================
 // Exported API: Start
 // ============================================================================
 
@@ -982,6 +1508,22 @@ extern "C" UNITY_INTERFACE_EXPORT bool ODDRecorder_IsRecording()
 extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_AppendVideoFrame(
     const uint8_t* rgbaData, int dataLength)
 {
+    if (g_ring.active.load())
+    {
+        if (!rgbaData || dataLength <= 0) return;
+        const int expectedRing = g_ring.width * g_ring.height * 4;
+        if (dataLength != expectedRing)
+        {
+            DebugLog("Ring AppendVideoFrame: length mismatch (got %d, expected %d)",
+                     dataLength, expectedRing);
+            return;
+        }
+        std::lock_guard<std::mutex> lock(g_ring.mutex);
+        if (g_ring.active.load())
+            RingFeedBGRA(rgbaData, g_ring.width * 4, /*isBGRA=*/false);
+        return;
+    }
+
     if (!g_state.isRecording.load())
         return;
 
@@ -1268,4 +1810,120 @@ extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_SetD3D11Device(void* devicePt
 
     DebugLog("D3D11 device set (0x%p), context (0x%p)",
              g_state.d3dDevice, g_state.d3dContext);
+}
+
+// ============================================================================
+// Exported API: In-memory video ring
+// ============================================================================
+
+extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_RingStart(
+    int width, int height, int fps, int bitrate, int ringSeconds)
+{
+    if (g_ring.active.load())
+    {
+        DebugLog("Ring: already active");
+        return;
+    }
+    if (g_state.isRecording.load())
+    {
+        DebugLog("Ring: file recording active; call Stop first");
+        return;
+    }
+    if (width <= 0 || height <= 0 || fps <= 0 || bitrate <= 0 || ringSeconds <= 0)
+    {
+        DebugLog("Ring: invalid params (w=%d h=%d fps=%d bps=%d secs=%d)",
+                 width, height, fps, bitrate, ringSeconds);
+        return;
+    }
+    if ((width & 1) || (height & 1))
+    {
+        DebugLog("Ring: width/height must be even (got %dx%d)", width, height);
+        return;
+    }
+
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (hr == S_OK || hr == S_FALSE) g_state.comInitialized = true;
+    else if (hr != RPC_E_CHANGED_MODE)
+    {
+        DebugLog("Ring: CoInitializeEx failed (0x%08X)", (unsigned)hr);
+        return;
+    }
+    if (!g_state.mfStarted)
+    {
+        hr = MFStartup(MF_VERSION);
+        if (FAILED(hr))
+        {
+            DebugLog("Ring: MFStartup failed (0x%08X)", (unsigned)hr);
+            return;
+        }
+        g_state.mfStarted = true;
+    }
+
+    std::lock_guard<std::mutex> lock(g_ring.mutex);
+    g_ring.width = width;
+    g_ring.height = height;
+    g_ring.fps = fps;
+    g_ring.bitrate = bitrate;
+    g_ring.ringSeconds = ringSeconds;
+    g_ring.keyframeIntervalFrames = (fps * 2) > 1 ? (fps * 2) : 1;
+    g_ring.frameCount = 0;
+    g_ring.framesSinceKey = 0;
+    g_ring.totalDuration100ns = 0;
+    g_ring.packets.clear();
+
+    hr = RingInitEncoder();
+    if (FAILED(hr))
+    {
+        RingShutdownEncoder();
+        DebugLog("Ring: init failed");
+        return;
+    }
+    g_ring.active.store(true);
+}
+
+extern "C" UNITY_INTERFACE_EXPORT bool ODDRecorder_RingDump(
+    const char* outPath, char* outPathBuf, int outPathBufLen)
+{
+    if (!outPath) return false;
+    if (!g_ring.active.load())
+    {
+        DebugLog("Ring: dump called but ring not active");
+        return false;
+    }
+
+    int wideLen = MultiByteToWideChar(CP_UTF8, 0, outPath, -1, nullptr, 0);
+    if (wideLen <= 0) return false;
+    std::wstring widePath(wideLen, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, outPath, -1, &widePath[0], wideLen);
+    while (!widePath.empty() && widePath.back() == L'\0') widePath.pop_back();
+
+    HRESULT hr;
+    {
+        std::lock_guard<std::mutex> lock(g_ring.mutex);
+        hr = RingMuxToFileLocked(widePath);
+    }
+    if (FAILED(hr)) return false;
+
+    if (outPathBuf && outPathBufLen > 0)
+    {
+        size_t srcLen = strlen(outPath);
+        size_t cl = srcLen < (size_t)(outPathBufLen - 1) ? srcLen : (size_t)(outPathBufLen - 1);
+        memcpy(outPathBuf, outPath, cl);
+        outPathBuf[cl] = '\0';
+    }
+    return true;
+}
+
+extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_RingStop()
+{
+    if (!g_ring.active.load()) return;
+    g_ring.active.store(false);
+    std::lock_guard<std::mutex> lock(g_ring.mutex);
+    RingShutdownEncoder();
+    DebugLog("Ring: stopped");
+}
+
+extern "C" UNITY_INTERFACE_EXPORT bool ODDRecorder_RingIsActive()
+{
+    return g_ring.active.load();
 }

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.13] - 2026-05-21
+
+### Changed
+- sdk(editor,windows): in-memory video ring for F12 reporter — replaces the 90-second segment-rotation hack that wrote mp4 chunks to disk and spammed "[Recorder] Recording saved" on every rotation. ODDRecorder.dll now runs the H.264 MFT encoder MFT continuously, stores encoded NAL packets in a keyframe-aware std::deque, and mux-passes them through a fresh sink writer only when F12 fires. RAM-resident (~50 MB at 720p60 × 90s), no disk activity until dump, forced IDR every ~2s so any trim stays decodable.
+- sdk(editor): new EditorVideoRingNative bridge — P/Invoke + render-event Driver coroutine sits between the native ring and the F12 quick-task runner. BugpunchEditorQuickTaskRunner.EditorVideoRing collapses to a thin wrapper (no Rotate(), no StartNewSegment(), no WaitForFile(), Tick() is a no-op).
+- sdk(editor): F12 dialog polish — pill tabs taller (28 to 34) with bigger padding (14 to 20) and clearer active/inactive contrast. Screenshot + video previews now center inside their host via flex alignment + absolute-positioned Image, so ScaleToFit letterboxes within the full preview area instead of pinning to a corner.
+- sdk(editor): BugpunchEditorToggle thread-safe IsEnabled — background callers (Application.logMessageReceivedThreaded ? OnLog) can now hit IsEnabled without throwing UnityException. Main thread re-reads EditorPrefs and updates a volatile cache; background threads serve the cache.
+- sdk(editor): toolbar pill simplified — main-toolbar Bugpunch button drops the bundled pill+wordmark PNG (Unity crushed it to a square on the toolbar) and uses a rich-text "? Bugpunch" label whose dot is orange when on / gray when off.
+- sdk(windows): build-odd-recorder.bat — replaces build-odd-recorder.ps1 for native DLL builds. The ps1 used a cmd /c multi-line string pattern that silently dropped every line after `call vsDevCmd`, so the script reported success without invoking cl. New batch file actually runs the compile and exits with cl's real status code.
+
 ## [0.8.12] - 2026-05-19
 
 ### Changed

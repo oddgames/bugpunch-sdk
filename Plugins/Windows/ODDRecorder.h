@@ -80,4 +80,40 @@ extern "C"
     // C# can obtain this via SystemInfo.graphicsDevicePtr and pass it here.
     // Must be called before native capture frames are recorded.
     UNITY_INTERFACE_EXPORT void ODDRecorder_SetD3D11Device(void* devicePtr);
+
+    // ------------------------------------------------------------------
+    // In-memory video ring.
+    //
+    // Continuous encoder + bounded RAM buffer of encoded H.264 NAL packets.
+    // Unlike the file API above, the encoder runs indefinitely until
+    // RingStop. Bytes never touch disk until RingDump is called.
+    //
+    // Frame source is the same as the file API: either C# pushes via
+    // ODDRecorder_AppendVideoFrame (CPU path) or the render-event callback
+    // captures the backbuffer (native D3D11 path). The active mode (file
+    // vs ring) is chosen by which Start function was called last.
+    //
+    // ringSeconds: how many seconds of recent video to keep resident.
+    //   Older NAL packets are dropped from the front of the ring while
+    //   keeping the head on a keyframe so any dump is decodable.
+    // ------------------------------------------------------------------
+
+    UNITY_INTERFACE_EXPORT void ODDRecorder_RingStart(
+        int width,
+        int height,
+        int fps,
+        int bitrate,
+        int ringSeconds);
+
+    // Mux the current ring contents to an MP4 file at outPath.
+    // outPathBuf receives the resolved path (UTF-8, null-terminated).
+    // Returns true on success; false if no ring is active or write failed.
+    UNITY_INTERFACE_EXPORT bool ODDRecorder_RingDump(
+        const char* outPath,
+        char* outPathBuf,
+        int outPathBufLen);
+
+    UNITY_INTERFACE_EXPORT void ODDRecorder_RingStop();
+
+    UNITY_INTERFACE_EXPORT bool ODDRecorder_RingIsActive();
 }
