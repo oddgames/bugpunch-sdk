@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.15] - 2026-05-22
+
+### Changed
+- sdk(editor): incoming-connection consent prompt for the Remote IDE. When Bugpunch is enabled in the Editor the report-tunnel WS opens immediately (logs / heartbeat / crash uploads stream as before) but interactive IDE RPC is now gated per-tunnel-session. The dashboard clicking Open Remote IDE makes the server push a new connectRequest frame on the editor's open WS; the editor pops a UIToolkit EditorWindow (BugpunchEditorDebugConsentWindow) with reason / urgency / requester / Accept / Decline. The decision ships back as a connectDecision frame, routes through the existing reportDebugRequestDecision recorder, and sets BugpunchRuntime.IdeConsentGranted true on accept. RemoteIDE.RequestRouter refuses every IDE RPC with 403 consent_required until that flag is set. Closing the window without choosing counts as Decline. Consent resets on every tunnel reconnect (per-WS-session grant, no stale Accept). Non-editor lanes are untouched — mobile keeps the poll-based promptOnDevice + native consent dialog path.
+- sdk(csharp,runtime): supporting plumbing. New IdeTunnel.OnConnectRequest event + SendConnectDecision helper; connectRequest case in HandleMessage. BugpunchRuntime.IdeConsentGranted shared state (mirror rule: RequestRouter reads runtime state, never the client). BugpunchClient.HandleIdeConnectRequest branches on lane — registers an editor-only UIToolkit handler via BugpunchClient.EditorConsentHandler bridge slot ([InitializeOnLoad] BugpunchEditorConsentBridge installs it without the runtime taking a hard ref to the Editor assembly), falls back to BugpunchNative.PresentDebugConsent on Standalone managed lane. OnDebugConsentResult extended to ship the WS decision when a connectRequest is pending.
+- server: project-scope auth check on POST /api/devices/:id/request-debug. Previously any authenticated user could queue a debug request against any device (only requireAuth was applied). Now resolves the device's project_id via pinService.findByDeviceRef and 403s callers outside the project (admins still pass). reportTunnelService gains sendConnectRequest(deviceId, requestId, reason, urgency, requestedBy) that pushes the frame only when the connected platform string ends with Editor (WindowsEditor / OSXEditor / LinuxEditor); inbound connectDecision frames route through the existing reportDebugRequestDecision recorder. deviceService.requestDebugSession lazy-imports sendConnectRequest so editors with an open WS get the prompt within ~1 frame instead of waiting for the slower poll cycle to pick up upgradeToWebSocket — mobile lanes continue to use the existing poll-based path.
+
 ## [0.8.14] - 2026-05-22
 
 ### Changed
