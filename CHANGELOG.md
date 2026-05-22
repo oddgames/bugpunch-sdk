@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.14] - 2026-05-22
+
+### Changed
+- sdk(editor): fix TypeLoadException on Unity 6.0 — BugpunchEnableToolbarToggle hard-referenced UnityEditor.Toolbars.MainToolbarButton / MainToolbarElement / MainToolbarContent at IL level, which failed to resolve on Unity 6000.0.x because the types live in a different assembly there. The cascade tripped Assembly.GetTypes() on the whole Bugpunch.Editor DLL the moment Fusion OrderSorter reflected over it, and every nested compiler-generated state machine in the DLL (BugpunchSymbolUploader.KickOffInteractive, EditorVideoRing.SnapshotForPreview / SnapshotForUpload, etc) was reported as a red-herring TypeLoadException victim. The modern attribute-based toolbar registration is removed; BugpunchEnableToolbarToggle is now a tiny [InitializeOnLoadMethod] that primes the EditorPref default. BugpunchLegacyToolbarToggle's reflection-based IMGUI pill is now the only toolbar path — its version gate widened from less-than-6.1 to less-than-6.3 so 6.1 and 6.2 also get a visible pill; 6.3+ users access the toggle via the Bugpunch menu (Unity hides reflection-injected toolbar children there under "Unsupported User Elements").
+- sdk(editor): F12 reporter redesigned in UXML + USS — visual structure moved to Editor/UI/BugpunchEditorQuickTaskDialog.uxml, all styling (pill tabs, hover/active pseudo-classes, transitions, preview letterbox, button states) into Editor/UI/BugpunchEditorQuickTaskDialog.uss. BugpunchEditorQuickTaskDialog.cs collapsed from ~800 lines of inline IStyle to ~540-line controller — loads UXML via AssetDatabase, binds elements by name query, toggles state via class lists. Hot-reload USS to iterate on look without recompiling the editor DLL.
+- sdk(editor): F12 gets an Exceptions tab — recent unhandled exceptions and errors (already buffered by BugpunchEditorQuickTaskHotkey.OnLog) now surface as a clickable list. Click an item to attach its stack trace to the report; click again to deselect. Nothing is auto-selected, ever. Tab only appears when there are exceptions to pick. Data tab gains an Exception row that mirrors the current selection.
+- sdk(csharp): fix double-ReceiveAsync race in IdeTunnel — RunReconnectLoop used Task.WhenAny over ReceiveLoop and HeartbeatLoop which returned when either task finished but did not cancel the other; the surviving loop then re-read the _ws instance field on its next iteration, so when the next reconnect cycle replaced _ws with a fresh socket the stale loop called ReceiveAsync on it concurrently with the new loop. Now both loops take ClientWebSocket and CancellationToken as parameters bound to THIS connection, and after WhenAny the live cts is cancelled and both tasks drained via WhenAll before the iteration ends.
+
 ## [0.8.13] - 2026-05-21
 
 ### Changed

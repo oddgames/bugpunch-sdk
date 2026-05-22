@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML xmlns:engine="UnityEngine.UIElements" xmlns:editor="UnityEditor.UIElements">
+
+    <!-- Bug Punch — F12 quick-report dialog (UXML structure).
+         Visual styling lives in BugpunchEditorQuickTaskDialog.uss.
+         Behaviour lives in BugpunchEditorQuickTaskDialog.cs which
+         loads this UXML, queries elements by name, and binds events. -->
+
+    <engine:VisualElement class="bp-dialog">
+        <engine:VisualElement class="bp-card">
+
+            <!-- LEFT COLUMN: tabs + preview + (video-only) playback bar -->
+            <engine:VisualElement class="bp-left">
+
+                <engine:VisualElement name="bp-tab-row" class="bp-tab-row" />
+
+                <engine:VisualElement name="bp-preview-area" class="bp-preview-area">
+                    <engine:VisualElement name="bp-image-host" class="bp-preview-host" />
+                    <engine:VisualElement name="bp-video-host" class="bp-preview-host bp-video-host hidden" />
+                    <engine:ScrollView name="bp-exceptions-scroll" class="bp-preview-host bp-exceptions-scroll hidden" />
+                    <engine:ScrollView name="bp-data-scroll" class="bp-preview-host bp-data-scroll hidden" />
+                </engine:VisualElement>
+
+                <engine:VisualElement name="bp-playback-bar" class="bp-playback-bar hidden">
+                    <engine:Button name="bp-play-pause" text="Play" class="bp-playback__button" />
+                    <engine:VisualElement name="bp-scrub-track" class="bp-scrub-track">
+                        <engine:VisualElement name="bp-scrub-fill" class="bp-scrub-track__fill" />
+                        <engine:VisualElement name="bp-playhead" class="bp-scrub-track__playhead" />
+                    </engine:VisualElement>
+                    <engine:Label name="bp-time-label" text="0:00 / 0:00" class="bp-playback__time" />
+                </engine:VisualElement>
+
+            </engine:VisualElement>
+
+            <!-- RIGHT COLUMN: brand + description + actions -->
+            <engine:VisualElement class="bp-right">
+
+                <engine:Label text="Bug Punch" class="bp-brand" />
+
+                <engine:VisualElement class="bp-description-wrapper">
+                    <engine:TextField name="bp-description" multiline="true" class="bp-description" />
+                    <engine:Label name="bp-description-placeholder" text="Describe the problem" class="bp-description__placeholder" />
+                </engine:VisualElement>
+
+                <engine:VisualElement class="bp-button-row">
+                    <engine:Button name="bp-cancel" text="Cancel" class="bp-button bp-button--secondary" />
+                    <engine:Button name="bp-send" text="Send report" class="bp-button bp-button--primary" />
+                </engine:VisualElement>
+
+            </engine:VisualElement>
+
+        </engine:VisualElement>
+    </engine:VisualElement>
+
+</engine:UXML>

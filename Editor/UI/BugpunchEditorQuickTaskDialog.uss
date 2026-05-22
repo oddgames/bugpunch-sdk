@@ -1,0 +1,500 @@
+/* ==========================================================================
+   Bug Punch — F12 quick-report dialog styles.
+
+   Color tokens (kept inline so they're greppable from one place):
+     --bp-accent           rgb(255, 107, 53)        // Bug Punch orange
+     --bp-accent-dark      rgb(199,  84, 41)        // accent border / pressed
+     --bp-accent-hover     rgb(255, 121, 73)
+     --bp-bg-window        rgb(  9,   9, 10)        // outermost background
+     --bp-bg-card          rgb( 20,  24, 32)        // main card surface
+     --bp-bg-surface       rgb( 28,  32, 40)        // inputs / inactive pills
+     --bp-bg-surface-hi    rgb( 36,  40, 50)        // hover surface
+     --bp-bg-preview       rgb( 13,  15, 20)        // preview pane backdrop
+     --bp-bg-track         rgb( 22,  25, 32)        // scrub track
+     --bp-border           rgb( 40,  44, 52)        // standard separator
+     --bp-border-hi        rgb( 60,  66, 78)        // hovered separator
+     --bp-text             rgb(225, 230, 240)
+     --bp-text-muted       rgb(140, 150, 165)
+   ========================================================================== */
+
+/* -- Layout ---------------------------------------------------------------- */
+
+.bp-dialog {
+    flex-grow: 1;
+    background-color: rgb(9, 9, 10);
+    padding: 16px;
+}
+
+.bp-card {
+    flex-grow: 1;
+    min-height: 0;
+    flex-direction: row;
+    background-color: rgb(20, 24, 32);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+    padding: 20px;
+    border-width: 1px;
+    border-color: rgb(40, 44, 52);
+}
+
+.bp-left {
+    flex-grow: 1.2;
+    flex-basis: 0;
+    margin-right: 16px;
+    min-height: 0;
+}
+
+.bp-right {
+    flex-grow: 1;
+    flex-basis: 0;
+    min-height: 0;
+}
+
+/* -- Tab row & pills ------------------------------------------------------- */
+
+.bp-tab-row {
+    flex-direction: row;
+    flex-shrink: 0;
+    height: 40px;
+    margin-bottom: 12px;
+    align-items: center;
+}
+
+.bp-tab-pill {
+    height: 36px;
+    min-width: 96px;
+    margin-left: 0;
+    margin-right: 8px;
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-top: 0;
+    padding-bottom: 0;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    font-size: 13px;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    background-color: rgb(28, 32, 40);
+    color: rgb(140, 150, 165);
+    border-width: 1px;
+    border-color: rgb(40, 44, 52);
+    transition-property: background-color, color, border-color;
+    transition-duration: 0.12s;
+}
+.bp-tab-pill:hover {
+    background-color: rgb(36, 40, 50);
+    color: rgb(225, 230, 240);
+    border-color: rgb(60, 66, 78);
+}
+.bp-tab-pill--active {
+    background-color: rgb(255, 107, 53);
+    color: rgb(255, 255, 255);
+    border-color: rgb(199, 84, 41);
+}
+.bp-tab-pill--active:hover {
+    background-color: rgb(255, 121, 73);
+    color: rgb(255, 255, 255);
+    border-color: rgb(199, 84, 41);
+}
+
+/* -- Preview area ---------------------------------------------------------- */
+
+.bp-preview-area {
+    flex-grow: 1;
+    min-height: 0;
+    background-color: rgb(13, 15, 20);
+    overflow: hidden;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+    border-width: 1px;
+    border-color: rgb(40, 44, 52);
+}
+
+.bp-preview-host {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+.bp-preview-image {
+    flex-grow: 1;
+    width: 100%;
+    height: 100%;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.bp-preview-empty {
+    color: rgb(140, 150, 165);
+    font-size: 13px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.bp-video-host {
+    background-color: rgb(0, 0, 0);
+}
+
+.bp-data-scroll {
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+/* -- Playback bar (video tab only) ---------------------------------------- */
+
+.bp-playback-bar {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    height: 40px;
+    margin-top: 12px;
+}
+
+.bp-playback__button {
+    width: 64px;
+    height: 32px;
+    margin-right: 12px;
+    -unity-font-style: bold;
+    font-size: 12px;
+    color: rgb(225, 230, 240);
+    background-color: rgb(28, 32, 40);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 16px;
+    border-width: 1px;
+    border-color: rgb(40, 44, 52);
+}
+.bp-playback__button:hover {
+    background-color: rgb(36, 40, 50);
+    border-color: rgb(60, 66, 78);
+}
+
+.bp-playback__time {
+    margin-left: 12px;
+    color: rgb(140, 150, 165);
+    font-size: 12px;
+    -unity-font-style: bold;
+}
+
+.bp-scrub-track {
+    flex-grow: 1;
+    height: 8px;
+    background-color: rgb(22, 25, 32);
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    border-width: 1px;
+    border-color: rgb(40, 44, 52);
+}
+.bp-scrub-track__fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    background-color: rgb(255, 107, 53);
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+.bp-scrub-track__playhead {
+    position: absolute;
+    width: 3px;
+    top: -4px;
+    bottom: -4px;
+    background-color: rgb(255, 255, 255);
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
+    border-bottom-left-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+/* -- Brand ----------------------------------------------------------------- */
+
+.bp-brand {
+    color: rgb(255, 107, 53);
+    -unity-font-style: bold;
+    font-size: 18px;
+    -unity-text-align: middle-right;
+    height: 40px;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+}
+
+/* -- Description (multiline textarea + placeholder) ----------------------- */
+
+.bp-description-wrapper {
+    flex-grow: 1;
+    min-height: 0;
+    margin-bottom: 14px;
+}
+
+.bp-description {
+    flex-grow: 1;
+    min-height: 0;
+}
+
+.bp-description > .unity-text-field__input {
+    background-color: rgb(28, 32, 40);
+    color: rgb(225, 230, 240);
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+    border-width: 1px;
+    border-color: rgb(40, 44, 52);
+    -unity-text-align: upper-left;
+    white-space: normal;
+    flex-grow: 1;
+}
+
+.bp-description__placeholder {
+    position: absolute;
+    left: 20px;
+    top: 16px;
+    color: rgb(140, 150, 165);
+    font-size: 14px;
+}
+
+/* -- Button row ----------------------------------------------------------- */
+
+.bp-button-row {
+    flex-direction: row;
+    flex-shrink: 0;
+    height: 48px;
+}
+
+.bp-button {
+    flex-grow: 1;
+    height: 48px;
+    -unity-font-style: bold;
+    font-size: 14px;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+    border-width: 1px;
+    transition-property: background-color, color, border-color;
+    transition-duration: 0.12s;
+}
+
+.bp-button--secondary {
+    margin-right: 10px;
+    background-color: rgb(28, 32, 40);
+    color: rgb(225, 230, 240);
+    border-color: rgb(40, 44, 52);
+}
+.bp-button--secondary:hover {
+    background-color: rgb(36, 40, 50);
+    border-color: rgb(60, 66, 78);
+}
+
+.bp-button--primary {
+    flex-grow: 1.4;
+    background-color: rgb(255, 107, 53);
+    color: rgb(255, 255, 255);
+    border-color: rgb(199, 84, 41);
+    font-size: 15px;
+}
+.bp-button--primary:hover {
+    background-color: rgb(255, 121, 73);
+}
+.bp-button--primary:disabled {
+    background-color: rgba(255, 107, 53, 0.4);
+    color: rgba(255, 255, 255, 0.6);
+    border-color: rgba(199, 84, 41, 0.4);
+}
+
+/* -- Data tab rows -------------------------------------------------------- */
+
+.bp-data-section {
+    color: rgb(225, 230, 240);
+    font-size: 13px;
+    -unity-font-style: bold;
+    padding-top: 10px;
+    padding-bottom: 6px;
+}
+
+.bp-data-row {
+    flex-direction: row;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.bp-data-row__key {
+    color: rgb(140, 150, 165);
+    font-size: 12px;
+    width: 110px;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+
+.bp-data-row__value {
+    color: rgb(225, 230, 240);
+    font-size: 12px;
+    flex-grow: 1;
+    white-space: normal;
+}
+
+/* -- Exceptions tab ------------------------------------------------------- */
+
+.bp-exceptions-scroll {
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+.bp-exception-empty {
+    color: rgb(140, 150, 165);
+    font-size: 13px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    flex-grow: 1;
+    padding-top: 40px;
+    padding-bottom: 40px;
+}
+
+.bp-exception-hint {
+    color: rgb(140, 150, 165);
+    font-size: 11px;
+    -unity-font-style: normal;
+    padding-bottom: 10px;
+}
+
+.bp-exception-item {
+    flex-direction: column;
+    background-color: rgb(28, 32, 40);
+    border-width: 1px;
+    border-color: rgb(40, 44, 52);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 8px;
+    transition-property: background-color, border-color;
+    transition-duration: 0.12s;
+}
+.bp-exception-item:hover {
+    background-color: rgb(36, 40, 50);
+    border-color: rgb(60, 66, 78);
+}
+.bp-exception-item--selected {
+    background-color: rgba(255, 107, 53, 0.18);
+    border-color: rgb(255, 107, 53);
+}
+.bp-exception-item--selected:hover {
+    background-color: rgba(255, 107, 53, 0.24);
+    border-color: rgb(255, 107, 53);
+}
+
+.bp-exception-item__head {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.bp-exception-item__badge {
+    -unity-font-style: bold;
+    font-size: 10px;
+    color: rgb(255, 255, 255);
+    background-color: rgb(199, 84, 41);
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    margin-right: 8px;
+    -unity-text-align: middle-center;
+}
+.bp-exception-item__badge--error {
+    background-color: rgb(199, 84, 41);
+}
+.bp-exception-item__badge--exception {
+    background-color: rgb(220, 60, 60);
+}
+.bp-exception-item__time {
+    color: rgb(140, 150, 165);
+    font-size: 11px;
+    flex-grow: 1;
+}
+.bp-exception-item__check {
+    color: rgb(255, 107, 53);
+    -unity-font-style: bold;
+    font-size: 12px;
+}
+
+.bp-exception-item__message {
+    color: rgb(225, 230, 240);
+    font-size: 12px;
+    -unity-font-style: bold;
+    white-space: normal;
+    margin-bottom: 4px;
+}
+.bp-exception-item__stack {
+    color: rgb(140, 150, 165);
+    font-size: 10px;
+    white-space: normal;
+}
+
+/* Clear-selection row at the top of the list */
+.bp-exception-clear {
+    flex-direction: row;
+    align-items: center;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    margin-bottom: 12px;
+    background-color: rgba(255, 255, 255, 0.03);
+    border-width: 1px;
+    border-color: rgb(40, 44, 52);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+.bp-exception-clear:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-color: rgb(60, 66, 78);
+}
+.bp-exception-clear__label {
+    color: rgb(225, 230, 240);
+    font-size: 12px;
+    -unity-font-style: bold;
+    flex-grow: 1;
+}
+.bp-exception-clear__hint {
+    color: rgb(140, 150, 165);
+    font-size: 11px;
+}
+
+/* -- Utility -------------------------------------------------------------- */
+
+.hidden {
+    display: none;
+}
