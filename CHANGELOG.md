@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.16] - 2026-05-25
+
+### Changed
+- sdk(csharp): fix Editor focus-disconnect that killed just-accepted IDE sessions. OnApplicationFocusChanged was forcing a disconnect on every focus regain (rationale: refresh stale state after mobile background). In the Editor, clicking between Unity and the browser fires that hook every time, dropping the IDE session within ~1.5s of accepting it. Now skips the disconnect in Editor mode via Application.isEditor (runtime check — #if UNITY_EDITOR doesn't apply to the Standalone-built DLL when Unity loads it in Editor). Mobile/Standalone behavior unchanged.
+- sdk(csharp): IdeTunnel OnError no longer escalates transient WS lifecycle events (peer-closed, unreachable server during reconnect) through BugpunchNative.ReportSdkError. Those are normal during server restarts / offline windows and were spamming the dashboard's SDK-error panel. IdeTunnel already logs them with backoff context. External OnError subscribers still receive the event.
+- sdk(editor): F12 reporter title/description tweaks — user's typed description now leads the report body (so the issue detail header subtitle reads their words instead of "F12 quick capture from Unity Editor Play Mode" boilerplate). Title falls back to empty string when the user didn't pin an exception, letting the server's LLM title helper summarise instead of the low-signal "Unity Editor F12 capture: <scene> HH:mm:ss" template.
+- sdk(editor): EditorVideoRingNative.Start() availability-guard tightened.
+
 ## [0.8.15] - 2026-05-22
 
 ### Changed
