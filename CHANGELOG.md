@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.17] - 2026-05-25
+
+### Changed
+- sdk(csharp): consent now persists for the Editor process lifetime. The v0.8.15 design reset BugpunchRuntime.IdeConsentGranted on every tunnel reconnect ("per-WS-session grant, no stale Accept"), which sounded right but in practice re-prompted on every brief network blip / server restart / Alt-Tab cycle. Removed the resets in BugpunchClient.Tunnel.cs OnConnected + OnDisconnected so a once-accepted Editor IDE session stays open across reconnects. Brings the C# lane in line with how Android + iOS already worked — there, the act of entering debug mode IS the consent grant and survives WS reconnects. New process = fresh consent on all three lanes.
+
 ## [0.8.16] - 2026-05-25
 
 ### Changed
