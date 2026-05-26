@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.18] - 2026-05-26
+
+### Changed
+- sdk(csharp,inspector): massive Remote IDE inspector expansion — enum dropdowns + Flags popovers, LayerMask / SortingLayer / Tag pickers, generic UnityEngine.Object picker for any ref field, AnimationCurve / Gradient editors, UnityEvent listener inspection (read-only), Array/List with drag-to-reorder, SerializeReference polymorphic picker, math expressions in number inputs (10*2, 90*pi/180), [Range]/[Tooltip]/[Header]/[Space]/[TextArea]/[Multiline]/[InspectorName]/[Min] attribute reading, drag-from-Hierarchy onto ref slots (auto GetComponent for Transform fields). Material editor gains shader swap, reset to defaults, copy-from-other, per-property texture upload. Object picker gains generic asset upload (Texture/Sprite/AudioClip(WAV)/Mesh(OBJ)). Add/Remove components on a GameObject. All option lists lazy-fetched on first popover open, cached per-(device,type).
+- sdk(editor): three new build-time exporters bake editor-only data into Resources files shipped with the game — BugpunchTags.json (authoritative TagManager list), BugpunchAssetIndex.json (every Resources/ asset with path+type+guid), BugpunchPropertyDrawers.json (user-defined [CustomPropertyDrawer] map). Runtime SDK loads these for tag autocomplete, the new Assets browser, and PropertyDrawer hints. Menu items + pre-build hooks under ODD Games / Bugpunch.
+
 ## [0.8.17] - 2026-05-25
 
 ### Changed
