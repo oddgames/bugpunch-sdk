@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.29] - 2026-05-28
+
+### Changed
+- sdk(android,ios): auto-start MediaProjection recording on tester-role resolution. startAutoRecording now fires from the single role-resolution path (login, server push, launch auto-prompt) the moment a player lands on a tester tier (internal/external); idempotent, still gated behind the OS MediaProjection consent dialog, torn down on return to public.
+- sdk(android): chat board drops the bot-style name/email onboarding. Identity is sourced from the signed-in SSO player (login required before debug mode), removing ~314 lines of onboarding/identity-prefs code.
+- sdk(editor): config inspector surfaces the Google Play foreground-service declaration. Copyable justification text, Play Console link, and demo-video note so integrators complete it before a production submission.
+
 ## [0.8.28] - 2026-05-28
 
 ### Changed
