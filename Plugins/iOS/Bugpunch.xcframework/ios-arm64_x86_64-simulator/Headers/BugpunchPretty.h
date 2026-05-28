@@ -30,6 +30,13 @@ UIColor* BPWithAlpha(UIColor* c, CGFloat a);
 /// Hardcoded so a project's customised theme can't mistint brand identity.
 UIColor* BPBrandAccent(void);
 
+/// Resolve the currently-key UIWindow via UIScene (iOS 13+). Replaces
+/// `[UIApplication sharedApplication].keyWindow` which is deprecated for
+/// multi-scene apps. Walks foreground-active window scenes and returns the
+/// first window whose `isKeyWindow` is YES. Returns nil if no key window
+/// is currently mounted (e.g. backgrounded or pre-scene-attached).
+UIWindow* _Nullable BPKeyWindow(void);
+
 #ifdef __cplusplus
 }
 #endif

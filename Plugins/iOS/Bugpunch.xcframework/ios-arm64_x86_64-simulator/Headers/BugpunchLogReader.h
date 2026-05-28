@@ -41,7 +41,7 @@
 @interface BPLogReader : NSObject
 + (void)startWithMaxEntries:(NSInteger)n;
 + (void)stop;
-+ (NSString*)snapshotText;
++ (NSString* _Nullable)snapshotText;
 + (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace;
 // Append a pre-formatted line to the in-memory ring AND tee to the live
 // report tunnel. Used by the public `Bugpunch_LogMessage` C API that native
@@ -92,7 +92,7 @@ long bp_logreader_total_bytes(void);
 
 // Implemented in BugpunchTunnel.mm. Declared here so BPLogReader can tee
 // live log lines to the live-report tunnel without re-declaring it inline.
-void Bugpunch_TunnelEnqueueLogLine(const char* line);
+void Bugpunch_TunnelEnqueueLogLine(const char* _Nonnull line);
 
 #ifdef __cplusplus
 }
