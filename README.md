@@ -199,32 +199,23 @@ to the OS-level MediaProjection prompt. Nothing records until both are
 accepted, and there's no way for the SDK to start recording without the
 explicit `EnterDebugMode()` call.
 
-**Android Play Store publishing.** The Bugpunch AAR deliberately does
-NOT declare `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_MEDIA_PROJECTION`
-in its manifest, so apps that don't use the video buffer ship with no
-extra Play Console policy work — same recipe Bugsee uses.
+**Android Play Store publishing.** The Bugpunch AAR declares
+`FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PROJECTION` in its
+own manifest — Unity's manifest merger pulls them into your host app
+automatically, no editing required.
 
-If you *do* use the video buffer AND your app targets `targetSdkVersion`
-34+, you need to do two things in your host app:
+If your app targets `targetSdkVersion` 34+ and you ship to Play, fill
+out the **Foreground Service Permissions** form once in Play Console
+(Policy → App content → Foreground Service Permissions). Pick *Media
+projection* and use this justification:
+*"Bugpunch SDK's opt-in QA video recording. Captures a short rolling
+buffer of the device screen so the dev team can review what the user
+saw immediately before a crash. Only runs after the user explicitly
+taps Start Recording on an in-app consent dialog, then accepts the OS
+MediaProjection dialog."*
+Upload a short clip showing the consent flow.
 
-1. Add both permissions to your own `AndroidManifest.xml` (or to
-   `Assets/Plugins/Android/AndroidManifest.xml` in Unity):
-   ```xml
-   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-   ```
-2. Fill out the **Foreground Service Permissions** form once in Play
-   Console (Policy → App content → Foreground Service Permissions).
-   Pick *Media projection* and use this justification:
-   *"Bugpunch SDK's opt-in QA video recording. Captures a short rolling
-   buffer of the device screen so the dev team can review what the user
-   saw immediately before a crash. Only runs after the user explicitly
-   taps Start Recording on an in-app consent dialog, then accepts the OS
-   MediaProjection dialog."*
-   Upload a short clip showing the consent flow.
-
-If you target `targetSdkVersion` 33 or below, neither step is required —
-the permissions aren't enforced at runtime and the Play Console form
+If you target `targetSdkVersion` 33 or below, the Play Console form
 isn't triggered.
 
 ### UI test automation
