@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.30] - 2026-05-28
+
+### Changed
+- sdk(csharp): goals are now text-as-key — the first string is both the goal key AND the dashboard label; the separate snake-case id arg is gone (goals are per-build, so rewording between builds is fine). The declare and observe forms collapse into one Goal(text, value[, () => eval]) call, and a new no-enum multi-step overload Goal(text, string[] steps, () => currentStep) reports progress as currentStep/steps.Length — including goals that only complete across an app restart (a step that can't be observed until a later launch, e.g. "earned coins survive a relaunch"). The enum-anchored multi-step form is removed. The build-time Cecil scanner was reworked to extract text-as-key goals and inline string[] step arrays, and now correctly skips capturing, cached non-capturing, and async evaluator lambdas; dynamic-id emits are skipped silently instead of failing the build.
+- sdk(android): audio capture for WebRTC streaming — new BugpunchAudioCapture + BugpunchWebrtcAudioInjector, with bp_video / BugpunchStreamer / BugpunchRecorder / AndroidManifest updates.
+- sdk(ios): BugpunchChatViewController / BugpunchCrashHandler / BugpunchDebugMode updates.
+- sdk(csharp): feedback board HTTP updates.
+
 ## [0.8.29] - 2026-05-28
 
 ### Changed
