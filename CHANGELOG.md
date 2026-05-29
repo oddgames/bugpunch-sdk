@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.33] - 2026-05-29
+
+### Changed
+- sdk(ios): fix launch hang / boot loop on the +load path — BugpunchTouch_Start read UIScreen.mainScreen.bounds/scale synchronously on the main thread, but Bugpunch_StartDebugMode runs from the +load bootstrap (before UIApplicationMain). Touching UIScreen before the app has connected to the window server blocks the main thread forever waiting on a frontboard connection that isn't up yet, so the iOS launch watchdog killed the app as a stuck process — a repeating boot loop. The sendEvent: swizzle stays synchronous (pure objc-runtime, safe at +load); the UIScreen capture-size seed is now deferred via dispatch_async to the main queue (RecordTouches refreshes the size on every touch anyway). Found via the [BP-BOOT] launch instrumentation from 0.8.32, which stays in for one confirming run and gets stripped next release.
+
 ## [0.8.32] - 2026-05-29
 
 ### Changed
