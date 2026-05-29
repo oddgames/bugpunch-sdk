@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.35] - 2026-05-30
+
+### Changed
+- sdk(ios): fix push notification link failure — Bugpunch_TunnelDeviceId was declared `extern` (C++-mangled) in BugpunchPush.mm but BugpunchTunnel defines it `extern "C"`, so v0.8.34 failed to link into game builds (Undefined symbols for arm64: Bugpunch_TunnelDeviceId, referenced from BPPushDeviceId). Now declared `extern "C"` to match.
+- sdk(csharp): bundle in-flight changes — BugpunchLogHandler, ContextObjectCapture, crash handler + debug mode edits.
+
 ## [0.8.34] - 2026-05-29
 
 ### Changed
