@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.34] - 2026-05-29
+
+### Changed
+- sdk(android,ios): native push notifications (server#308). FCM on Android (BugpunchMessagingService + BugpunchPush: notification channel, permission, tap intents) and APNs on iOS (UIApplicationDelegate swizzling for device-token capture, UNUserNotificationCenter for receive + tap). Push token is registered to the server from shared BugpunchRuntime state. Mobile-only, no Editor/Standalone lane. Manifest + Gradle wiring added.
+- sdk(android,ios): credential sign-in + profile-picker rework (BugpunchCredentialSignIn, BugpunchProfilePicker) with BugpunchPoller + BugpunchRuntime updates and an iOS post-process build step.
+- sdk(scripting): security hardening of the embedded ODDGames.Scripting VM (the on-device QA/diagnostic script sandbox, compiled into the runtime). Enforce a hard BCL deny-list at VM dispatch (System.IO, System.Diagnostics, System.Net, System.Reflection, System.Runtime.InteropServices, System.Threading except Tasks, System.Security, plus System.Type/Activator/AppDomain/Environment/Delegate) so untrusted scripts can no longer reach file, process, network, or reflection APIs. Close the reflection-walk escape: any Type-derived declaring type is blocked, so a GetType().Assembly.GetType(...) chain cannot re-introduce a denied type. Add execution resource limits (instruction budget, call-depth cap, eval-stack growth cap) preventing a runaway script (infinite loop, unbounded recursion, string-doubling) from pegging the CPU, overflowing the stack, or OOMing the game process (main-thread ANR).
+
 ## [0.8.33] - 2026-05-29
 
 ### Changed
