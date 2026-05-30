@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.37] - 2026-05-30
+
+### Changed
+- sdk: cross-lane parity batch (report tunnel gating, SSO button gating, iOS crash video).
+- - #55 report tunnel is now role-gated on all lanes: opens only for internal/external testers (and debug/internal builds); public users are HTTP-poll-only (no persistent WS), matching the documented Communication Architecture. Android re-adds the gate it dropped in N7 (with clean close on tester?public downgrade); iOS adds external to the internal-only check; C# upgrades on internal OR external and bundles useNativeTunnel for debug/internal builds.
+- - #56 SSO buttons are gated on configuration AND the open profile picker live-refreshes when the poll merges SSO config — so a configured provider's button appears after the first poll without reopening (fixes the local-first pre-poll auto-prompt hiding it). Google gated on both lanes; Apple gated on Android (web flow), always-shown on iOS (native ASAuthorization). C# picker has no SSO buttons (n/a).
+- - #54 iOS crashes/ANRs now carry video, mirroring Android: BugpunchRingRecorder writes VideoToolbox samples to an mmap'd on-disk ring (byte-for-byte Android's bp_video format) that survives process death; the crash handler records the ring path async-signal-safely (msync + raw write, no Obj-C/malloc); the crash drain adds a deferred video_ring attachment; BugpunchUploader gains the deferred-attachment / lazy-produce path that remuxes the ring to mp4 (new BugpunchVideoRingRemuxer) only when the server's collect[] wants video, else attaches a diagnostic text part.
+
 ## [0.8.36] - 2026-05-30
 
 ### Changed

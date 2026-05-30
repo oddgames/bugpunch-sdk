@@ -65,6 +65,26 @@ int BugpunchRing_GetVideoWidth(void);
 /// Encoded video frame height in pixels.
 int BugpunchRing_GetVideoHeight(void);
 
+// ── Crash-survivable on-disk ring (mirrors Android bp_video.c) ──
+//
+// While recording, every VideoToolbox-encoded sample is also appended to an
+// mmap'd ring file on disk so it survives a crash (the kernel's page-cache
+// writeback persists the bytes whether or not the process exits cleanly).
+// The crash handler only needs the ring path (cached as a C string) and a
+// single async-signal-safe finalize call.
+
+/// Async-signal-safe. Called from the POSIX signal handler (and ANR/Mach
+/// paths) to msync the ring header page so the cursors are durable before the
+/// process dies. No-op if the ring was never initialized. NO Obj-C, NO malloc,
+/// NO Foundation — only msync(). Safe to call from a signal handler.
+void BugpunchRing_Finalize(void);
+
+/// Returns the cached absolute path to the on-disk ring file, or NULL/"" if
+/// the ring was never started this session. Pre-computed when the recorder
+/// begins so the crash handler can write a `video:<path>` line without any
+/// allocation. The returned pointer is a stable static C buffer.
+const char* BugpunchRing_GetRingPath(void);
+
 #ifdef __cplusplus
 }
 #endif
