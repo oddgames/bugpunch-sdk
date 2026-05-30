@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.41] - 2026-05-30
+
+### Changed
+- sdk: profile picker — validate against the server on selection; always-show Google/Apple; drop the Back button.
+- - Selecting a saved profile now POSTs /api/v1/projects/{projectId}/profiles/select (X-Api-Key + X-Device-Token, body {userId}) and applies the freshly-signed roleConfig from the response, instead of applying a stale locally-cached role. So an already-logged-in Bugpunch profile re-validates ? resolves internal ? enters debug mode, no 3-panel. 403 (not authed on this device) falls back to the login state; network/other errors show an inline error and keep the picker open. The local cache is now display-only (this tool requires internet). Both lanes.
+- - SSO buttons are always shown (removed the isConfigured()/configuredClientId gating that was hiding the Google option on Android); an unconfigured provider surfaces a clear error on tap. Both lanes.
+- - Removed the "Back to profiles" button from the login state — the X (close) button is the single dismiss affordance. Both lanes.
+
 ## [0.8.40] - 2026-05-30
 
 ### Changed
