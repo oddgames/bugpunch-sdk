@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.40] - 2026-05-30
+
+### Changed
+- sdk(csharp): RequestHelp() is the single entry point and does both actions by role. Internal/external testers ? enter debug mode directly (no profile picker, no help card; EnterDebugMode is a no-op if already recording). Public/unknown ? profile picker / login, then if the login resolves a tester role debug mode is engaged via the picker-login path (card skipped), else the request-help card shows. The game only needs to call Bugpunch.RequestHelp().
+
 ## [0.8.39] - 2026-05-30
 
 ### Changed
