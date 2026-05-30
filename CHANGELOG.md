@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.39] - 2026-05-30
+
+### Changed
+- sdk: picker/login now deterministically enters debug mode for internal/external testers. At the profile-picker login-success (BugpunchProfilePicker applyIdentity, both native lanes), if the resolved role is internal/external, call the idempotent StartAutoRecording (starts the ring + shows the debug widget). Previously this relied on the becameTester role transition, which only fires on a public?tester change and could be missed (already-cached tester / role-apply ordering). Guarded on the auto-prompt one-shot callback (gBPPickerOnAuthSuccess / sOnAuthSuccessOneShot) so an EnterDebugMode / launch auto-prompt login — which owns debug-entry via its own consent?ring callback — doesn't double-start. Plain logins (request-help, profile switch) get debug mode directly.
+
 ## [0.8.38] - 2026-05-30
 
 ### Changed
