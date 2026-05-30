@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.36] - 2026-05-30
+
+### Changed
+- sdk(ios): fix login + SSO + analytics + push parity with Android (mirror audit).
+- - Login/SSO: poller now extracts projectId and merges gameConfig.sso from the bootstrap (BugpunchRuntime.setProjectId / mergeServerSsoConfig) — fixes "Bugpunch isn't fully started" on email/password login and dead Google/Apple SSO buttons (config was never populated on iOS).
+- - SSO post: stop double-firing OnProfilePicked / double-persisting identity (helper no longer hydrates — the picker is the sole apply path, mirroring Android); device token is now an optional hint instead of a hard requirement (fixes SSO failing in the first seconds after launch); accept any 2xx, not only 200.
+- - Identity validator: lenient `valid` coercion (mirror Android optBoolean).
+- - Analytics: auto-start the session lifecycle from StartDebugMode (iOS was emitting zero session_start/session_end unless the game called a tracking API — no DAU/retention); fix events shipping empty deviceId/scene/buildVersion (read from metadata, not config); rotate the session id on 30s+ resume.
+- - Push: register the canonical user id from Bugpunch_SetUserId (was null when set via SetUserId, so server couldn't target pushes at logged-in users); added Bugpunch_CurrentUserId C accessor.
+- - Uploader: send an explicit User-Agent (Cloudflare/carrier hardening, mirror Android).
+- sdk(ios,android): keep SSO buttons unconditional on both lanes (gate-on-config needs a live picker refresh under local-first boot — tracked as bugpunch-sdk#56).
+
 ## [0.8.35] - 2026-05-30
 
 ### Changed

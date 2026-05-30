@@ -103,6 +103,20 @@ NS_ASSUME_NONNULL_BEGIN
 /// object before being persisted.
 + (void)mergeServerAttachmentRules:(NSArray*)serverRules;
 
+/// Stash the project id (from the poll bootstrap) into `metadata[@"projectId"]`
+/// so project-scoped SDK endpoints (profile-picker credential sign-in) can
+/// build their URLs before the user is authenticated. Mirrors
+/// `BugpunchRuntime.setProjectId` on Android. No-op on empty input.
++ (void)setProjectId:(nullable NSString*)projectId;
+
+/// Merge the server-pushed SSO client ids (`gameConfig.sso`) into `config` so
+/// Google/Apple sign-in can read `googleClientIdIos`, `googleWebClientId`,
+/// `appleBundleId`, `appleServicesId`, `appleRedirectUri`. These are
+/// configured per-project in the dashboard and arrive on every poll, not in
+/// the build-time config blob. Mirrors `BugpunchRuntime.mergeServerSsoConfig`
+/// on Android. Best-effort; only non-empty string values are copied.
++ (void)mergeServerSsoConfig:(nullable NSDictionary*)sso;
+
 /// Start the CADisplayLink frame tick. Drives FPS measurement and the
 /// periodic backbuffer flush. Idempotent — called once from
 /// `Bugpunch_StartDebugMode`; re-entry is a no-op.
