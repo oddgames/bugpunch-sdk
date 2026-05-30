@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.38] - 2026-05-30
+
+### Changed
+- sdk: Request Help is public-only — internal/external testers go straight to debug mode, no help card.
+- - C# BugpunchRequestHelpPicker: keeps showing the profile picker / login first, then branches on the resolved role in the post-login handler — internal/external testers skip the help card (debug mode is engaged via the tester role-resolution path); only public users see the 3-choice card.
+- - Android BugpunchReportOverlay.showRequestHelp + iOS Bugpunch_ShowRequestHelp: authoritative native gate that suppresses the card when the device role is internal/external, so a native trigger (push/directive) can't bypass the C# post-login guard. Sends the cancel callback so any caller cleans up.
+
 ## [0.8.37] - 2026-05-30
 
 ### Changed
