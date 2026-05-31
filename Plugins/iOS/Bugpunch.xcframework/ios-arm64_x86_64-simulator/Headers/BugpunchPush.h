@@ -42,7 +42,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Route a tapped / local notification to a screen. Single guarded hook so
 /// every deep-link payload funnels through one place.
-///   - "chat"  → TODO(#29) native chat board (logs + foregrounds for now).
+///   - "chat"  → present the native chat board, seeded with params.threadId
+///               (deep-select caveat tracked in BugpunchChatViewController, #29).
 ///   - other   → foreground the app (default).
 + (void)openDeepLinkScreen:(nullable NSString*)screen
                     params:(nullable NSDictionary*)params;

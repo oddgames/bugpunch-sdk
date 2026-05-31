@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.46] - 2026-05-31
+
+### Changed
+- sdk(android,ios): chat-notification tap opens the chat board, and push works without debug mode.
+- Tapping a chat push now opens the native chat board (was a #29 placeholder that only foregrounded the app). The deep-link threadId is parsed + carried; the player board is single-thread-per-device so it opens that device's conversation (true multi-thread deep-select is a documented TODO). Push init + token registration are now ALWAYS-ON for every user on iOS — moved off the debug-mode-entry coupling onto the always-on poll launch path, mirroring Android (already ungated via the ContentProvider + poller) — so dormant / public / non-debug players can receive chat pushes. Adds an iOS token-register retry on device-registration success to cover the APNs-token-before-device-token race.
+
 ## [0.8.45] - 2026-05-31
 
 ### Changed
