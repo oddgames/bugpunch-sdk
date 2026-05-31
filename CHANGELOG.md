@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.50] - 2026-05-31
+
+### Changed
+- sdk(android,ios): hard-gate debug-mode entry on a valid SAVED profile (not just a cached role).
+- Entering debug — BugpunchDebugMode.enter() / Bugpunch_EnterDebugMode, the chokepoint every trigger funnels through (RequestHelp, shake, push directive, server roleConfig push) — now requires hasValidTesterProfile(): a picker-history profile whose role is internal/external AND whose 120-day session token is present and not expired. With no valid saved profile it routes to the login picker instead of entering debug, so a cached or server-pushed tester role can no longer open debug without a real logged-in account. The becameTester server-role auto-start is gated the same way. Fresh login -> debug is preserved (the post-login path gates on the freshly-resolved role after the profile is saved, not a hasValidTesterProfile re-read). Transport-only paths (report/IDE tunnel) are intentionally not gated.
+
 ## [0.8.49] - 2026-05-31
 
 ### Changed
