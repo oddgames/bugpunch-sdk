@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.45] - 2026-05-31
+
+### Changed
+- sdk(android,ios): pill overflow button is now a settings (gear) icon instead of "…".
+- Android renders the Feather "settings" glyph via BugpunchToolsOverlay.FeatherIcon; iOS uses the SF Symbol "gearshape" (? text fallback on < iOS 13). Same button — still opens the overflow menu (Tools / Chat / Feedback / Switch·add profile / Exit) and keeps the aggregate unread dot. No behavior change.
+
 ## [0.8.44] - 2026-05-31
 
 ### Changed
