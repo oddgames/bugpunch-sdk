@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.44] - 2026-05-31
+
+### Changed
+- sdk(android,ios): pill overflow menu + 3-way exit + tester-only launch prompt.
+- The floating debug pill keeps the recording dot + "Report" as one-tap primaries and collapses Tools / Chat / Feedback into a "…" overflow menu, which also adds "Switch / add profile" (opens the profile picker on demand) and "Exit debug mode". Exit opens a themed 3-way sheet: "Turn off this session" (stop recording + hide the pill for this run), "Turn off until I start it again" (same, plus a persisted suppress flag), or Cancel. The launch auto-prompt now shows the picker at startup ONLY when the local cache holds a tester profile (internal/external) — regular players are never interrupted; the persisted suppress flag short-circuits the prompt + auto-record until the tester explicitly re-enters debug mode (which clears it). The "…" carries an aggregate unread dot so collapsing chat/feedback doesn't hide unread.
+
 ## [0.8.43] - 2026-05-31
 
 ### Changed
