@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.51] - 2026-06-01
+
+### Changed
+- Chat notifications now reach logged-in players fast, and only when they need them.
+- - Android FCM is sent as a data-only high-priority message so the SDK receives every chat in any app state and controls display itself.
+- - New chat while the chat board is open -> no alert (you are already reading it).
+- - New chat while the game is foreground but the board is closed -> in-app banner (works even if OS notifications are disabled).
+- - New chat while backgrounded -> OS notification whose tap deep-links straight into the chat thread.
+- - Android: request POST_NOTIFICATIONS at runtime (Android 13+) so the tray notification shows without a manual grant.
+- - iOS: suppress the foreground notification banner while the chat board is open.
+- Branded dialogs: every player-facing prompt now uses the Bugpunch-styled BugpunchAlert (Android + iOS) instead of the stock OS alert.
+- - Removing the currently signed-in profile now warns that it signs you out and turns off Bugpunch for the session.
+
 ## [0.8.50] - 2026-05-31
 
 ### Changed
