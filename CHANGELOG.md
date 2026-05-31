@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.49] - 2026-05-31
+
+### Changed
+- sdk(android,ios): fix logged-in profile not saved as a tester (role read from the wrong place in the signed roleConfig).
+- On login (applyIdentity / BPPickerApplyIdentity) the role written onto the picker-history row was read via roleConfig.optString("role") / roleConfig[@"role"] — but the role lives in the SIGNED base64 payload, NOT the top-level field (verifyRoleConfig deliberately ignores the untrusted top-level "role"). So the history row was ALWAYS saved with role="" ? hasPrivilegedRoleInHistory() stayed false ? the launch auto-prompt never fired and the picker never recognised the logged-in profile as a tester, even though the separately-cached mTesterRole still drove RequestHelp -> debug. That looked like "debug works but there's no valid profile / profiles expiring" — but the session token was being stored fine all along; only the role was missing. Now reads the verified role back via BugpunchTunnel.getTesterRole() / Bugpunch_GetTesterRole() after applyRoleConfig, so the saved profile carries the real internal/external role alongside its 120-day token.
+
 ## [0.8.48] - 2026-05-31
 
 ### Changed
