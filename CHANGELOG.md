@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.43] - 2026-05-31
+
+### Changed
+- sdk(android,ios,csharp): sliding 120-day session-token login (#309) — fixes "logins always expired".
+- The profile picker now trusts a locally-stored 120-day sliding session token instead of re-listing from the server. On open it prunes the cached profile list by each token's locally-decoded JWT exp with NO network round-trip — the /profiles/top fetch-on-open is removed on all three lanes (and the server route deleted). Selecting a profile POSTs { sessionToken } to /profiles/select (was { userId }); on success it overwrites the stored token with the server's freshly re-issued one (sliding the 120-day window) and applies the current role; on 401 it clears that token and re-prompts sign-in. Sign-in (sso-sign-in) persists the minted token. The C# lane mirrors the token storage + JWT-exp prune primitive in BugpunchRuntime.
+
 ## [0.8.42] - 2026-05-31
 
 ### Changed
