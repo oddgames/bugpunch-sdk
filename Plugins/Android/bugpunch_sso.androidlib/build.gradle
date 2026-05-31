@@ -1,4 +1,5 @@
-// Carries the SSO runtime stack into the consumer's APK.
+// Carries BugpunchPlugin.aar's runtime dependency stack (SSO + FCM push)
+// into the consumer's APK.
 //
 // BugpunchPlugin.aar references these libraries at compile time (see
 // android-src/bugpunch/build.gradle) but Unity doesn't resolve an AAR's
@@ -17,6 +18,11 @@ dependencies {
     implementation 'androidx.credentials:credentials-play-services-auth:1.3.0'
     implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
     implementation 'androidx.browser:browser:1.8.0'
+    // FCM push. BugpunchPush.ensureFirebaseApp() builds a secondary
+    // FirebaseApp from server-delivered FirebaseOptions; without this on the
+    // runtime classpath it throws NoClassDefFoundError (FirebaseOptions$Builder)
+    // the moment a push config arrives. MUST match android-src/bugpunch/build.gradle.
+    implementation 'com.google.firebase:firebase-messaging:24.1.0'
 }
 
 android {

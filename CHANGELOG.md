@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.48] - 2026-05-31
+
+### Changed
+- sdk(android): fix FCM push crash (firebase-messaging missing from consumer classpath) + report-tunnel reconnect storm.
+- (1) PUSH: firebase-messaging:24.1.0 is referenced by BugpunchPlugin.aar at compile time but was never carried onto the consumer APK's runtime classpath — the bugpunch_sso.androidlib dependency-carrier listed the SSO stack but not FCM. So BugpunchPush.ensureFirebaseApp() threw NoClassDefFoundError (com.google.firebase.FirebaseOptions$Builder) the moment a push config arrived from the server, and no FCM token ever registered. Added firebase-messaging to the androidlib so the class lands in the APK.
+- (2) TUNNEL: BugpunchTunnel.connect() wasn't synchronized, so the cold-start path (start->connect) and the poll path (poller->connectIfAllowed->connect) both raced past the `mSocket != null` guard (TOCTOU) and each opened a report-tunnel for the same deviceId. The server evicted one ("Replaced by reconnect", close 1000) and both reconnected ~1-3x/sec forever. connect() is now synchronized and mSocket volatile, so exactly one socket is ever created.
+
 ## [0.8.47] - 2026-05-31
 
 ### Changed
