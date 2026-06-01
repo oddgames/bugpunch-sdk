@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.57] - 2026-06-01
+
+### Changed
+- sdk(ios): fix GetTesterRole heap-corruption crash (SIGABRT on Request Help). Bugpunch_GetTesterRole / GetStableDeviceId / TunnelDeviceId were declared `extern string`, so the IL2CPP marshaler free()'d the returned const char* — but the native side returns a BORROWED pointer (NSString UTF8String / internal static cache), so freeing it is a bad-free/double-free ? heap corruption ? SIGABRT (symbolicated stack pinned it to BugpunchNative_GetTesterRole, hit on every Request Help tap). Now declared IntPtr and copied via Marshal.PtrToStringAnsi, which never frees. GetInstallerMode stays `string` — it strdup()s, so the marshaler freeing it is correct.
+
 ## [0.8.56] - 2026-06-01
 
 ### Changed
