@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.52] - 2026-06-01
+
+### Changed
+- In-game chat popup — see a new dev message instantly, wherever you are.
+- - Chat is now always delivered via push, so a message sent from the dashboard reaches the player in every app state. (The live tunnel dropped these frames and the 60s poll is paused in debug mode, so the popup never fired there before.)
+- - The in-app popup shows the sender + message preview and stays up until you tap it (opens chat) or tap the X to dismiss — like the upload banner.
+- - Added a chat icon to the debug pill with an unread badge; the settings button keeps its unread dot.
+- - Tapping a background notification opens the chat thread directly.
+- - iOS: a foregrounded chat shows the in-app banner (not the OS banner); both platforms now behave the same.
+
 ## [0.8.51] - 2026-06-01
 
 ### Changed
