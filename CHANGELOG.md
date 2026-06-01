@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.55] - 2026-06-01
+
+### Changed
+- sdk(ios): PostProcessBuild now links UserNotifications, PhotosUI, OSLog and libz — without them the static Bugpunch lib failed to link into consumer iOS builds (Undefined symbols for arm64: UN*, PHPicker*, OSLogStore, gz*).
+- sdk(ios): crash handler MAX_MODULES 128 -> 1024. A Unity/IL2CPP app loads 250-400+ dylibs (system libs first in dyld order), so at 128 the image table filled with system dylibs and truncated out UnityFramework/UIKitCore — exactly the frames needed to symbolicate a crash. Native crash reports now carry the full image table and symbolicate. Logs a warning if ever exceeded.
+- sdk(ios): [BP-DIAG] memory breadcrumbs (used/available footprint) on the Request Help / report path for crash-vs-OOM diagnosis.
+
 ## [0.8.54] - 2026-06-01
 
 ### Changed
