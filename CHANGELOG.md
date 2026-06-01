@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.56] - 2026-06-01
+
+### Changed
+- sdk(ios): fix dSYM symbol upload for large debug symbols. iOSSymbolUploadHook's build-phase uploader only PUT a single S3 part, so any dSYM larger than the 64MB part size — i.e. every real UnityFramework dSYM (~800MB) — failed CompleteMultipartUpload and never registered. The server was therefore missing the symbols and returned unsymbolicated iOS crash stacks (affected all consumers incl. MTD). Now does proper S3 multipart: parses the /init response with plutil, cuts each part with dd, PUTs every part, and /completes with all part ETags.
+
 ## [0.8.55] - 2026-06-01
 
 ### Changed
