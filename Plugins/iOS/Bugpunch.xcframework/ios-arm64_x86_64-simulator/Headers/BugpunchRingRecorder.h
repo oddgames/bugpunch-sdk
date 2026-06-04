@@ -13,6 +13,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <CoreMedia/CoreMedia.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -84,6 +85,37 @@ void BugpunchRing_Finalize(void);
 /// begins so the crash handler can write a `video:<path>` line without any
 /// allocation. The returned pointer is a stable static C buffer.
 const char* BugpunchRing_GetRingPath(void);
+
+// ── Shared screen capture for the live WebRTC streamer ──
+//
+// ReplayKit allows exactly one in-app capture session per process, so the
+// recorder owns it and `BugpunchStreamer` rides along. Two concerns are
+// decoupled internally: "ring armed" (write encoded samples to the crash ring,
+// driven by BugpunchRing_Start/Stop) and "capture running" (ReplayKit session
+// live). Either a recording ring OR a streaming consumer keeps capture alive.
+// This mirrors Android, where BugpunchStreamer shares BugpunchRecorder's
+// MediaProjection without forcing the crash ring on.
+
+/// Per-frame sink invoked on the ReplayKit callback thread with each raw video
+/// `CMSampleBuffer` while capture is running, BEFORE the (optional) ring
+/// encode. The streamer wraps the sample's CVPixelBuffer into an RTCVideoFrame.
+/// `ctx` is the opaque pointer passed to BugpunchRing_SetVideoFrameSink.
+typedef void (*BugpunchVideoFrameSink)(void* ctx, CMSampleBufferRef sampleBuffer);
+
+/// Register (or clear, with NULL) the single video-frame sink. The recorder
+/// holds it weakly by value — the caller owns the lifetime of `ctx`.
+void BugpunchRing_SetVideoFrameSink(BugpunchVideoFrameSink sink, void* ctx);
+
+/// Ref-counted: ensure the ReplayKit capture session is running so the frame
+/// sink receives frames, even when the crash ring is NOT armed. May trigger the
+/// iOS screen-recording permission prompt on first use (acceptable for tester
+/// roles, mirrors Android's MediaProjection consent). Returns true if capture
+/// is (now) live. Balance every call with BugpunchRing_ReleaseStreamingCapture.
+bool BugpunchRing_AcquireStreamingCapture(void);
+
+/// Ref-counted release. When no streaming consumers remain AND the ring is not
+/// armed, the ReplayKit capture session is stopped.
+void BugpunchRing_ReleaseStreamingCapture(void);
 
 #ifdef __cplusplus
 }

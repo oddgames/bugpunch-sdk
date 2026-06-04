@@ -1,7 +1,8 @@
 <linker>
-  <!-- Preserve WebRTC assembly — loaded via reflection, IL2CPP would strip it -->
-  <assembly fullname="ODDGames.Bugpunch.WebRTC" preserve="all" ignoreIfMissing="1"/>
-  <assembly fullname="Unity.WebRTC" preserve="all" ignoreIfMissing="1"/>
+  <!-- Unity.WebRTC preserve removed — the SDK ships native WebRTC (issue #59).
+       Keeping it forced IL2CPP to retain Unity.WebRTC + link its webrtc.framework
+       on iOS, colliding with our own WebRTC.xcframework (two libwebrtc Obj-C
+       SDKs in one target → undefined-symbol link failures). -->
   <!-- Preserve [Watch] attribute and enum so IL2CPP doesn't strip them off
        user fields. Without this, declared-watch discovery silently finds nothing. -->
   <assembly fullname="ODDGames.Bugpunch">

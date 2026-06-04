@@ -93,6 +93,17 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString* videoStatus;
 @property (nonatomic, copy, nullable) NSString* videoStatusMessage;
 
+/// ICE servers for the native WebRTC streamer (`BugpunchStreamer`). Folded
+/// into the poll bootstrap (`bootstrap.iceServers`) and stashed here by
+/// `BugpunchPoller` so the streamer can build its `RTCConfiguration` without
+/// a per-session HTTP fetch. Each entry is `{urls, username?, credential?}`.
+/// Mirrors Android, where the streamer reads `BugpunchRuntime.getConfig()
+/// .iceServers`. nil until the first poll lands; the streamer falls back to a
+/// default STUN server in that window. `atomic`: written on the poll queue,
+/// read on the streamer queue — atomic keeps the strong-pointer get/set
+/// retain-safe across threads (the value itself is an immutable NSArray).
+@property (atomic, strong, nullable) NSArray<NSDictionary*>* iceServers;
+
 + (instancetype)shared;
 
 /// Merge server-authored attachment rules into `config[@"attachmentRules"]`.

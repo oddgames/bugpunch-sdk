@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.59] - 2026-06-04
+
+### Changed
+- Chat now follows your account across devices, with instant dev-message notifications.
+- - chat(all lanes,server): user-based threads — a signed-in player's chat keys to their account (player_email), not the device, so it follows them across devices/reinstalls. iOS now sends the player email in the POST body (was header-only); server falls back to the X-Player-Email header so already-shipped clients are fixed too; unread badge resolves the user's thread. Presence window 5->2min; online status shows the device(s) the player is currently on.
+- - chat(all lanes,server): real-time in-app notifications — QA replies push a chatNotify frame down the open report tunnel so the banner appears in ~1s instead of waiting up to 30s for the next poll. Poll path kept as the idle/public fallback.
+- - chat(ios): fix image-only messages collapsing into the corner; top notification banners centre within the safe area and sit at the top.
+- - sdk(ios): safe-area across all native UI (chat, feedback, report/annotation, tools panel, sign-in, crash overlay).
+- - sdk(ios): live WebRTC streamer parity with Android — FPS governor, resolution clamp-to-tier, constrained-High H.264, thermal bitrate cap.
+- - sdk(csharp): removed the com.unity.webrtc dependency — the SDK ships its own native WebRTC. The managed lane now drives the native BugpunchWebRTC desktop plugin via NativeDesktopStreamer; until that binary ships (#59) Editor/Standalone streaming degrades cleanly. Fixes a dual-libwebrtc-framework iOS link conflict.
+- - sdk(csharp): fix BugpunchWebRtcNative namespace shadowing the public Bugpunch API class.
+
 ## [0.8.58] - 2026-06-02
 
 ### Changed
