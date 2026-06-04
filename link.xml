@@ -1,11 +1,9 @@
 <linker>
-  <!-- WebRTC streaming is the C# Unity.WebRTC WebRTCStreamer on EVERY lane now
-       (Editor, Standalone, iOS, Android). The streamer lives in the optional
-       ODDGames.BugpunchSdk.WebRTC assembly and is loaded ONLY by reflection
-       (BugpunchClient.TryInitManagedWebRtcStreamer → Type.GetType), so IL2CPP
-       would strip it on device without an explicit preserve. com.unity.webrtc
+  <!-- The WebRTC streamer (optional ODDGames.BugpunchSdk.WebRTC assembly) no
+       longer needs a preserve here: it self-registers via a
+       RuntimeInitializeOnLoadMethod (WebRTCStreamerBootstrap), which is an IL2CPP
+       linker root, so the streamer survives AOT stripping on its own. com.unity.webrtc
        ships its own link.xml for the Unity.WebRTC runtime itself. -->
-  <assembly fullname="ODDGames.BugpunchSdk.WebRTC" preserve="all"/>
 
   <!-- Preserve [Watch] attribute and enum so IL2CPP doesn't strip them off
        user fields. Without this, declared-watch discovery silently finds nothing. -->

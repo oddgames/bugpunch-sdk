@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.61] - 2026-06-05
+
+### Changed
+- sdk(csharp,android,ios): virtualized, bottom-up chat message list with scroll-up history on every lane.
+- - Editor+Standalone (C#): fix the Yoga flex-shrink collapse that squashed every bubble into overlapping ovals (flexShrink=0 on rows/bubbles/separators); replace the flat ScrollView with a virtualized DynamicHeight ListView -- opens on the newest message, scroll up loads older history a page at a time, new messages auto-scroll only when already at the bottom.
+- - Android: ScrollView+LinearLayout -> virtualized ListView (BaseAdapter view recycling, no new androidx dependency); setStackFromBottom + TRANSCRIPT_MODE_NORMAL give bottom-up + sticky; reuses buildBubble/buildInfoRow.
+- - iOS: UIScrollView+column -> virtualized UITableView with self-sizing cells, bottom-aligned via top inset, sticky-to-newest; reuses buildBubbleRow.
+- sdk(csharp,editor): managed-lane debug-pill "Report" action opens the Editor F12 capture dialog (new BugpunchEditorReportBridge wires BugpunchClient.EditorReportHandler -> BugpunchEditorQuickTaskDialog; native reporting is device-only so the pill would otherwise no-op in Editor).
+
 ## [0.8.60] - 2026-06-04
 
 ### Changed
