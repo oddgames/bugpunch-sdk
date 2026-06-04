@@ -1,8 +1,12 @@
 <linker>
-  <!-- Unity.WebRTC preserve removed — the SDK ships native WebRTC (issue #59).
-       Keeping it forced IL2CPP to retain Unity.WebRTC + link its webrtc.framework
-       on iOS, colliding with our own WebRTC.xcframework (two libwebrtc Obj-C
-       SDKs in one target → undefined-symbol link failures). -->
+  <!-- WebRTC streaming is the C# Unity.WebRTC WebRTCStreamer on EVERY lane now
+       (Editor, Standalone, iOS, Android). The streamer lives in the optional
+       ODDGames.BugpunchSdk.WebRTC assembly and is loaded ONLY by reflection
+       (BugpunchClient.TryInitManagedWebRtcStreamer → Type.GetType), so IL2CPP
+       would strip it on device without an explicit preserve. com.unity.webrtc
+       ships its own link.xml for the Unity.WebRTC runtime itself. -->
+  <assembly fullname="ODDGames.BugpunchSdk.WebRTC" preserve="all"/>
+
   <!-- Preserve [Watch] attribute and enum so IL2CPP doesn't strip them off
        user fields. Without this, declared-watch discovery silently finds nothing. -->
   <assembly fullname="ODDGames.Bugpunch">

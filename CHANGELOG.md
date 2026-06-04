@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.60] - 2026-06-04
+
+### Changed
+- Editor + Standalone now get the full Bugpunch debug experience — a floating pill with live chat, debug tools, feedback and sign-in.
+- sdk(csharp): managed-lane (Editor + Standalone) floating debug pill in UIToolkit, mirroring the native Android/iOS pill — Report + Chat (icon) + an overflow menu (Tools, Chat, Feedback, Switch profile, Exit), draggable, with the menu anchored below the pill.
+- sdk(csharp): managed-lane UIToolkit chat board — full /api/v1/chat/* parity (single per-device thread, 5s polling, message bubbles, send, hours/disabled states, read tracking, image thumbnails).
+- sdk(csharp): managed-lane UIToolkit Debug Tools panel — renders the same DebugButton/DebugToggle/DebugSlider + dashboard-defined tools the native panel shows, routed through DebugToolsBridge.
+- sdk(csharp): Editor real Bugpunch login + 120-day session + server-signed tester role (defaults Internal in-Editor only, never on a shipped Standalone build). The Enable Connection toolbar toggle now defaults OFF, prompts sign-in when enabled, validates on Play, and auto-disables if the session is invalid. Styled login window + toolbar pill + right-click Sign Out.
+- sdk(csharp): fix the Editor enable-toggle being a no-op in the runtime DLL — the gate sat behind a UNITY_EDITOR guard stripped from the runtime build, so the SDK connected regardless. Now an always-compiled Application.isEditor gate reading a PlayerPrefs mirror of the toggle, so turning it off actually stops the SDK.
+- sdk(csharp): fix the F12 Editor report screenshot preview rendering offset — use an Image + ScaleToFit so it centres like the video preview.
+- sdk(csharp,ios): WebRTC streaming moved to Unity.WebRTC on every lane (Editor, Standalone, iOS, Android); retired the native iOS BugpunchStreamer + vendored WebRTC.xcframework. GPU H.264 where available, software VP8 fallback.
+- sdk(csharp): Switch / add profile from the pill opens the real Editor login via a static-delegate bridge; no-op notice on Standalone, which has no sign-in surface.
+
 ## [0.8.59] - 2026-06-04
 
 ### Changed

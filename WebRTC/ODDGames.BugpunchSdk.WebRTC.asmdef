@@ -1,0 +1,33 @@
+{
+    "name": "ODDGames.BugpunchSdk.WebRTC",
+    "rootNamespace": "ODDGames.BugpunchSdk.RemoteIDE",
+    "references": [
+        "ODDGames.Bugpunch",
+        "Unity.WebRTC"
+    ],
+    "includePlatforms": [
+        "Editor",
+        "LinuxStandalone64",
+        "macOSStandalone",
+        "WindowsStandalone32",
+        "WindowsStandalone64",
+        "iOS",
+        "Android"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "BUGPUNCH_HAS_UNITY_WEBRTC"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.webrtc",
+            "expression": "3.0.0",
+            "define": "BUGPUNCH_HAS_UNITY_WEBRTC"
+        }
+    ],
+    "noEngineReferences": false
+}
