@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.67] - 2026-06-05
+
+### Changed
+- Chat banner: stay dismissed — native dismiss-snooze watermark on both pollers so the "new message from a dev" banner no longer re-shows on every poll after the player taps X; it re-arms when chat is opened or a strictly-newer message arrives (Android + iOS)
+- Chat banner: restyled to match the "Report sent" upload pill — near-black background, 25% white border, softer shadow (Android + iOS)
+- iOS chat banner: center on the full window width at the top instead of the safe-area width (was off-center under a landscape notch)
+- Notification badges: stop the unread-count pips being clipped at the button corners on the Android debug widget + report overlay (setClipChildren/ClipToPadding false on the badge hosts and their ancestors)
+
 ## [0.8.66] - 2026-06-05
 
 ### Changed
