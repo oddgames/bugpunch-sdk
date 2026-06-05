@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.62] - 2026-06-05
+
+### Changed
+- sdk(ios,android): fix the just-sent chat message being hidden behind the composer.
+- - iOS: force-stick to bottom on send; re-pin after self-sizing cells measure their true height (the estimated-height first scroll landed short, leaving the newest bubble clipped under the send bar); re-scroll after the keyboard show/hide animation so focusing the composer doesn't strand the latest message.
+- - Android: explicit setSelection(last) on send so stackFromBottom / transcript-mode timing or the IME-hide reflow can't leave the sender's own message below the fold.
+
 ## [0.8.61] - 2026-06-05
 
 ### Changed
