@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.64] - 2026-06-05
+
+### Changed
+- fix(ios): recording pill settings-cog menu rows now fire - scrim tap recognizer was cancelling row UIControl touches; added gesture delegate so only outside-card taps dismiss
+
 ## [0.8.63] - 2026-06-05
 
 ### Changed
