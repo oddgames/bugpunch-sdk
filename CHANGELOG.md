@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.63] - 2026-06-05
+
+### Changed
+- sdk(ios): drop the orphaned WebRTC.xcframework. The C# Unity.WebRTC WebRTCStreamer owns live streaming on every lane (Editor/Standalone/iOS/Android), so no .mm imports <WebRTC/WebRTC.h> and nothing consumed the vendored libwebrtc — yet its .meta still embedded ~11MB of dead framework (a second libwebrtc beside the one com.unity.webrtc already ships) into every consumer iOS build. Removed the framework + .meta from Plugins/iOS, and the now-dead fetch/prune machinery (ensure_webrtc / prune_webrtc_slices + WEBRTC_* constants) from build-xcframework.sh. Bugpunch.xcframework carries no RTC* externs, so consumer link is unaffected.
+
 ## [0.8.62] - 2026-06-05
 
 ### Changed
