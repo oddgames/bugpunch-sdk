@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.65] - 2026-06-05
+
+### Changed
+- Issue Detail view: open the full detail of an issue affecting you — new native board mirrored on all three lanes (C# BugpunchIssueDetailBoard / Android BugpunchIssueDetailDialog / iOS BugpunchIssueDetailViewController)
+- "Issues affecting you" cards surfaced in the chat window; unread impacting issues now nudge the chat badge (badge = chat unread + impacting unread) while the chat banner stays tied to real unread chat messages (Poller bootstrap, all lanes)
+- Feedback push deep-link: feedback_reply notifications open the feedback board straight to that item's detail (screen=feedback, params.feedbackItemId) on Android + iOS
+- Chat and Feedback board rework across C#, Android, and iOS lanes
+
 ## [0.8.64] - 2026-06-05
 
 ### Changed
