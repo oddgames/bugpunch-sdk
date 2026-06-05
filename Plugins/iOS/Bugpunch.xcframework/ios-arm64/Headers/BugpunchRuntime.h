@@ -106,6 +106,21 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (instancetype)shared;
 
+/// Mark / clear an SDK self-instrumentation source. `source` is a stable key
+/// ("record" for the video ring recorder, "stream" for the live IDE WebRTC
+/// stream); `active` adds or removes it. While any source is active
+/// `isInstrumented` returns YES and the perf monitor pauses FPS sampling —
+/// frames captured under that load are a debugging artefact, not the player
+/// experience, so they'd trip false "Low FPS" problems on tester devices.
+/// Keyed so overlapping sources (record + stream) clear independently.
+/// Thread-safe. Mirrors `BugpunchRuntime.setInstrumentation` (Java) + the
+/// managed `BugpunchRuntime.SetInstrumentation` (C#).
+- (void)setInstrumentation:(NSString*)source active:(BOOL)active;
+
+/// YES while the SDK is itself loading the GPU/CPU (video record or live IDE
+/// stream). Read by the perf monitor to skip unrepresentative FPS samples.
+- (BOOL)isInstrumented;
+
 /// Merge server-authored attachment rules into `config[@"attachmentRules"]`.
 /// Idempotent across polls — entries with an `id` field replace any prior
 /// server-authored entry; game-declared rules (no id) are kept untouched.

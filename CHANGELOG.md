@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.66] - 2026-06-05
+
+### Changed
+- Editor/Standalone chat board: add the "Solved?" resolution prompt (Yes it's solved / Not yet ? confirmed/reopened outcome line), matching the native Android + iOS chat boards
+- Managed-lane SDK self-instrumentation: BugpunchNative.SetPerfInstrumented + BugpunchRuntime.SetInstrumentation mirror the active source into the managed runtime (and into native on device)
+- WebRTC streamer marks the "stream" source as perf-instrumented while streaming so the perf monitor attributes load to the live stream
+
 ## [0.8.65] - 2026-06-05
 
 ### Changed

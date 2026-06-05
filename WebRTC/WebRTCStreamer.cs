@@ -398,6 +398,12 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             onAnswer?.Invoke(answerJson);
 
             _streaming = true;
+            // Pause the native perf monitor's FPS sampling while we stream —
+            // the WebRTC encode load tanks the frame rate, and that's a
+            // debugging artefact, not the player experience. Without this the
+            // tester's degraded FPS trips false "Low FPS" problems on the
+            // dashboard. Cleared when the last peer closes / StopStreaming.
+            BugpunchNative.SetPerfInstrumented("stream", true);
             if (_renderLoop == null) _renderLoop = StartCoroutine(RenderLoop());
             if (_abrLoop == null) _abrLoop = StartCoroutine(AdaptiveBitrateLoop());
 
@@ -829,6 +835,8 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             if (PeerCount() == 0)
             {
                 _streaming = false;
+                // Last viewer gone — resume perf FPS sampling.
+                BugpunchNative.SetPerfInstrumented("stream", false);
                 CleanupRenderTexture();
                 StopPerfRecorders();
             }
@@ -837,6 +845,8 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
         public void StopStreaming()
         {
             _streaming = false;
+            // Resume perf FPS sampling now that streaming is torn down.
+            BugpunchNative.SetPerfInstrumented("stream", false);
             List<string> ids;
             lock (_peersLock) { ids = new List<string>(_peers.Keys); }
             foreach (var id in ids) ClosePeer(id);
