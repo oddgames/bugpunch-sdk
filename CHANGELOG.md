@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.71] - 2026-06-09
+
+### Changed
+- Centralize in-game screenshot/video capture in a shared BugpunchCapturePill across all three lanes; reuse it from the chat, feedback, and issue-detail surfaces (Android + iOS + C#). Editor: tighten artifact/source upload postprocessors and build-fingerprint preprocessor.
+
 ## [0.8.70] - 2026-06-09
 
 ### Changed
