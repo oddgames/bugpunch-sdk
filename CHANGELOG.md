@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.70] - 2026-06-09
+
+### Changed
+- Storyboard memory controls + Bugpunch.HintIdle()
+- - Storyboard screenshot ring capped at 10 frames on every lane (C# managed ring 50→10; Android/iOS rings already 10), bounding runtime memory and upload/storage.
+- - Storyboard capture is now optional via BugpunchConfig.storyboardEnabled (default ON) — gates capture on all lanes and rides the config blob to native.
+- - Added Bugpunch.HintIdle(): call it on quiet moments (loading screens / game-mode changes) to let Bugpunch free memory. On the managed lane it PNG-packs the storyboard ring; native idle housekeeping + encode-on-tap-to-disk are tracked in bugpunch-sdk#62.
+
 ## [0.8.69] - 2026-06-09
 
 ### Changed
