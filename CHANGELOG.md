@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.69] - 2026-06-09
+
+### Changed
+- Native unified Inbox board on all lanes — Ask for help (chat) / Request a feature / Status of my bugs in one surface; fix the just-sent chat message not appearing in the inbox chat (merge the server's canonical message echo + non-destructive incremental read-back, and stamp the nested thread id).
+
 ## [0.8.68] - 2026-06-08
 
 ### Changed
