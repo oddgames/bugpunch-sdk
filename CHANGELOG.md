@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.72] - 2026-06-10
+
+### Changed
+- Deep native stacks: crash handlers now capture the fault-time register file (---REGISTERS---) plus a 128KB stack-memory snapshot (.stackmem) so the server can DWARF-CFI unwind past libunity/libil2cpp where the frame-pointer walk bottoms out. Android dumps in-signal via pread on /proc/self/mem; iOS dumps on the Mach-exception thread via vm_read_overwrite (registers only on the signal path). The drain/uploader ships .stackmem as a budget-gated phase-2 attachment.
+- One fault, one issue: the ANR + GPU-hang watchdog now stands down while a crash is being handled (iOS s_crashing, Android isCrashing()), so a fatal crash no longer also files an ANR + a GPU-hang alongside the real report.
+- Android: suppress false-positive ANRs while backgrounded - a full-screen interstitial/rewarded ad or the IAP billing sheet pushes a separate Activity, and a main-thread stall in that window is not a user-facing hang. Re-checked after the recheck delay too.
+- Android: stop burning background CPU/GPU while the ring recorder is running - detach the encoder from the screen fan-out and idle the VirtualDisplay mirror (setSurface(null)) when it is the last consumer, fixing REASON_EXCESSIVE_RESOURCE_USAGE kills without the Android-14 "Reusing token" re-attach crash. Pre-background footage is retained.
+- iOS: tapping a control inside the Tools panel (e.g. a category chip) no longer also dismisses the whole panel - the scrim gesture now ignores in-panel touches.
+- C#: redraw the debug-widget inbox glyph as a stroked Feather icon that mirrors the native pill, and stop the "Report" button clipping its last glyph (flexShrink 0 + no-wrap).
+
 ## [0.8.71] - 2026-06-09
 
 ### Changed
