@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.73] - 2026-06-10
+
+### Changed
+- Native crash symbolication: the IL2CPP method map now carries the declaring assembly + exact C# namespace (resolved at build time; genuinely ambiguous cases flagged rather than guessed), so symbolicated native frames read as Namespace.Class.Method — Assembly.
+- iOS: the build now uploads the IL2CPP method map (keyed to the UnityFramework dSYM UUIDs) so iOS native crashes resolve to C# names + source lines, matching Android.
+- SetUserId now persists across launches so a next-launch crash drain attributes a native crash to the same player id a live report would (Android + iOS).
+- Upload queue: failed reports are retried across launches for up to 48h before being dropped, so a transient server outage no longer loses crashes (Android + iOS).
+
 ## [0.8.72] - 2026-06-10
 
 ### Changed
