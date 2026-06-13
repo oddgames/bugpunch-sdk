@@ -11,11 +11,11 @@
 //   NSProcessInfoThermalStateSerious  → 15, bitrate × 0.5
 //   NSProcessInfoThermalStateCritical → 10, bitrate × 0.33
 //
-// Resolution selection: getMaxLongEdge returns a tier-aware ceiling
-// (720 high / 540 mid / 360 low) chosen at start time from physical
-// memory + processor count. Streamer + recorder configure paths
-// clamp to this value to keep the encoder budget realistic on
-// mid/low-tier hardware.
+// Resolution selection: -maxLongEdge returns a tier-aware ceiling
+// (1080 high / 720 mid / 540 low) resolved eagerly from physical
+// memory + processor count. Streamer + recorder + on-demand segment
+// configure paths clamp to this value to keep the encoder budget
+// realistic — encode cost scales with pixels × fps.
 //
 // Copyright (c) ODDGames. All rights reserved.
 

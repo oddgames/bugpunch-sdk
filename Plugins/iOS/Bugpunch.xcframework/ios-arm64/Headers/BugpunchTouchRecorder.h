@@ -54,6 +54,15 @@ void BugpunchTouch_GetCaptureSize(int* outWidth, int* outHeight);
 /// Caller frees with BugpunchTouch_FreeJson.
 const char* BugpunchTouch_GetLiveTouches(int trailMs);
 
+/// Raw absolute-stamped dump of the ENTIRE touch ring for the crash-survivable
+/// perf/touch sidecar. Unlike SnapshotJson this neither windows nor rebases —
+/// every event carries its absolute host-time stamp (seconds since boot, the
+/// same clock as the video ring PTS) so the next-launch crash drain can rebase
+/// it to the recovered video's t=0. JSON:
+/// {"w":<px>,"h":<px>,"events":[[hostSec,id,"phase",x,y],...]}
+/// Caller frees with BugpunchTouch_FreeJson. NULL when the ring is empty.
+const char* BugpunchTouch_RawForSidecar(void);
+
 #ifdef __cplusplus
 }
 #endif

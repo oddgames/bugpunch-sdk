@@ -54,10 +54,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// Current FPS measured by the CADisplayLink frame tick.
 @property (nonatomic, assign) int fps;
 
-/// Disk path for the periodic Metal backbuffer dump (context screenshot
-/// for the next-launch crash drain). nil disables the periodic flush.
-@property (nonatomic, copy, nullable) NSString* ctxShotDiskPath;
-
 /// Player identity — populated by the native SSO sign-in flow
 /// (BugpunchProfilePicker → BugpunchPostSsoSignIn). Mirrors the four
 /// fields on the Java + C# runtimes so chat HTTP calls and upload

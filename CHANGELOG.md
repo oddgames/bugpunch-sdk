@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.74] - 2026-06-13
+
+### Changed
+- Standard UI navigation: shared nav host + back stack (BugpunchNav/BugpunchNavHeader/IBugpunchScreen) across all lanes; chat, feedback, inbox and issue-detail boards migrated onto it
+- Release-build method profiler: IL-weaved BugpunchMethodProfiler + ProfilerSampler feed /perf/methods and the video-synced perf timeline
+- Broken Shader detection: client-side BugpunchShaderWatch on all lanes posts a lightweight report; editor shader-log preprocessor support
+- Perf monitor: richer native sampling on iOS + Android (mem/headroom/thermal counters, ProfilerRecorder bridge)
+- Capture pill, feedback/inbox/chat board and crash/screenshot path refinements across iOS, Android and C#
+
 ## [0.8.73] - 2026-06-10
 
 ### Changed
