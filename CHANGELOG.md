@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.75] - 2026-06-13
+
+### Changed
+- Bug report form: Send now closes the form immediately and prepares + uploads the report on a detached background thread instead of blocking on a 'Sending report' spinner; the durable upload pill shows the real network Sending/sent status (failures surface as a toast). Mirrored on Android + iOS (native report form; no managed-lane analogue).
+
 ## [0.8.74] - 2026-06-13
 
 ### Changed
