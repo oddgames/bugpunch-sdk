@@ -46,6 +46,16 @@ NS_ASSUME_NONNULL_BEGIN
                                    NSDictionary* _Nullable identity,
                                    NSString* _Nullable errorMessage))completion;
 
+/// Custom auth: exchange a token from the host game's own backend for a
+/// verified identity. Same endpoint + response shape as the SSO path, but the
+/// body is `{ "provider":"custom", "customToken":"...", "deviceId":"..." }`;
+/// the server validates the token via the project's custom-auth webhook.
+/// completion fires on the main queue (success + identity dict, or NO + error).
++ (void)postCustomWithToken:(NSString*)token
+                 completion:(void (^)(BOOL success,
+                                      NSDictionary* _Nullable identity,
+                                      NSString* _Nullable errorMessage))completion;
+
 @end
 
 NS_ASSUME_NONNULL_END

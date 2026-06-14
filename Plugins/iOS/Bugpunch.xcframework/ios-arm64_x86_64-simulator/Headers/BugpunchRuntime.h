@@ -139,6 +139,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// on Android. Best-effort; only non-empty string values are copied.
 + (void)mergeServerSsoConfig:(nullable NSDictionary*)sso;
 
+/// Store the project's bug-bounty master switch (`gameConfig.bountyEnabled`,
+/// from GET /api/v1/config) onto `config[@"bountyEnabled"]`. Read natively by
+/// the bug-report submit path to show the "you'll earn a bounty" thank-you.
+/// Arrives on every poll, not in the build-time config blob. Mirrors the
+/// Android sibling's `getConfig().optBoolean("bountyEnabled")` read.
++ (void)setBountyEnabled:(BOOL)enabled;
+
 /// Start the CADisplayLink frame tick. Drives FPS measurement and the
 /// periodic backbuffer flush. Idempotent — called once from
 /// `Bugpunch_StartDebugMode`; re-entry is a no-op.

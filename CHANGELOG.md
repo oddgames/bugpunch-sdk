@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.76] - 2026-06-14
+
+### Changed
+- Bug bounties: the server can award a player a bounty for finding a NEW bug. Bugpunch.OnBountyEarned fires for the game and a native reward popup (BugpunchBountyDialog) shows the amount + redemption code, delivered via identity-targeted push / poll notifications. Mirrored across Editor+Standalone (C#), Android and iOS.
+- Bounty + post-SSO notification plumbing: register the push token after SSO sign-in and route bounty deep-links through the shared notification path (Push / Poller / ProfilePicker / MessagingService) on every lane.
+- Feedback + chat attachments now open through a short-lived signed /api/files URL, so the OS video player / browser authenticates and the clip plays instead of landing on the auth-gated login page. Previously a video attachment opened a bare auth-gated URL and 401'd. Fixed on Android, iOS and Editor+Standalone (C#).
+
 ## [0.8.75] - 2026-06-13
 
 ### Changed

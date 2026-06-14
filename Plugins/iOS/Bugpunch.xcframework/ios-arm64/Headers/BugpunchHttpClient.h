@@ -40,6 +40,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// header map.
 + (void)addPlayerIdentityHeadersTo:(NSMutableDictionary<NSString*, NSString*>*)dst;
 
+/// Open a server attachment/media URL in the OS browser or player. The
+/// `/api/files` route that serves screenshots, videos and attachments is
+/// auth-gated; handing a bare URL to Safari / the system player (which can't
+/// carry our X-Api-Key header) 401s to a login page and the clip never plays.
+/// So `/api/files` URLs are first re-minted as a short-lived signed URL via
+/// `/api/files/sign` (the same `?t=` token the dashboard uses) and THAT is
+/// opened; other URLs open directly. Async; the open runs on the main thread.
+/// Mirrors C# BugpunchHttp.OpenServerFile / Android BugpunchHttp.openServerFile.
++ (void)openServerFileURL:(NSString*)url;
+
 /// Synchronous multipart/form-data POST of a single file part. Reuses the
 /// caller's NSURLSession so connection-keepalive, timeout config, and
 /// session delegate stay shared with the VC's other HTTP. Body is read
