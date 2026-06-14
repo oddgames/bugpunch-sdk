@@ -1,10 +1,16 @@
 # Bugpunch — Unity SDK
 
 [![bugpunch.com](https://img.shields.io/badge/dashboard-bugpunch.com-2563eb)](https://bugpunch.com)
+[![docs](https://img.shields.io/badge/docs-bugpunch.com%2Fdocs-f97316)](https://bugpunch.com/docs)
 
 Crash reporting, bug capture, and remote debugging for Unity games. Drop-in
 UPM package, three platform lanes (Android NDK + iOS Obj-C++ + C#), pairs
 with the Bugpunch dashboard at [bugpunch.com](https://bugpunch.com).
+
+📖 **Full documentation:** [bugpunch.com/docs](https://bugpunch.com/docs) —
+getting started, the complete [API reference](https://bugpunch.com/docs#api-reference),
+[configuration](https://bugpunch.com/docs#configuration), crash reporting,
+the Remote IDE, automated UI testing, and more.
 
 ## What it gives you
 
@@ -28,10 +34,10 @@ with the Bugpunch dashboard at [bugpunch.com](https://bugpunch.com).
   fire when thresholds break. Pre-crash storyboard captures the last few
   seconds of UI presses + screenshots so triage gets context, not just a
   stack frame.
-- **Tags + analytics** — `BugpunchSdk.SetTag("level", "boss-3")` attaches
+- **Tags + analytics** — `Bugpunch.SetTag("level", "boss-3")` attaches
   indexed segmentation data to every report. The dashboard's Impact view
   groups events by tag value so you can see which devices share a state
-  when an issue hits. `BugpunchSdk.LogPurchase(...)` for IAP analytics
+  when an issue hits. `Bugpunch.LogPurchase(...)` for IAP analytics
   (auto-wired if you use Unity Purchasing — see below).
 
 ## Install
@@ -41,7 +47,7 @@ Add to `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk.git#v1.8.8"
+    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk.git#v0.8.76"
   }
 }
 ```
@@ -59,33 +65,34 @@ extra dependency manager and no extra `.aar` to vendor in your project.
 
 1. Sign up at [bugpunch.com](https://bugpunch.com), create a project, copy
    the API key.
-2. In Unity: **Create → Bugpunch → Config**. Paste your API key + server
+2. In Unity: **Create → ODD Games → Bugpunch Config**. Paste your API key + server
    URL into the ScriptableObject. Drop the asset somewhere under
    `Resources/` so the SDK loads it on startup.
 3. Build + run. The first launch logs `[Bugpunch] Active lane: …` so you
    know which platform path is active. Reports start flowing.
 
 That's the entire integration. No `MonoBehaviour` to drop into a scene,
-no `BugpunchSdk.Init()` call — the SDK boots itself before scene load.
+no `Bugpunch.Init()` call — the SDK boots itself before scene load.
 
 ## Public API
 
 ```csharp
-using ODDGames.Bugpunch;
+using ODDGames.BugpunchSdk;
 
 // Manually file a bug or feedback.
-BugpunchSdk.Report("Player got stuck on level 3 boss");
-BugpunchSdk.Feedback("Loved the new gesture controls!");
+Bugpunch.Report("Player got stuck on level 3 boss");
+Bugpunch.Feedback("Loved the new gesture controls!");
 
 // Tag every subsequent report with extra context.
-BugpunchSdk.SetTag("playerLevel", 47);
-BugpunchSdk.SetTag("subscription", "pro");
+Bugpunch.SetTag("playerLevel", 47);
+Bugpunch.SetTag("subscription", "pro");
 
 // Pull a server-resolved config variable (per-device overrides supported).
-var spawnRate = BugpunchSdk.GetVariable("spawnRate", 1.0f);
+// Typed getters: GetVariable (string), GetVariableBool / GetVariableInt / GetVariableFloat.
+var spawnRate = Bugpunch.GetVariableFloat("spawnRate", 1.0f);
 
 // IAP analytics (no-op if Unity Purchasing isn't installed).
-BugpunchSdk.LogPurchase("coins_500", 4.99m, "USD", txnId);
+Bugpunch.LogPurchase("coins_500", 4.99m, "USD", txnId);
 ```
 
 The full surface is small — most of the SDK runs autonomously once
@@ -99,46 +106,28 @@ iOS, Steam, Editor, …), cells = % progress per platform. Each cell also
 carries hit count + first/last hitter so QA can see who's been driving
 the work.
 
-Two ways to declare a goal — both extracted from your game at build
-time so the dashboard knows about every goal before any tester runs:
-
-Goals are programmatic — game code declares them via one of the
-runtime APIs, the build-time Cecil scanner extracts the literal labels
-so the dashboard sees the goal immediately, and the runtime fires the
-matching event when the criteria are met.
-
-### 1. Predicate goals — the SDK polls game state
-
-Pair a `(key, value)` tuple with a predicate the SDK polls on a
-coalesced timer (every ~10s + on scene change + on app focus). First
-true fires `goal.reached(key, value)` and latches. Both `key` and
-`value` MUST be string / numeric literals so Cecil can extract them.
+Goals are programmatic — game code declares them via the
+`Bugpunch.Goal(...)` runtime API, a build-time Cecil scanner extracts the
+literal labels so the dashboard sees every goal before any tester runs, and
+the runtime fires the match when the criteria are met. Both label and value
+must be string / numeric literals so the scanner can extract them.
 
 ```csharp
-Bugpunch.RegisterGoal("level_complete", 5,
-    () => SceneManager.GetActiveScene().name == "Level5Win");
+// Declare a goal with an evaluator the SDK polls (every ~10s + on scene
+// change + on app focus). Fires and latches when the value matches.
+Bugpunch.Goal("Reach level 5", 5, () => currentLevel);
 
-Bugpunch.RegisterGoal("skin_owned", "skin_red",
-    () => PlayerPrefs.GetInt("skin_red_owned", 0) == 1);
+// Mark a code path as exercised during a QA pass.
+Bugpunch.MarkCoverage("tutorial_completed");
+
+// Record a categorized value the dashboard aggregates across testers.
+Bugpunch.RecordValue("weapon_used", "plasma_rifle");
 ```
 
-### 2. Direct goal events — fire when something happens
+See the full [QA Goals guide](https://bugpunch.com/docs#analytics-goals) for
+every `Goal` overload plus `AssertCoverage` and coverage tracking.
 
-Skip the predicate poll and just fire the event when the game observes
-the condition directly:
-
-```csharp
-// One-shot — server marks the matching goal complete on first hit.
-Bugpunch.GoalReached("level_complete", 5);
-Bugpunch.GoalReached("skin_owned", "skin_red");
-
-// Accumulating — game reports current value; goal threshold matches
-// when running max / min crosses the bound.
-totalCoins += amount;
-Bugpunch.GoalProgress("coins_earned", totalCoins);
-```
-
-### 3. Manual QA tasks — tested by hand
+### Manual QA tasks — tested by hand
 
 For visual / locale / "vibes" checks that no event captures cleanly,
 declare the goal as `manual` in `BugpunchGoals.asset` (*Assets →
@@ -173,7 +162,7 @@ If your game uses Unity Purchasing (`com.unity.purchasing` 5.0+):
 
 ```csharp
 using UnityEngine.Purchasing;
-using ODDGames.Bugpunch;
+using ODDGames.BugpunchSdk;
 
 m_PurchaseService = UnityIAPServices.DefaultPurchase().WithBugpunch();
 ```
@@ -184,12 +173,12 @@ unchanged. Compiles only when Unity Purchasing 5.0+ is installed; zero
 runtime cost when absent.
 
 For raw StoreKit (iOS) or direct Google Play Billing (Android), call
-`BugpunchSdk.LogPurchase(sku, price, currency, transactionId)` from your
+`Bugpunch.LogPurchase(sku, price, currency, transactionId)` from your
 own purchase handler.
 
 ### Pre-crash video buffer (opt-in)
 
-Tester builds can call `BugpunchSdk.EnterDebugMode()` from a menu to start a
+Tester builds can call `Bugpunch.EnterDebugMode()` from a menu to start a
 rolling video buffer (default: last 90 seconds, h264, ~2 Mbps). On the
 next crash / ANR / bug report, the recording attaches automatically so
 triage sees what happened *before* the failure, not just the moment of.
@@ -220,15 +209,15 @@ isn't triggered.
 
 ### UI test automation
 
-The SDK ships a UI testing framework (`ODDGames.Bugpunch.ActionExecutor`)
+The SDK ships a UI testing framework (`ODDGames.BugpunchSdk.ActionExecutor`)
 for record-and-replay tests, gesture injection, AI-driven test
 generation, and headless test execution via the
 [clibridge4unity](https://github.com/oddgames/clibridge4unity) bridge.
-Documentation at [bugpunch.com/docs](https://bugpunch.com).
+Full guide: [bugpunch.com/docs#automated-testing](https://bugpunch.com/docs#automated-testing).
 
 ## Versioning
 
-Tags are SemVer (`v1.8.8`, etc.). Pin a specific tag in `manifest.json`
+Tags are SemVer (`v0.8.76`, etc.). Pin a specific tag in `manifest.json`
 — Unity caches the package by tag hash, so consumers update only when
 they explicitly bump the pin. See [CHANGELOG.md](CHANGELOG.md) for
 release notes.

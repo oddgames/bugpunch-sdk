@@ -21,6 +21,8 @@
 
 #import <Foundation/Foundation.h>
 
+@class BPBountyBoard;
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface BugpunchBountyDialog : NSObject
@@ -33,6 +35,19 @@ NS_ASSUME_NONNULL_BEGIN
 /// pinned body copy. Hops to the main thread internally (via BPAlert); safe to
 /// call from any thread. No-op if a bounty popup is already showing.
 + (void)present:(nullable NSString*)displayText;
+
+/// Show the bounty reward popup with an optional compact leaderboard panel.
+/// `board` is the top-N standing parsed from the notification params (no fetch
+/// — see BugpunchPush's maybeHandleBountyType:deepLink:); pass nil to omit the
+/// panel. Rendered between the reward body and the "Nice!" button.
++ (void)present:(nullable NSString*)displayText leaderboard:(nullable BPBountyBoard*)board;
+
+/// As above, plus "where to test next" `hints` parsed from the bounty params —
+/// an array of `{ area, freshness, churn }` dictionaries (the coldest areas of
+/// the build). Rendered above the leaderboard. Pass nil/empty to omit.
++ (void)present:(nullable NSString*)displayText
+     leaderboard:(nullable BPBountyBoard*)board
+          hints:(nullable NSArray*)hints;
 
 @end
 

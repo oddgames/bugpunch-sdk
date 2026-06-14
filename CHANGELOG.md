@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.77] - 2026-06-14
+
+### Changed
+- Editor Remote IDE: Internal/External devices skip the consent gate — no more stuck "consent_required" 403 / long retry backoff on trusted editors (the prompt-based gate now applies only to Public-role editors)
+- WebRTC streamer: on mobile, report a clear SDK error when the managed Unity.WebRTC streamer is unavailable instead of failing silently, and skip the desktop-plugin fallback on device (surfaces why iOS/Android streaming is null)
+- Bounty: in-game leaderboard, "bug found" reward dialog, bounty hint, and a bounty test tool (C# + Android + iOS)
+- Inbox: board + native Android/iOS updates
+- Push: Android + iOS notification handling updates
+- Canvas watch: track canvas state on the managed lane
+
 ## [0.8.76] - 2026-06-14
 
 ### Changed
