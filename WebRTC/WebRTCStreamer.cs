@@ -23,6 +23,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
     /// the Unity.WebRTC assembly load which loads the native libwebrtc.so. On some
     /// Android 15 devices that native load crashes if done too early.
     /// </summary>
+    [UnityEngine.Scripting.Preserve]
     public class WebRTCStreamer : MonoBehaviour, IStreamer
     {
         // ------------------------------------------------------------------
@@ -95,6 +96,25 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
         float _frameAccumStart;
         float _smoothedFps;
 
+        // ── Thermal throttle ──
+        // The live streamer caps fps + resolution under thermal pressure so it
+        // stops cooking the device while a viewer is watching. Mirrors the native
+        // BugpunchFpsGovernor tiers (the crash recorder's throttle) so both
+        // subsystems shed encode load the same way. Tier is read from native each
+        // poll (NSProcessInfo.thermalState / PowerManager thermal status); it is
+        // always 0 on the managed lane (no portable thermal API → never throttles
+        // on desktop). Surfaced live to the dashboard HUD via the metadata channel
+        // ("thrm" = tier, "tfps" = the fps cap currently in force).
+        int _thermalTier;             // 0 nominal · 1 fair · 2 serious · 3 critical
+        int _thermalFpsCap = 60;      // fps ceiling implied by the tier
+        float _thermalEdgeScale = 1f; // resolution scale implied by the tier
+        float _nextThermalPollUnscaled;
+        const float THERMAL_POLL_SECONDS = 2f;
+
+        // Effective stream fps after thermal capping — drives both the blit
+        // cadence (fewer captures+encodes when hot) and the encoder rate hint.
+        int EffectiveFps() => Mathf.Clamp(Mathf.Min(_fps, _thermalFpsCap), 1, 60);
+
         public SceneCameraService SceneCameraRef { get; set; }
         public IdeTunnel Tunnel { get; set; }
 
@@ -116,26 +136,74 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
         public void SetIceServersFromJson(string json)
         {
             BugpunchLog.Info("WebRTCStreamer", $"SetIceServersFromJson: received {json?.Length ?? 0} chars");
-            var response = JsonUtility.FromJson<IceServersResponse>(json);
-            if (response.iceServers == null || response.iceServers.Length == 0)
+            if (string.IsNullOrEmpty(json)) return;
+
+            // Parsed with Newtonsoft (not JsonUtility) because the payload varies
+            // on two axes and JsonUtility is too rigid for either:
+            //   • Top-level shape — HTTP /api/devices/ice-servers returns an object
+            //     {"iceServers":[...]}, while the native poll fold (Android/iOS
+            //     OnIceServers) sends a bare array [...]. JsonUtility.FromJson throws
+            //     "JSON must represent an object type" on a top-level array.
+            //   • urls field — the server types it `string | string[]`; a single
+            //     string field can't hold both, and JsonUtility silently drops the
+            //     array case (→ empty url).
+            Newtonsoft.Json.Linq.JArray entries;
+            try
+            {
+                var root = Newtonsoft.Json.Linq.JToken.Parse(json);
+                entries = root as Newtonsoft.Json.Linq.JArray
+                          ?? root["iceServers"] as Newtonsoft.Json.Linq.JArray;
+            }
+            catch (Exception ex)
+            {
+                BugpunchLog.Warn("WebRTCStreamer", $"SetIceServersFromJson: parse failed ({ex.Message}) — using default STUN");
+                return;
+            }
+
+            if (entries == null || entries.Count == 0)
             {
                 BugpunchLog.Info("WebRTCStreamer", "SetIceServersFromJson: no ICE servers, using default STUN");
                 return;
             }
 
-            var servers = new RTCIceServer[response.iceServers.Length];
-            for (int i = 0; i < response.iceServers.Length; i++)
+            var servers = new List<RTCIceServer>(entries.Count);
+            foreach (var entry in entries)
             {
-                var s = response.iceServers[i];
-                servers[i] = new RTCIceServer
+                var urlsToken = entry["urls"];
+                string[] urls;
+                if (urlsToken is Newtonsoft.Json.Linq.JArray urlsArray)
                 {
-                    urls = new[] { s.urls },
-                    username = s.username ?? "",
-                    credential = s.credential ?? ""
-                };
+                    var list = new List<string>(urlsArray.Count);
+                    foreach (var u in urlsArray)
+                    {
+                        var s = (string)u;
+                        if (!string.IsNullOrEmpty(s)) list.Add(s);
+                    }
+                    urls = list.ToArray();
+                }
+                else
+                {
+                    var s = (string)urlsToken;
+                    urls = string.IsNullOrEmpty(s) ? Array.Empty<string>() : new[] { s };
+                }
+
+                if (urls.Length == 0) continue;
+
+                servers.Add(new RTCIceServer
+                {
+                    urls = urls,
+                    username = (string)entry["username"] ?? "",
+                    credential = (string)entry["credential"] ?? ""
+                });
             }
 
-            SetIceServers(servers);
+            if (servers.Count == 0)
+            {
+                BugpunchLog.Info("WebRTCStreamer", "SetIceServersFromJson: no usable ICE servers, using default STUN");
+                return;
+            }
+
+            SetIceServers(servers.ToArray());
         }
 
         public void Initialize(int width = 1280, int height = 720, int fps = 30)
@@ -197,7 +265,10 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             int ah = _overrideAspectH > 0 ? _overrideAspectH : Screen.height;
             if (aw <= 0 || ah <= 0) { aw = 16; ah = 9; }
 
-            int longEdge = _reqMaxEdge;
+            // Thermal throttle shrinks the long edge on top of the requested
+            // budget (0.66× serious, 0.5× critical) — cuts capture-blit and
+            // encode cost roughly with the square of the scale.
+            int longEdge = Mathf.Max(160, Mathf.RoundToInt(_reqMaxEdge * _thermalEdgeScale));
             int w, h;
             if (aw >= ah)
             {
@@ -345,7 +416,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             session.Pc.AddTrack(session.VideoTrack);
 
             // Initial cap before stats roll in — ABR loop adjusts from here.
-            SetVideoMaxBitrateForPeer(session, ABR_INIT_BPS, (uint)_fps);
+            SetVideoMaxBitrateForPeer(session, ABR_INIT_BPS, (uint)EffectiveFps());
 
             // Register the peer BEFORE remote description so any iceCandidate
             // racing the offer can queue against it.
@@ -513,7 +584,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                     var oldTrack = session.VideoTrack;
                     session.VideoTrack = newTrack;
                     if (oldTrack != null) oldTrack.Dispose();
-                    SetVideoMaxBitrateForPeer(session, session.AbrCurrentBps, (uint)_fps);
+                    SetVideoMaxBitrateForPeer(session, session.AbrCurrentBps, (uint)EffectiveFps());
                 }
             }
 
@@ -528,6 +599,45 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             }
 
             BugpunchLog.Info("WebRTCStreamer", $"ResizeRenderTarget: hot-swapped to {_width}x{_height} for {PeerCount()} peer(s)");
+        }
+
+        // Poll native thermal state and recompute the fps/resolution caps.
+        // Self-throttled to THERMAL_POLL_SECONDS so callers can invoke it every
+        // render-loop iteration cheaply. Only touches the GPU (resize) when the
+        // tier actually changes, which is rare.
+        void PollThermalThrottle(float now)
+        {
+            if (now < _nextThermalPollUnscaled) return;
+            _nextThermalPollUnscaled = now + THERMAL_POLL_SECONDS;
+
+            int tier = BugpunchNative.GetThermalTier();
+            if (tier == _thermalTier) return;
+            _thermalTier = tier;
+
+            int fpsCap; float edge;
+            switch (tier)
+            {
+                case 3:  fpsCap = 10; edge = 0.50f; break; // critical
+                case 2:  fpsCap = 15; edge = 0.66f; break; // serious
+                case 1:  fpsCap = 24; edge = 0.85f; break; // fair → proactive gentle
+                                                           // back-off, mirrors the
+                                                           // native governor (24fps,
+                                                           // 0.8x) so the device
+                                                           // doesn't climb to serious
+                default: fpsCap = 60; edge = 1.00f; break; // nominal → no cap
+            }
+
+            bool edgeChanged = !Mathf.Approximately(edge, _thermalEdgeScale);
+            _thermalFpsCap = fpsCap;
+            _thermalEdgeScale = edge;
+            BugpunchLog.Info("WebRTCStreamer",
+                $"thermal tier={tier} → fpsCap={fpsCap} edge×{edge:0.00} (configured {_fps}fps/{_reqMaxEdge}px)");
+
+            if (edgeChanged && _streaming)
+            {
+                RecomputeDimensions();
+                ResizeRenderTarget();
+            }
         }
 
         // ------------------------------------------------------------------
@@ -548,6 +658,10 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                 if (_rt == null) continue;
 
                 float now = Time.unscaledTime;
+
+                // Adjust fps/resolution caps to current thermal pressure
+                // (self-throttled to THERMAL_POLL_SECONDS internally).
+                PollThermalThrottle(now);
 
                 if (++aspectCheckCounter >= 30)
                 {
@@ -619,6 +733,11 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                     if (verts >= 0) sb.Append($"\"vrt\":{verts},");
                     if (totalMem >= 0) sb.Append($"\"mem\":{totalMem},");
                     if (gcMem >= 0) sb.Append($"\"gc\":{gcMem},");
+                    // Thermal tier + the fps cap it's currently forcing, so the
+                    // dashboard HUD can show "throttled" the moment the device
+                    // heats up (and confirm the throttle is actually engaging).
+                    sb.Append($"\"thrm\":{_thermalTier},");
+                    sb.Append($"\"tfps\":{EffectiveFps()},");
                     var touchJson = RequestRouter.GetLiveTouchesForStream(500);
                     sb.Append(touchJson);
                     sb.Append('}');
@@ -654,10 +773,23 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                 if (!anyConnected) continue;
 
                 if (now < _nextBlitTimeUnscaled) continue;
-                float blitInterval = 1f / Mathf.Max(1, _fps);
+                float blitInterval = 1f / Mathf.Max(1, EffectiveFps());
                 _nextBlitTimeUnscaled = Mathf.Max(_nextBlitTimeUnscaled + blitInterval, now);
 
-                if (_targetCamera != null)
+                // Capture-path selection — DON'T re-render a camera the GPU has
+                // already drawn this frame:
+                //  • A target camera that does NOT draw itself (managed-lane scene
+                //    cam, enabled=false) → the streamer is its only renderer, so
+                //    render it into the stream RT.
+                //  • Everything else — game view (no target cam) OR a camera that
+                //    already auto-renders to the screen (native scene cam,
+                //    enabled=true) → copy the backbuffer the GPU already produced.
+                //    Re-rendering an on-screen camera would be a redundant SECOND
+                //    full scene pass (pure heat). The old assumption that native
+                //    streamed the device screen via MediaProjection is retired —
+                //    the C# streamer is the capture path on every lane now, so an
+                //    enabled scene cam must be copied, not re-rendered.
+                if (_targetCamera != null && !_targetCamera.enabled)
                 {
                     _targetCamera.targetTexture = _rt;
                     _targetCamera.Render();
@@ -751,7 +883,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
 
                     if (newBps != session.AbrCurrentBps) {
                         session.AbrCurrentBps = newBps;
-                        SetVideoMaxBitrateForPeer(session, newBps, (uint)_fps);
+                        SetVideoMaxBitrateForPeer(session, newBps, (uint)EffectiveFps());
                     }
                 }
             }
@@ -923,20 +1055,6 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             public string candidate;
             public string sdpMid;
             public int sdpMLineIndex;
-        }
-
-        [Serializable]
-        struct IceServersResponse
-        {
-            public IceServerEntry[] iceServers;
-        }
-
-        [Serializable]
-        struct IceServerEntry
-        {
-            public string urls;
-            public string username;
-            public string credential;
         }
     }
 }

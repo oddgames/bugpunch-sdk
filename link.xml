@@ -1,12 +1,25 @@
 <linker>
-  <!-- The WebRTC streamer (optional ODDGames.BugpunchSdk.WebRTC assembly) no
-       longer needs a preserve here: it self-registers via a
-       RuntimeInitializeOnLoadMethod (WebRTCStreamerBootstrap), which is an IL2CPP
-       linker root, so the streamer survives AOT stripping on its own. com.unity.webrtc
-       ships its own link.xml for the Unity.WebRTC runtime itself. -->
+  <!-- Force-preserve the WebRTC streamer assembly. We previously dropped this,
+       trusting WebRTCStreamerBootstrap's [RuntimeInitializeOnLoadMethod] to be an
+       IL2CPP root that survives on its own. iOS device builds proved that wrong:
+       the assembly is autoReferenced:false with no inbound managed reference, so
+       IL2CPP stripped it whole — the bootstrap never ran, the managed streamer
+       factory was never registered, and live streaming 501'd
+       ("WebRTCStreamerBootstrap did not run … stripped by IL2CPP"). Preserving the
+       assembly keeps the bootstrap + WebRTCStreamer and lets the runtime-init hook
+       fire on both mobile lanes. (No effect on Editor/Standalone — Mono doesn't
+       strip.) com.unity.webrtc still ships its own link.xml for the Unity.WebRTC
+       runtime itself. -->
+  <assembly fullname="ODDGames.BugpunchSdk.WebRTC" preserve="all"/>
 
   <!-- Preserve [Watch] attribute and enum so IL2CPP doesn't strip them off
-       user fields. Without this, declared-watch discovery silently finds nothing. -->
+       user fields. Without this, declared-watch discovery silently finds nothing.
+       NOTE: this package link.xml is NOT reliably honored for the SDK when it's
+       consumed as an embedded `file:` package (the iOS IL2CPP strip ignored it —
+       both this assembly and the WebRTC one were stripped despite preserve="all").
+       The native-init survival is therefore enforced with [AlwaysLinkAssembly] +
+       [Preserve] attributes in source (BugpunchNative/BugpunchClient + the WebRTC
+       bootstrap), which IL2CPP honors directly without link.xml discovery. -->
   <assembly fullname="ODDGames.Bugpunch">
     <type fullname="WatchAttribute" preserve="all"/>
     <type fullname="WatchOwner" preserve="all"/>

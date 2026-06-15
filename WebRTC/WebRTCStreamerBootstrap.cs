@@ -1,6 +1,14 @@
 using UnityEngine;
 using ODDGames.BugpunchSdk;
 
+// This assembly is autoReferenced:false and reached only via the
+// RuntimeInitializeOnLoadMethod below. That alone does NOT reliably survive IL2CPP
+// stripping on device (it was stripped whole on iOS — the package link.xml that was
+// meant to save it is not honored for the embedded SDK package). AlwaysLinkAssembly +
+// [Preserve] keep the registrar (and the WebRTCStreamer it references) through
+// stripping directly, so live streaming doesn't 501 with "bootstrap did not run".
+[assembly: UnityEngine.Scripting.AlwaysLinkAssembly]
+
 namespace ODDGames.BugpunchSdk.RemoteIDE
 {
     /// <summary>
@@ -24,8 +32,10 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
     /// native libwebrtc load stays deferred (it must not happen at boot — see the
     /// note on WebRTCStreamer).
     /// </summary>
+    [UnityEngine.Scripting.Preserve]
     static class WebRTCStreamerBootstrap
     {
+        [UnityEngine.Scripting.Preserve]
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void Register()
         {

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.78] - 2026-06-15
+
+### Changed
+- Android permission-free GPU video recording — replaces MediaProjection: C# blits the final frame into a shared RenderTexture, native encodes it straight off the GPU into an AMediaCodec ring (GLES3 + Vulkan paths). No screen-record permission, far lower CPU/heat.
+- iOS GpuOnly capture is now the default and ReplayKit is removed from the ring recorder — permission-free backbuffer capture, with the sRGB darkness fix.
+- 24fps recording floor + 480–720 short-edge resolution clamp on both lanes; proactive thermal throttle at 'fair' (sheds heat via bitrate/resolution, not framerate).
+- No-permission in-game audio capture via a C# tap (pushed PCM to the native encoder).
+- SDK version is now native-owned — baked from package.json into each lane at build time (Android BuildStamp, iOS BugpunchBuildStamp.h, C# BuildStamp), seeded before Unity boots so every report and the +load device register always carry it. Server now persists it to devices.sdk_version. No longer dependent on a C# config push.
+- General native-overlay detection: Android enumerates WindowManager views, iOS hooks in-app presentations (ads / IAP / Bugpunch's own UI) — captures their bounding boxes so the dashboard can draw what native UI was on screen over the recording.
+- iOS Metal GPU-error watch + reworked log/thermal capture (on-demand, no always-on OSLogStore drain).
+- Removed recurring 60s poll — register on startup + foreground + push only.
+- Native appVersion / identity derivation for the +load register (fixes register 400 / appVersion 0.0.0).
+
 ## [0.8.77] - 2026-06-14
 
 ### Changed

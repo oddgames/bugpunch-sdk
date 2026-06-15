@@ -11,13 +11,23 @@
 //
 // Producers (in increasing privilege):
 //   1. Unity Debug.Log via `Bugpunch_PushLogEntry` → `pushEntryWithType:`
-//      → `appendLineLive:`.
+//      → `appendLineLive:`. ALWAYS-ON — the primary ring fill, so crashes
+//      carry the game's own log tail regardless of debug mode.
 //   2. Native plugins via `Bugpunch_LogMessage` → `appendLineLive:`.
-//   3. Internal native sink polling OSLogStore every ~1 s and pushing
-//      incremental entries through `appendLineLive:`. This sink runs on a
-//      dispatch queue, NOT the Unity managed thread, so it keeps shipping
-//      logs even when Unity is frozen / managed thread is dead.
-//   4. (Crash-only) the signal handler reads the ring atomically and
+//   3. Passive stdout/stderr capture (`installFdCapture`) — dup2 + a
+//      dispatch_source read, echoed back to the console. Catches printf/
+//      fprintf native logs. DEBUG-GATED: tees into the ring + tunnel only
+//      while a debug tunnel is connected. (On iOS 17+ NSLog/os_log no longer
+//      write to stderr, so this is direct-printf only.)
+//   4. Internal native sink polling OSLogStore. DEBUG-GATED — the poll body
+//      no-ops unless a debug tunnel is connected (constructing an OSLogStore
+//      per second is a thermal anti-pattern with no idle consumer). Runs on a
+//      dispatch queue, NOT the Unity managed thread, so during a live debug
+//      session it keeps shipping logs even when Unity is frozen.
+//   5. On-demand OSLogStore pull at report/snapshot time (`snapshotText`) —
+//      this is how reports & crashes get full os_log history, independent of
+//      debug mode. (Current-process scope only; can't recover a prior PID.)
+//   6. (Crash-only) the signal handler reads the ring atomically and
 //      write()s it to the crash report's `logs:` file via the C function
 //      `bp_logreader_dump_to_fd`.
 //
