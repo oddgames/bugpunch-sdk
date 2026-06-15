@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.79] - 2026-06-15
+
+### Changed
+- Fix: the Android AAR now bakes the correct SDK version. build-all.ps1 drives gradle directly (bypassing build-android.ps1), so it wasn't re-stamping BuildStamp.java — the v0.8.78 AAR shipped SDK_VERSION one release behind while the C# DLL and iOS xcframework were correct. Step 4 now writes BuildStamp.java from the already-bumped package.json before gradle, matching the C# and iOS lanes. (No runtime behaviour change beyond the corrected version string.)
+
 ## [0.8.78] - 2026-06-15
 
 ### Changed
