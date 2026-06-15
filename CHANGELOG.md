@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.81] - 2026-06-15
+
+### Changed
+- Method profiler: lead rows with the class (e.g. Ticker.Update), bake weave-time source file:line into each profiled site from the PDB, and deep-link it to the uploaded source bundle (click file:line -> inline source). Managed lane only; zero runtime cost.
+
 ## [0.8.80] - 2026-06-15
 
 ### Changed

@@ -42,6 +42,13 @@
 // descriptor table with BugpunchMethodProfiler and stores base+index ids
 // into the fields. First profiled call triggers the cctor — no startup hook.
 //
+// Each descriptor also carries a weave-time SOURCE location pulled from the
+// PDB ("Assets/Rel/Path.cs:line"), so a profiler row reads "Ticker.Update —
+// PosterAssignment.cs:758" and the dashboard can deep-link it to the source
+// bundle the SDK uploaded for the build. Normalised to the same
+// "Assets/..."/"Packages/..." form the uploader stores. Costs nothing at
+// runtime — it's a build-time string baked into the descriptor table.
+//
 // PLACEMENT: this file ships as SOURCE in package/CodeGen/ under an asmdef
 // named ODDGames.Bugpunch.CodeGen. Unity only discovers ILPostProcessor
 // implementations in assemblies whose name ends with ".CodeGen" (same as
@@ -254,7 +261,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
 
             // ── Site table ────────────────────────────────────────────────
 
-            FieldDefinition AddSite(string kind, string name, string method)
+            FieldDefinition AddSite(string kind, string name, string method, string source)
             {
                 if (_holder == null)
                 {
@@ -271,8 +278,73 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     _module.TypeSystem.Int32);
                 _holder.Fields.Add(field);
                 _fields.Add(field);
-                _descriptors.Add(kind + Sep + name + Sep + method);
+                _descriptors.Add(kind + Sep + name + Sep + method + Sep + source);
                 return field;
+            }
+
+            // ── Source location (weave-time, from the PDB) ─────────────────
+            // The site descriptor's 4th field is "Assets/Rel/Path.cs:line",
+            // pulled from Cecil sequence points. Zero runtime cost — it's a
+            // build-time string — and the path is normalised to the same
+            // "Assets/..."/"Packages/..." form the SDK's source-bundle
+            // uploader stores, so the dashboard can deep-link the profiler row
+            // straight to the uploaded source (server matches exact-then-suffix).
+
+            const int HiddenLine = 0xFEEFEE;   // PDB "hidden" sequence-point sentinel
+            static readonly string[] s_pathRoots = { "/Assets/", "/Packages/" };
+
+            /// <summary>First real (non-hidden) sequence point of a method —
+            /// used for whole-method sites (the Update wrap).</summary>
+            static string SourceForMethod(MethodDefinition m)
+            {
+                var di = m.DebugInformation;
+                if (di == null || !di.HasSequencePoints) return "";
+                foreach (var sp in di.SequencePoints)
+                    if (sp != null && sp.StartLine > 0 && sp.StartLine != HiddenLine)
+                        return Format(sp);
+                return "";
+            }
+
+            /// <summary>Sequence point at or before a specific instruction —
+            /// used for in-method sites (BeginSample / marker calls) so the
+            /// line points at the mark, not the method header. Falls back to
+            /// the method's first line.</summary>
+            static string SourceForInstruction(MethodDefinition m, Instruction ins)
+            {
+                var di = m.DebugInformation;
+                if (di == null) return "";
+                for (var c = ins; c != null; c = c.Previous)
+                {
+                    var sp = di.GetSequencePoint(c);
+                    if (sp != null && sp.StartLine > 0 && sp.StartLine != HiddenLine)
+                        return Format(sp);
+                }
+                return SourceForMethod(m);
+            }
+
+            static string Format(SequencePoint sp)
+            {
+                var rel = NormalizeSourcePath(sp.Document?.Url);
+                return rel.Length == 0 ? "" : rel + ":" + sp.StartLine;
+            }
+
+            /// <summary>Build-machine absolute path → project-relative
+            /// "Assets/..."/"Packages/..." (the form the source bundle stores).
+            /// Basename as a last resort so a link target always exists.</summary>
+            static string NormalizeSourcePath(string url)
+            {
+                if (string.IsNullOrEmpty(url)) return "";
+                var p = url.Replace('\\', '/');
+                foreach (var root in s_pathRoots)
+                {
+                    int idx = p.IndexOf(root, StringComparison.OrdinalIgnoreCase);
+                    if (idx >= 0) return p.Substring(idx + 1);   // drop leading '/'
+                }
+                if (p.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)
+                    || p.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
+                    return p;
+                int slash = p.LastIndexOf('/');
+                return slash >= 0 ? p.Substring(slash + 1) : p;
             }
 
             /// <summary>Generated cctor: register descriptors, store base+i into each id field.</summary>
@@ -397,7 +469,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
                                 && !targets.Contains(prev) && !targets.Contains(ins))
                             {
                                 // Literal sample name → weave-time integer id.
-                                var f = AddSite("sample", (string)prev.Operand, methodLabel);
+                                var f = AddSite("sample", (string)prev.Operand, methodLabel, SourceForInstruction(method, ins));
                                 SampleSites++;
                                 prev.OpCode = OpCodes.Ldsfld;
                                 prev.Operand = f;
@@ -468,7 +540,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 {
                     foreach (var (seq, call, field) in markerBegins)
                     {
-                        var f = AddSite("marker", ResolveMarkerName(field), methodLabel);
+                        var f = AddSite("marker", ResolveMarkerName(field), methodLabel, SourceForInstruction(method, call));
                         MarkerSites++;
                         // NOP everything but the final load slot, which becomes
                         // the int site id — net stack effect identical.
@@ -504,7 +576,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 {
                     foreach (var (stloc, field) in autoSites)
                     {
-                        var f = AddSite("marker", ResolveMarkerName(field), methodLabel);
+                        var f = AddSite("marker", ResolveMarkerName(field), methodLabel, SourceForInstruction(method, stloc));
                         MarkerSites++;
                         // InsertAfter in reverse order → [stloc][ldsfld][call Enter]
                         il.InsertAfter(stloc, il.Create(OpCodes.Call, _enter));
@@ -629,7 +701,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
             {
                 var body = method.Body;
                 var il = body.GetILProcessor();
-                var f = AddSite("update", method.Name, method.DeclaringType.FullName);
+                var f = AddSite("update", method.Name, method.DeclaringType.FullName, SourceForMethod(method));
                 UpdateSites++;
 
                 var first = body.Instructions[0];
