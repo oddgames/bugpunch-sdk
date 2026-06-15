@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.80] - 2026-06-15
+
+### Changed
+- iOS: handle silent (content-available) remote pushes. The server delivers data-only bounty / bug_found envelopes as background pushes, which land on application:didReceiveRemoteNotification:fetchCompletionHandler: rather than the UNUserNotificationCenterDelegate. Add-or-chain swizzle routes the `bugpunch` envelope into the in-app reward / triage flow (idempotent with the foreground-present, tap, and poll paths) and always finishes the fetch (or chains to the game's own handler).
+
 ## [0.8.79] - 2026-06-15
 
 ### Changed
