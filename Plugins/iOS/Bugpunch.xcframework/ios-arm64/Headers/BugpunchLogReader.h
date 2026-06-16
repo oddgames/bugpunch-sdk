@@ -1,5 +1,4 @@
-// BugpunchLogReader.h — mmap'd log ring + OSLogStore polled push + on-demand
-// snapshot.
+// BugpunchLogReader.h — mmap'd log ring + on-demand OSLogStore snapshot.
 //
 // Storage: a `MAP_SHARED` mmap'd file under
 //   {NSCachesDirectory}/bp_logring.dat
@@ -19,15 +18,14 @@
 //      fprintf native logs. DEBUG-GATED: tees into the ring + tunnel only
 //      while a debug tunnel is connected. (On iOS 17+ NSLog/os_log no longer
 //      write to stderr, so this is direct-printf only.)
-//   4. Internal native sink polling OSLogStore. DEBUG-GATED — the poll body
-//      no-ops unless a debug tunnel is connected (constructing an OSLogStore
-//      per second is a thermal anti-pattern with no idle consumer). Runs on a
-//      dispatch queue, NOT the Unity managed thread, so during a live debug
-//      session it keeps shipping logs even when Unity is frozen.
-//   5. On-demand OSLogStore pull at report/snapshot time (`snapshotText`) —
-//      this is how reports & crashes get full os_log history, independent of
-//      debug mode. (Current-process scope only; can't recover a prior PID.)
-//   6. (Crash-only) the signal handler reads the ring atomically and
+//   4. On-demand OSLogStore pull at report/snapshot time (`snapshotText`) —
+//      this is how reports & crashes get full os_log history (Apple-framework
+//      `os_log` lines the live producers don't carry), independent of debug
+//      mode. (Current-process scope only; can't recover a prior PID.) There
+//      is NO recurring OSLogStore poll — constructing an OSLogStore per second
+//      re-indexes the unified-log archive (a thermal anti-pattern) for a feed
+//      only a connected debug tunnel ever consumed.
+//   5. (Crash-only) the signal handler reads the ring atomically and
 //      write()s it to the crash report's `logs:` file via the C function
 //      `bp_logreader_dump_to_fd`.
 //

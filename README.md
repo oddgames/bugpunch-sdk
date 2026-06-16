@@ -22,8 +22,8 @@ the Remote IDE, automated UI testing, and more.
   `AppDomain.UnhandledException` and `Application.logMessageReceivedThreaded`,
   routed through the same upload queue. Stack traces deobfuscate against
   uploaded IL2CPP method maps.
-- **User-initiated bug reports + feedback** — shake to report (or the
-  in-app debug widget). Auto-attaches a screenshot, scene name, recent
+- **User-initiated bug reports + feedback** — the in-app debug widget
+  (or `Bugpunch.Report` / F12). Auto-attaches a screenshot, scene name, recent
   logs, custom data, and (opt-in) the last 90 seconds of gameplay video.
 - **Remote IDE** — connect from the web dashboard to a running build and
   drive it live: scene hierarchy, component inspector, console log

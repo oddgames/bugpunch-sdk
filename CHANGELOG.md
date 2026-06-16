@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.85] - 2026-06-16
+
+### Changed
+- Performance/heat + CPU pass, shader-error pattern cleanup, and Grouped Logs Phase 2 (NTP clock-sync).
+- Performance / heat:
+- - Removed shake-to-report entirely (dead feature — a 30Hz always-on accelerometer) on all lanes (iOS BPShake, Android BugpunchShakeDetector, C# config/wiring, docs).
+- - iOS: removed the always-on OSLogStore 1s background poll; os_log is now pulled on demand at report/snapshot time only (no recurring thermal cost).
+- - iOS: gated the overlay-box view-tree walk + its delayed snapshots to active recording sessions (was walking the UIKit tree + building JSON on every modal present, discarded unless recording).
+- - Suppressed perf-event screenshots for public-role players on iOS + Android (the capture+upload was the heavy bit; the JSON perf event still uploads).
+- - iOS: throttled the touch-recorder's per-event UIScreen.mainScreen read to ~1Hz on the input hot path.
+- - Storyboard capture now skips the same button pressed back-to-back and frequently-mashed (gameplay input) buttons.
+- CPU churn:
+- - iOS per-Debug.Log hot path: removed the redundant client-side dedup (server collapses consecutive dup lines at ingest), replaced the per-line NSDateFormatter with gmtime_r+snprintf, and swapped the per-line dispatch_sync-to-serial-queue ring write for an os_unfair_lock.
+- - Throttled BugpunchCanvasWatch's per-frame native role check to the 4Hz scan cadence (was a JNI/P-Invoke round-trip + allocs every frame for all device users).
+- - BugpunchShaderWatch: added a LogType severity gate (shader/GPU errors are Warning+) and a cheap anchor-token pre-gate before the compiled-regex sweep.
+- - Throttled ContextObjectCapture's render path so an Update() exception storm can't drive a 4-angle camera render + JPEG per frame.
+- Shader/GPU error patterns (validated against real Unity/Metal/Vulkan/GL logs, with a server-side test suite):
+- - Dropped the broad <Metal|OpenGL|Vulkan> ... error catch-alls, the prose device...lost/removed/reset matcher, and the ...stall token (no distinct real example; false-matched benign lines).
+- - Fixed the OOM gap (now matches the real "Vulkan, Out of memory!"); added the real DXGI_ERROR_DEVICE_REMOVED/HUNG device-loss tokens.
+- Grouped Logs (Phase 2):
+- - NTP-style clock-sync over the report + IDE tunnels (clockSync frame -> clock_offset_ms / rtt_ms) so multi-device log sessions align on a common timeline. All lanes (iOS, Android, C#).
+
 ## [0.8.84] - 2026-06-16
 
 ### Changed
