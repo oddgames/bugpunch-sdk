@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.82] - 2026-06-16
+
+### Changed
+- Purchasing: compile against Unity IAP v4 (UnityEngine.Purchasing) as well as v5 (Unity.Purchasing) — fixes the optional purchasing shim failing to resolve its types on IAP 4.x projects (e.g. TOR @ 4.14.2)
+- Goals: IAP + Ads goal categories always rank as Important in the on-device Goal HUD; editor Cecil scan carries the category literal through to the build catalog
+- Scene camera: auto-hide screen-space game UI (uGUI Canvases + UIToolkit UIDocuments) while the scene camera is active so the free-fly view isn't obscured by the game HUD
+
 ## [0.8.81] - 2026-06-15
 
 ### Changed
