@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.84] - 2026-06-16
+
+### Changed
+- Richer crash context: ContextObjectCapture now reflects serialized fields across every game script on the offending object (not just the throw-site component) and surfaces UnityEngine.Object references — sprites, meshes, materials, physics materials, audio/animation clips, GameObject/Component/ScriptableObject refs — with type-specific asset detail, plus arrays and Lists; bounded by field + per-collection element caps.
+
+## [0.8.83] - 2026-06-16
+
+### Changed
+- Richer crash context: ContextObjectCapture now reflects serialized fields across every game script on the offending object (not just the throw-site component) and surfaces UnityEngine.Object references — sprites, meshes, materials, physics materials, audio/animation clips, GameObject/Component/ScriptableObject refs — with type-specific asset detail, plus arrays and Lists; bounded by field + per-collection element caps.
+
 ## [0.8.82] - 2026-06-16
 
 ### Changed
