@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.86] - 2026-06-16
+
+### Changed
+- Storyboard/screenshot capture overhaul (iOS perf):
+- - Storyboard no longer captures on every button press - navigation-confirm gate only captures on a real menu transition (menu-vs-play), removing the finger-up hitch
+- - Lowered storyboard screenshot resolution 1080 -> 540 (seamless, ~1/4 the cost)
+- - Removed the always-on iOS GPU mirror blit (recurring perf drop); crash/ANR/report screenshots now ride the GPU video frame while recording, a capture-on-request GPU one-shot, or the storyboard ring - render-freeze watchdog + permission-free GPU video preserved
+- - Switched storyboard capture from main-thread drawViewHierarchyInRect to a capture-on-request GPU one-shot (off-main, ~0.2ms)
+- - Renamed BugpunchBackbuffer -> BugpunchGpuCapture
+- - Plus assorted SDK fixes/improvements (perf monitor, method profiler, shader watch, crash drain, config)
+
 ## [0.8.85] - 2026-06-16
 
 ### Changed
