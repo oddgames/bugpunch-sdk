@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.87] - 2026-06-17
+
+### Changed
+- sdk(scripting): ship ODDGames.Scripting as its own ODDGames.Scripting.dll instead of embedding + internalizing it into the Bugpunch runtime DLL. The VM is now a normal referenced dependency, bundled in package/Plugins (single Any-Platform DLL at the Plugins root) next to ODDGames.Bugpunch.dll. Also adds an embedded web IDE (ODDGames.Scripting.Ide.ScriptIde.Host) -- a loopback/LAN browser editor with file tree, full-text search, reflection-backed IntelliSense, a Run panel, and a visual UXML/USS designer (palette + hierarchy + properties + preview) with UXML-to-controller coupling and a shared USS convention.
+- sdk(android,ios): a server-pushed tester role no longer overrides the launch auto-prompt gate -- maybeShowOnLaunch respects startMode and the cached-tester-profile-only contract (BugpunchTesterRoleManager.onRoleBecameTester and its iOS mirror).
+- sdk(ios): credential sign-in keyboard handling -- the email field shifts above the on-screen keyboard via viewWillAppear + keyboard-frame observers, with an inline error label, mirroring the Android SOFT_INPUT_ADJUST_RESIZE fix.
+
 ## [0.8.86] - 2026-06-16
 
 ### Changed
