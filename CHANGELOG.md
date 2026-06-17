@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.88] - 2026-06-17
+
+### Changed
+- sdk(scripting): rebuild the bundled ODDGames.Scripting.dll with the embedded web IDE upgrades -- a host-declared global-event catalog (IdeOptions.EventCatalog / EventCatalogJson + GET /api/events), a live console (ScriptIdeServer.Log -> /api/logs ring) that surfaces game errors in the browser, a Visual-Basic-style UXML designer (drag-drop device canvas, visual anchor presets, USS-to-CSS preview, right-click group/ungroup/z-order, double-click to generate a coupled controller event handler), and a typed visual USS editor covering the Unity USS property reference (color pickers, ranged numbers, length+unit, enum dropdowns).
+- sdk(android,ios): sign-in failures now raise a branded popup and keep the saved-profile picker open to retry, instead of only an easy-to-miss inline label -- mirrored on both lanes (BugpunchProfilePicker.showLoginErrorPopup / -showSignInError:).
+- sdk(ios): ensure the Sign in with Apple entitlement survives automatic signing -- PostProcessBuild adds com.apple.developer.applesignin = [Default] and registers the AddSignInWithApple capability, fixing the entitlement being stripped from the signed binary.
+
 ## [0.8.87] - 2026-06-17
 
 ### Changed
