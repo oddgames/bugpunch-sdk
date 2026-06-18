@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.92] - 2026-06-18
+
+### Changed
+- sdk(ios): fix Sign in with Apple login loop — keychain reads/deletes no longer carry kSecAttrAccessible (a create-only attribute, not a valid match key), so a freshly persisted identity reads back and the picker stops re-prompting after every help-card action; accessibility is now applied only on add. Adds native auth-gate diagnostics (applyIdentity emailReadback + AutoPrompt gate decision) to the device log.
+
 ## [0.8.91] - 2026-06-18
 
 ### Changed
