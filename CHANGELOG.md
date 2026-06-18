@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.97] - 2026-06-19
+
+### Changed
+- Re-bundle ODDGames.Scripting.dll (reverts the v0.8.96 source-package split)
+- Unity does not support Git dependencies in a package's package.json — only in a
+- project's manifest.json (per Unity's UPM Git docs). A dependency every Bugpunch
+- consumer needs therefore cannot be auto-pulled by the package; it must ship as a
+- bundled DLL. v0.8.96 dropped the DLL and required each project to list the
+- scripting git repo, which broke consumers. This restores the bundled
+- Plugins/ODDGames.Scripting.dll (built from the oddgames/unity-scripting repo by
+- build-all). Consumers need zero config again — no manifest entry, no repo auth.
+
 ## [0.8.96] - 2026-06-18
 
 ### Changed

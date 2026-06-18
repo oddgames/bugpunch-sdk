@@ -2,9 +2,7 @@
 
 Embedded C#-like scripting language shipped inside the Bugpunch SDK. Powers the Remote IDE's `ScriptRunner` (live, on-device evaluation from the dashboard) and any in-game tooling that needs to run untrusted code without bringing in `Reflection.Emit` or a JIT.
 
-> **Distribution.** Ships as its own **source UPM package** `au.com.oddgames.scripting` (private repo [oddgames/unity-scripting](https://github.com/oddgames/unity-scripting)). Unity compiles the VM from source (asmdef → `ODDGames.Scripting` assembly) on every platform lane; Bugpunch's prebuilt runtime DLL resolves it by name. It is **not** shipped as a DLL in `Plugins/` — that would collide with the package's own assembly. The only DLL kept in this dev repo is a compile-only vendored ref at `csharp-src/Bugpunch/refs/ODDGames.Scripting.dll`, used solely so `dotnet build` can compile the Bugpunch runtime against the VM's public API.
->
-> **Each consuming project declares the git dependency in its own `Packages/manifest.json`** (`"au.com.oddgames.scripting": "https://github.com/oddgames/unity-scripting.git"`) — NOT in this package's `package.json`. UPM rejects git-URL deps inside a package's `dependencies` (treats the URL as a version string), so it can't be transitive; git URLs are only valid in the project manifest. Consuming projects (SDK test app, MTD) resolve the private package via Git Credential Manager locally or a PAT in CI.
+> **Distribution.** Ships as `ODDGames.Scripting.dll` under `Plugins/` next to `ODDGames.Bugpunch.dll`. No separate UPM package — the runtime DLL is co-located with the SDK runtime DLL on every platform.
 
 ---
 
@@ -125,7 +123,7 @@ dotnet build -c Release
 # → ODDGames.Scripting.dll (netstandard2.1)
 ```
 
-The SDK build (`build-all.ps1`) copies the DLL into `csharp-src/Bugpunch/refs/` as a **compile-only** reference so `dotnet build` can resolve the VM's public API. The DLL is **not** shipped — at Unity runtime the VM is compiled from the source UPM package `au.com.oddgames.scripting` (asmdef), on every platform lane (Android / iOS / Standalone). No JNI / P-Invoke for scripting; the VM is pure managed.
+The SDK build copies the DLL into `package/Plugins/` next to `ODDGames.Bugpunch.dll`. Both ride together to every platform lane (Android / iOS / Standalone) — no JNI / P-Invoke for scripting; the VM is pure managed.
 
 ---
 
