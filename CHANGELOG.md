@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.94] - 2026-06-18
+
+### Changed
+- sdk(ios): deterministic Request Help / profile-pick flow + first-name hint. (1) BPPickerHasPersistedIdentity now reads the in-memory BPRuntime identity instead of re-reading the keychain every call, so the auto-prompt gate no longer flaps — tapping a help-card option resumes the requested action (debug for internal/external, 3-panel for public) instead of bouncing back to the profile picker. (2) The saved-profile tap validates /profiles/select with the picker still up (controls disabled) and dismisses-then-applies only on success, mirroring the SSO tap; removed the optimistic-dismiss race + didOptimisticDismiss reopen machinery. (3) Apple Sign In forwards the first-auth full name to the server as a display-only hint so users show a real name instead of a random relay local-part.
+
 ## [0.8.93] - 2026-06-18
 
 ### Changed
