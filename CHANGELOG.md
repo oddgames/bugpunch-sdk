@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.95] - 2026-06-18
+
+### Changed
+- sdk: Request Help is now the single public entry; iOS flow + brand-colour fixes. (1) Removed the public Bugpunch.EnterDebugMode() API — debug recording is reached through RequestHelp (internal/external auto-enter) or the help card's 'Record A Bug' (public); the internal native entry is unchanged. (2) iOS: Request Help and Record-A-Bug now fast-path straight to the action when a profile is already selected this session, instead of re-showing the profile picker — routed through the session-gated auto-prompt; EnterDebugMode honours an already-signed-in identity. (3) Primary action buttons are the Bugpunch brand orange instead of green — consent 'Start Recording' + exit-debug buttons explicitly, and the default accentPrimary theme colour on both iOS and Android.
+
 ## [0.8.94] - 2026-06-18
 
 ### Changed
