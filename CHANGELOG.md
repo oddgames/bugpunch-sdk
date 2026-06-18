@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.91] - 2026-06-18
+
+### Changed
+- sdk(android,ios,csharp): stamp the SDK version on the profile/login picker UIs — subtle but always-legible 'v<version>' watermark on every lane (iOS native picker, Android native picker, C# UIToolkit picker) so anyone can confirm at a glance which SDK build a player/tester is running
+
 ## [0.8.90] - 2026-06-18
 
 ### Changed
