@@ -35,11 +35,15 @@ NS_ASSUME_NONNULL_BEGIN
 ///
 /// `provider` is "google" or "apple".
 /// `idToken` is the raw JWT / identity token returned by the provider.
-/// `hintName` / `hintEmail` are optional fallbacks used to seed BPRuntime
-/// when the server response omits the field (e.g. Apple only returns
-/// name + email on the very first sign-in per app + Apple ID).
+/// `nonce` is the raw (unhashed) per-flow nonce for Apple sign-in (nil for
+/// other providers). The server verifies sha256(nonce) == jwt.nonce claim.
+/// `hintName` / `hintEmail` are UNTRUSTED client-supplied hints — they are
+/// NOT sent to the server and must NEVER be used server-side. They exist
+/// solely as display fallbacks when the server response omits the field
+/// (Apple only returns name + email on the very first sign-in per Apple ID).
 + (void)postWithProvider:(NSString*)provider
                  idToken:(NSString*)idToken
+                   nonce:(nullable NSString*)nonce
                 hintName:(nullable NSString*)hintName
                hintEmail:(nullable NSString*)hintEmail
               completion:(void (^)(BOOL success,

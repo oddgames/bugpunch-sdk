@@ -25,14 +25,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// the Apple sheet (required by ASAuthorizationController on iOS 13+).
 /// The completion block is invoked on the main queue.
 ///
-/// On success: success=YES, idToken is the JWT string suitable for
-/// posting to the server's verifier endpoint; email + name may be empty
-/// after the first sign-in.
+/// On success: success=YES, idToken is the JWT string and nonce is the raw
+/// (unhashed) nonce embedded in the request — pass both to the server so it
+/// can verify the nonce claim inside the JWT. email + name may be empty after
+/// the first sign-in (Apple only returns them once per Apple ID per app).
 /// On failure / user cancellation: success=NO, errorMessage non-nil
 /// (or nil if the user simply backed out — treat nil as silent dismiss).
 + (void)signInWithPresentingWindow:(nullable UIWindow*)presentingWindow
                         completion:(void (^)(BOOL success,
                                              NSString* _Nullable idToken,
+                                             NSString* _Nullable nonce,
                                              NSString* _Nullable email,
                                              NSString* _Nullable name,
                                              NSString* _Nullable errorMessage))completion;

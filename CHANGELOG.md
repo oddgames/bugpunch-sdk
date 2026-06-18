@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.90] - 2026-06-18
+
+### Changed
+- Harden Sign in with Apple across iOS + Android lanes
+- Apple Sign In: add per-flow nonce (sha256 to Apple, raw to server) to prevent id-token replay; server verifies the token's nonce claim (iOS native + Android web flow)
+- iOS: retain ASAuthorizationController for flow lifetime (fixes "UI provider deallocated" failure); thread-safe delegate set + in-flight guard against concurrent flows
+- iOS: prune revoked Apple credentials on picker open; restore lost auth-success callback after a failed /profiles/select reopen
+- iOS: keychain items now WhenUnlockedThisDeviceOnly (no iCloud sync of session tokens); atomic picker-showing guard; treat error 1005 as silent cancel
+- iOS: drop non-compliant Apple-button shadow; safer presentation-anchor fallback; entitlement-missing log hint
+
+## [0.8.89] - 2026-06-18
+
+### Changed
+- Harden Sign in with Apple across iOS + Android lanes
+- Apple Sign In: add per-flow nonce (sha256 to Apple, raw to server) to prevent id-token replay; server verifies the token's nonce claim (iOS native + Android web flow)
+- iOS: retain ASAuthorizationController for flow lifetime (fixes "UI provider deallocated" failure); thread-safe delegate set + in-flight guard against concurrent flows
+- iOS: prune revoked Apple credentials on picker open; restore lost auth-success callback after a failed /profiles/select reopen
+- iOS: keychain items now WhenUnlockedThisDeviceOnly (no iCloud sync of session tokens); atomic picker-showing guard; treat error 1005 as silent cancel
+- iOS: drop non-compliant Apple-button shadow; safer presentation-anchor fallback; entitlement-missing log hint
+
 ## [0.8.88] - 2026-06-17
 
 ### Changed
