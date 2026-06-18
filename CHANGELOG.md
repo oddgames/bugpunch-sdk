@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.93] - 2026-06-18
+
+### Changed
+- sdk(ios): clean up the Sign in with Apple / Request Help flow. (1) Provider badges were all blank — the picker loaded badge PNGs via pathForResource only, which misses the bundled assets at runtime; now imageNamed-first (matching the working help-card loader) with an Apple-logo-glyph fallback since no apple-logo.png ships. (2) The 3-panel help card never appeared after a FRESH sign-in: the SSO handlers applied the identity (firing the post-auth callback) while the picker was still mid-dismiss, so UIKit dropped the present — routed all three SSO handlers through a new dismissThenApplyIdentity: that dismisses first and applies in the completion, mirroring the saved-profile tap.
+
 ## [0.8.92] - 2026-06-18
 
 ### Changed
