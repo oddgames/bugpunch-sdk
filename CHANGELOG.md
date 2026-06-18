@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.96] - 2026-06-18
+
+### Changed
+- ODDGames.Scripting split into its own UPM package — consumers must add it to manifest.json
+- - The scripting VM (ODDGames.Scripting) is no longer bundled as a DLL inside the
+-   Bugpunch package. It now ships as a separate source UPM package and MUST be
+-   declared in each Unity project's Packages/manifest.json:
+-     "au.com.oddgames.scripting": "https://github.com/oddgames/unity-scripting.git"
+- - Removed Plugins/ODDGames.Scripting.dll from the package (it would otherwise
+-   collide with the source package's own ODDGames.Scripting assembly).
+- - The Bugpunch runtime still references the VM by assembly name; Unity compiles
+-   it from the source package.
+
 ## [0.8.95] - 2026-06-18
 
 ### Changed
