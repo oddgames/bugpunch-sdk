@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.98] - 2026-06-19
+
+### Changed
+- GPU-only video capture: drop the captureMode choice, ReplayKit (iOS), and MediaProjection (Android)
+- - Video + audio recording is now permission-free GPU capture on every lane: no screen-record consent dialog, no persistent notification, no foreground service, no RECORD_AUDIO. Audio is the push-PCM AudioListener tap.
+- - Removed BugpunchConfig.captureMode (GPU is the only mode); no longer emitted in the native config blob.
+- - iOS: stripped ReplayKit from the crash-ring recorder (dead encode path + retired frame-sink/streaming-capture API); GPU capture is the sole source.
+- - Android: removed MediaProjection entirely - deleted BugpunchProjectionRequest/Service, ScreenPipeline, the retired native WebRTC streamer (+ WebrtcAudioInjector / SharedScreenCapturer), and the AudioPlaybackCapture path; rewrote BugpunchRecorder GPU-only; dropped the FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PROJECTION / RECORD_AUDIO manifest permissions and the libwebrtc dep.
+- - Chat/feedback video-attach dumps the GPU ring in debug mode; outside debug mode it falls back to a screenshot (fresh on-demand OS-capture clips retired).
+
 ## [0.8.97] - 2026-06-19
 
 ### Changed

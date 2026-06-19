@@ -1,10 +1,10 @@
 // BugpunchRingRecorder.h
 // Always-on ring buffer video recorder for Bugpunch SDK (iOS)
 //
-// Uses ReplayKit RPScreenRecorder.startCapture for zero-permission screen
-// capture, VideoToolbox VTCompressionSession for H.264 encoding, and an
-// in-memory circular buffer of encoded NAL units trimmed to a configurable
-// window (default 30s). On dump(), finds the oldest keyframe boundary and
+// Captures Unity's frame via permission-free GPU capture (BugpunchGpuCapture),
+// encodes H.264 with VideoToolbox VTCompressionSession, and appends each sample
+// to a crash-survivable on-disk mmap ring trimmed to a configurable window
+// (default 30s). On dump(), the remuxer finds the oldest keyframe boundary and
 // writes a valid MP4 via AVAssetWriter.
 //
 // Copyright (c) ODDGames. All rights reserved.
@@ -27,8 +27,8 @@ extern "C" {
 /// @param windowSeconds  Rolling window size in seconds (e.g. 30)
 void BugpunchRing_Configure(int width, int height, int fps, int bitrate, int windowSeconds);
 
-/// Start always-on recording. ReplayKit captures screen frames, VideoToolbox
-/// encodes to H.264, samples accumulate in the ring buffer. No file is written
+/// Start always-on recording. GPU capture provides Unity's frames, VideoToolbox
+/// encodes to H.264, samples accumulate in the on-disk ring. No file is written
 /// until BugpunchRing_Dump is called.
 /// @return true if capture started successfully
 bool BugpunchRing_Start(void);
@@ -85,37 +85,6 @@ void BugpunchRing_Finalize(void);
 /// begins so the crash handler can write a `video:<path>` line without any
 /// allocation. The returned pointer is a stable static C buffer.
 const char* BugpunchRing_GetRingPath(void);
-
-// ── Shared screen capture for the live WebRTC streamer ──
-//
-// ReplayKit allows exactly one in-app capture session per process, so the
-// recorder owns it and `BugpunchStreamer` rides along. Two concerns are
-// decoupled internally: "ring armed" (write encoded samples to the crash ring,
-// driven by BugpunchRing_Start/Stop) and "capture running" (ReplayKit session
-// live). Either a recording ring OR a streaming consumer keeps capture alive.
-// This mirrors Android, where BugpunchStreamer shares BugpunchRecorder's
-// MediaProjection without forcing the crash ring on.
-
-/// Per-frame sink invoked on the ReplayKit callback thread with each raw video
-/// `CMSampleBuffer` while capture is running, BEFORE the (optional) ring
-/// encode. The streamer wraps the sample's CVPixelBuffer into an RTCVideoFrame.
-/// `ctx` is the opaque pointer passed to BugpunchRing_SetVideoFrameSink.
-typedef void (*BugpunchVideoFrameSink)(void* ctx, CMSampleBufferRef sampleBuffer);
-
-/// Register (or clear, with NULL) the single video-frame sink. The recorder
-/// holds it weakly by value — the caller owns the lifetime of `ctx`.
-void BugpunchRing_SetVideoFrameSink(BugpunchVideoFrameSink sink, void* ctx);
-
-/// Ref-counted: ensure the ReplayKit capture session is running so the frame
-/// sink receives frames, even when the crash ring is NOT armed. May trigger the
-/// iOS screen-recording permission prompt on first use (acceptable for tester
-/// roles, mirrors Android's MediaProjection consent). Returns true if capture
-/// is (now) live. Balance every call with BugpunchRing_ReleaseStreamingCapture.
-bool BugpunchRing_AcquireStreamingCapture(void);
-
-/// Ref-counted release. When no streaming consumers remain AND the ring is not
-/// armed, the ReplayKit capture session is stopped.
-void BugpunchRing_ReleaseStreamingCapture(void);
 
 #ifdef __cplusplus
 }
