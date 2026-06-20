@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.102] - 2026-06-20
+
+### Changed
+- Fix dark Android video on the Vulkan capture path (bp_gpu_vk.c): the RT(sRGB)->AHB(R8G8B8A8_UNORM) vkCmdBlitImage decodes sRGB->linear and stores the darker linear values, which were then H.264-encoded raw. Re-encode linear->sRGB in the GL encoder-sink fragment shader (where the AHB is sampled into the MediaCodec input surface) so the stream is display-referred; the blit's linear-space scaling is retained. Android Vulkan path only — the GL ES path already passes through via GL_SKIP_DECODE_EXT, and iOS sRGB darkness was already handled.
+
+## [0.8.101] - 2026-06-20
+
+### Changed
+- Fix dark Android video on the Vulkan capture path (bp_gpu_vk.c): the RT(sRGB)->AHB(R8G8B8A8_UNORM) vkCmdBlitImage decodes sRGB->linear and stores the darker linear values, which were then H.264-encoded raw. Re-encode linear->sRGB in the GL encoder-sink fragment shader (where the AHB is sampled into the MediaCodec input surface) so the stream is display-referred; the blit's linear-space scaling is retained. Android Vulkan path only — the GL ES path already passes through via GL_SKIP_DECODE_EXT, and iOS sRGB darkness was already handled.
+
 ## [0.8.100] - 2026-06-20
 
 ### Changed
