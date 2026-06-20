@@ -83,6 +83,12 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
         float _nextMetadataTimeUnscaled;
         const float METADATA_INTERVAL_SECONDS = 0.1f;
 
+        // Cached yield instruction — the render loop yields every frame, so
+        // `yield return new WaitForEndOfFrame()` would allocate one object per
+        // frame for the whole stream. WaitForEndOfFrame is stateless, so a
+        // single shared instance is safe to reuse every iteration.
+        static readonly WaitForEndOfFrame s_waitForEndOfFrame = new WaitForEndOfFrame();
+
         // Game-side perf counters piggybacked on the metadata channel.
         ProfilerRecorder _drawCallsRecorder;
         ProfilerRecorder _batchesRecorder;
@@ -95,6 +101,13 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
         int _frameAccum;
         float _frameAccumStart;
         float _smoothedFps;
+
+        // Reused StringBuilder for the per-tick metadata JSON. The build runs
+        // single-threaded on the main thread (the render loop) — _peersLock
+        // guards only the fan-out send below, not the build — so a field is
+        // safe. Cleared at the top of each build. At 10 Hz while streaming this
+        // saves a 256-char buffer allocation per tick for the stream's life.
+        readonly System.Text.StringBuilder _metaSb = new System.Text.StringBuilder(256);
 
         // ── Thermal throttle ──
         // The live streamer caps fps + resolution under thermal pressure so it
@@ -653,7 +666,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             _frameAccumStart = Time.unscaledTime;
             while (_streaming && PeerCount() > 0)
             {
-                yield return new WaitForEndOfFrame();
+                yield return s_waitForEndOfFrame;
                 _frameAccum++;
                 if (_rt == null) continue;
 
@@ -716,32 +729,48 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                     long totalMem = _totalMemRecorder.Valid ? _totalMemRecorder.LastValue : -1L;
                     long gcMem = _gcMemRecorder.Valid ? _gcMemRecorder.LastValue : -1L;
 
-                    var sb = new System.Text.StringBuilder(256);
-                    sb.Append('{');
+                    // Build into the reused field buffer with chained
+                    // literal+value appends — the old `Append($"...{F(x)}...")`
+                    // shape materialised an interim composite string per field,
+                    // defeating the StringBuilder. FLOAT fields keep F() (which
+                    // formats invariant "F2") and append its string — DON'T
+                    // Append(float) directly, that uses the current culture and
+                    // would emit a comma decimal under a comma-decimal locale,
+                    // breaking the JSON. LONG/INT counters use Append(value)
+                    // directly: Append(long/int) is culture-invariant for
+                    // integers (no separators), so it's byte-identical.
+                    _metaSb.Clear();
+                    _metaSb.Append('{');
                     if (metaCam != null)
                     {
                         var ct = metaCam.transform;
                         var cp = ct.position;
                         var cr = ct.eulerAngles;
-                        sb.Append($"\"px\":{F(cp.x)},\"py\":{F(cp.y)},\"pz\":{F(cp.z)},\"rx\":{F(cr.x)},\"ry\":{F(cr.y)},\"rz\":{F(cr.z)},");
+                        _metaSb.Append("\"px\":").Append(F(cp.x))
+                               .Append(",\"py\":").Append(F(cp.y))
+                               .Append(",\"pz\":").Append(F(cp.z))
+                               .Append(",\"rx\":").Append(F(cr.x))
+                               .Append(",\"ry\":").Append(F(cr.y))
+                               .Append(",\"rz\":").Append(F(cr.z))
+                               .Append(',');
                     }
-                    sb.Append($"\"fps\":{F(_smoothedFps)},");
-                    if (dc >= 0) sb.Append($"\"dc\":{dc},");
-                    if (batches >= 0) sb.Append($"\"b\":{batches},");
-                    if (setpass >= 0) sb.Append($"\"sp\":{setpass},");
-                    if (tris >= 0) sb.Append($"\"tri\":{tris},");
-                    if (verts >= 0) sb.Append($"\"vrt\":{verts},");
-                    if (totalMem >= 0) sb.Append($"\"mem\":{totalMem},");
-                    if (gcMem >= 0) sb.Append($"\"gc\":{gcMem},");
+                    _metaSb.Append("\"fps\":").Append(F(_smoothedFps)).Append(',');
+                    if (dc >= 0) _metaSb.Append("\"dc\":").Append(dc).Append(',');
+                    if (batches >= 0) _metaSb.Append("\"b\":").Append(batches).Append(',');
+                    if (setpass >= 0) _metaSb.Append("\"sp\":").Append(setpass).Append(',');
+                    if (tris >= 0) _metaSb.Append("\"tri\":").Append(tris).Append(',');
+                    if (verts >= 0) _metaSb.Append("\"vrt\":").Append(verts).Append(',');
+                    if (totalMem >= 0) _metaSb.Append("\"mem\":").Append(totalMem).Append(',');
+                    if (gcMem >= 0) _metaSb.Append("\"gc\":").Append(gcMem).Append(',');
                     // Thermal tier + the fps cap it's currently forcing, so the
                     // dashboard HUD can show "throttled" the moment the device
                     // heats up (and confirm the throttle is actually engaging).
-                    sb.Append($"\"thrm\":{_thermalTier},");
-                    sb.Append($"\"tfps\":{EffectiveFps()},");
+                    _metaSb.Append("\"thrm\":").Append(_thermalTier).Append(',');
+                    _metaSb.Append("\"tfps\":").Append(EffectiveFps()).Append(',');
                     var touchJson = RequestRouter.GetLiveTouchesForStream(500);
-                    sb.Append(touchJson);
-                    sb.Append('}');
-                    var msg = sb.ToString();
+                    _metaSb.Append(touchJson);
+                    _metaSb.Append('}');
+                    var msg = _metaSb.ToString();
 
                     // Fan out to every peer's data channel that's open.
                     lock (_peersLock)

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.100] - 2026-06-20
+
+### Changed
+- Benchmark performance samples: native Android + iOS capture of server-requested 90s perf timelines at a uniform anchor (new BugpunchBenchmarkSampler on both lanes), armed via the gameConfig.perfSample anchor (scene / custom-data / stable-for) and a perfSample bootstrap token, uploaded as trigger='benchmark' perf events carrying a videoMeta timeline + screenshot.
+- Android perf memory now reports true process RSS (/proc/self/statm) instead of Dalvik/ART heap only — fixes Peak MB reading ~10x low vs iOS on IL2CPP Unity games.
+- Bundles other in-flight SDK source edits in the working tree.
+
+## [0.8.99] - 2026-06-20
+
+### Changed
+- Benchmark performance samples: native Android + iOS capture of server-requested 90s perf timelines at a uniform anchor (new BugpunchBenchmarkSampler on both lanes), armed via the gameConfig.perfSample anchor (scene / custom-data / stable-for) and a perfSample bootstrap token, uploaded as trigger='benchmark' perf events carrying a videoMeta timeline + screenshot.
+- Android perf memory now reports true process RSS (/proc/self/statm) instead of Dalvik/ART heap only — fixes Peak MB reading ~10x low vs iOS on IL2CPP Unity games.
+- Bundles other in-flight SDK source edits in the working tree.
+
 ## [0.8.98] - 2026-06-19
 
 ### Changed
