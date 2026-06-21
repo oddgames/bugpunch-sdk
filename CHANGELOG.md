@@ -11,15 +11,6 @@ All notable changes to this project will be documented in this file.
 - iOS: remove the per-poll [BP-DIAG] chat-state log in BugpunchPoller
 - Internal: workspace-wide comment cleanup across all lanes — drop change-history narration and obvious restatement comments
 
-## [0.8.103] - 2026-06-21
-
-### Changed
-- Stop per-frame/per-event log spam during touch input & streaming (flooded the shipped log and allocated GC each frame on drags)
-- C#: skip the per-move /input/pointer log; demote pointer-lifecycle (down/move/up/cancel) and per-ICE-candidate WebRTC signal logs to Debug
-- Android: remove per-RPC sendResponse and per-event sendEvent trace logs in BugpunchTunnel (logcat capture ships all levels, so these had to go, not just demote)
-- iOS: remove the per-poll [BP-DIAG] chat-state log in BugpunchPoller
-- Internal: workspace-wide comment cleanup across all lanes — drop change-history narration and obvious restatement comments
-
 ## [0.8.102] - 2026-06-20
 
 ### Changed
