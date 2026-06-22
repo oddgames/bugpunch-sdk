@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.105] - 2026-06-22
+
+### Changed
+- OOM / LOW_MEMORY kill diagnostics: poll headroom on every perf tick and, on an imminent kill (a recent CRITICAL/COMPLETE memory trim, or system headroom collapsing toward the LMK/jetsam threshold), keep the perf ramp warm and refresh an on-disk light memory snapshot on the fast cadence — so the uncatchable kill still ships a fresh "where did the memory go" breakdown. The AEI/crash synth now attaches that parked perf ramp + memory snapshot + the dead session's last-known scene to the OOM/LOW_MEMORY issue (fixes "No scene" grouping). C# folds in an engine asset-memory sweep (BugpunchMemoryMap — engine totals + per-category textures/meshes/materials/audio + heaviest assets) via a throttled native memory-pressure ping. Android + iOS + C#.
+- Method profiler: a woven build whose sites all stay under the 1 s capture floor (a light scene) now still emits its busiest few method rows, so an idle clip is no longer mistaken for an uninstrumented build — the Issue-detail Methods tab was wrongly reading "no method profiler" on quiet recordings. C#/managed lane; native just relays the row.
+- Credential sign-in: full-screen translucent sheet with its own dim backdrop so the profile picker no longer bleeds through the card edges, and a keyboard-inset ScrollView keeps Continue/Cancel reachable in landscape (was cut off above the soft keyboard). Android + iOS.
+- Quieter SDK-error reporting: transient transport conditions on the tunnel / poller — SocketException (incl. Conscrypt "Socket is closed") and nv-websocket protocol codes (server closed mid-handshake on a deploy / load-balancer cycle, peer EOF, socket read/write/connect failures) — no longer surface as SDK exceptions; they self-heal via reconnect and are already recorded in the tunnelDiagnostics frame. Genuine cert / proxy / hostname-verification errors still surface. Android.
+- App lifecycle: resumed-count-based active state for the render-freeze / GPU-hang gate, matching iOS BPAppLifecycle.isActive — an ad / IAP sheet / permission dialog / incoming call now correctly flips the app inactive. Android + iOS.
+
 ## [0.8.104] - 2026-06-21
 
 ### Changed

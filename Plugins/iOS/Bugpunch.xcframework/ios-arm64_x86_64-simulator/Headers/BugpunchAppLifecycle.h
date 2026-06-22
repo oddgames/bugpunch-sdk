@@ -24,6 +24,16 @@ typedef void(^BPLifecycleCallback)(void);
 /// didEnterBackground flips this off).
 - (BOOL)isForeground;
 
+/// True only while the app is foreground-ACTIVE (UIApplicationStateActive).
+/// Flips off on willResignActive — i.e. while a system modal / Control Center /
+/// app-switcher peek / incoming-call banner is up, and before didEnterBackground.
+/// Distinct from -isForeground, which stays YES through the inactive window.
+/// The render-freeze / GPU-hang classifier gates on THIS: CADisplayLink (and
+/// therefore present) legitimately pauses the instant the app goes inactive, so
+/// a stale present while merely inactive is not a hang. (Android's
+/// isForeground() is already resumed-count based and needs no separate flag.)
+- (BOOL)isActive;
+
 /// Subscribe to lifecycle transitions. Both callbacks are fired on the main
 /// queue. The current state is delivered immediately on subscribe so
 /// consumers don't have to peek.
