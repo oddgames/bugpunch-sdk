@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.106] - 2026-06-22
+
+### Changed
+- role-gated BugpunchLog on all 3 lanes: Bugpunch's own console/logcat output is silent for Public users (incl. errors); only Internal + External testers see [Bugpunch.*]. Central BugpunchLog wrapper (C# RoleState gate, Android Log.x->BugpunchLog, iOS NSLog->BPLOG); now a THREE_LANE_MIRRORS entry.
+
 ## [0.8.105] - 2026-06-22
 
 ### Changed
