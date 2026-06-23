@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.112] - 2026-06-24
+
+### Changed
+- broken_shader / gpu_hang reports now ride the standard full-data report path (screenshot, logs, perf timeline, touches, storyboard), server-budget-gated per fingerprint like crashes — no more bespoke metadata-only POST or material-swatch enrich; grouping fingerprint unchanged (matched line + graphicsDeviceType), shader name/class ride extraJson tags
+- Reports with no video still snapshot the 30 s perf/touch window leading up to them, so the data set no longer diverges by debug mode (only the MP4 is debug-gated)
+- iOS/Android: context "moment-before" screenshot now sourced from the always-on storyboard ring when not recording (mirrors existing Android behaviour)
+- Remote IDE: memory snapshot can render a downscaled PNG texture preview (GET /memory/preview?id=&max=) so QA can see a texture's contents; aspect-preserved, capped at maxDim, unsupported for cubemap/3D/array
+
+## [0.8.111] - 2026-06-24
+
+### Changed
+- broken_shader / gpu_hang reports now ride the standard full-data report path (screenshot, logs, perf timeline, touches, storyboard), server-budget-gated per fingerprint like crashes — no more bespoke metadata-only POST or material-swatch enrich; grouping fingerprint unchanged (matched line + graphicsDeviceType), shader name/class ride extraJson tags
+- Reports with no video still snapshot the 30 s perf/touch window leading up to them, so the data set no longer diverges by debug mode (only the MP4 is debug-gated)
+- iOS/Android: context "moment-before" screenshot now sourced from the always-on storyboard ring when not recording (mirrors existing Android behaviour)
+
 ## [0.8.110] - 2026-06-23
 
 ### Changed
