@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.109] - 2026-06-23
+
+### Changed
+- Crash reports now carry the Bugpunch SDK version. Native-drained crashes (OOM kill, native signal, ANR, GPU hang) and the C# managed-lane reporter were uploading no app-identity block, so the Issue Environment tab showed a blank SDK version. All lanes (Android drain, iOS drain, C# managed reporter) now attach sdkVersion/unityVersion/bundleId; the server also falls back to the device's last-registered sdk_version when a sample lacks the tag.
+
 ## [0.8.108] - 2026-06-23
 
 ### Changed

@@ -19,12 +19,15 @@
 //      while a debug tunnel is connected. (On iOS 17+ NSLog/os_log no longer
 //      write to stderr, so this is direct-printf only.)
 //   4. On-demand OSLogStore pull at report/snapshot time (`snapshotText`) —
-//      this is how reports & crashes get full os_log history (Apple-framework
-//      `os_log` lines the live producers don't carry), independent of debug
-//      mode. (Current-process scope only; can't recover a prior PID.) There
-//      is NO recurring OSLogStore poll — constructing an OSLogStore per second
-//      re-indexes the unified-log archive (a thermal anti-pattern) for a feed
-//      only a connected debug tunnel ever consumed.
+//      this is how reports & crashes get os_log history the live producers
+//      don't carry, independent of debug mode. (Current-process scope only;
+//      can't recover a prior PID.) FILTERED, not a raw dump: keeps the app's
+//      own / non-Apple lines plus `com.apple.*` Error/Fault lines, and caps the
+//      count — an unfiltered pull returns 10k–100k framework chatter lines that
+//      bury the game's own logs and bloat the upload. There is NO recurring
+//      OSLogStore poll — constructing an OSLogStore per second re-indexes the
+//      unified-log archive (a thermal anti-pattern) for a feed only a connected
+//      debug tunnel ever consumed.
 //   5. (Crash-only) the signal handler reads the ring atomically and
 //      write()s it to the crash report's `logs:` file via the C function
 //      `bp_logreader_dump_to_fd`.
