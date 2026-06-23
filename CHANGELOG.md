@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.108] - 2026-06-23
+
+### Changed
+- sdk(ios): Sign in with Apple entitlement reliably lands in the signed binary — re-assert CODE_SIGN_ENTITLEMENTS across all build configs and log the final entitlement keys, so a project stacked with competing iOS post-build hooks (GooglePlayGames/Firebase) can't leave the Release signature pointed at a file/config without com.apple.developer.applesignin (the cause of instant ASAuthorizationError 1000 / 'Continue with Apple' failing before any UI).
+
 ## [0.8.107] - 2026-06-23
 
 ### Changed
