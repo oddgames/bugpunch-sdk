@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.107] - 2026-06-23
+
+### Changed
+- Missing video/screenshot now surface as structured videoStatus/screenshotStatus the dashboard renders in place of the media, instead of uploading a *_unavailable.txt stub (Android + iOS)
+- Editor mapping.txt upload switched to presigned PUT-to-S3 (presign -> PUT -> record), avoiding a 50 MB round-trip through the API
+
 ## [0.8.106] - 2026-06-22
 
 ### Changed
