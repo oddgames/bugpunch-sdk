@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.110] - 2026-06-23
+
+### Changed
+- Goal HUD now surfaces one-shot observe goals. Previously the on-device 'next goal' toast only showed evaluator/step goals; a game built from inline Bugpunch.Goal(text, value) observe goals (the common pattern) gave the HUD nothing and it stayed blank. The declared-goal catalog is now baked into the build (Resources TextAsset) so the HUD shows the next not-yet-hit goal of any form, fully local. C#-only fix — all lanes (selection is C# on every lane; native renderers unchanged). Internal: iOS post-build hook moved out of Recorder/ and converted to IPostprocessBuildWithReport.
+
 ## [0.8.109] - 2026-06-23
 
 ### Changed
