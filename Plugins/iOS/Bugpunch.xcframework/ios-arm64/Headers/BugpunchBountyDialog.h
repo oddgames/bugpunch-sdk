@@ -65,6 +65,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// sub-label fallback + the range unit + the pinned body sentence.
 @property (nonatomic, copy, nullable) NSString* displayText;
 
+/// Named reward preset id (empty for the legacy default reward).
+@property (nonatomic, copy, nullable) NSString* typeId;
+/// Reward preset display name (shown as a small caption above the title).
+@property (nonatomic, copy, nullable) NSString* typeName;
+/// Optional hero image URL for the claim card (empty = none).
+@property (nonatomic, copy, nullable) NSString* imageUrl;
+/// YES = grant is authoritative server-side (webhook); NO = the game grants it
+/// directly in OnBountyEarned. Defaults NO.
+@property (nonatomic, assign) BOOL requireWebhook;
+
 /// True on the RESOLVE re-push — flips the card from "EARNED / pending" to
 /// "COMPLETED / VERIFIED · FIXED · REWARDED". Defaults NO.
 @property (nonatomic, assign) BOOL resolved;

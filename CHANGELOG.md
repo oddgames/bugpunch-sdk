@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.113] - 2026-06-24
+
+### Changed
+- Bug bounty named reward-type presets (client side, all 3 lanes): the claim popup now shows the reward type's hero image + type name, and OnBountyEarned forwards typeId/typeName/imageUrl/requireWebhook. requireWebhook=true means the server already granted via webhook (popup is informational); false means the game grants the reward itself in OnBountyEarned (dedupe on bountyId) — pairs with the server reward-types feature
+- Goal progress no longer accrues for public players: GoalReporter gates observe / evaluator / step / watch at the emit choke points and skips the evaluator poll, so the broad cohort emits no goal.observed and doesn't drive the server-side public goal pass. Re-checked each tick so a mid-session role change to tester resumes (C# only — game-side evaluators have no native lane)
+- Role-aware analytics flush cadence (Android + iOS): testers flush tight (15s) so QA sees dashboard reactions fast; public players flush on a 90s window to cut battery/radio/server load. Window read fresh each arm so a role change takes effect mid-session; size threshold + flush-on-background still bound latency/loss
+- iOS build: register Sign in with Apple as a target capability (ProjectCapabilityManager.AddSignInWithApple) in addition to the entitlements-file key, plus a build-time verify — fixes the entitlement being stripped from the signed binary under automatic signing against a stale profile (MTD ASAuthorizationError 1000)
+
 ## [0.8.112] - 2026-06-24
 
 ### Changed
