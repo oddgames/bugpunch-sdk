@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.115] - 2026-06-24
+
+### Changed
+- Fix PlayerPrefs enumeration in the Remote IDE — it returned nothing on Windows/macOS (Editor + Standalone) and on iOS. The runtime DLL's frozen #defines silently compiled out every desktop path; switched to runtime Application.platform dispatch. Windows now reads the registry via RegistryKey.OpenBaseKey (Unity Mono returns null for Registry.CurrentUser) and strips the correct decimal _h<hash> suffix.
+- PlayerPrefs on Android + iOS now enumerate natively from the canonical store — SharedPreferences.getAll() (BugpunchPlayerPrefs.java) and NSUserDefaults persistentDomainForName (BugpunchPlayerPrefs.mm) — instead of fragile XML parsing (Android) or nothing at all (iOS).
+- Add texture reference lookup to the Remote IDE Textures panel (/textures/references) with asset-index export support.
+- Siaqodb database plugin improvements.
+
+## [0.8.114] - 2026-06-24
+
+### Changed
+- Fix PlayerPrefs enumeration in the Remote IDE — it returned nothing on Windows/macOS (Editor + Standalone) and on iOS. The runtime DLL's frozen #defines silently compiled out every desktop path; switched to runtime Application.platform dispatch. Windows now reads the registry via RegistryKey.OpenBaseKey (Unity Mono returns null for Registry.CurrentUser) and strips the correct decimal _h<hash> suffix.
+- PlayerPrefs on Android + iOS now enumerate natively from the canonical store — SharedPreferences.getAll() (BugpunchPlayerPrefs.java) and NSUserDefaults persistentDomainForName (BugpunchPlayerPrefs.mm) — instead of fragile XML parsing (Android) or nothing at all (iOS).
+- Add texture reference lookup to the Remote IDE Textures panel (/textures/references) with asset-index export support.
+- Siaqodb database plugin improvements.
+
 ## [0.8.113] - 2026-06-24
 
 ### Changed
