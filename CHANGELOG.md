@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.117] - 2026-06-24
+
+### Changed
+- New fluent assertion Goal API (all lanes): Bugpunch.Goal("text").IsTrue(actual, whenMissed) / .IsFalse(...) / .Is(actual, expected, whenMissed) / .IsNot(actual, expected, whenMissed), with an optional .Priority()/.Instructions()/.Category() chain. The terminal fires UNCONDITIONALLY at the call site (no if-guard) carrying actual + expected; the SDK decides hit vs miss by equality (inverted for IsNot/IsFalse). Hit → server goal.observed + a confetti celebrate on the QA HUD; miss → the HUD shakes with the required whenMissed reason + a local QA log line (no server miss event). Deduped per call site by the actual value so an unguarded per-frame assertion is cheap
+- Replaces the old observe-on-reach Bugpunch.Goal(text, value) overload — reaching the line no longer IS the observation; you now state actual + expected and the SDK judges it
+- Goal HUD / top-banner redesign across all lanes (C# BugpunchGoalHud + BugpunchGoalBannerManaged, Android BugpunchGoalBanner, iOS BugpunchTopBanner): celebrate on hit, shake + reason toast on miss, expected-value hint, priority/category ordering
+- DebugToolsBridge: goal debug surface for the in-app tools menu
+- Goal signal stays QA-only — public players accrue no goal progress (assertion emit gated)
+
+## [0.8.116] - 2026-06-24
+
+### Changed
+- New fluent assertion Goal API (all lanes): Bugpunch.Goal("text").IsTrue(actual, whenMissed) / .IsFalse(...) / .Is(actual, expected, whenMissed) / .IsNot(actual, expected, whenMissed), with an optional .Priority()/.Instructions()/.Category() chain. The terminal fires UNCONDITIONALLY at the call site (no if-guard) carrying actual + expected; the SDK decides hit vs miss by equality (inverted for IsNot/IsFalse). Hit → server goal.observed + a confetti celebrate on the QA HUD; miss → the HUD shakes with the required whenMissed reason + a local QA log line (no server miss event). Deduped per call site by the actual value so an unguarded per-frame assertion is cheap
+- Replaces the old observe-on-reach Bugpunch.Goal(text, value) overload — reaching the line no longer IS the observation; you now state actual + expected and the SDK judges it
+- Goal HUD / top-banner redesign across all lanes (C# BugpunchGoalHud + BugpunchGoalBannerManaged, Android BugpunchGoalBanner, iOS BugpunchTopBanner): celebrate on hit, shake + reason toast on miss, expected-value hint, priority/category ordering
+- DebugToolsBridge: goal debug surface for the in-app tools menu
+- Goal signal stays QA-only — public players accrue no goal progress (assertion emit gated)
+
 ## [0.8.115] - 2026-06-24
 
 ### Changed
