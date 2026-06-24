@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.118] - 2026-06-24
+
+### Changed
+- Goal HUD: show the FULL pending-goal list — the build-time catalog scanner now captures fluent assertion goals (Bugpunch.Goal("x").IsTrue/.Is/.IsNot/.IsFalse), not just the observe/evaluator forms, so the on-device HUD lists every declared goal instead of collapsing to "1/1"
+- Goal HUD: editor (managed lane) re-bakes + force-reimports the goal catalog on entering play, so the in-editor HUD always has the complete list — a batch device-build writing the catalog from another Unity process no longer leaves the interactive editor's copy stale (empty catalog → 1/1)
+- Goal HUD: skip now advances to the next still-pending goal (wraps) instead of snapping back to the top
+- Goal HUD: internal/external testers receive a server-pushed goal list merged over the baked catalog (by id), so a tester on an older build still sees the current project goals
+
 ## [0.8.117] - 2026-06-24
 
 ### Changed
