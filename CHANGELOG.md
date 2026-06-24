@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.119] - 2026-06-24
+
+### Changed
+- Upload status pill (Android + iOS) now gates on a saved, valid tester profile instead of the sticky cached tester role. The keychain role state (role_state_v1) survives logout and reinstall, so at startup the native crash-drain would flash "Sending crash report…" off a stale role with nobody signed in. BugpunchUploader.publishStatus + the BugpunchRuntime upload observer (Android) and BPShouldShowBanner (iOS) now key off hasValidTesterProfile / Bugpunch_HasValidTesterProfile; public players and signed-out devices stay silent. Also skips the listFiles() queue walk for signed-out devices, not just public-role ones.
+
 ## [0.8.118] - 2026-06-24
 
 ### Changed
