@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.122] - 2026-06-25
+
+### Changed
+- Comment on a recent report instead of filing a duplicate: when an internal tester sends a bug report within 30s of a previous one, a chooser now lists the recent reports — each with a looping last-10s video preview (Android/iOS) or storyboard-frame screenshot (managed lane, which has no video ring) plus its description — so they can add a comment, carrying this fresh screenshot/video as a new occurrence, instead of raising a duplicate issue. New BugpunchRecentReports store + BugpunchReportChooser on all three lanes; reuses the existing issue-detail comment surface (pre-staged with the fresh capture) and the /api/v1/issues comment + comment-attachments endpoints. The uploader now parses the ingest issueId so the chooser can target the grouped issue.
+- Bundled: in-progress Goal HUD / banner, chat, and report-tunnel refinements.
+
 ## [0.8.121] - 2026-06-25
 
 ### Changed
