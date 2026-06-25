@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.121] - 2026-06-25
+
+### Changed
+- Remote IDE: non-internal devices (External/Public) in debug mode are now connectable — the tester approves the connection on-device (once per app run, persists across reconnects) and can revoke it via a "being debugged — tap to disconnect" chip; only Internal devices auto-connect. Fixes the 403 "Device not enrolled for remote debugging" that blocked every interactive IDE call (scenes, hierarchy, video, and live Run-a-script) on non-internal devices. All three lanes (C#, Android, iOS) plus server + dashboard.
+- Editor: the generated Bugpunch Resources artifacts (goal catalog, asset index, property drawers, tag list, inspector schema) are no longer written into the consumer project's tracked Assets/ tree on every Play — a build-time coordinator injects them in-memory for the editor and bakes them as real assets only at player build, removing the version-control noise.
+
+## [0.8.120] - 2026-06-25
+
+### Changed
+- Remote IDE: non-internal devices (External/Public) in debug mode are now connectable — the tester approves the connection on-device (once per app run, persists across reconnects) and can revoke it via a "being debugged — tap to disconnect" chip; only Internal devices auto-connect. Fixes the 403 "Device not enrolled for remote debugging" that blocked every interactive IDE call (scenes, hierarchy, video, and live Run-a-script) on non-internal devices. All three lanes (C#, Android, iOS) plus server + dashboard.
+- Editor: the generated Bugpunch Resources artifacts (goal catalog, asset index, property drawers, tag list, inspector schema) are no longer written into the consumer project's tracked Assets/ tree on every Play — a build-time coordinator injects them in-memory for the editor and bakes them as real assets only at player build, removing the version-control noise.
+
 ## [0.8.119] - 2026-06-24
 
 ### Changed
