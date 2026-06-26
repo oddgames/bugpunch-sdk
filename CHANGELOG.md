@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.123] - 2026-06-26
+
+### Changed
+- iOS OOM detection rebuilt to the industry-standard exclusion method (Facebook/Sentry watchdog-termination tracker) plus MetricKit MXAppExitMetric — replaces the >100MB unclean-exit heuristic that over-fired; a previous session is attributed a foreground OOM only after ruling out app upgrade, OS upgrade, device reboot, a real crash, normal termination, and background/force-quit kills
+- iOS: crashedLastRun crash sentinel (written async-signal-safely by the signal + Mach doors) so a real crash is never mis-counted as an OOM
+- iOS: link MetricKit.framework for the OS-authoritative memory-resource-limit exit counts
+- C#: BugpunchOomWatch promotes the engine soft-OOM allocator log to a grouped exception Issue on the managed lane (Standalone/Switch), where no OS exit-reason API exists
+- C#: centralize the bp.memMap fold at the single ReportBug choke; drop redundant per-callsite double-adds in BugpunchCrashHandler
+
 ## [0.8.122] - 2026-06-25
 
 ### Changed
