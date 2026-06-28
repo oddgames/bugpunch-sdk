@@ -2,26 +2,26 @@ fileFormatVersion: 2
 guid: 2c396de99f97433aac741d63bd484fd7
 PluginImporter:
   externalObjects: {}
-  serializedVersion: 2
+  serializedVersion: 3
   iconMap: {}
   executionOrder: {}
   defineConstraints: []
   isPreloaded: 0
-  isOverridable: 0
+  isOverridable: 1
   isExplicitlyReferenced: 0
   validateReferences: 1
   platformData:
-  - first:
-      Any:
-    second:
+    Any:
       enabled: 0
       settings: {}
-  - first:
-      Standalone: Win64
-    second:
+    Editor:
+      enabled: 0
+      settings:
+        DefaultValueInitialized: true
+    Win64:
       enabled: 1
       settings:
         CPU: x86_64
-  userData:
-  assetBundleName:
-  assetBundleVariant:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

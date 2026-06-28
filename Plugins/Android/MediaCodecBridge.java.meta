@@ -2,25 +2,25 @@ fileFormatVersion: 2
 guid: bdb7cf927e31a0d48bb57757c9bc491f
 PluginImporter:
   externalObjects: {}
-  serializedVersion: 2
+  serializedVersion: 3
   iconMap: {}
   executionOrder: {}
   defineConstraints: []
   isPreloaded: 0
-  isOverridable: 0
+  isOverridable: 1
   isExplicitlyReferenced: 0
   validateReferences: 1
   platformData:
-  - first:
-      Any:
-    second:
-      enabled: 0
-      settings: {}
-  - first:
-      Android: Android
-    second:
+    Android:
       enabled: 1
       settings: {}
-  userData:
-  assetBundleName:
-  assetBundleVariant:
+    Any:
+      enabled: 0
+      settings: {}
+    Editor:
+      enabled: 0
+      settings:
+        DefaultValueInitialized: true
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

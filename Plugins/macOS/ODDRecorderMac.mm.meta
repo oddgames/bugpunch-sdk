@@ -2,36 +2,38 @@ fileFormatVersion: 2
 guid: a0ac8194d7feb784598b40ff25e5b268
 PluginImporter:
   externalObjects: {}
-  serializedVersion: 2
+  serializedVersion: 3
   iconMap: {}
   executionOrder: {}
   defineConstraints: []
   isPreloaded: 0
-  isOverridable: 0
+  isOverridable: 1
   isExplicitlyReferenced: 0
   validateReferences: 1
   platformData:
-  - first:
-      Any:
-    second:
+    Android:
       enabled: 0
       settings: {}
-  - first:
-      Standalone: OSXUniversal
-    second:
+    Any:
+      enabled: 0
+      settings: {}
+    Editor:
+      enabled: 0
+      settings:
+        DefaultValueInitialized: true
+    OSXUniversal:
       enabled: 1
       settings:
         CPU: AnyCPU
-  - first:
-      iPhone: iOS
-    second:
-      enabled: 0
+    VisionOS:
+      enabled: 1
       settings: {}
-  - first:
-      Android: Android
-    second:
-      enabled: 0
+    iOS:
+      enabled: 1
       settings: {}
-  userData:
-  assetBundleName:
-  assetBundleVariant:
+    tvOS:
+      enabled: 1
+      settings: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

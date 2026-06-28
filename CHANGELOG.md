@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.124] - 2026-06-28
+
+### Changed
+- Unify issue reporting so crashes, native crashes, ANRs, OOM kills, exceptions and user reports all collect the same data set.
+- - Shared device/app env builder across the live report path and the next-launch crash drain (Android appendEnvBlocks, iOS BPAppendEnvBlocks) so a native crash/ANR/OOM carries byte-identical device/app metadata to a live exception.
+- - Game SetTag context recovered on hard crashes: tags parked into the crash-survivable perf sidecar and merged by the drain (Android + iOS); managed lane (Standalone/Switch) gains a SetTag store so its reports carry game tags too.
+- - Managed reporter aligned to the native field set: nested device + reporter blocks, scene-in-app.
+- - Storyboard screenshots gated to Mid+High memory tiers (low-tier devices collect everything else) and cleared on memory pressure to avoid contributing to an OOM; parked OOM evidence shot + memsnapshot + perf ramp preserved.
+- - OOM memory evidence: native signal handler stamps the parked memsnapshot path + a death-moment RSS footprint (async-signal-safe); managed lane parks a pressure-time memory snapshot for later OOM reports.
+
 ## [0.8.123] - 2026-06-26
 
 ### Changed
