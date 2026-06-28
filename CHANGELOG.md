@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.125] - 2026-06-28
+
+### Changed
+- Crash/report uploads survive cache eviction: the native upload queue now recreates its cache dir and retries once when a manifest write fails under storage pressure (cache evicted / disk full) instead of dropping the report — and no longer self-reports the storage failure as a per-project exception (the random manifest name defeated error dedup and the report's own upload re-entered the same failing path). Android + iOS.
+
 ## [0.8.124] - 2026-06-28
 
 ### Changed
