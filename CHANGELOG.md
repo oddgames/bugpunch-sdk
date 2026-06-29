@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.126] - 2026-06-29
+
+### Changed
+- Upload retries no longer hammer a slow server: the native upload queue caps a manifest at 2 attempts per app SESSION and defers the rest to a future launch, instead of re-POSTing the full payload on every drain (drain fires on every enqueue). Durability is unchanged — the persisted 10-attempt / 48h budget still governs permanent drop ACROSS sessions. Fixes one user report arriving as several duplicates when an overloaded server ingested it but didn't ack before the 60s client timeout. Android + iOS.
+- Reports carry the Memory tab: every live report — including manual user reports, not just crashes/OOM — now attaches the memory snapshot (native per-region PSS + OS-kill headroom plus the engine asset sweep), so the dashboard Memory tab renders for user reports; a fresh engine asset sweep is requested when the report form opens. Android + iOS.
+- Inbox triage state: player inbox items now show when each issue was raised and whether the team has reviewed it yet ("Seen by team" / "Awaiting review"). Android + iOS + Editor/Standalone.
+
 ## [0.8.125] - 2026-06-28
 
 ### Changed
