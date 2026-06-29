@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.127] - 2026-06-29
+
+### Changed
+- Fix iOS/Android crash symbolication: native crash handlers now capture app-bundle images (UnityFramework, libil2cpp, the main binary) before shared-cache system libraries in a two-pass module-table snapshot. dyld/load order could place UnityFramework after 1000+ system libs, so a >MAX_MODULES image count truncated it out of the report — game-code crash frames then mis-resolved to the nearest third-party framework (e.g. FBSDKCoreKit) and never symbolicated. App images are now always kept; only un-symbolicatable system images are ever dropped.
+
 ## [0.8.126] - 2026-06-29
 
 ### Changed
