@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.128] - 2026-06-29
+
+### Changed
+- iOS symbol upload: ship the llvm-nm .symtab sidecar (~15MB) instead of the full dSYM (~1GB). The Xcode build hook now runs the toolchain's llvm-nm locally and POSTs only the symbol table to the new /api/symbols/sidecar/upload endpoint, cutting symbol-upload bandwidth and server-side storage ~98%. The uploaded bytes are identical to the sidecar the server used to extract from the dSYM, so symbolication is unchanged. Requires server with the sidecar endpoint (shipped separately).
+
 ## [0.8.127] - 2026-06-29
 
 ### Changed
