@@ -1,0 +1,14 @@
+{
+    "name": "ODDGames.Scripting.Unity",
+    "rootNamespace": "ODDGames.Scripting.Unity",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
