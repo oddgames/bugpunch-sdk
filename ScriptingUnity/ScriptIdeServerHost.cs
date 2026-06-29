@@ -41,6 +41,10 @@ namespace ODDGames.Scripting.Unity
             public IList<IdeCommand> Commands;
             /// <summary>Runs a host command (requestJson → resultJson); see <see cref="IdeOptions.CommandHandler"/>.</summary>
             public Func<string, string> CommandHandler;
+            /// <summary>Types the API-reference panel documents via reflection (facade + injected/context types).</summary>
+            public IList<Type> ApiReferenceTypes;
+            /// <summary>Optional descriptions for the API reference, keyed by "Type"/"Type.Member".</summary>
+            public IDictionary<string, string> ApiReferenceDescriptions;
             /// <summary>Onboarding files (workspace-relative path → content) written only when absent.</summary>
             public IReadOnlyDictionary<string, string> SeedFiles;
         }
@@ -81,6 +85,8 @@ namespace ODDGames.Scripting.Unity
                 AttachHandler = o.AttachHandler,
                 Commands = o.Commands,
                 CommandHandler = o.CommandHandler,
+                ApiReferenceTypes = o.ApiReferenceTypes,
+                ApiReferenceDescriptions = o.ApiReferenceDescriptions,
             };
 
             _server = ScriptIde.Host(_workspace, options);
