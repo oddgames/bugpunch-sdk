@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.130] - 2026-06-29
+
+### Changed
+- Scripting Web IDE: full-fledged flex UI editor with live USS cascade
+- - Visual designer rebuilt on real flex/UXML parenting (drag-to-reorder/reparent, insertion caret) instead of absolute positioning
+- - USS now cascades end-to-end: live in the designer preview and applied at runtime (type/class/#name/descendant/child selectors, USS specificity, inline-wins)
+- - Pseudo-state support with a canvas preview toggle (hover/active/focus/checked/disabled); added text-shadow / transform / transition translation
+- - New pure-BCL UssCascade engine in the bundled ODDGames.Scripting DLL; class-chip + matched-rule style editing in the property panel
+
+## [0.8.129] - 2026-06-29
+
+### Changed
+- Scripting Web IDE: full-fledged flex UI editor with live USS cascade
+- - Visual designer rebuilt on real flex/UXML parenting (drag-to-reorder/reparent, insertion caret) instead of absolute positioning
+- - USS now cascades end-to-end: live in the designer preview and applied at runtime (type/class/#name/descendant/child selectors, USS specificity, inline-wins)
+- - Pseudo-state support with a canvas preview toggle (hover/active/focus/checked/disabled); added text-shadow / transform / transition translation
+- - New pure-BCL UssCascade engine in the bundled ODDGames.Scripting DLL; class-chip + matched-rule style editing in the property panel
+
 ## [0.8.128] - 2026-06-29
 
 ### Changed
