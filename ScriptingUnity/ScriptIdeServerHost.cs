@@ -37,6 +37,10 @@ namespace ODDGames.Scripting.Unity
             public IList<IdeEventDescriptor> EventCatalog;
             public Func<string> ObjectCatalogProvider;
             public Func<string, string> AttachHandler;
+            /// <summary>Host command buttons (e.g. "AI Generate") shown in the IDE toolbar.</summary>
+            public IList<IdeCommand> Commands;
+            /// <summary>Runs a host command (requestJson → resultJson); see <see cref="IdeOptions.CommandHandler"/>.</summary>
+            public Func<string, string> CommandHandler;
             /// <summary>Onboarding files (workspace-relative path → content) written only when absent.</summary>
             public IReadOnlyDictionary<string, string> SeedFiles;
         }
@@ -75,6 +79,8 @@ namespace ODDGames.Scripting.Unity
                 EventCatalog = o.EventCatalog,
                 ObjectCatalogProvider = o.ObjectCatalogProvider,
                 AttachHandler = o.AttachHandler,
+                Commands = o.Commands,
+                CommandHandler = o.CommandHandler,
             };
 
             _server = ScriptIde.Host(_workspace, options);
