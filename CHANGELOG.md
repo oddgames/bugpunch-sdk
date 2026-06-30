@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.135] - 2026-06-30
+
+### Changed
+- Scripting IDE: pluggable workspace persistence via IWorkspaceStore (FileWorkspaceStore default + DelegateWorkspaceStore) so each game saves/loads scripts + data its own way; per-level scoping via a level-scoped store; Workspace.Reload() for live level swap; IdeOptions.Store honored by ScriptIde.Host
+- Scripting IDE: restyled to Visual Studio - menu bar (File/Edit/View/Project/Build/Help), Solution Explorer on the right + Properties panel, Error List/Output/Console docked tabs with a clickable diagnostics grid, VS dark theme with the purple status bar
+- Scripting: cleaned leftover "mod" naming (LevelMods -> Level Scripts, ModUIPanel -> ScriptUIPanel, __Mod__ -> __Script__, stale ModData/ModUI doc refs)
+
 ## [0.8.134] - 2026-06-30
 
 ### Changed
