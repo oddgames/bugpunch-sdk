@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.139] - 2026-06-30
+
+### Changed
+- Register linked sessions on join + finish multiplayer→linked rename
+- - JoinLinkedSession now fires a linked_session.join analytics event, so the server
+-   registers the linked session the moment clients join a lobby — it shows during
+-   play without waiting for a crash/report
+- - Rename every remaining 'multiplayer' identifier to 'linked session' across all
+-   lanes (wire field linkedSessionId, native setLinkedSession/runtime fields, etc.)
+
 ## [0.8.138] - 2026-06-30
 
 ### Changed
