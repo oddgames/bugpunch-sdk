@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.144] - 2026-07-01
+
+### Changed
+- Add Bugpunch.SessionId — a per-run session id (fresh each app launch / Play Mode entry, available at RuntimeInitializeOnLoad) stamped on every report and the linked-session registration. The run identity that lets the server tell one match from the stale one that reused the same linked-session key (managed lane; device lanes already carry session_root_id).
+
 ## [0.8.143] - 2026-06-30
 
 ### Changed
