@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.140] - 2026-06-30
+
+### Changed
+- Register linked sessions on the managed lane (Editor+Standalone)
+- - The managed lane has no native analytics uploader, so JoinLinkedSession's
+-   linked_session.join event was a no-op there — desktop/standalone clients never
+-   registered a linked session at join. Now POST it to /api/v1/analytics/events
+-   directly (reusing the managed reporter's apiKey/baseUrl) so they do.
+
 ## [0.8.139] - 2026-06-30
 
 ### Changed
