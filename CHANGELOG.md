@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.138] - 2026-06-30
+
+### Changed
+- Rename multiplayer-session API to linked-session (not multiplayer-specific)
+- - Bugpunch.JoinLinkedSession / SetLinkedSessionTag / LeaveLinkedSession replace the
+-   JoinMultiplayerSession trio (clean rename, no obsolete aliases). Same cross-client
+-   log/issue correlation — now named for any shared session (co-op, party, world, match)
+
 ## [0.8.137] - 2026-06-30
 
 ### Changed
