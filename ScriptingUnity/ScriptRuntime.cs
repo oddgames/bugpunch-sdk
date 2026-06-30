@@ -6,12 +6,12 @@ using UnityEngine;
 namespace ODDGames.Scripting.Unity
 {
     /// <summary>
-    /// Reusable Unity driver for the engine-agnostic <see cref="ModManager"/>. A hidden MonoBehaviour that:
+    /// Reusable Unity driver for the engine-agnostic <see cref="ScriptBehaviourManager"/>. A hidden MonoBehaviour that:
     /// ticks every registered script each frame (gated by a host "is playing" predicate, so scripts run only
     /// while the game is in its play state), marshals background-thread work — e.g. the IDE's attach
     /// handler — onto the Unity main thread, and fans game events out to scripts.
     ///
-    /// <para>A host game creates one with <see cref="Create"/>, passing its <see cref="IModObjectHost"/>
+    /// <para>A host game creates one with <see cref="Create"/>, passing its <see cref="IScriptObjectHost"/>
     /// (object listing + attach for the IDE), compile options, the injected-field preamble
     /// (<see cref="UnityScriptConventions.InjectedFields"/>), and an is-playing gate. Scripted objects then
     /// register themselves and route their Unity callbacks through here. Everything Unity-specific but
@@ -19,12 +19,12 @@ namespace ODDGames.Scripting.Unity
     /// </summary>
     public sealed class ScriptRuntime : MonoBehaviour
     {
-        private ModManager _manager;
+        private ScriptBehaviourManager _manager;
         private Func<bool> _isPlaying;
         private readonly ConcurrentQueue<Action> _mainThreadWork = new ConcurrentQueue<Action>();
 
         /// <summary>The underlying engine-agnostic manager (for hosts that need the IDE catalog/attach hooks).</summary>
-        public ModManager Manager => _manager;
+        public ScriptBehaviourManager Manager => _manager;
 
         /// <summary>
         /// Spin up the runtime. <paramref name="host"/> supplies the IDE Objects-tab listing/attach;
@@ -32,13 +32,13 @@ namespace ODDGames.Scripting.Unity
         /// <see cref="UnityScriptConventions.InjectedFields"/>); <paramref name="isPlaying"/> gates per-frame
         /// ticking (null → always tick).
         /// </summary>
-        public static ScriptRuntime Create(IModObjectHost host, ScriptCompileOptions options, string injectedFields,
+        public static ScriptRuntime Create(IScriptObjectHost host, ScriptCompileOptions options, string injectedFields,
                                            Func<bool> isPlaying = null, Action<string, string> log = null)
         {
             var go = new GameObject("~ScriptRuntime") { hideFlags = HideFlags.HideAndDontSave };
             DontDestroyOnLoad(go);
             var rt = go.AddComponent<ScriptRuntime>();
-            rt._manager = new ModManager(options, host, injectedFields, log ?? DefaultLog);
+            rt._manager = new ScriptBehaviourManager(options, host, injectedFields, log ?? DefaultLog);
             rt._isPlaying = isPlaying ?? (() => true);
             return rt;
         }

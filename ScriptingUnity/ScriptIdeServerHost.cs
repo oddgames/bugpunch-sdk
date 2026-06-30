@@ -45,6 +45,8 @@ namespace ODDGames.Scripting.Unity
             public IList<Type> ApiReferenceTypes;
             /// <summary>Optional descriptions for the API reference, keyed by "Type"/"Type.Member".</summary>
             public IDictionary<string, string> ApiReferenceDescriptions;
+            /// <summary>Optional code examples for the API reference, keyed by "Type"/"Type.Member".</summary>
+            public IDictionary<string, string> ApiReferenceExamples;
             /// <summary>Onboarding files (workspace-relative path → content) written only when absent.</summary>
             public IReadOnlyDictionary<string, string> SeedFiles;
         }
@@ -87,6 +89,7 @@ namespace ODDGames.Scripting.Unity
                 CommandHandler = o.CommandHandler,
                 ApiReferenceTypes = o.ApiReferenceTypes,
                 ApiReferenceDescriptions = o.ApiReferenceDescriptions,
+                ApiReferenceExamples = o.ApiReferenceExamples,
             };
 
             _server = ScriptIde.Host(_workspace, options);

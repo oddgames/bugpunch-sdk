@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.131] - 2026-06-30
+
+### Changed
+- perf(scripting): pool VM instances + reuse locals frame — per-frame Update() drops from ~8KB to ~200 bytes/call
+- perf(scripting): route iterator MoveNext, async builder, operator fallbacks and lambdas through the VM pool (no new VM() per call)
+- perf(scripting): cache ParameterInfo[] per method — kills the per-host-call array clone
+- refactor(scripting): rename modding API to ScriptBehaviour* (ScriptMod->ScriptBehaviour, ModHost->ScriptBehaviourHost, ModManager->ScriptBehaviourManager, IModObjectHost->IScriptObjectHost); synthetic wrapper class Mod->Script
+- scripting engine: async lowering, emitter, parser and ScriptHost fast-path invoker work
+
 ## [0.8.130] - 2026-06-29
 
 ### Changed
