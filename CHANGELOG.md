@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.137] - 2026-06-30
+
+### Changed
+- Multiplayer session correlation — tie every client in a match into one joint session
+- - New public API: Bugpunch.JoinMultiplayerSession(matchId, info) / SetMultiplayerTag / LeaveMultiplayerSession
+- - Game-supplied match id + per-client tags (role=host, team, name) stamped on every report/crash on all lanes (C#, Android, iOS) and on the next-launch crash drain
+- - Server correlates occurrences/logs by match id; new Multiplayer Sessions dashboard with a merged, clock-aligned joint log, in-log issue markers, and a one-click Share-to-AI brief
+
+## [0.8.136] - 2026-06-30
+
+### Changed
+- Multiplayer session correlation — tie every client in a match into one joint session
+- - New public API: Bugpunch.JoinMultiplayerSession(matchId, info) / SetMultiplayerTag / LeaveMultiplayerSession
+- - Game-supplied match id + per-client tags (role=host, team, name) stamped on every report/crash on all lanes (C#, Android, iOS) and on the next-launch crash drain
+- - Server correlates occurrences/logs by match id; new Multiplayer Sessions dashboard with a merged, clock-aligned joint log, in-log issue markers, and a one-click Share-to-AI brief
+
 ## [0.8.135] - 2026-06-30
 
 ### Changed
