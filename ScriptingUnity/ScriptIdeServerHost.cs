@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -134,25 +135,89 @@ namespace ODDGames.Scripting.Unity
 
         // ── helpers ──
 
-        /// <summary>Best-effort LAN IPv4 of this machine, for the "connect from another device" URL.</summary>
-        public static string LanIp()
+        /// <summary>
+        /// All usable LAN IPv4 addresses of this machine, best candidate first, for the "connect from another
+        /// device" URL. A real Wi-Fi/Ethernet interface (one that owns a default gateway) ranks above virtual
+        /// adapters (VirtualBox / Hyper-V / WSL / VMware / VPN), whose addresses a phone on the same Wi-Fi can't
+        /// reach — picking the first interface blindly (the old behaviour) often returned exactly such a dead
+        /// address. Loopback, APIPA (169.254.x), carrier-grade-NAT (100.64–127.x) and tunnel interfaces are dropped.
+        /// </summary>
+        public static IReadOnlyList<string> LanIps()
         {
+            var ranked = new List<KeyValuePair<int, string>>();
             try
             {
                 foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
                 {
                     if (ni.OperationalStatus != OperationalStatus.Up) continue;
-                    if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
-                    foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                    var type = ni.NetworkInterfaceType;
+                    if (type == NetworkInterfaceType.Loopback || type == NetworkInterfaceType.Tunnel) continue;
+
+                    IPInterfaceProperties props;
+                    try { props = ni.GetIPProperties(); }
+                    catch { continue; }
+
+                    bool hasGateway = false;
+                    try
+                    {
+                        foreach (var g in props.GatewayAddresses)
+                            if (g?.Address != null && g.Address.AddressFamily == AddressFamily.InterNetwork
+                                && !g.Address.Equals(IPAddress.Any)) { hasGateway = true; break; }
+                    }
+                    catch { /* gateway query unsupported on some platforms */ }
+
+                    bool virtualAdapter = IsVirtualAdapter(ni.Name + " " + ni.Description);
+
+                    foreach (var ua in props.UnicastAddresses)
                     {
                         var a = ua.Address;
-                        if (a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a))
-                            return a.ToString();
+                        if (a.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(a)) continue;
+                        var b = a.GetAddressBytes();
+                        if (b[0] == 169 && b[1] == 254) continue;               // APIPA link-local (no DHCP)
+                        if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) continue; // CGNAT (Tailscale / carrier)
+
+                        int score = 0;
+                        if (hasGateway) score += 100;                            // a real route off this machine
+                        if (type == NetworkInterfaceType.Wireless80211) score += 20;
+                        else if (type == NetworkInterfaceType.Ethernet) score += 18;
+                        if (IsPrivateV4(b)) score += 10;                         // RFC1918 over a routable public IP
+                        if (virtualAdapter) score -= 60;
+
+                        ranked.Add(new KeyValuePair<int, string>(score, a.ToString()));
                     }
                 }
             }
             catch { /* some platforms restrict interface enumeration */ }
-            return null;
+
+            return ranked
+                .GroupBy(p => p.Value)
+                .Select(g => new KeyValuePair<int, string>(g.Max(p => p.Key), g.Key))
+                .OrderByDescending(p => p.Key)
+                .Select(p => p.Value)
+                .ToList();
+        }
+
+        /// <summary>Best-effort single LAN IPv4 (the top-ranked of <see cref="LanIps"/>), or null.</summary>
+        public static string LanIp()
+        {
+            var all = LanIps();
+            return all.Count > 0 ? all[0] : null;
+        }
+
+        private static bool IsPrivateV4(byte[] b)
+            => b[0] == 10
+            || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+            || (b[0] == 192 && b[1] == 168);
+
+        private static bool IsVirtualAdapter(string label)
+        {
+            if (string.IsNullOrEmpty(label)) return false;
+            label = label.ToLowerInvariant();
+            return label.Contains("virtual") || label.Contains("vmware") || label.Contains("vbox")
+                || label.Contains("hyper-v") || label.Contains("vethernet") || label.Contains("wsl")
+                || label.Contains("docker") || label.Contains("tailscale") || label.Contains("zerotier")
+                || label.Contains("tap-") || label.Contains("npcap") || label.Contains("pseudo")
+                || label.Contains("bluetooth") || label.Contains("vpn") || label.Contains("loopback");
         }
 
         private void OnUnityLog(string condition, string stackTrace, LogType type)
