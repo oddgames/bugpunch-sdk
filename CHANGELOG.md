@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.143] - 2026-06-30
+
+### Changed
+- DeviceIdentity: distinct deviceId for two local instances on one PC (ParrelSync host+joiner multiplayer testing). ParrelSync junctions Assets so Application.dataPath resolves to the same path for the original + clone, collapsing both into one client. Editor now keys the id off the launch -projectPath (the real, un-junctioned clone root, e.g. UnityProj_MTD_clone_0); standalone salts deviceUniqueIdentifier with the install folder so two local builds in different folders stay distinct too. Managed lane only.
+
+## [0.8.142] - 2026-06-30
+
+### Changed
+- DeviceIdentity: distinct deviceId for two local instances on one PC (ParrelSync host+joiner multiplayer testing). ParrelSync junctions Assets so Application.dataPath resolves to the same path for the original + clone, collapsing both into one client. Editor now keys the id off the launch -projectPath (the real, un-junctioned clone root, e.g. UnityProj_MTD_clone_0); standalone salts deviceUniqueIdentifier with the install folder so two local builds in different folders stay distinct too. Managed lane only.
+
 ## [0.8.141] - 2026-06-30
 
 ### Changed
