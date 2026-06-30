@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.132] - 2026-06-30
+
+### Changed
+- Null-pointer-call crashes (pc=lr=fp=0, empty frame walk) now recover their caller chain. The Android signal handler captures the fault-time stack snapshot via a fault-safe pipe fallback when the OS denies /proc/self/mem (observed on hardened ROMs, e.g. an Android 15 build on the Nexus 5X), so the server's stack-scan unwinder always has fuel; the server now also adopts those scan frames when the on-device walk found nothing, and the empty-stack note distinguishes a null PC from a truncated report.
+- Crash-survivable memMap is now parked on scene change, so a later crash carries the Memory tab even with no debugger attached and no prior memory pressure (Android + iOS + C#).
+
 ## [0.8.131] - 2026-06-30
 
 ### Changed
