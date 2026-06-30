@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.141] - 2026-06-30
+
+### Changed
+- Editor: register linked sessions in the Unity Editor (managed lane). RegisterLinkedSession no longer early-outs on Application.isEditor, so in-Editor / ParrelSync / Standalone multiplayer playtests group into one linked session (the common case for local MP testing). Mirrors: managed lane only — native Android/iOS analytics already upload on device.
+
 ## [0.8.140] - 2026-06-30
 
 ### Changed
