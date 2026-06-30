@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.134] - 2026-06-30
+
+### Changed
+- fix(android): route exception/report forward through raw JNI so it bypasses Unity's reflection method-id cache (com.unity3d.player.Q), which NPE'd on cold reportBug resolution mid-teardown — ate a real game exception and filed an [SDK] hashCode self-error in its place (issue eaac28d1). Pre-warm the report-path JNI handles on the main thread in Start so an off-thread / mid-storm forward never resolves cold.
+
+## [0.8.133] - 2026-06-30
+
+### Changed
+- fix(android): route exception/report forward through raw JNI so it bypasses Unity's reflection method-id cache (com.unity3d.player.Q), which NPE'd on cold reportBug resolution mid-teardown — ate a real game exception and filed an [SDK] hashCode self-error in its place (issue eaac28d1). Pre-warm the report-path JNI handles on the main thread in Start so an off-thread / mid-storm forward never resolves cold.
+
 ## [0.8.132] - 2026-06-30
 
 ### Changed
