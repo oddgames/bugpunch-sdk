@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.145] - 2026-07-01
+
+### Changed
+- Log session is per-launch: stop rotating it on focus-blur / background-resume so a run stays ONE continuous log session. Fixes clients whose logs split across a root + tiny resume children and went missing in the merged / linked-session viewer (which resolves a client to a single session file). C# ConsoleService mints once at load; Android logs/crashes/reports stamp the launch-stable root while sSessionId keeps rotating for ANALYTICS only; iOS BugpunchTunnel gSessionId no longer rotates (analytics gAnalyticsSessionId still does). Analytics session boundaries unchanged.
+
 ## [0.8.144] - 2026-07-01
 
 ### Changed
