@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.147] - 2026-07-01
+
+### Changed
+- iOS report/exception screenshots now capture GPU-first (Unity's rendered frame straight off the Metal drawable) instead of drawViewHierarchyInRect - fixes an EXC_BAD_ACCESS that could crash the host game during capture (e.g. inside an ad view's ImageIO decode); JPEG encode moved off the main and render threads; screenshots capped at 720px long side on iOS and Android
+- Tester crash-review: on the launch after a crash, internal/external testers review each pending crash (screenshot + details) and can add steps-to-reproduce before it uploads; public players still upload silently (iOS + Android)
+
+## [0.8.146] - 2026-07-01
+
+### Changed
+- iOS report/exception screenshots now capture GPU-first (Unity's rendered frame straight off the Metal drawable) instead of drawViewHierarchyInRect - fixes an EXC_BAD_ACCESS that could crash the host game during capture (e.g. inside an ad view's ImageIO decode); JPEG encode moved off the main and render threads; screenshots capped at 720px long side on iOS and Android
+- Tester crash-review: on the launch after a crash, internal/external testers review each pending crash (screenshot + details) and can add steps-to-reproduce before it uploads; public players still upload silently (iOS + Android)
+
 ## [0.8.145] - 2026-07-01
 
 ### Changed
