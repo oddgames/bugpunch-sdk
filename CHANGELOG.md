@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.149] - 2026-07-02
+
+### Changed
+- iOS: Mach exception handler is now deadlock-proof (sdk#76) - the report path uses the same async-signal-safe fd writers as the signal handler (no NSLog/NSString/malloc/log-reader lock while the faulting thread is suspended), the at-crash screenshot rides the bounded helper-thread capture, and handler breadcrumbs go to stderr via write(2) so they still reach the log session. Field failure: EXC_BAD_ACCESS logged one line then wedged - no report, no next-launch review popup, nothing server-side.
+
 ## [0.8.148] - 2026-07-02
 
 ### Changed
