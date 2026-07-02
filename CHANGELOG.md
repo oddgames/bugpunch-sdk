@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.152] - 2026-07-02
+
+### Changed
+- iOS: remove every UIKit drawViewHierarchyInRect capture path (report/exception shots, storyboard press frames, dead ANR precapture) — hierarchy draws force-decode third-party ad UIImageViews via ImageIO/vImage and SIGSEGV the host game; GPU one-shot is now the only live capture, falling back to the newest storyboard ring frame, with an async watchdog so callers always hear back when no present arrives
+- iOS: Metal present-hook swizzle is now retryable — lazy re-init from CaptureOneShot/StartGpuCapture (the concrete CAMetalDrawable class can be realized after SDK boot) plus a guard so a re-init can never capture our own swizzled IMP as the original
+
+## [0.8.151] - 2026-07-02
+
+### Changed
+- iOS: remove every UIKit drawViewHierarchyInRect capture path (report/exception shots, storyboard press frames, dead ANR precapture) — hierarchy draws force-decode third-party ad UIImageViews via ImageIO/vImage and SIGSEGV the host game; GPU one-shot is now the only live capture, falling back to the newest storyboard ring frame, with an async watchdog so callers always hear back when no present arrives
+- iOS: Metal present-hook swizzle is now retryable — lazy re-init from CaptureOneShot/StartGpuCapture (the concrete CAMetalDrawable class can be realized after SDK boot) plus a guard so a re-init can never capture our own swizzled IMP as the original
+
 ## [0.8.150] - 2026-07-02
 
 ### Changed
