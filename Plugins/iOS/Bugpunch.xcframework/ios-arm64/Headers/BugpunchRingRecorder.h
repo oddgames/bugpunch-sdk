@@ -66,6 +66,11 @@ int BugpunchRing_GetVideoWidth(void);
 /// Encoded video frame height in pixels.
 int BugpunchRing_GetVideoHeight(void);
 
+/// Configured rolling-window length in seconds (0 until BugpunchRing_Configure
+/// runs). The perf sidecar bounds its touch slice to this window — anything
+/// older can never align with recovered footage.
+int BugpunchRing_GetWindowSeconds(void);
+
 // ── Crash-survivable on-disk ring (mirrors Android bp_video.c) ──
 //
 // While recording, every VideoToolbox-encoded sample is also appended to an

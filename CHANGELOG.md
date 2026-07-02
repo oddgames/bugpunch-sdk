@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.148] - 2026-07-02
+
+### Changed
+- Efficiency pass + video-ring hardening + native audio path (all lanes)
+- - Thermal governor now actually throttles the recorder on both lanes: iOS governor fps reaches capture pacing (Bugpunch_SetGpuCapturePace); Android governor gains its first listener - live AMediaCodec bitrate retarget + OnGpuCapturePace to the C# pacer; thermal seed read synchronously
+- - pauseRing now pauses VIDEO natively (bp_video.c pause flag + C# blit stop via OnGpuCapturePause); iOS gains full UI-pause parity (report/chat/feedback/inbox/annotate/tools no longer overwrite pre-incident footage)
+- - Ring "latest footage" invariant hardened: Android codec-death/init/EGL-loss failures now disarm + surface videoStatus (init_error/encoder_error); iOS bounds session-recreate retries + fails start on ring-init failure; disk-full SIGBUS fixed on both lanes (posix_fallocate/F_PREALLOCATE with halving retry - recording survives a full disk with a smaller window); Android teardown use-after-munmap race closed
+- - Fully-native recording audio (sdk#79): C# tap pushes PCM via one P/Invoke from the audio DSP thread on BOTH lanes; Android encodes AAC in bp_audio.c (NDK) into the crash ring - Java audio chain deleted; iOS ring-audio capture path implemented (AAC into v2 audio sub-stream; remux track pending sdk#69)
+- - Audio tap now exists only while recording (was always-on for every user incl. Public)
+- - Perf events: role-aware cadence (testers 60s / Public 300s), batched array POST, client timestamp field; iOS watermark/memMap park writes mirrored to Android's delta-skip throttle
+- - iOS: capture pool bounded under encoder backpressure + MaxFrameDelayCount + MaximizePowerEfficiency; sidecar touch export drops the 2MB JSON parse round-trip; per-log-line tunnel encode gated
+- - Android: device-side mp4 faststart pass removed (server faststarts at ingest, sdk#78); GOP 2s + best-effort codec priority; /proc + binder polling slowed; uploader manifest-scan cache; analytics buffer O(1) eviction
+- - C#/IDE: screenshots via AsyncGPUReadback + worker-thread JPEG; WebRTC stats-report leak fixed; WebRTC.Update pump + desktop capture stop with the last viewer; chat poll incremental (?since=) with adaptive cadence; ConsoleService byte budget; RoleState TTL cache
+
 ## [0.8.147] - 2026-07-01
 
 ### Changed

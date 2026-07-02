@@ -225,9 +225,10 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             _reqMaxEdge = Mathf.Clamp(Mathf.Max(width, height), 160, _tierMaxEdge);
             _fps = Mathf.Clamp(fps, 1, 60);
             RecomputeDimensions();
-
-            if (_webrtcUpdateCoroutine == null)
-                _webrtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
+            // The WebRTC.Update() operation pump is NOT started here — it costs a
+            // native libwebrtc call every frame, and with eager init this
+            // component exists from tunnel connect. HandleOffer starts it for the
+            // first peer; it stops when the last peer closes.
         }
 
         static int ComputeMaxLongEdge()
@@ -350,10 +351,6 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
 
         IEnumerator HandleOffer(string sessionId, string sdpJson, Action<string> onAnswer, Action<string> onError)
         {
-            // Wait one frame to let WebRTC.Update() coroutine initialize
-            // (critical when Initialize() and HandleOffer run in the same frame)
-            yield return null;
-
             BugpunchLog.Info("WebRTCStreamer", $"HandleOffer sid={sessionId} sdpLen={sdpJson?.Length ?? 0}");
             float deadline = Time.realtimeSinceStartup + 30f;
 
@@ -377,6 +374,17 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             // tab reloaded with the same sessionId — shouldn't happen with
             // randomUUID, but guard), tear it down first.
             ClosePeer(sessionId);
+
+            // (Re)start the WebRTC.Update() operation pump — it only runs while
+            // peers are alive (last-peer close stops it, including the stale
+            // ClosePeer just above), and SetRemoteDescription / CreateAnswer
+            // below only resolve while it ticks. Give it one frame to spin up
+            // before creating the peer connection.
+            if (_webrtcUpdateCoroutine == null)
+            {
+                _webrtcUpdateCoroutine = StartCoroutine(WebRTC.Update());
+                yield return null;
+            }
 
             var session = new PeerSession { SessionId = sessionId };
 
@@ -691,11 +699,28 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                     }
                 }
 
+                // Skip metadata + blit while no peer is Connected — peers that
+                // are still negotiating (or stale) would otherwise burn the
+                // 10 Hz JSON build, 7 ProfilerRecorder reads and the JNI touch
+                // fetch with nobody able to receive any of it.
+                bool anyConnected = false;
+                lock (_peersLock)
+                {
+                    foreach (var s in _peers.Values)
+                    {
+                        if (s.Pc != null && s.Pc.ConnectionState == RTCPeerConnectionState.Connected)
+                        {
+                            anyConnected = true;
+                            break;
+                        }
+                    }
+                }
+                if (!anyConnected) continue;
+
                 if (now >= _nextMetadataTimeUnscaled)
                 {
                     _nextMetadataTimeUnscaled = Mathf.Max(_nextMetadataTimeUnscaled + METADATA_INTERVAL_SECONDS, now);
                     var metaCam = _targetCamera ? _targetCamera : Camera.main;
-                    string F(float v) => v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
                     float dtAccum = now - _frameAccumStart;
                     if (dtAccum > 0f && _frameAccum > 0)
@@ -730,10 +755,10 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                     long gcMem = _gcMemRecorder.Valid ? _gcMemRecorder.LastValue : -1L;
 
                     // Build into the reused field buffer with chained
-                    // literal+value appends — the old `Append($"...{F(x)}...")`
+                    // literal+value appends — the old `Append($"...")`
                     // shape materialised an interim composite string per field,
-                    // defeating the StringBuilder. FLOAT fields keep F() (which
-                    // formats invariant "F2") and append its string — DON'T
+                    // defeating the StringBuilder. FLOAT fields go through
+                    // BugpunchJson.AppendFixed (invariant "F2") — DON'T
                     // Append(float) directly, that uses the current culture and
                     // would emit a comma decimal under a comma-decimal locale,
                     // breaking the JSON. LONG/INT counters use Append(value)
@@ -746,15 +771,15 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                         var ct = metaCam.transform;
                         var cp = ct.position;
                         var cr = ct.eulerAngles;
-                        _metaSb.Append("\"px\":").Append(F(cp.x))
-                               .Append(",\"py\":").Append(F(cp.y))
-                               .Append(",\"pz\":").Append(F(cp.z))
-                               .Append(",\"rx\":").Append(F(cr.x))
-                               .Append(",\"ry\":").Append(F(cr.y))
-                               .Append(",\"rz\":").Append(F(cr.z))
-                               .Append(',');
+                        _metaSb.Append("\"px\":"); BugpunchJson.AppendFixed(_metaSb, cp.x, 2);
+                        _metaSb.Append(",\"py\":"); BugpunchJson.AppendFixed(_metaSb, cp.y, 2);
+                        _metaSb.Append(",\"pz\":"); BugpunchJson.AppendFixed(_metaSb, cp.z, 2);
+                        _metaSb.Append(",\"rx\":"); BugpunchJson.AppendFixed(_metaSb, cr.x, 2);
+                        _metaSb.Append(",\"ry\":"); BugpunchJson.AppendFixed(_metaSb, cr.y, 2);
+                        _metaSb.Append(",\"rz\":"); BugpunchJson.AppendFixed(_metaSb, cr.z, 2);
+                        _metaSb.Append(',');
                     }
-                    _metaSb.Append("\"fps\":").Append(F(_smoothedFps)).Append(',');
+                    _metaSb.Append("\"fps\":"); BugpunchJson.AppendFixed(_metaSb, _smoothedFps, 2); _metaSb.Append(',');
                     if (dc >= 0) _metaSb.Append("\"dc\":").Append(dc).Append(',');
                     if (batches >= 0) _metaSb.Append("\"b\":").Append(batches).Append(',');
                     if (setpass >= 0) _metaSb.Append("\"sp\":").Append(setpass).Append(',');
@@ -785,21 +810,6 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                         }
                     }
                 }
-
-                // Skip blit when no peer is in Connected state.
-                bool anyConnected = false;
-                lock (_peersLock)
-                {
-                    foreach (var s in _peers.Values)
-                    {
-                        if (s.Pc != null && s.Pc.ConnectionState == RTCPeerConnectionState.Connected)
-                        {
-                            anyConnected = true;
-                            break;
-                        }
-                    }
-                }
-                if (!anyConnected) continue;
 
                 if (now < _nextBlitTimeUnscaled) continue;
                 float blitInterval = 1f / Mathf.Max(1, EffectiveFps());
@@ -878,6 +888,10 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                         else if (s is RTCInboundRTPStreamStats rin && rin.kind == "video")
                             packetsLost = (ulong)rin.packetsLost;
                     }
+                    // RTCStatsReport wraps native memory and is never collected
+                    // by the GC — undisposed reports are a known Unity.WebRTC
+                    // leak at one report per peer per ABR tick.
+                    report.Dispose();
 
                     if (packetsSent == 0 || packetsSent <= session.AbrLastPacketsSent)
                     {
@@ -998,8 +1012,29 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                 _streaming = false;
                 // Last viewer gone — resume perf FPS sampling.
                 BugpunchNative.SetPerfInstrumented("stream", false);
+                StopStreamLoops();
                 CleanupRenderTexture();
                 StopPerfRecorders();
+            }
+        }
+
+        /// <summary>
+        /// Stop the render/ABR loops and the WebRTC.Update() operation pump —
+        /// idle peers-gone state must not keep a per-frame native libwebrtc
+        /// call alive. The loops are stopped BEFORE the pump: the ABR loop can
+        /// be parked on a GetStats yield that only completes while the pump
+        /// ticks; killing the pump first would strand that coroutine (it never
+        /// resumes, never nulls _abrLoop, and blocks the next stream's
+        /// restart guard).
+        /// </summary>
+        void StopStreamLoops()
+        {
+            if (_abrLoop != null) { StopCoroutine(_abrLoop); _abrLoop = null; }
+            if (_renderLoop != null) { StopCoroutine(_renderLoop); _renderLoop = null; }
+            if (_webrtcUpdateCoroutine != null)
+            {
+                StopCoroutine(_webrtcUpdateCoroutine);
+                _webrtcUpdateCoroutine = null;
             }
         }
 
@@ -1011,6 +1046,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             List<string> ids;
             lock (_peersLock) { ids = new List<string>(_peers.Keys); }
             foreach (var id in ids) ClosePeer(id);
+            StopStreamLoops();
             CleanupRenderTexture();
             StopPerfRecorders();
             BugpunchLog.Info("WebRTCStreamer", "WebRTC: streaming stopped (all peers closed)");
@@ -1062,11 +1098,6 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
         void OnDestroy()
         {
             if (_applicationQuitting) return; // skip cleanup during app quit
-            if (_webrtcUpdateCoroutine != null)
-            {
-                StopCoroutine(_webrtcUpdateCoroutine);
-                _webrtcUpdateCoroutine = null;
-            }
             StopStreaming();
         }
 

@@ -17,6 +17,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __OBJC__
+#import <Foundation/Foundation.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -54,14 +58,19 @@ void BugpunchTouch_GetCaptureSize(int* outWidth, int* outHeight);
 /// Caller frees with BugpunchTouch_FreeJson.
 const char* BugpunchTouch_GetLiveTouches(int trailMs);
 
-/// Raw absolute-stamped dump of the ENTIRE touch ring for the crash-survivable
-/// perf/touch sidecar. Unlike SnapshotJson this neither windows nor rebases —
-/// every event carries its absolute host-time stamp (seconds since boot, the
-/// same clock as the video ring PTS) so the next-launch crash drain can rebase
-/// it to the recovered video's t=0. JSON:
+#ifdef __OBJC__
+/// Absolute-stamped touch slice for the crash-survivable perf/touch sidecar,
+/// as a ready-to-serialize object graph (the sidecar writer folds it into its
+/// own JSON — no intermediate string, no parse round-trip). Unlike SnapshotJson
+/// this does NOT rebase — every event carries its absolute host-time stamp
+/// (seconds since boot, the same clock as the video ring PTS) so the
+/// next-launch crash drain can rebase against the recovered video's window.
+/// Only events at or after `sinceHostTime` are included (pass the ring window's
+/// start — older events can never align with recovered footage). Shape:
 /// {"w":<px>,"h":<px>,"events":[[hostSec,id,"phase",x,y],...]}
-/// Caller frees with BugpunchTouch_FreeJson. NULL when the ring is empty.
-const char* BugpunchTouch_RawForSidecar(void);
+/// nil when no events are in range.
+NSDictionary* BugpunchTouch_SidecarSnapshot(double sinceHostTime);
+#endif
 
 #ifdef __cplusplus
 }

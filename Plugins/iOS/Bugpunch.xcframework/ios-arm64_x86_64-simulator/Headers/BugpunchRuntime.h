@@ -82,10 +82,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// known reason so the upload manifest can surface a placeholder
 /// card on the dashboard instead of a silent miss. Cleared on
 /// successful recorder start. Mirrors `BugpunchRuntime.setVideoStatus`
-/// on Android. `videoStatus` is one of: "declined" (user dismissed
-/// ReplayKit permission), "init_error" (compression session /
-/// startCapture failed). `videoStatusMessage` is a human-readable
-/// summary.
+/// on Android; the tokens are shared cross-lane vocabulary. iOS sets:
+/// "init_error" (compression session / GPU capture / ring init failed),
+/// "encoder_error" (VT session died mid-session and couldn't be
+/// recreated), "disk_full" (volume couldn't fit even the ring's 1 MB
+/// floor). `videoStatusMessage` is a human-readable summary.
 @property (nonatomic, copy, nullable) NSString* videoStatus;
 @property (nonatomic, copy, nullable) NSString* videoStatusMessage;
 
