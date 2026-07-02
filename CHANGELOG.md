@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.150] - 2026-07-02
+
+### Changed
+- Tester crash review actually engages (both lanes): the hold + stepper now key on a locally SAVED internal/external profile (hasValidTesterProfile) as well as the cached role - the role event rides the tunnel and lands AFTER the boot drain, so the cached role alone raced to "public" and internal testers got silent uploads with no review popup. iOS stepper present now retries until a UIWindow exists (tier-1 kicked it pre-window and gave up) plus a tier-2 Unity-time re-kick; held manifests auto-release after 24h unreviewed on both lanes so review can never delay a crash forever - delivery is never gated on review.
+
 ## [0.8.149] - 2026-07-02
 
 ### Changed
