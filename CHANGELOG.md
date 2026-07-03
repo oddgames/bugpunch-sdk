@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.154] - 2026-07-03
+
+### Changed
+- Android GPU crash-frame retain (completes the option-A native side; the C# driver shipped inert in v0.8.153). Tester-gated ~4Hz blit of the last composited frame into a persistent CPU-mappable AHardwareBuffer, read to CPU ONLY at crash — no PixelCopy, no continuous readback. GLES (bp_gpu.c): isolated shared EGL context + EGLImage-backed FBO ring, glFinish-published double buffer. Vulkan (bp_gpu_vk.c): CPU-readable AHB ring blitted on Unity's command buffer, HOST_READ barrier, safeFrameNumber-gated publish (FIRST CUT, mirrors the video Vulkan path's on-device-verify status). bp.c crash-shot helper now prefers the retain dump (AHardwareBuffer_lock on the pre-spawned helper thread) and emits frame_format:rgba8888/frame_w/frame_h; falls back to one-shot PixelCopy when no retain frame exists. C# BugpunchCrashRetain pushes 540-capped AHB dims and arms both native lanes. Fail-safe: any retain failure falls back to PixelCopy — never worse than before.
+
 ## [0.8.153] - 2026-07-03
 
 ### Changed
