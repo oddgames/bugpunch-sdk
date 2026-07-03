@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.153] - 2026-07-03
+
+### Changed
+- Remove the storyboard feature entirely (per-UI-press frame ring + its crash/context screenshot fallback) from all lanes + the bp.c NDK signal handler — cuts device capture cost, the latent large-iPad full-res risk, and the per-press GPU/PixelCopy work. Context/"moment before" and idle-crash screenshots now come from the recording frame or the at-crash GPU grab only.
+- iOS: tester-gated ~4Hz crash-frame retain — the Metal present hook keeps the latest presented frame as a GPU IOSurface (read to CPU only at crash), so a tester's crash/ANR/idle report still carries a screenshot without the storyboard ring. Public players never arm it.
+- Android: C# GPU crash-frame retain driver (CaptureScreenshotIntoRenderTexture at 4Hz -> EVENT_RETAIN, tester-gated, skips while recording; no PixelCopy). The native AHardwareBuffer handler (bp_gpu.c GLES + bp_gpu_vk.c Vulkan + signal-handler read) is a follow-up, so the driver is inert until it lands.
+- Engine-allocator OOM: live-detect Unity "Could not allocate memory: System out of memory!" on all lanes, parse the [ALLOC_*] Memory overview into a fresh memMap, classify it distinct from a jetsam kill, and stand down the next-launch OOM heuristic so the same death isn't double-filed.
+- iOS Metal NotPermitted: tag app foreground/background state on the error line, fingerprint background GPU submissions apart from real in-frame command-buffer faults (background_gpu_work), and refuse the SDK's own one-shot capture while backgrounded.
+- SDK UI nav breadcrumbs: write [Bugpunch][UI] open/close/push/pop into the captured log ring on all three lanes so a "froze when I opened chat" report shows which SDK surface was up.
+- iOS capture: drop the one-shot GPU grab when the MPS scaler is unavailable instead of silently storing a full-resolution frame (a large-iPad memory floor).
+
 ## [0.8.152] - 2026-07-02
 
 ### Changed
