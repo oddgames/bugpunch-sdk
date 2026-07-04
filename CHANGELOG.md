@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.155] - 2026-07-04
+
+### Changed
+- Fix: game-data attachment-rule files silently dropped from native crashes/ANRs (Android + iOS). The crash drain runs in a fresh next-launch process and read attachment rules only from the in-memory config, so any rule registered at RUNTIME via Bugpunch.AddAttachmentRule (which died with the crashed process) was absent — the drain never advertised attach_<name> in phase-1 attachmentsAvailable, so the server never invited the files (server-side ingest was fine). Now: C# pushes the effective rule set to native on AddAttachmentRule (BugpunchNative.PushAttachmentRules); native persists it to disk (BugpunchRuntime.updateAttachmentRules/persistAttachmentRules on Android, Bugpunch_UpdateAttachmentRules on iOS); and the crash drain reads the union of the live config + the persisted snapshot (getDrainAttachmentRules / BPEffectiveAttachmentRules). Persist happens only on rule updates + server merge, never at startup, so a fresh launch never clobbers the crashed session's runtime rules before the drain reads them. Manual reports + live exceptions were unaffected (they run in the live session). Fail-safe: any persistence miss falls back to prior behaviour. Regression traced to the v0.8.124 reporting unification.
+
 ## [0.8.154] - 2026-07-03
 
 ### Changed
