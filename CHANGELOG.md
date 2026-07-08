@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.158] - 2026-07-08
+
+### Changed
+- iOS: background-GPU (Metal NotPermitted) reports now carry the submitting thread's backtrace (bp.gpuSubmitStack) — captured at command-buffer creation while backgrounded, dladdr-formatted for symbolication, to pinpoint the offending game submission
+
+## [0.8.157] - 2026-07-08
+
+### Changed
+- iOS: background-GPU (Metal NotPermitted) reports now carry the submitting thread's backtrace (bp.gpuSubmitStack) — captured at command-buffer creation while backgrounded, dladdr-formatted for symbolication, to pinpoint the offending game submission
+
+## [0.8.156] - 2026-07-08
+
+### Changed
+- iOS: background-GPU (Metal NotPermitted) reports now carry the submitting thread's backtrace (bp.gpuSubmitStack) — captured at command-buffer creation while backgrounded, dladdr-formatted for symbolication, to pinpoint the offending game submission
+
 ## [0.8.155] - 2026-07-04
 
 ### Changed
