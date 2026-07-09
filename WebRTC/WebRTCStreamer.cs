@@ -233,10 +233,9 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
 
         static int ComputeMaxLongEdge()
         {
-            int memMB = SystemInfo.systemMemorySize;
-            int cpus = SystemInfo.processorCount;
-            if (memMB >= 6144 && cpus >= 6) return 1440;
-            if (memMB >= 3072 && cpus >= 4) return 1080;
+            // Long-edge ceiling for the live Remote IDE stream, capped at 720 on
+            // every tier so the live view matches the 720 crash recording. Encode
+            // cost scales with pixels×fps; a debug stream doesn't need native res.
             return 720;
         }
 

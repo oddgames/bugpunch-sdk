@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.159] - 2026-07-09
+
+### Changed
+- iOS: SIGABRT-class crashes (abort/assert/IL2CPP-fatal) now carry a stack_mem blob via a pre-spawned helper thread, so the server CFI unwinder recovers deep stacks the FP walk couldn't
+- iOS: survivable crash-report ordering — module table, registers, and stack memory written before ---STACK--- so a truncated report still carries the server-CFI evidence
+- iOS: ANR/stall reports capture every thread (---ALL_THREADS---), letting the server relocate the wedged render/GL worker on GPU hangs; main-thread frames still mirrored under ---STACK---
+- iOS: evict the highest-address system module slot for a late-loaded app image (dlopen'd ad/analytics/IAP framework) when the module table is full, so its frames symbolicate instead of nearest-matching the wrong image
+- iOS: symbol upload subtracts the __TEXT vmaddr so sidecar addresses are image-offset relative — fixes main-executable frames being looked up 4 GB too low and resolving to the wrong symbol
+- iOS + Android: frame-pointer unwind rejects a wild/stale fp below the stack pointer, preventing a garbage caller frame that nearest-matched the wrong module
+- iOS: GPU capture pool trimmed to 3 buffers (~13 MB lower peak footprint), dropping a frame under encoder stall rather than growing the pool
+- iOS + Android: live Remote IDE stream long-edge cap 1080 → 720 to match the recording and cut encode cost
+
 ## [0.8.158] - 2026-07-08
 
 ### Changed
