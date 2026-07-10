@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.163] - 2026-07-10
+
+### Changed
+- sdk(ios): stop ANR watchdog OSLogStore scrape crashing the host game during full-screen ads (SIGSEGV inside Apple's OSLog entry decode, seen on iPadOS 26.5 beta)
+- sdk(ios): gate render-freeze/GPU-hang classification on UnityIsPaused — a deliberately paused player loop (AdMob full-screen ads, pause menus, profile picker) is an expected freeze, not a hang
+- sdk(ios): gpu_hang now requires the hang-class Metal command-buffer error signal; reports carry metal_error name+code (replaces the scraped ioaf_code)
+
 ## [0.8.162] - 2026-07-10
 
 ### Changed
