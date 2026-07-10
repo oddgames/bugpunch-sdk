@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.161] - 2026-07-10
+
+### Changed
+- Android: fix feedback attach redirecting to 'Ask For Help' — the capture pill's return path now preserves the host Inbox tab, so attaching a screenshot/recording returns to the Request-A-Feature composer instead of resetting to the Ask tab
+- New Bugpunch.RequestFeature() C# API — opens the Request-A-Feature board directly (one tap, skips the 3-button help picker); public players are login-gated first, testers go straight in. Native-owned on Android + iOS, managed UIToolkit inbox on Editor + Standalone
+
 ## [0.8.160] - 2026-07-10
 
 ### Changed
