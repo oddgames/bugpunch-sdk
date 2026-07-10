@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.160] - 2026-07-10
+
+### Changed
+- Multi-lane stability & performance: crash drain improvements, upload queue resilience, ANR watchdog hardening, performance monitoring enhancements, Remote IDE console service improvements
+
 ## [0.8.159] - 2026-07-09
 
 ### Changed

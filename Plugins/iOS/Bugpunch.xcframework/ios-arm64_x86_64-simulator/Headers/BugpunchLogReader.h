@@ -101,6 +101,13 @@ long bp_logreader_fill_bytes(void);
 // Lifetime byte counter — diagnostics only.
 long bp_logreader_total_bytes(void);
 
+// Saved ORIGINAL console stderr fd (pre-dup2), or -1 when fd capture isn't
+// installed. Crash-handler breadcrumbs write here: after installFdCapture,
+// STDERR_FILENO points at the SDK's own capture pipe, whose drain thread can
+// be wedged by the very crash being handled — a full pipe would block the
+// handler forever. AS-safe: plain read of an int set once at install.
+int bp_logreader_orig_stderr_fd(void);
+
 // Implemented in BugpunchTunnel.mm. Declared here so BPLogReader can tee
 // live log lines to the live-report tunnel without re-declaring it inline.
 void Bugpunch_TunnelEnqueueLogLine(const char* _Nonnull line);
