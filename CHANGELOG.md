@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.162] - 2026-07-10
+
+### Changed
+- Feature board: admin-curated tags — choose on create, coloured chips, tappable filter chips under the search bar
+- Feature board: filter to My Requests; larger row thumbnails; upvote moved to the right in the detail view
+- Feature board: show the poster's in-game name on posts and comments
+- Feature board: comment count shown on each post
+- Create form: title (first line) is kept distinct from the description, plus an optional details note
+- Chat: allow sending a photo with no text (updated composer hint)
+- Inbox: higher-contrast back button and spacing before the Ask For Help tab
+- Android: fix screenshot/recording attach dropping the user back to Ask For Help
+
 ## [0.8.161] - 2026-07-10
 
 ### Changed
