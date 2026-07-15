@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.164] - 2026-07-15
+
+### Changed
+- Shrink report uploads so video reports stop timing out on slow links: crash/bug-report video window trimmed 90s→45s and bitrate 2.5→2.0 Mbps (≈2.5x smaller, quality preserved at the ≤720 short-edge game-capture clamp), and the log part is now gzipped on upload (~10x smaller logs) across Android, iOS and the managed lane — the server sniffs the gzip magic and inflates
+
 ## [0.8.163] - 2026-07-10
 
 ### Changed
