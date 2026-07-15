@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.165] - 2026-07-15
+
+### Changed
+- Fix managed-lane report crash 'get_frameCount can only be called from the main thread': Async.ToMainThread now runs its frame-wait inside the main-thread post (never off-thread), so a report forwarded from a background thread no longer throws inside DelayFrames; DelayFrames also gains a guard that degrades to a single yield if ever entered off the main thread
+
 ## [0.8.164] - 2026-07-15
 
 ### Changed
