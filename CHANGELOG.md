@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.166] - 2026-07-16
+
+### Changed
+- Add "Request a Feature" entry to the debug pill overflow menu on all lanes (iOS/Android/managed) — opens the standalone feedback board directly, sidestepping the inbox-embedded Feature tab
+- Editor Debug Tools: faster load + render — narrow the reflection scan to Bugpunch-referencing assemblies, and patch a single tool row on result instead of re-rendering the whole list
+
 ## [0.8.165] - 2026-07-15
 
 ### Changed
