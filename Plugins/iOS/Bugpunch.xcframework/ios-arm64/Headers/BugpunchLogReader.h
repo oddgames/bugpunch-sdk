@@ -101,6 +101,14 @@ long bp_logreader_fill_bytes(void);
 // Lifetime byte counter — diagnostics only.
 long bp_logreader_total_bytes(void);
 
+// Stream the newest `maxBytes` of the live ring (0 = whole live window) into
+// an open zlib gzFile (passed as void* so zlib stays out of this header) in
+// fixed 256 KB chunks — no ring-sized intermediate allocation on the report
+// path. Returns bytes written, 0 for an empty ring, -1 on error. NOT
+// async-signal-safe (gzwrite mallocs); signal handlers keep using
+// bp_logreader_dump_to_fd.
+long bp_logreader_write_tail_gz(void* _Nonnull gzfile, long maxBytes);
+
 // Saved ORIGINAL console stderr fd (pre-dup2), or -1 when fd capture isn't
 // installed. Crash-handler breadcrumbs write here: after installFdCapture,
 // STDERR_FILENO points at the SDK's own capture pipe, whose drain thread can

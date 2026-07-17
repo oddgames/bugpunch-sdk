@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.168] - 2026-07-17
+
+### Changed
+- logs: reports attach the ENTIRE session — 16 MB log rings on all lanes (was 1 MB ring windowed to 500 KB start + 500 KB tail, ~one video's worth at typical rates)
+- logs: report path streams the ring into gzip in 256 KB chunks (no ring-sized allocations — safe on soft-OOM reports); crash drains gzip their log dumps before upload
+- logs(ios): prev-session ring drain is header-driven — a leftover 1 MB ring file from a pre-update session can no longer SIGBUS after the capacity bump
+- logs(managed): ConsoleService ring 5000 entries / 4 MB → 40000 / 16 MB so Editor/Standalone/Switch reports match the mobile lanes
+- perf(ios): memMap itemises CoreAnimation / image-decode / WebKit buckets and names heavy VM tags inside privateOther, so jetsam-ceiling footprints get attribution
+
+## [0.8.167] - 2026-07-17
+
+### Changed
+- logs: reports attach the ENTIRE session — 16 MB log rings on all lanes (was 1 MB ring windowed to 500 KB start + 500 KB tail, ~one video's worth at typical rates)
+- logs: report path streams the ring into gzip in 256 KB chunks (no ring-sized allocations — safe on soft-OOM reports); crash drains gzip their log dumps before upload
+- logs(ios): prev-session ring drain is header-driven — a leftover 1 MB ring file from a pre-update session can no longer SIGBUS after the capacity bump
+- logs(managed): ConsoleService ring 5000 entries / 4 MB → 40000 / 16 MB so Editor/Standalone/Switch reports match the mobile lanes
+- perf(ios): memMap itemises CoreAnimation / image-decode / WebKit buckets and names heavy VM tags inside privateOther, so jetsam-ceiling footprints get attribution
+
 ## [0.8.166] - 2026-07-16
 
 ### Changed
