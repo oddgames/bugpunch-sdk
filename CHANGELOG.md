@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.170] - 2026-07-21
+
+### Changed
+- sdk: support chat game state + file pulls — new gamestate request kind (scene, SetTag/SetContext state, linked accounts, declared files), Bugpunch.AddChatFile(label, path), and file requests now upload the whole file (≤25MB) into the chat as a download chip
+- sdk: SetTag now mirrors into the C# store on every lane (was managed-only) so chat/managed readers see game tags on device
+- sdk: every report carries diskFreeMB/diskTotalMB (Android StatFs, iOS ImportantUsage capacity, managed DriveInfo) — makes disk-full write failures diagnosable
+- sdk: staging writers (HierarchyAttachment, ContextObjectCapture, AttachmentRuleRunner) surface the real create-failure reason instead of a downstream DirectoryNotFoundException
+- sdk: Editor uploads manual reports + feedback; auto error events stay Editor-suppressed
+
+## [0.8.169] - 2026-07-21
+
+### Changed
+- sdk: support chat game state + file pulls — new gamestate request kind (scene, SetTag/SetContext state, linked accounts, declared files), Bugpunch.AddChatFile(label, path), and file requests now upload the whole file (≤25MB) into the chat as a download chip
+- sdk: SetTag now mirrors into the C# store on every lane (was managed-only) so chat/managed readers see game tags on device
+- sdk: every report carries diskFreeMB/diskTotalMB (Android StatFs, iOS ImportantUsage capacity, managed DriveInfo) — makes disk-full write failures diagnosable
+- sdk: staging writers (HierarchyAttachment, ContextObjectCapture, AttachmentRuleRunner) surface the real create-failure reason instead of a downstream DirectoryNotFoundException
+- sdk: Editor uploads manual reports + feedback; auto error events stay Editor-suppressed
+
 ## [0.8.168] - 2026-07-17
 
 ### Changed
