@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.171] - 2026-07-21
+
+### Changed
+- sdk: player report-context rides along with each chat message — identity + linked accounts, custom data (SetTag/SetContext), and the report attachment-rule files (glob-expanded) attach to the chat send on every lane (C#/Java/iOS); the server stores it on the thread and the dashboard shows it in the chat panel
+- sdk: revert the separate chat data/file concept from v0.8.170 — AddChatFile and the gamestate request kind are removed; files support can pull are the existing AddAttachmentRule allow-list, pulled via the existing file request
+
 ## [0.8.170] - 2026-07-21
 
 ### Changed
