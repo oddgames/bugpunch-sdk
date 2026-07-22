@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.173] - 2026-07-22
+
+### Changed
+- fix(ios): native crashes with a stray NUL byte no longer upload frameless — Bugpunch_ReadCrashFile read the .crash report via strlen, truncating at the first NUL (before ---STACK---), so the server skipped symbolication and ~7% of iOS native crashes landed with no symbols. Now copies the full UTF-8 length and strips embedded NULs so the stack survives and symbolication runs. Android/C# already NUL-safe (length-based string reads).
+- bundled in-flight: F12 scene-hierarchy attachment (HierarchyAttachment), Editor quick-task dialog/hotkey/runner, iOS symbol-upload hook, build-stamp refresh.
+
+## [0.8.172] - 2026-07-21
+
+### Changed
+- iOS symbol upload: guarantee UnityFramework.dSYM is generated so iOS crashes symbolicate. The build hook now forces DEBUG_INFORMATION_FORMAT=dwarf-with-dsym on the UnityFramework target (Unity leaves it on plain 'dwarf', so no dSYM was produced and only the near-useless app-shell + FBSDK dSYMs uploaded — every iOS crash came back as raw UnityFramework+0x…). Added a dsymutil Run-Script fallback that rebuilds UnityFramework.dSYM from the linked binary if it's still missing at archive time, plus a loud warning when the UnityFramework Xcode target can't be resolved.
+
 ## [0.8.171] - 2026-07-21
 
 ### Changed

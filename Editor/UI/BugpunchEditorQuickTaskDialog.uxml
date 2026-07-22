@@ -32,15 +32,43 @@
 
             </engine:VisualElement>
 
-            <!-- RIGHT COLUMN: brand + description + actions -->
+            <!-- RIGHT COLUMN: brand + fields + status + actions -->
             <engine:VisualElement class="bp-right">
 
                 <engine:Label text="Bug Punch" class="bp-brand" />
 
-                <engine:VisualElement class="bp-description-wrapper">
-                    <engine:TextField name="bp-description" multiline="true" class="bp-description" />
-                    <engine:Label name="bp-description-placeholder" text="Describe the problem" class="bp-description__placeholder" />
+                <!-- Title -->
+                <engine:VisualElement class="bp-field">
+                    <engine:Label text="Title" class="bp-field__label" />
+                    <engine:VisualElement class="bp-input-wrapper">
+                        <engine:TextField name="bp-title" class="bp-title" />
+                        <engine:Label name="bp-title-placeholder" text="Short summary (optional — we'll draft one otherwise)" class="bp-input__placeholder" picking-mode="Ignore" />
+                    </engine:VisualElement>
                 </engine:VisualElement>
+
+                <!-- Severity (pills built in C#) -->
+                <engine:VisualElement class="bp-field">
+                    <engine:Label text="Severity" class="bp-field__label" />
+                    <engine:VisualElement name="bp-severity-row" class="bp-pill-row" />
+                </engine:VisualElement>
+
+                <!-- Repro rate (pills built in C#) -->
+                <engine:VisualElement class="bp-field">
+                    <engine:Label text="How often does it happen?" class="bp-field__label" />
+                    <engine:VisualElement name="bp-repro-row" class="bp-pill-row" />
+                </engine:VisualElement>
+
+                <!-- Description (grows to fill) -->
+                <engine:VisualElement class="bp-field bp-field--grow">
+                    <engine:Label text="Description" class="bp-field__label" />
+                    <engine:VisualElement class="bp-description-wrapper">
+                        <engine:TextField name="bp-description" multiline="true" class="bp-description" />
+                        <engine:Label name="bp-description-placeholder" text="What happened, and what did you expect?" class="bp-description__placeholder" picking-mode="Ignore" />
+                    </engine:VisualElement>
+                </engine:VisualElement>
+
+                <!-- Status line (sending / sent / failed) -->
+                <engine:Label name="bp-status" class="bp-status hidden" />
 
                 <engine:VisualElement class="bp-button-row">
                     <engine:Button name="bp-cancel" text="Cancel" class="bp-button bp-button--secondary" />
