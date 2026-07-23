@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.174] - 2026-07-23
+
+### Changed
+- Fix Debug Tools board rows compressing instead of scrolling (UIToolkit flex-shrink on ScrollView list children)
+
 ## [0.8.173] - 2026-07-22
 
 ### Changed
