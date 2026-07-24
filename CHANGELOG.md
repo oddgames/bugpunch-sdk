@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.175] - 2026-07-24
+
+### Changed
+- sdk(ios): reject export-only (stripped) UnityFramework symbol table in the dSYM upload hook — skip the upload and emit a visible Xcode warning instead of silently uploading an exports-only table that masks the build as symbolicated and mis-resolves every IL2CPP frame to a bogus nearest-export name.
+
 ## [0.8.174] - 2026-07-23
 
 ### Changed
