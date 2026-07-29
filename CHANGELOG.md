@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.176] - 2026-07-29
+
+### Changed
+- sdk(editor): F12 video captures the whole game view instead of a crop — the ring encoder now fits the live source aspect inside the requested box and box-filters frames into it, where before a hardcoded 1280x720 target read the top-left 1280x720 pixels of a 1080p game view
+- sdk(editor): F12 video records game audio — an AudioListener tap (Editor peer of the runtime BugpunchAudioTap) pushes the final mix into a PCM ring that is AAC-encoded and interleaved into the mp4 at dump time
+- sdk(editor): ring video PTS is wall-clock rather than frame-count, so dropped frames no longer compress real time or desync the audio track
+- sdk(editor): uploads carry the ring's real encoder dimensions instead of a constant 1280x720
+- sdk(editor): rebuild the D3D staging texture when the game view resizes — CopyResource silently failed on a size change and the ring kept encoding the last frame that fit
+- sdk(editor): drop the guard that skipped capture entirely when the game view was smaller than the ring target
+- sdk(build): build-odd-recorder.ps1 handed a multi-line string to cmd /c, which keeps only the first line — vcvars ran, cl never did, and the build exited 0 without producing a DLL
+
 ## [0.8.175] - 2026-07-24
 
 ### Changed

@@ -141,20 +141,50 @@ static RecorderState g_state;
 // H.264 passthrough media types (input == output == encoder's H.264 type)
 // and each ring packet is written through as-is. Sink Writer handles mp4
 // muxing. The ring keeps running through the dump.
+//
+// Geometry: RingStart's width/height are a BOUNDING BOX, not the encoder size.
+// The encoder is sized from the live source's aspect fitted inside that box
+// (never upscaled) and every frame is box-filtered down into it, so the whole
+// screen is encoded. Feeding a differently-shaped source straight into a fixed
+// target crops it to the top-left corner instead — which is what a hardcoded
+// 1280x720 ring did to a 1920x1080 game view.
+//
+// Audio rides along as raw interleaved PCM16 kept for the same ringSeconds and
+// AAC-encoded only at dump time by the Sink Writer. Holding PCM rather than a
+// second live encoder MFT keeps the always-on cost to a memcpy on the audio
+// thread (~17 MB for 90 s of 48 kHz stereo, against ~45 MB for the video ring).
+//
+// PTS clock (mirrors bp_audio.c's CLOCK_MONOTONIC invariant): video packet
+// timestamps are QPC-derived wall time relative to wallEpoch, NOT frame counts.
+// Audio chunks are stamped from the same clock, so the two stay aligned even
+// when frames are dropped (paced/occluded/MSAA-skipped).
 
 struct RingPacket
 {
-    int64_t time;       // 100ns presentation timestamp
+    int64_t time;       // 100ns presentation timestamp, relative to wallEpoch
     int64_t duration;   // 100ns
     bool    isKeyframe;
     std::vector<uint8_t> bytes;
 };
 
+struct RingAudioChunk
+{
+    int64_t time;                  // 100ns absolute QPC wall time at push
+    std::vector<int16_t> samples;  // interleaved PCM16
+};
+
 struct RingState
 {
     std::atomic<bool> active{false};
+    // Encoder geometry — derived from the source, refreshed when it changes.
     int width  = 0;
     int height = 0;
+    // Bounding box requested by RingStart; the encoder never exceeds it.
+    int maxWidth  = 0;
+    int maxHeight = 0;
+    // Source dimensions the current encoder geometry was computed for.
+    int srcWidth  = 0;
+    int srcHeight = 0;
     int fps    = 60;
     int bitrate = 4000000;
     int ringSeconds = 60;
@@ -162,7 +192,9 @@ struct RingState
 
     int64_t frameCount = 0;
     int64_t framesSinceKey = 0;
-    int64_t totalDuration100ns = 0;
+    // Absolute QPC time of the first frame fed to the current encoder; every
+    // video PTS and audio chunk time is expressed against it.
+    std::atomic<int64_t> wallEpoch{0};
 
     ComPtr<IMFTransform> encoder;
     ComPtr<IMFMediaType> encodedOutputType; // captured after first output sample
@@ -172,9 +204,17 @@ struct RingState
     bool providesOutputSamples = false;
 
     std::vector<uint8_t> nv12Scratch;
+    std::vector<uint8_t> resampleScratch;  // packed BGRA at encoder size
 
     std::deque<RingPacket> packets;
     std::mutex mutex;
+
+    // Audio sub-stream. Its own mutex: the push runs on Unity's audio DSP
+    // thread and must never block behind a frame's encode under g_ring.mutex.
+    std::deque<RingAudioChunk> audioChunks;
+    std::mutex audioMutex;
+    int audioSampleRate = 0;
+    int audioChannels   = 0;
 };
 
 static RingState g_ring;
@@ -182,11 +222,25 @@ static RingState g_ring;
 // Forward declarations for ring helpers
 static HRESULT RingInitEncoder();
 static void    RingShutdownEncoder();
-static HRESULT RingFeedBGRA(const uint8_t* src, int srcStride, bool srcIsBGRA);
+static HRESULT RingFeedSource(const uint8_t* src, int srcStride, int srcW, int srcH,
+                              bool srcIsBGRA);
 static HRESULT RingDrainEncoder();
 static void    RingTrim();
 static HRESULT RingMuxToFileLocked(const std::wstring& outPath);
 static void    CaptureBackbufferForRing();
+
+// Monotonic 100ns clock. Split div/mod rather than QuadPart*10000000 — the
+// product overflows int64 on a long-uptime machine with a 10 MHz QPC.
+static int64_t NowMonotonic100ns()
+{
+    static LARGE_INTEGER freq = {};
+    if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
+    if (freq.QuadPart == 0) return 0;
+    LARGE_INTEGER c;
+    QueryPerformanceCounter(&c);
+    return (c.QuadPart / freq.QuadPart) * 10000000LL +
+           ((c.QuadPart % freq.QuadPart) * 10000000LL) / freq.QuadPart;
+}
 
 // Unity graphics interfaces (set in UnityPluginLoad)
 static IUnityGraphics* g_unityGraphics = nullptr;
@@ -601,6 +655,17 @@ static void CaptureBackbufferD3D11()
         }
     }
 
+    // CopyResource needs exactly-matching dimensions; a window/game-view resize
+    // invalidates the cached staging texture.
+    if (g_state.stagingTexture)
+    {
+        D3D11_TEXTURE2D_DESC cur = {};
+        g_state.stagingTexture->GetDesc(&cur);
+        if (cur.Width != bbDesc.Width || cur.Height != bbDesc.Height ||
+            cur.Format != bbDesc.Format)
+            g_state.stagingTexture.Reset();
+    }
+
     if (!g_state.stagingTexture)
     {
         D3D11_TEXTURE2D_DESC stagingDesc = {};
@@ -831,6 +896,120 @@ static void BGRAToNV12(const uint8_t* src, int srcStride, bool isBGRA,
     }
 }
 
+// Box-filter `src` down to dstW x dstH, writing tightly-packed BGRA. Every
+// source pixel is read exactly once and contributes to exactly one destination
+// pixel, so a 1080p -> 720p pass costs one linear scan of the frame.
+static void ResampleToBGRA(const uint8_t* src, int srcStride, int srcW, int srcH,
+                           bool srcIsBGRA, int dstW, int dstH, uint8_t* dst)
+{
+    // Per-column source spans, computed once instead of per row. Static so the
+    // steady state allocates nothing; safe because every caller comes through
+    // RingFeedSource under g_ring.mutex.
+    static std::vector<int> xs0, xs1;
+    xs0.resize((size_t)dstW);
+    xs1.resize((size_t)dstW);
+    for (int x = 0; x < dstW; ++x)
+    {
+        int a = (int)(((int64_t)x * srcW) / dstW);
+        int b = (int)(((int64_t)(x + 1) * srcW) / dstW);
+        if (b <= a) b = a + 1;
+        if (b > srcW) b = srcW;
+        xs0[x] = a;
+        xs1[x] = b;
+    }
+
+    for (int y = 0; y < dstH; ++y)
+    {
+        int sy0 = (int)(((int64_t)y * srcH) / dstH);
+        int sy1 = (int)(((int64_t)(y + 1) * srcH) / dstH);
+        if (sy1 <= sy0) sy1 = sy0 + 1;
+        if (sy1 > srcH) sy1 = srcH;
+
+        uint8_t* dr = dst + (size_t)y * dstW * 4;
+        for (int x = 0; x < dstW; ++x)
+        {
+            const int x0 = xs0[x], x1 = xs1[x];
+            uint32_t sB = 0, sG = 0, sR = 0;
+            for (int sy = sy0; sy < sy1; ++sy)
+            {
+                const uint8_t* sr = src + (size_t)sy * srcStride;
+                for (int sx = x0; sx < x1; ++sx)
+                {
+                    const uint8_t* p = sr + (size_t)sx * 4;
+                    if (srcIsBGRA) { sB += p[0]; sG += p[1]; sR += p[2]; }
+                    else           { sR += p[0]; sG += p[1]; sB += p[2]; }
+                }
+            }
+            const uint32_t n = (uint32_t)(x1 - x0) * (uint32_t)(sy1 - sy0);
+            uint8_t* d = dr + (size_t)x * 4;
+            d[0] = (uint8_t)(sB / n);
+            d[1] = (uint8_t)(sG / n);
+            d[2] = (uint8_t)(sR / n);
+            d[3] = 255;
+        }
+    }
+}
+
+// Fit the source inside the requested box, preserving aspect, never upscaling.
+// NV12 needs even dimensions.
+static void RingComputeTarget(int srcW, int srcH, int* outW, int* outH)
+{
+    double sx = (double)g_ring.maxWidth  / (double)srcW;
+    double sy = (double)g_ring.maxHeight / (double)srcH;
+    double s  = sx < sy ? sx : sy;
+    if (s > 1.0) s = 1.0;
+
+    int w = (int)((double)srcW * s + 0.5) & ~1;
+    int h = (int)((double)srcH * s + 0.5) & ~1;
+    if (w < 2) w = 2;
+    if (h < 2) h = 2;
+    *outW = w;
+    *outH = h;
+}
+
+// Bring the encoder in line with the live source geometry. Caller holds
+// g_ring.mutex.
+static HRESULT RingEnsureEncoderForSource(int srcW, int srcH)
+{
+    if (srcW <= 0 || srcH <= 0) return E_INVALIDARG;
+    if (g_ring.encoder && srcW == g_ring.srcWidth && srcH == g_ring.srcHeight)
+        return S_OK;
+
+    int tw = 0, th = 0;
+    RingComputeTarget(srcW, srcH, &tw, &th);
+
+    if (g_ring.encoder && tw == g_ring.width && th == g_ring.height)
+    {
+        // Same encoder geometry (a resize that rounds into the same box) —
+        // keep the buffered packets, just re-aim the resampler.
+        g_ring.srcWidth  = srcW;
+        g_ring.srcHeight = srcH;
+        return S_OK;
+    }
+
+    // An mp4 track can't change resolution mid-stream, so a real geometry
+    // change has to restart the encoder and the buffered packets die with it.
+    if (g_ring.encoder)
+        DebugLog("Ring: source %dx%d -> encoder %dx%d (was %dx%d); restarting encoder, buffer dropped",
+                 srcW, srcH, tw, th, g_ring.width, g_ring.height);
+
+    RingShutdownEncoder();
+    g_ring.width     = tw;
+    g_ring.height    = th;
+    g_ring.srcWidth  = srcW;
+    g_ring.srcHeight = srcH;
+    g_ring.wallEpoch.store(0);
+
+    HRESULT hr = RingInitEncoder();
+    if (FAILED(hr))
+    {
+        RingShutdownEncoder();
+        return hr;
+    }
+    g_ring.resampleScratch.assign((size_t)tw * th * 4, 0);
+    return S_OK;
+}
+
 static HRESULT RingInitEncoder()
 {
     MFT_REGISTER_TYPE_INFO outType = { MFMediaType_Video, MFVideoFormat_H264 };
@@ -931,23 +1110,37 @@ static void RingShutdownEncoder()
     g_ring.encodedOutputType.Reset();
     g_ring.nv12Scratch.clear();
     g_ring.nv12Scratch.shrink_to_fit();
+    g_ring.resampleScratch.clear();
+    g_ring.resampleScratch.shrink_to_fit();
     g_ring.packets.clear();
     g_ring.frameCount = 0;
     g_ring.framesSinceKey = 0;
-    g_ring.totalDuration100ns = 0;
 }
 
-static HRESULT RingFeedBGRA(const uint8_t* src, int srcStride, bool isBGRA)
+static HRESULT RingFeedSource(const uint8_t* src, int srcStride, int srcW, int srcH,
+                              bool isBGRA)
 {
     // Caller holds g_ring.mutex.
+    HRESULT hr = RingEnsureEncoderForSource(srcW, srcH);
+    if (FAILED(hr)) return hr;
     if (!g_ring.encoder) return E_FAIL;
 
-    BGRAToNV12(src, srcStride, isBGRA, g_ring.width, g_ring.height,
-               g_ring.nv12Scratch.data());
+    if (srcW == g_ring.width && srcH == g_ring.height)
+    {
+        BGRAToNV12(src, srcStride, isBGRA, g_ring.width, g_ring.height,
+                   g_ring.nv12Scratch.data());
+    }
+    else
+    {
+        ResampleToBGRA(src, srcStride, srcW, srcH, isBGRA,
+                       g_ring.width, g_ring.height, g_ring.resampleScratch.data());
+        BGRAToNV12(g_ring.resampleScratch.data(), g_ring.width * 4, /*isBGRA=*/true,
+                   g_ring.width, g_ring.height, g_ring.nv12Scratch.data());
+    }
 
     ComPtr<IMFMediaBuffer> buf;
     DWORD nv12Size = (DWORD)g_ring.nv12Scratch.size();
-    HRESULT hr = MFCreateMemoryBuffer(nv12Size, &buf);
+    hr = MFCreateMemoryBuffer(nv12Size, &buf);
     if (FAILED(hr)) return hr;
 
     BYTE* dst = nullptr;
@@ -962,7 +1155,12 @@ static HRESULT RingFeedBGRA(const uint8_t* src, int srcStride, bool isBGRA)
     if (FAILED(hr)) return hr;
     sample->AddBuffer(buf.Get());
 
-    const int64_t pts = g_ring.frameCount * 10000000LL / g_ring.fps;
+    // Wall-clock PTS, not frameCount/fps: dropped frames (pacing, occlusion,
+    // MSAA skips) would otherwise compress real time and desync the audio,
+    // which is stamped from the same clock.
+    const int64_t now = NowMonotonic100ns();
+    if (g_ring.frameCount == 0) g_ring.wallEpoch.store(now);
+    const int64_t pts = now - g_ring.wallEpoch.load();
     const int64_t dur = 10000000LL / g_ring.fps;
     sample->SetSampleTime(pts);
     sample->SetSampleDuration(dur);
@@ -1062,7 +1260,6 @@ static HRESULT RingDrainEncoder()
                     UINT32 kp = 0;
                     if (FAILED(samp->GetUINT32(MFSampleExtension_CleanPoint, &kp))) kp = 0;
                     pkt.isKeyframe = (kp != 0);
-                    g_ring.totalDuration100ns += pkt.duration;
                     g_ring.packets.push_back(std::move(pkt));
                     mb->Unlock();
                 }
@@ -1080,8 +1277,11 @@ static HRESULT RingDrainEncoder()
 
 static void RingTrim()
 {
+    // Span from PTS rather than summed nominal durations — with a wall-clock
+    // PTS the span is the real wall seconds held, whatever the delivered fps.
     const int64_t maxDuration = (int64_t)g_ring.ringSeconds * 10000000LL;
-    while (g_ring.packets.size() > 1 && g_ring.totalDuration100ns > maxDuration)
+    while (g_ring.packets.size() > 1 &&
+           (g_ring.packets.back().time - g_ring.packets.front().time) > maxDuration)
     {
         size_t firstKey = 0;
         for (size_t i = 1; i < g_ring.packets.size(); ++i)
@@ -1090,11 +1290,18 @@ static void RingTrim()
         }
         if (firstKey == 0) break; // no future keyframe → can't trim without breaking decode
         for (size_t i = 0; i < firstKey; ++i)
-        {
-            g_ring.totalDuration100ns -= g_ring.packets.front().duration;
             g_ring.packets.pop_front();
-        }
     }
+}
+
+// Drop audio older than the ring window. Called on the audio thread under
+// g_ring.audioMutex.
+static void RingTrimAudioLocked(int64_t nowAbs)
+{
+    const int64_t maxDuration = (int64_t)g_ring.ringSeconds * 10000000LL;
+    while (g_ring.audioChunks.size() > 1 &&
+           (nowAbs - g_ring.audioChunks.front().time) > maxDuration)
+        g_ring.audioChunks.pop_front();
 }
 
 static HRESULT RingMuxToFileLocked(const std::wstring& outPath)
@@ -1136,6 +1343,58 @@ static HRESULT RingMuxToFileLocked(const std::wstring& outPath)
         DebugLog("Ring mux: SetInputMediaType (passthrough) failed (0x%08X)", (unsigned)hr);
         return hr;
     }
+
+    // Audio track. The ring holds raw PCM16, so the sink writer runs the AAC
+    // encode here — the only place in the session that pays for it.
+    //
+    // Taken by swap, not copy: copying ~17 MB of chunks under the lock would
+    // stall Unity's audio thread for the whole duration. Both swaps are O(1),
+    // and the guard hands the window back however this function exits.
+    std::deque<RingAudioChunk> audio;
+    int audioRate = 0, audioChannels = 0;
+    {
+        std::lock_guard<std::mutex> alock(g_ring.audioMutex);
+        audioRate     = g_ring.audioSampleRate;
+        audioChannels = g_ring.audioChannels;
+        if (audioRate > 0 && audioChannels > 0)
+            audio.swap(g_ring.audioChunks);
+    }
+
+    struct AudioRestore
+    {
+        std::deque<RingAudioChunk>* taken;
+        int rate;
+        int channels;
+        ~AudioRestore()
+        {
+            if (taken->empty()) return;
+            std::lock_guard<std::mutex> alock(g_ring.audioMutex);
+            // Put the window back ahead of whatever arrived meanwhile — both
+            // sides are time-ordered and everything here is older. A format
+            // change makes these unmixable with the live chunks, so drop them.
+            if (g_ring.audioSampleRate != rate || g_ring.audioChannels != channels) return;
+            for (auto it = taken->rbegin(); it != taken->rend(); ++it)
+                g_ring.audioChunks.push_front(std::move(*it));
+            RingTrimAudioLocked(NowMonotonic100ns());
+        }
+    } audioRestore{ &audio, audioRate, audioChannels };
+
+    DWORD audioStreamIdx = 0;
+    bool haveAudio = false;
+    if (!audio.empty())
+    {
+        HRESULT ahr = ConfigureAudioOutput(writer.Get(), &audioStreamIdx,
+                                           audioRate, audioChannels, 192000);
+        if (SUCCEEDED(ahr))
+            ahr = ConfigureAudioInput(writer.Get(), audioStreamIdx,
+                                      audioRate, audioChannels);
+        // A silent video still beats no video — never fail the dump on audio.
+        if (FAILED(ahr))
+            DebugLog("Ring mux: audio stream setup failed (0x%08X); writing video only", (unsigned)ahr);
+        else
+            haveAudio = true;
+    }
+
     hr = writer->BeginWriting();
     if (FAILED(hr))
     {
@@ -1144,12 +1403,17 @@ static HRESULT RingMuxToFileLocked(const std::wstring& outPath)
     }
 
     const int64_t baseTime = g_ring.packets.front().time;
-    for (const auto& pkt : g_ring.packets)
+    // Both clocks are QPC; video PTS is relative to wallEpoch, audio chunks are
+    // absolute — so rebasing audio onto the dump's zero needs the epoch plus the
+    // first surviving video packet's PTS.
+    const int64_t audioBaseAbs = g_ring.wallEpoch.load() + baseTime;
+
+    auto writeVideo = [&](const RingPacket& pkt)
     {
         ComPtr<IMFMediaBuffer> mb;
-        if (FAILED(MFCreateMemoryBuffer((DWORD)pkt.bytes.size(), &mb))) continue;
+        if (FAILED(MFCreateMemoryBuffer((DWORD)pkt.bytes.size(), &mb))) return;
         BYTE* dst = nullptr;
-        if (FAILED(mb->Lock(&dst, nullptr, nullptr))) continue;
+        if (FAILED(mb->Lock(&dst, nullptr, nullptr))) return;
         memcpy(dst, pkt.bytes.data(), pkt.bytes.size());
         mb->Unlock();
         mb->SetCurrentLength((DWORD)pkt.bytes.size());
@@ -1164,7 +1428,59 @@ static HRESULT RingMuxToFileLocked(const std::wstring& outPath)
         HRESULT whr = writer->WriteSample(streamIdx, samp.Get());
         if (FAILED(whr))
             DebugLog("Ring mux: WriteSample failed (0x%08X)", (unsigned)whr);
+    };
+
+    int64_t audioFramesWritten = 0;
+    auto writeAudio = [&](const RingAudioChunk& chunk)
+    {
+        const DWORD bytes = (DWORD)(chunk.samples.size() * sizeof(int16_t));
+        ComPtr<IMFMediaBuffer> mb;
+        if (FAILED(MFCreateMemoryBuffer(bytes, &mb))) return;
+        BYTE* dst = nullptr;
+        if (FAILED(mb->Lock(&dst, nullptr, nullptr))) return;
+        memcpy(dst, chunk.samples.data(), bytes);
+        mb->Unlock();
+        mb->SetCurrentLength(bytes);
+
+        ComPtr<IMFSample> samp;
+        if (FAILED(MFCreateSample(&samp))) return;
+        samp->AddBuffer(mb.Get());
+        samp->SetSampleTime(chunk.time - audioBaseAbs);
+        const int64_t frames = (int64_t)chunk.samples.size() / audioChannels;
+        samp->SetSampleDuration(frames * 10000000LL / audioRate);
+
+        HRESULT whr = writer->WriteSample(audioStreamIdx, samp.Get());
+        if (FAILED(whr))
+            DebugLog("Ring mux: audio WriteSample failed (0x%08X)", (unsigned)whr);
+        else
+            audioFramesWritten += frames;
+    };
+
+    // Interleave by timestamp. Feeding the sink writer one whole track before
+    // the other makes it hold the entire lead track in memory until the lagging
+    // stream catches up.
+    size_t vi = 0, ai = 0;
+    while (vi < g_ring.packets.size() || (haveAudio && ai < audio.size()))
+    {
+        // Audio buffered before the video window opened has nothing to sync to.
+        if (haveAudio && ai < audio.size() &&
+            (audio[ai].samples.empty() || audio[ai].time < audioBaseAbs))
+        {
+            ++ai;
+            continue;
+        }
+
+        const bool haveV = vi < g_ring.packets.size();
+        const bool haveA = haveAudio && ai < audio.size();
+        if (haveV && (!haveA || (g_ring.packets[vi].time - baseTime) <=
+                                (audio[ai].time - audioBaseAbs)))
+            writeVideo(g_ring.packets[vi++]);
+        else
+            writeAudio(audio[ai++]);
     }
+    if (haveAudio)
+        DebugLog("Ring mux: wrote %lld audio frames (%d Hz, %dch)",
+                 (long long)audioFramesWritten, audioRate, audioChannels);
 
     hr = writer->Finalize();
     if (FAILED(hr))
@@ -1191,8 +1507,19 @@ static void CaptureBackbufferForRing()
     backbuffer->GetDesc(&bbDesc);
     if (bbDesc.SampleDesc.Count > 1) return; // skip MSAA frames
 
-    if ((int)bbDesc.Width < g_ring.width || (int)bbDesc.Height < g_ring.height)
-        return; // backbuffer smaller than ring target; skip
+    // The whole backbuffer is the source; the ring scales it to the encoder
+    // size, so a game view of any size or aspect is captured in full.
+    // CopyResource needs an exactly-matching staging texture, so a resized game
+    // view has to rebuild it — otherwise the copy silently fails and the ring
+    // keeps encoding the last frame that fit.
+    if (g_state.stagingTexture)
+    {
+        D3D11_TEXTURE2D_DESC cur = {};
+        g_state.stagingTexture->GetDesc(&cur);
+        if (cur.Width != bbDesc.Width || cur.Height != bbDesc.Height ||
+            cur.Format != bbDesc.Format)
+            g_state.stagingTexture.Reset();
+    }
 
     if (!g_state.stagingTexture)
     {
@@ -1222,7 +1549,8 @@ static void CaptureBackbufferForRing()
     {
         std::lock_guard<std::mutex> lock(g_ring.mutex);
         if (g_ring.active.load())
-            RingFeedBGRA((const uint8_t*)mapped.pData, (int)mapped.RowPitch, isBGRA);
+            RingFeedSource((const uint8_t*)mapped.pData, (int)mapped.RowPitch,
+                           (int)bbDesc.Width, (int)bbDesc.Height, isBGRA);
     }
 
     g_state.d3dContext->Unmap(g_state.stagingTexture.Get(), 0);
@@ -1520,7 +1848,8 @@ extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_AppendVideoFrame(
         }
         std::lock_guard<std::mutex> lock(g_ring.mutex);
         if (g_ring.active.load())
-            RingFeedBGRA(rgbaData, g_ring.width * 4, /*isBGRA=*/false);
+            RingFeedSource(rgbaData, g_ring.width * 4, g_ring.width, g_ring.height,
+                           /*isBGRA=*/false);
         return;
     }
 
@@ -1859,16 +2188,30 @@ extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_RingStart(
         g_state.mfStarted = true;
     }
 
+    {
+        std::lock_guard<std::mutex> alock(g_ring.audioMutex);
+        g_ring.audioChunks.clear();
+        g_ring.audioSampleRate = 0;
+        g_ring.audioChannels = 0;
+    }
+
     std::lock_guard<std::mutex> lock(g_ring.mutex);
+    // width/height are the bounding box. The encoder starts there so the CPU
+    // push path (AppendVideoFrame, no dimensions of its own) keeps working, and
+    // the first captured backbuffer re-sizes it to the real source aspect.
+    g_ring.maxWidth = width;
+    g_ring.maxHeight = height;
     g_ring.width = width;
     g_ring.height = height;
+    g_ring.srcWidth = width;
+    g_ring.srcHeight = height;
     g_ring.fps = fps;
     g_ring.bitrate = bitrate;
     g_ring.ringSeconds = ringSeconds;
     g_ring.keyframeIntervalFrames = (fps * 2) > 1 ? (fps * 2) : 1;
     g_ring.frameCount = 0;
     g_ring.framesSinceKey = 0;
-    g_ring.totalDuration100ns = 0;
+    g_ring.wallEpoch.store(0);
     g_ring.packets.clear();
 
     hr = RingInitEncoder();
@@ -1878,7 +2221,55 @@ extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_RingStart(
         DebugLog("Ring: init failed");
         return;
     }
+    g_ring.resampleScratch.assign((size_t)width * height * 4, 0);
     g_ring.active.store(true);
+}
+
+extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_RingGetSize(int* outWidth, int* outHeight)
+{
+    // The live encoder geometry, which follows the source aspect rather than
+    // the box RingStart asked for. Callers report it as the video's dimensions.
+    std::lock_guard<std::mutex> lock(g_ring.mutex);
+    if (outWidth)  *outWidth  = g_ring.width;
+    if (outHeight) *outHeight = g_ring.height;
+}
+
+extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_RingAppendAudio(
+    const float* pcm, int sampleCount, int channels, int sampleRate)
+{
+    // Unity's audio DSP thread. Convert + copy only — the AAC encode happens at
+    // dump time, so this never blocks behind a frame encode.
+    if (!g_ring.active.load()) return;
+    if (!pcm || sampleCount <= 0 || channels <= 0 || sampleRate <= 0) return;
+
+    const int64_t now = NowMonotonic100ns();
+
+    RingAudioChunk chunk;
+    chunk.time = now;
+    chunk.samples.resize((size_t)sampleCount);
+    for (int i = 0; i < sampleCount; ++i)
+    {
+        float v = pcm[i];
+        if (v >  1.0f) v =  1.0f;
+        if (v < -1.0f) v = -1.0f;
+        chunk.samples[(size_t)i] = (int16_t)(v * 32767.0f);
+    }
+
+    std::lock_guard<std::mutex> lock(g_ring.audioMutex);
+    if (!g_ring.active.load()) return;
+    if (g_ring.audioSampleRate != sampleRate || g_ring.audioChannels != channels)
+    {
+        // Format change (device switch, project audio settings edit) — the
+        // buffered PCM is in the old format and can't share a track with it.
+        if (g_ring.audioSampleRate != 0)
+            DebugLog("Ring audio: format changed %dHz/%dch -> %dHz/%dch, buffer dropped",
+                     g_ring.audioSampleRate, g_ring.audioChannels, sampleRate, channels);
+        g_ring.audioChunks.clear();
+        g_ring.audioSampleRate = sampleRate;
+        g_ring.audioChannels   = channels;
+    }
+    g_ring.audioChunks.push_back(std::move(chunk));
+    RingTrimAudioLocked(now);
 }
 
 extern "C" UNITY_INTERFACE_EXPORT bool ODDRecorder_RingDump(
@@ -1918,6 +2309,13 @@ extern "C" UNITY_INTERFACE_EXPORT void ODDRecorder_RingStop()
 {
     if (!g_ring.active.load()) return;
     g_ring.active.store(false);
+    {
+        std::lock_guard<std::mutex> alock(g_ring.audioMutex);
+        g_ring.audioChunks.clear();
+        g_ring.audioChunks.shrink_to_fit();
+        g_ring.audioSampleRate = 0;
+        g_ring.audioChannels = 0;
+    }
     std::lock_guard<std::mutex> lock(g_ring.mutex);
     RingShutdownEncoder();
     DebugLog("Ring: stopped");

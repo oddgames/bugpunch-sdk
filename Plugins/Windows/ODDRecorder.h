@@ -96,6 +96,12 @@ extern "C"
     // ringSeconds: how many seconds of recent video to keep resident.
     //   Older NAL packets are dropped from the front of the ring while
     //   keeping the head on a keyframe so any dump is decodable.
+    //
+    // width/height are a BOUNDING BOX, not the encoder size. The encoder is
+    // sized from the live source's aspect fitted inside the box (never
+    // upscaled) and frames are scaled into it, so the whole screen is
+    // captured whatever shape the game view is. Query the real dimensions
+    // with ODDRecorder_RingGetSize.
     // ------------------------------------------------------------------
 
     UNITY_INTERFACE_EXPORT void ODDRecorder_RingStart(
@@ -116,4 +122,21 @@ extern "C"
     UNITY_INTERFACE_EXPORT void ODDRecorder_RingStop();
 
     UNITY_INTERFACE_EXPORT bool ODDRecorder_RingIsActive();
+
+    // Live encoder dimensions (see RingStart). Zero until the ring starts.
+    UNITY_INTERFACE_EXPORT void ODDRecorder_RingGetSize(
+        int* outWidth,
+        int* outHeight);
+
+    // Append interleaved float PCM in [-1, 1] to the ring's audio sub-stream.
+    // sampleCount is the TOTAL sample count across channels (i.e. the length
+    // of Unity's OnAudioFilterRead buffer), not frames per channel.
+    // The ring keeps PCM16 for the same ringSeconds window and AAC-encodes it
+    // during RingDump. Safe to call from Unity's audio DSP thread; no-op while
+    // the ring is inactive.
+    UNITY_INTERFACE_EXPORT void ODDRecorder_RingAppendAudio(
+        const float* pcm,
+        int sampleCount,
+        int channels,
+        int sampleRate);
 }
