@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.180] - 2026-07-31
+
+### Changed
+- Android GLES video capture: fix black/garbage recordings — the RT native texture ptr was cached at Create() (GLES creates RT storage lazily on the render thread), now fetched after the first capture and re-fetched on app resume (BugpunchGpuCapture + BugpunchCrashRetain — the crash-frame retain had the same bug, blanking crash screenshots)
+- Capture-health probe (bp_probe.c, GLES + Vulkan lanes): samples the real encoder input → videoMeta.captureHealth (static/black/garbage verdicts) + one WARN in the captured log ring
+- Remuxer STARVATION warn is now frame-rate-based (Android + iOS) — no longer false-fires on any session shorter than the rolling window
+- Dump-time capture-stall detector (Android + iOS): warns when the newest ring sample is >5s older than the dump / UI-pause start (truncated-clip post-mortems, sdk#91)
+- iOS: BPLOG lines now tee into the captured log ring — NSLog is os_log-only on device, so uploaded reports carried none of the SDK's own diagnostics
+- UIToolkit managed-lane dialogs: centralized PrepareRoot + ThemeStyleSheet, replacing per-surface font workarounds (sdk#90)
+
+## [0.8.179] - 2026-07-31
+
+### Changed
+- Android GLES video capture: fix black/garbage recordings — the RT native texture ptr was cached at Create() (GLES creates RT storage lazily on the render thread), now fetched after the first capture and re-fetched on app resume (BugpunchGpuCapture + BugpunchCrashRetain — the crash-frame retain had the same bug, blanking crash screenshots)
+- Capture-health probe (bp_probe.c, GLES + Vulkan lanes): samples the real encoder input → videoMeta.captureHealth (static/black/garbage verdicts) + one WARN in the captured log ring
+- Remuxer STARVATION warn is now frame-rate-based (Android + iOS) — no longer false-fires on any session shorter than the rolling window
+- Dump-time capture-stall detector (Android + iOS): warns when the newest ring sample is >5s older than the dump / UI-pause start (truncated-clip post-mortems, sdk#91)
+- iOS: BPLOG lines now tee into the captured log ring — NSLog is os_log-only on device, so uploaded reports carried none of the SDK's own diagnostics
+- UIToolkit managed-lane dialogs: centralized PrepareRoot + ThemeStyleSheet, replacing per-surface font workarounds (sdk#90)
+
+## [0.8.178] - 2026-07-31
+
+### Changed
+- Android GLES video capture: fix black/garbage recordings — the RT native texture ptr was cached at Create() (GLES creates RT storage lazily on the render thread), now fetched after the first capture and re-fetched on app resume (BugpunchGpuCapture + BugpunchCrashRetain — the crash-frame retain had the same bug, blanking crash screenshots)
+- Capture-health probe (bp_probe.c, GLES + Vulkan lanes): samples the real encoder input → videoMeta.captureHealth (static/black/garbage verdicts) + one WARN in the captured log ring
+- Remuxer STARVATION warn is now frame-rate-based (Android + iOS) — no longer false-fires on any session shorter than the rolling window
+- Dump-time capture-stall detector (Android + iOS): warns when the newest ring sample is >5s older than the dump / UI-pause start (truncated-clip post-mortems, sdk#91)
+- iOS: BPLOG lines now tee into the captured log ring — NSLog is os_log-only on device, so uploaded reports carried none of the SDK's own diagnostics
+- UIToolkit managed-lane dialogs: centralized PrepareRoot + ThemeStyleSheet, replacing per-surface font workarounds (sdk#90)
+
+## [0.8.177] - 2026-07-31
+
+### Changed
+- Android GLES video capture: fix black/garbage recordings — the RT native texture ptr was cached at Create() (GLES creates RT storage lazily on the render thread), now fetched after the first capture and re-fetched on app resume (BugpunchGpuCapture + BugpunchCrashRetain — the crash-frame retain had the same bug, blanking crash screenshots)
+- Capture-health probe (bp_probe.c, GLES + Vulkan lanes): samples the real encoder input → videoMeta.captureHealth (static/black/garbage verdicts) + one WARN in the captured log ring
+- Remuxer STARVATION warn is now frame-rate-based (Android + iOS) — no longer false-fires on any session shorter than the rolling window
+- Dump-time capture-stall detector (Android + iOS): warns when the newest ring sample is >5s older than the dump / UI-pause start (truncated-clip post-mortems, sdk#91)
+- iOS: BPLOG lines now tee into the captured log ring — NSLog is os_log-only on device, so uploaded reports carried none of the SDK's own diagnostics
+- UIToolkit managed-lane dialogs: centralized PrepareRoot + ThemeStyleSheet, replacing per-surface font workarounds (sdk#90)
+
 ## [0.8.176] - 2026-07-29
 
 ### Changed

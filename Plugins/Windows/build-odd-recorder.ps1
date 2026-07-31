@@ -22,6 +22,26 @@ if (-not $vcvars) {
 }
 
 $dllPath = Join-Path $pluginDir "ODDRecorder.dll"
+
+# A running Unity editor that has used the editor recorder keeps the DLL
+# mapped, and the linker's LNK1104 on its own OUTPUT means cant open for
+# write - but Windows still allows RENAMING a mapped DLL. Move the locked
+# file into TEMP (same volume, so the rename is legal while mapped; and
+# outside package/ so preflight's missing-.meta gate never sees it); sweep
+# stale moves from earlier builds (deletable once no process maps them).
+Get-ChildItem -LiteralPath ([System.IO.Path]::GetTempPath()) -Filter "ODDRecorder.dll.stale-*" -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+if (Test-Path -LiteralPath $dllPath) {
+    try {
+        $probe = [System.IO.File]::Open($dllPath, 'Open', 'ReadWrite', 'None')
+        $probe.Close()
+    } catch {
+        $stale = Join-Path ([System.IO.Path]::GetTempPath()) "ODDRecorder.dll.stale-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+        Write-Host "ODDRecorder.dll is locked (Unity editor?) - moving aside to $stale"
+        Move-Item -LiteralPath $dllPath -Destination $stale -Force
+    }
+}
+
 $before = if (Test-Path -LiteralPath $dllPath) { (Get-Item -LiteralPath $dllPath).LastWriteTimeUtc } else { [datetime]::MinValue }
 
 $defines = if ($Configuration -ieq "Debug") { "/Od /Zi /DDEBUG" } else { "/O2 /DNDEBUG" }

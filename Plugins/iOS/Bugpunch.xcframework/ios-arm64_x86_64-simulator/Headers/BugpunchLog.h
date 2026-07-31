@@ -13,6 +13,9 @@
 extern "C" {
 #endif
 bool BugpunchLog_ShouldEmit(void);
+// Tee an already-formatted SDK log line into the captured log ring
+// (BPLogReader appendLineLive). Implemented in BugpunchLog.mm.
+void BugpunchLog_Capture(NSString* line);
 #ifdef __cplusplus
 }
 #endif
@@ -20,4 +23,15 @@ bool BugpunchLog_ShouldEmit(void);
 // Role-gated NSLog. Use in place of NSLog throughout the iOS lane. The per-file
 // BPLog / BPLogError / BPLogR convenience macros expand through this, so their
 // tag prefixes are preserved while inheriting the gate.
-#define BPLOG(fmt, ...) do { if (BugpunchLog_ShouldEmit()) NSLog(fmt, ##__VA_ARGS__); } while (0)
+//
+// Lines ALSO tee into the captured log ring: on-device NSLog goes to os_log
+// only (no stderr unless a debugger is attached), and the report-time
+// OSLogStore pull doesn't reliably surface it — so without the tee, uploaded
+// reports carry NONE of the SDK's own diagnostics (recorder/remuxer warns
+// included). Seen in production: a 1-frame video clip whose report logs had
+// zero [Bugpunch.*] lines to explain it. Tester-gated like the NSLog itself.
+#define BPLOG(fmt, ...) do { if (BugpunchLog_ShouldEmit()) { \
+    NSString* _bpl = [NSString stringWithFormat:fmt, ##__VA_ARGS__]; \
+    NSLog(@"%@", _bpl); \
+    BugpunchLog_Capture(_bpl); \
+} } while (0)
