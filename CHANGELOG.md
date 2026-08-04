@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.182] - 2026-08-04
+
+### Changed
+- sdk(ios): fail an iOS Simulator player build up front, with a message that names Bugpunch. Bugpunch.xcframework ships a single ios-arm64 device slice, so on a Simulator build Unity's ProcessXCFramework resolves nothing into BUILT_PRODUCTS_DIR and the build died much later at link time — first on the -force_load added by PostProcessBuild_iOS ("ld: file not found: .../libBugpunch.a"), and underneath that on undefined _Bugpunch_* symbols from the __Internal P/Invokes, which no link-flag tweak resolves without a simulator slice. Neither error mentions Bugpunch, leaving the failure untraceable to its cause. BugpunchIosSimulatorGuard (IPreprocessBuildWithReport at callbackOrder int.MinValue) now throws BuildFailedException pointing straight at Player Settings > Other Settings > Target SDK.
+- sdk(release): the distribution pre-clean now DISCOVERS loadable plugin directories instead of hardcoding two paths. Any .androidlib / .bundle / .framework / .plugin / .xcframework added on any lane is covered the day it lands, mirroring PLUGIN_DIR_EXTS in preflight.cjs. Each pre-cleaned dir is also Verify-Mirror'd unconditionally now: the wipe does not care which lanes rebuilt this run, so a copy that silently failed to restore one would otherwise have reached the release commit as a deletion.
+- sdk(release): verify the Android bugpunch_sso.androidlib.meta GUID anchor at release time, matching the iOS Bugpunch.xcframework.meta check that already existed. A loadable plugin directory's sibling .meta is its only AssetDatabase identity — it carries the stable GUID and the PluginImporter platform gating (Android-only / iOS-only, Any=0). Lose it and Unity regenerates a default: new random GUID, default platform settings, silently relinking a native plugin on platforms it must never ship to.
+
 ## [0.8.181] - 2026-08-04
 
 ### Changed
