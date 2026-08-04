@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.181] - 2026-08-04
+
+### Changed
+- sdk(ios): ship Bugpunch.xcframework device-only (ios-arm64). The ios-arm64_x86_64-simulator slice was never linked into a device build — Unity's ProcessXCFramework resolves only the matching slice, and the -force_load in PostProcessBuild_iOS points at that resolved archive — so it cost nothing at runtime but shipped to every consumer: 8.9 MB of dead weight. xcframework 14 MB -> 4.6 MB, package 24 MB -> 15 MB. We build and test device-only; simulator builds gave misleading results (recordings with perf counters but no method-profiler timings).
+- sdk(release): distribution sync now propagates deletions. xcopy only adds and overwrites, so a file dropped from package/ lived on in the distribution repo forever, and Verify-Mirror only checked package->dist — a release shipping a retired artifact reported success. The two directory-shaped artifacts (Bugpunch.xcframework, bugpunch_sso.androidlib) are now wiped before the copy, and Verify-Mirror fails on any entry present in dist but absent from package. A blanket mirror stays off the table: the dist repo root carries .git / README / LICENSE that package/ does not.
+- sdk(android): drop legacy .meta files from inside bugpunch_sso.androidlib. Unity has refused to create .meta files inside loadable plugin directories since 2023.1.0a24 and ignores existing ones at build time, but preflight's single-import-unit rule was special-cased to .xcframework — so it was actively demanding the three Android ones. That rule now covers all five loadable plugin directory types (.androidlib, .bundle, .framework, .plugin, .xcframework), so no lane can drift back.
+
 ## [0.8.180] - 2026-07-31
 
 ### Changed
