@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.183] - 2026-08-06
+
+### Changed
+- fix Editor 'Missing Profiler.EndSample' spam: IDE /capture and the F12 dialog preview captured the backbuffer mid-frame, forcing a synchronous GameView repaint that closed the profiler frame inside the editor GUI sample stack — both now capture inside the end-of-frame callback (and skip a redundant game-view re-render per screenshot)
+
 ## [0.8.182] - 2026-08-04
 
 ### Changed
