@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.184] - 2026-08-06
+
+### Changed
+- fix Android GLES video/crash-frame capture recording black on some drivers (Pixel 9 Pro XL/Mali-G715): RenderTexture.GetNativeTexturePtr returns a name that is not the storage ScreenCapture writes, so native now owns the handoff texture (share-group alloc in bp_gpu.c) and C# copies the screenshot RT into it via Graphics.CopyTexture; probe-driven self-heal recreates a dead handoff, and a session whose input stays black is declared capture_black — the ring refuses to dump, so reports carry an honest placeholder instead of megabytes of black MP4
+
 ## [0.8.183] - 2026-08-06
 
 ### Changed
