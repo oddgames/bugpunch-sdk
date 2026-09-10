@@ -2,12 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.191] - 2026-09-10
+
+### Changed
+- sdk(ios): fix Xcode link failure — FrameworkDependencies must be bare framework names. The xcframework meta listed them with a .framework suffix, so Unity emitted `-framework AVFoundation.framework` and the link died with "framework 'AVFoundation.framework' not found".
+- sdk(editor): keep UnityEditor.Android / Unity.Android.Types out of the build-callback bodies in BugpunchSymbolLevelPreprocessor and BugpunchSymbolUploader. The JIT resolves a whole method before its first line runs, so the BuildTarget.Android guard could not stop a FileNotFoundException on an iOS-only build agent — Unity logged it and silently skipped the callback.
+
 ## [0.8.190] - 2026-09-10
 
 ### Changed
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.191] - 2026-09-10
+
+### Changed
+- sdk(ios): fix Xcode link failure — FrameworkDependencies must be bare framework names. The xcframework meta listed them with a .framework suffix, so Unity emitted `-framework AVFoundation.framework` and the link died with "framework 'AVFoundation.framework' not found".
+- sdk(editor): keep UnityEditor.Android / Unity.Android.Types out of the build-callback bodies in BugpunchSymbolLevelPreprocessor and BugpunchSymbolUploader. The JIT resolves a whole method before its first line runs, so the BuildTarget.Android guard could not stop a FileNotFoundException on an iOS-only build agent — Unity logged it and silently skipped the callback.
 
 ## [0.8.189] - 2026-08-19
 
