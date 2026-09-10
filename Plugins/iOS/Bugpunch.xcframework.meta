@@ -31,7 +31,7 @@ PluginImporter:
         AddToEmbeddedBinaries: false
         CPU: AnyCPU
         CompileFlags: 
-        FrameworkDependencies: 
+        FrameworkDependencies: AVFoundation.framework;VideoToolbox.framework;CoreMedia.framework;CoreVideo.framework;CoreMotion.framework;StoreKit.framework;AuthenticationServices.framework;UserNotifications.framework;PhotosUI.framework;OSLog.framework;Network.framework;MetalPerformanceShaders.framework;MetricKit.framework;
   userData: 
   assetBundleName: 
   assetBundleVariant: 
