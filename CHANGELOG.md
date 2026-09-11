@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.193] - 2026-09-11
+
+### Changed
+- Memory capture: preserve baseline, peak and rolling native samples, including during recording and live debugging.
+- Expose richer iOS VM accounting, capture freshness and failed persistence diagnostics with bounded crash evidence.
+- Unity 6.3 snapshots: request all capture flags, publish context metadata and completed files atomically, and expose incomplete captures for cleanup.
+
+## [0.8.192] - 2026-09-11
+
+### Changed
+- Memory map: audio rows no longer report every AudioClip at its nominal PCM size. AudioBytes now reads loadType/loadState — Streaming clips report the 200 KB stream buffer, unloaded clips 0, CompressedInMemory clips PCM/10 (Unity's Vorbis rule of thumb), DecompressOnLoad clips their real PCM — and each audio row carries an info tag (streaming / unloaded / compressed ~est / pcm). A streaming Vorbis song was showing at its full 17 MB WAV size in Heaviest assets.
+
 ## [0.8.191] - 2026-09-10
 
 ### Changed
@@ -14,6 +26,18 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.193] - 2026-09-11
+
+### Changed
+- Memory capture: preserve baseline, peak and rolling native samples, including during recording and live debugging.
+- Expose richer iOS VM accounting, capture freshness and failed persistence diagnostics with bounded crash evidence.
+- Unity 6.3 snapshots: request all capture flags, publish context metadata and completed files atomically, and expose incomplete captures for cleanup.
+
+## [0.8.192] - 2026-09-11
+
+### Changed
+- Memory map: audio rows no longer report every AudioClip at its nominal PCM size. AudioBytes now reads loadType/loadState — Streaming clips report the 200 KB stream buffer, unloaded clips 0, CompressedInMemory clips PCM/10 (Unity's Vorbis rule of thumb), DecompressOnLoad clips their real PCM — and each audio row carries an info tag (streaming / unloaded / compressed ~est / pcm). A streaming Vorbis song was showing at its full 17 MB WAV size in Heaviest assets.
 
 ## [0.8.191] - 2026-09-10
 
