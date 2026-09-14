@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.196] - 2026-09-14
+
+### Changed
+- * iOS: exact native heap by allocation path in opted-in builds — libmalloc lite stack logging switched on at runtime, every live block walked with its allocation stack (Bugpunch.CaptureExactHeap, and automatically while memory is critical)
+- * iOS: sampled heap sites capture 16 frames and ship 6 per site with each image's UUID, so the dashboard names them against the build's symbols
+- * Bugpunch.MemoryMark(label): stamps footprint / RSS / engine counters at a named moment (SDK init, ad show, level load) and hangs it on the perf timeline
+- * iOS dSYM upload runs for Unity Development Builds in any Xcode configuration, not only Release
+- * Apple symbol harvester keeps whole ObjC method names (nm output was cut at the first space)
+
 ## [0.8.195] - 2026-09-14
 
 ### Changed
@@ -42,6 +51,15 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.196] - 2026-09-14
+
+### Changed
+- * iOS: exact native heap by allocation path in opted-in builds — libmalloc lite stack logging switched on at runtime, every live block walked with its allocation stack (Bugpunch.CaptureExactHeap, and automatically while memory is critical)
+- * iOS: sampled heap sites capture 16 frames and ship 6 per site with each image's UUID, so the dashboard names them against the build's symbols
+- * Bugpunch.MemoryMark(label): stamps footprint / RSS / engine counters at a named moment (SDK init, ad show, level load) and hangs it on the perf timeline
+- * iOS dSYM upload runs for Unity Development Builds in any Xcode configuration, not only Release
+- * Apple symbol harvester keeps whole ObjC method names (nm output was cut at the first space)
 
 ## [0.8.195] - 2026-09-14
 
