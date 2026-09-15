@@ -55,8 +55,12 @@ finish() {
 }
 trap finish EXIT
 
-if [ "$MODE" = "xcode" ] && [ "${CONFIGURATION:-}" != "Release" ] && [ "$DEVBUILD" != "1" ]; then
-  log "skipping dSYM upload — CONFIGURATION=${CONFIGURATION:-unset}, only Release (or Development Build) uploads."
+# A CI archive always uploads, whatever its configuration: Jenkins/GitHub tester builds are the
+# Debug-configuration Development Builds whose crashes need symbols most.
+ON_CI=0
+if [ -n "${CI:-}" ] || [ -n "${JENKINS_URL:-}" ] || [ -n "${BUILD_NUMBER:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then ON_CI=1; fi
+if [ "$MODE" = "xcode" ] && [ "${CONFIGURATION:-}" != "Release" ] && [ "$DEVBUILD" != "1" ] && [ "$ON_CI" != "1" ]; then
+  log "skipping dSYM upload — CONFIGURATION=${CONFIGURATION:-unset}, only Release, Development Build or CI archives upload."
   exit 0
 fi
 
