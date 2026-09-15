@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.200] - 2026-09-15
+
+### Changed
+- Editor/iOS symbols: the dSYM upload script lives once in Tools/upload-ios-symbols.sh and is staged into the Xcode project; every skip is a visible warning, check/upload retry with backoff, failed sidecars are parked and retried on the next build, and the server is re-checked after upload so a missing UnityFramework table is reported; standalone mode + upload-ios-symbols-remote.ps1 sweep archives a build machine never uploaded (builds 15646-15656 had no dSYMs)
+
+## [0.8.199] - 2026-09-15
+
+### Changed
+- Editor/iOS symbols: the dSYM upload script lives once in Tools/upload-ios-symbols.sh and is staged into the Xcode project; every skip is a visible warning, check/upload retry with backoff, failed sidecars are parked and retried on the next build, and the server is re-checked after upload so a missing UnityFramework table is reported; standalone mode + upload-ios-symbols-remote.ps1 sweep archives a build machine never uploaded (builds 15646-15656 had no dSYMs)
+
 ## [0.8.198] - 2026-09-15
 
 ### Changed
@@ -61,6 +71,16 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.200] - 2026-09-15
+
+### Changed
+- Editor/iOS symbols: the dSYM upload script lives once in Tools/upload-ios-symbols.sh and is staged into the Xcode project; every skip is a visible warning, check/upload retry with backoff, failed sidecars are parked and retried on the next build, and the server is re-checked after upload so a missing UnityFramework table is reported; standalone mode + upload-ios-symbols-remote.ps1 sweep archives a build machine never uploaded (builds 15646-15656 had no dSYMs)
+
+## [0.8.199] - 2026-09-15
+
+### Changed
+- Editor/iOS symbols: the dSYM upload script lives once in Tools/upload-ios-symbols.sh and is staged into the Xcode project; every skip is a visible warning, check/upload retry with backoff, failed sidecars are parked and retried on the next build, and the server is re-checked after upload so a missing UnityFramework table is reported; standalone mode + upload-ios-symbols-remote.ps1 sweep archives a build machine never uploaded (builds 15646-15656 had no dSYMs)
 
 ## [0.8.198] - 2026-09-15
 
