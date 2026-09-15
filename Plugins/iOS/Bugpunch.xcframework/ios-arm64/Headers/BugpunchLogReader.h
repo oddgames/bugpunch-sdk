@@ -53,6 +53,9 @@
 + (void)startWithMaxEntries:(NSInteger)n;
 + (void)stop;
 + (NSString* _Nullable)snapshotText;
+// Ring only, no OSLogStore pull. For paths that must not touch logd over XPC: the ANR watchdog
+// thread (main thread wedged) and any snapshot taken while the process is under memory pressure.
++ (NSString* _Nullable)snapshotTextRingOnly;
 + (void)pushEntryWithType:(NSString*)type message:(NSString*)message stackTrace:(NSString*)stackTrace;
 // Append a pre-formatted line to the in-memory ring AND tee to the live
 // report tunnel. Used by the public `Bugpunch_LogMessage` C API that native
