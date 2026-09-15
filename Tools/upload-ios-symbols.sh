@@ -6,19 +6,24 @@
 #   * The Xcode "Bugpunch: upload dSYMs" Run Script phase (installed by the
 #     Unity iOS post-process). No args; the dSYM folder comes from Xcode's
 #     DWARF_DSYM_FOLDER_PATH and non-Release configurations are skipped
-#     unless the Unity build was a Development Build. NEVER fails the build.
+#     unless the Unity build was a Development Build or a CI archive.
 #   * Standalone, from a shell or CI, to sweep archives the phase missed:
 #       BUGPUNCH_SERVER_URL=https://bugpunch.com BUGPUNCH_API_KEY=<project key> \
 #         upload-ios-symbols.sh <dsym|xcarchive|dir> [more...]
-#     Exits non-zero when anything could not be uploaded.
 #
-# Both modes: the run ends with ONE `[Bugpunch] OK` / `[Bugpunch] NOT CONFIRMED` verdict
-# line naming the UnityFramework UUID(s); every skip prints a visible `warning:` line, uploads retry with
-# backoff, a sidecar whose upload still fails is parked in
+# A FAILED UPLOAD FAILS THE BUILD. In both modes every failure prints an
+# `error:` line — Xcode's issue navigator, the xcodebuild log and CI wrappers
+# that `grep -q error:` all see it — and the run exits 1. The run ends with ONE
+# `[Bugpunch] OK` / `SKIPPED` / `NOT CONFIRMED` / `FAILED` verdict line naming
+# the UnityFramework UUID(s). Only a deliberate skip (a local non-Release,
+# non-Development archive) exits 0 without OK.
+#
+# Uploads retry with backoff; a sidecar whose upload still fails is parked in
 # $BUGPUNCH_SYMBOL_CACHE (default ~/Library/Caches/Bugpunch/pending-symbols)
-# and retried at the start of the next run, and after uploading the script
-# asks the server again so a UnityFramework UUID that is STILL missing is
-# reported instead of assumed.
+# and retried at the start of the next run — but this run still fails, because
+# this archive's crashes will not symbolicate until it lands. After uploading,
+# the script asks the server again so a UnityFramework UUID that is STILL
+# missing is reported instead of assumed.
 #
 # We upload the symbol TABLE the server needs, not the whole dSYM: a Unity
 # UnityFramework dSYM is ~1 GB, symbolication only consumes the
@@ -37,17 +42,20 @@ MAP_FILE="${BUGPUNCH_MAP_FILE:-}"
 CACHE_DIR="${BUGPUNCH_SYMBOL_CACHE:-$HOME/Library/Caches/Bugpunch/pending-symbols}"
 
 if [ "$MODE" = "xcode" ]; then
-  # Jenkins and other CI wrappers `grep -q error:` the build log to decide
-  # whether an Archive succeeded; curl's own diagnostics must not trip them.
+  # Only this script's own `error:` lines (printed on stdout by err()) may fail the
+  # build. curl and the toolchain write their diagnostics to stderr, and a retry
+  # that later succeeds must not trip a CI wrapper that greps the log for error:.
   exec 2> >(sed -l 's/[Ee]rror:/issue:/g' >&2)
 fi
 
 discovered=0; uploaded=0; parked=0; failed=0; skipped=0
 uf_verified=0; uf_uuids=""; map_status="none"; run_skipped=""
 
+err()  { echo "error: [Bugpunch] $*"; }
 warn() { echo "warning: [Bugpunch] $*" >&2; }
 log()  { echo "[Bugpunch] $*"; }
-# CI pipes xcodebuild through xcpretty, which drops every line that is not an Xcode diagnostic.
+# Non-failure verdicts. CI pipes xcodebuild through xcpretty, which drops every line that
+# is not an Xcode diagnostic, so there the OK line goes out as a warning to stay visible.
 verdict() {
   if [ "$MODE" = "xcode" ] && [ "${ON_CI:-0}" = "1" ]; then echo "warning: [Bugpunch] $*" >&2; else echo "[Bugpunch] $*"; fi
 }
@@ -59,16 +67,20 @@ finish() {
     uploaded) map_note=", IL2CPP method map uploaded" ;;
     failed)   map_note=", IL2CPP method map FAILED" ;;
   esac
-  if [ "$uf_verified" = "1" ]; then
+  local status="failed"
+  if [ "$uf_verified" = "1" ] && [ $failed -eq 0 ] && [ $parked -eq 0 ] && [ "$map_status" != "failed" ]; then
+    status="ok"
     verdict "OK - UnityFramework symbols ${uf_uuids} are on ${SERVER:-the server} (uploaded $uploaded this run$map_note)."
   elif [ -n "$run_skipped" ]; then
+    status="skipped"
     verdict "SKIPPED - $run_skipped; crashes on this archive will NOT symbolicate."
+  elif [ "$uf_verified" = "1" ]; then
+    err "FAILED - UnityFramework symbols ${uf_uuids} are on ${SERVER:-the server}, but this run left $failed slice(s) failed and $parked parked$map_note. See the [Bugpunch] error lines above."
   else
-    verdict "NOT CONFIRMED - UnityFramework symbols for this archive are not verified on ${SERVER:-the server} (uploaded $uploaded, parked $parked, failed $failed, skipped $skipped); crashes on this build will NOT symbolicate until they are. See the [Bugpunch] warning lines above."
+    err "NOT CONFIRMED - UnityFramework symbols for this archive are not verified on ${SERVER:-the server} (uploaded $uploaded, parked $parked, failed $failed, skipped $skipped$map_note); crashes on this build will NOT symbolicate until they are. See the [Bugpunch] error lines above."
   fi
   [ -n "${TMPDIR_BP:-}" ] && rm -rf "$TMPDIR_BP"
-  if [ "$MODE" = "xcode" ]; then exit 0; fi
-  if [ $failed -gt 0 ] || [ $parked -gt 0 ]; then exit 1; fi
+  if [ "$status" = "failed" ]; then exit 1; fi
   exit 0
 }
 trap finish EXIT
@@ -83,20 +95,22 @@ if [ "$MODE" = "xcode" ] && [ "${CONFIGURATION:-}" != "Release" ] && [ "$DEVBUIL
 fi
 
 if [ -z "$SERVER" ] || [ -z "$APIKEY" ]; then
-  warn "BUGPUNCH_SERVER_URL / BUGPUNCH_API_KEY not set — iOS crashes in this build will NOT symbolicate."
-  exit 0
+  err "BUGPUNCH_SERVER_URL / BUGPUNCH_API_KEY not set — iOS crashes in this build will NOT symbolicate."
+  exit 1
 fi
 
 for tool in dwarfdump curl xcrun lipo otool perl gzip; do
-  command -v "$tool" >/dev/null 2>&1 || { warn "$tool not found — this script needs the Xcode toolchain (macOS only)."; exit 0; }
+  command -v "$tool" >/dev/null 2>&1 || { err "$tool not found — this script needs the Xcode toolchain (macOS only)."; exit 1; }
 done
 NM_BIN="$(xcrun --find llvm-nm 2>/dev/null || true)"
-if [ -z "$NM_BIN" ]; then warn "llvm-nm not found in the Xcode toolchain — skipping symbol upload."; exit 0; fi
+if [ -z "$NM_BIN" ]; then err "llvm-nm not found in the Xcode toolchain — symbols cannot be extracted."; exit 1; fi
 
 TMPDIR_BP="$(mktemp -d -t bp-dsyms-XXXXXX)"
 mkdir -p "$CACHE_DIR" 2>/dev/null || true
 
-# curl with three attempts and backoff; prints the body on success.
+# curl with three attempts and backoff; prints the body on success. The per-attempt
+# line is informational (the next attempt may succeed), so curl's own "returned
+# error:" text is neutralised there; the caller prints the real error: line.
 bp_curl() {
   local attempt delay=2 out
   for attempt in 1 2 3; do
@@ -104,7 +118,7 @@ bp_curl() {
       echo "$out"
       return 0
     fi
-    log "request failed (attempt $attempt/3): $(tr -d '\n' <"$TMPDIR_BP/curl.err" | cut -c1-200)"
+    log "request failed (attempt $attempt/3): $(tr -d '\n' <"$TMPDIR_BP/curl.err" | sed 's/[Ee]rror:/issue:/g' | cut -c1-200)"
     [ $attempt -lt 3 ] && sleep $delay
     delay=$((delay * 3))
   done
@@ -139,7 +153,7 @@ for pending in "$CACHE_DIR"/*.symtab.gz; do
     log "uploaded parked sidecar $p_uuid ($p_filename)"
     uploaded=$((uploaded + 1)); rm -f "$pending"
   else
-    warn "parked sidecar $p_uuid still failed to upload — keeping it in $CACHE_DIR."
+    err "parked sidecar $p_uuid ($p_filename) from an earlier build still failed to upload — kept in $CACHE_DIR."
     parked=$((parked + 1))
   fi
 done
@@ -153,8 +167,8 @@ add_dsyms_under() {
 if [ "$MODE" = "xcode" ]; then
   DSYM_DIR="${DWARF_DSYM_FOLDER_PATH:-}"
   if [ -z "$DSYM_DIR" ] || [ ! -d "$DSYM_DIR" ]; then
-    warn "DWARF_DSYM_FOLDER_PATH unset or missing — iOS crashes in this build will NOT symbolicate."
-    exit 0
+    err "DWARF_DSYM_FOLDER_PATH unset or missing — iOS crashes in this build will NOT symbolicate."
+    exit 1
   fi
   add_dsyms_under "$DSYM_DIR"
 else
@@ -195,8 +209,8 @@ if [ "$MODE" = "xcode" ] && [ $uf_present -eq 0 ] && command -v dsymutil >/dev/n
 fi
 
 if [ ${#dsyms[@]} -eq 0 ]; then
-  warn "no .dSYM bundles found — iOS crashes in this build will NOT symbolicate."
-  exit 0
+  err "no .dSYM bundles found — iOS crashes in this build will NOT symbolicate."
+  exit 1
 fi
 
 # ── 3. One (uuid, arch, slice, filename) per arch slice ───────────────────
@@ -213,7 +227,7 @@ while read -r line; do
 done < <(for d in "${dsyms[@]}"; do dwarfdump --uuid "$d" 2>/dev/null; done)
 
 discovered=${#job_uuid[@]}
-if [ $discovered -eq 0 ]; then warn "no UUIDs extracted — were these really dSYMs?"; exit 0; fi
+if [ $discovered -eq 0 ]; then err "no UUIDs extracted — were these really dSYMs?"; exit 1; fi
 log "discovered $discovered dSYM slice(s)"
 
 has_unityframework=0
@@ -222,7 +236,7 @@ for i in "${!job_uuid[@]}"; do
   has_unityframework=1
   case " $uf_uuids " in *" ${job_uuid[$i]} "*) ;; *) uf_uuids="${uf_uuids:+$uf_uuids }${job_uuid[$i]}" ;; esac
 done
-[ $has_unityframework -eq 0 ] && warn "UnityFramework.dSYM was not found — iOS crashes in this build will NOT symbolicate. Set the UnityFramework target's 'Debug Information Format' to 'DWARF with dSYM File'."
+[ $has_unityframework -eq 0 ] && err "UnityFramework.dSYM was not found — iOS crashes in this build will NOT symbolicate. Set the UnityFramework target's 'Debug Information Format' to 'DWARF with dSYM File'."
 
 # ── 4. Ask the server what it lacks ───────────────────────────────────────
 items_json="["
@@ -233,7 +247,7 @@ done
 items_json+="]"
 
 if ! missing=$(server_missing "$items_json"); then
-  warn "$SERVER/api/symbols/check is unreachable — building sidecars anyway and parking them for the next run."
+  err "$SERVER/api/symbols/check is unreachable — sidecars are parked for the next run, but this archive's symbols are not on the server."
   missing="${job_uuid[*]}"
   check_failed=1
 else
@@ -270,19 +284,25 @@ for i in "${!job_uuid[@]}"; do
              print join(" ", @f), "\n";
            }' "$textva" \
        | gzip -c > "$sidecar"; then
-    warn "llvm-nm failed for $filename ($uuid) — this slice will NOT symbolicate."
+    err "llvm-nm failed for $filename ($uuid) — this slice will NOT symbolicate."
     rm -f "$sidecar"; failed=$((failed + 1)); continue
   fi
   sc_size=$(wc -c < "$sidecar" | tr -d ' ')
 
   # A stripped binary yields an export-only table (no local `t` symbols). Uploading it
-  # would mask the build as symbolicated and block the real table, so refuse it.
+  # would mask the build as symbolicated and block the real table, so refuse it. For
+  # UnityFramework that is the build's crash symbols gone — an error; a vendored
+  # framework shipped stripped by its vendor is only worth a warning.
   set +o pipefail
   gzip -cd "$sidecar" 2>/dev/null | grep -qE ' t [0-9a-f]+ [0-9a-f]+$'
   has_local=$?
   set -o pipefail
   if [ "$has_local" -ne 0 ]; then
-    warn "$filename ($uuid) symbol table is export-only ($sc_size bytes) — the binary is stripped, iOS crashes will NOT symbolicate. Keep 'DWARF with dSYM File' and disable 'Strip Linked Product' for UnityFramework."
+    stripped_msg="$filename ($uuid) symbol table is export-only ($sc_size bytes) — the binary is stripped. Keep 'DWARF with dSYM File' and disable 'Strip Linked Product'."
+    case "$filename" in
+      UnityFramework.*) err "$stripped_msg iOS crashes in this build will NOT symbolicate." ;;
+      *)                warn "$stripped_msg" ;;
+    esac
     rm -f "$sidecar"; skipped=$((skipped + 1)); continue
   fi
 
@@ -297,10 +317,10 @@ for i in "${!job_uuid[@]}"; do
     uploaded=$((uploaded + 1))
   else
     if cp "$sidecar" "$CACHE_DIR/${uuid}__${abi}__${filename}.symtab.gz" 2>/dev/null; then
-      warn "upload failed for $filename ($uuid) — parked in $CACHE_DIR, retried on the next build."
+      err "upload failed for $filename ($uuid) — parked in $CACHE_DIR and retried on the next build, but this archive's crashes will NOT symbolicate until it lands."
       parked=$((parked + 1))
     else
-      warn "upload failed for $filename ($uuid) and it could not be parked — iOS crashes will NOT symbolicate."
+      err "upload failed for $filename ($uuid) and it could not be parked — iOS crashes will NOT symbolicate."
       failed=$((failed + 1))
     fi
   fi
@@ -319,12 +339,14 @@ if [ "$check_failed" -eq 0 ]; then
   if [ "$verify_json" != "[]" ]; then
     if still=$(server_missing "$verify_json"); then
       if [ -n "${still// }" ]; then
-        warn "UnityFramework symbols are STILL missing on the server for: $still — iOS crashes in this build will NOT symbolicate."
+        err "UnityFramework symbols are STILL missing on the server for: $still — iOS crashes in this build will NOT symbolicate."
         failed=$((failed + 1))
       else
         log "verified: UnityFramework symbols are on the server."
         uf_verified=1
       fi
+    else
+      err "could not re-check $SERVER/api/symbols/check after uploading — UnityFramework symbols for this archive are unverified."
     fi
   fi
 fi
@@ -353,7 +375,7 @@ if [ -n "$MAP_FILE" ] && [ -f "$MAP_FILE" ]; then
       "$SERVER/api/symbols/il2cpp-mapping/upload-multi" >/dev/null; then
     log "IL2CPP method-map uploaded."; map_status="uploaded"
   else
-    warn "IL2CPP method-map upload failed — frames will symbolicate to mangled names without C# source lines."; map_status="failed"
+    err "IL2CPP method-map upload failed — frames would symbolicate to mangled names without C# source lines."; map_status="failed"
   fi
 elif [ "$MODE" = "xcode" ]; then
   log "no staged IL2CPP method-map — skipping (no iOS cpp output / no source mapping)."

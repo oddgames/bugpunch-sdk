@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.203] - 2026-09-16
+
+### Changed
+- Editor/build uploads: a failed post-build upload now fails the build. Every step (coverage catalog, type DB, build artifact, source bundle, Android symbols, IL2CPP method map, mapping.txt, iOS dSYM hook) reports through BuildUploadFailures: a Unity error the moment it happens plus a BuildFailedException from the last post-build hook naming every failed upload, so BuildPlayer reports Failed and batch CI exits non-zero. The Xcode dSYM phase (Tools/upload-ios-symbols.sh) prints error: lines Xcode, xcodebuild and Jenkins all see and exits non-zero, failing the archive; a parked sidecar still retries next build but no longer passes silently. Deliberate skips (feature off, no API key, nothing to upload, local non-Release/non-Development archive) stay non-fatal
+
 ## [0.8.202] - 2026-09-15
 
 ### Changed
@@ -81,6 +86,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.203] - 2026-09-16
+
+### Changed
+- Editor/build uploads: a failed post-build upload now fails the build. Every step (coverage catalog, type DB, build artifact, source bundle, Android symbols, IL2CPP method map, mapping.txt, iOS dSYM hook) reports through BuildUploadFailures: a Unity error the moment it happens plus a BuildFailedException from the last post-build hook naming every failed upload, so BuildPlayer reports Failed and batch CI exits non-zero. The Xcode dSYM phase (Tools/upload-ios-symbols.sh) prints error: lines Xcode, xcodebuild and Jenkins all see and exits non-zero, failing the archive; a parked sidecar still retries next build but no longer passes silently. Deliberate skips (feature off, no API key, nothing to upload, local non-Release/non-Development archive) stay non-fatal
 
 ## [0.8.202] - 2026-09-15
 
