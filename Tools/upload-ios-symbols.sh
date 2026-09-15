@@ -12,7 +12,8 @@
 #         upload-ios-symbols.sh <dsym|xcarchive|dir> [more...]
 #     Exits non-zero when anything could not be uploaded.
 #
-# Both modes: every skip prints a visible `warning:` line, uploads retry with
+# Both modes: the run ends with ONE `[Bugpunch] OK` / `[Bugpunch] NOT CONFIRMED` verdict
+# line naming the UnityFramework UUID(s); every skip prints a visible `warning:` line, uploads retry with
 # backoff, a sidecar whose upload still fails is parked in
 # $BUGPUNCH_SYMBOL_CACHE (default ~/Library/Caches/Bugpunch/pending-symbols)
 # and retried at the start of the next run, and after uploading the script
@@ -38,16 +39,33 @@ CACHE_DIR="${BUGPUNCH_SYMBOL_CACHE:-$HOME/Library/Caches/Bugpunch/pending-symbol
 if [ "$MODE" = "xcode" ]; then
   # Jenkins and other CI wrappers `grep -q error:` the build log to decide
   # whether an Archive succeeded; curl's own diagnostics must not trip them.
-  exec 2> >(sed 's/[Ee]rror:/issue:/g' >&2)
+  exec 2> >(sed -l 's/[Ee]rror:/issue:/g' >&2)
 fi
 
 discovered=0; uploaded=0; parked=0; failed=0; skipped=0
+uf_verified=0; uf_uuids=""; map_status="none"; run_skipped=""
 
 warn() { echo "warning: [Bugpunch] $*" >&2; }
 log()  { echo "[Bugpunch] $*"; }
+# CI pipes xcodebuild through xcpretty, which drops every line that is not an Xcode diagnostic.
+verdict() {
+  if [ "$MODE" = "xcode" ] && [ "${ON_CI:-0}" = "1" ]; then echo "warning: [Bugpunch] $*" >&2; else echo "[Bugpunch] $*"; fi
+}
 
 finish() {
   log "symbols: discovered $discovered slice(s), uploaded $uploaded, parked $parked, failed $failed, skipped $skipped"
+  local map_note=""
+  case "$map_status" in
+    uploaded) map_note=", IL2CPP method map uploaded" ;;
+    failed)   map_note=", IL2CPP method map FAILED" ;;
+  esac
+  if [ "$uf_verified" = "1" ]; then
+    verdict "OK - UnityFramework symbols ${uf_uuids} are on ${SERVER:-the server} (uploaded $uploaded this run$map_note)."
+  elif [ -n "$run_skipped" ]; then
+    verdict "SKIPPED - $run_skipped; crashes on this archive will NOT symbolicate."
+  else
+    verdict "NOT CONFIRMED - UnityFramework symbols for this archive are not verified on ${SERVER:-the server} (uploaded $uploaded, parked $parked, failed $failed, skipped $skipped); crashes on this build will NOT symbolicate until they are. See the [Bugpunch] warning lines above."
+  fi
   [ -n "${TMPDIR_BP:-}" ] && rm -rf "$TMPDIR_BP"
   if [ "$MODE" = "xcode" ]; then exit 0; fi
   if [ $failed -gt 0 ] || [ $parked -gt 0 ]; then exit 1; fi
@@ -60,7 +78,7 @@ trap finish EXIT
 ON_CI=0
 if [ -n "${CI:-}" ] || [ -n "${JENKINS_URL:-}" ] || [ -n "${BUILD_NUMBER:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then ON_CI=1; fi
 if [ "$MODE" = "xcode" ] && [ "${CONFIGURATION:-}" != "Release" ] && [ "$DEVBUILD" != "1" ] && [ "$ON_CI" != "1" ]; then
-  log "skipping dSYM upload — CONFIGURATION=${CONFIGURATION:-unset}, only Release, Development Build or CI archives upload."
+  run_skipped="CONFIGURATION=${CONFIGURATION:-unset} local archive; only Release, Development Build or CI archives upload"
   exit 0
 fi
 
@@ -199,7 +217,11 @@ if [ $discovered -eq 0 ]; then warn "no UUIDs extracted — were these really dS
 log "discovered $discovered dSYM slice(s)"
 
 has_unityframework=0
-for fn in "${job_filename[@]}"; do case "$fn" in UnityFramework.*) has_unityframework=1 ;; esac; done
+for i in "${!job_uuid[@]}"; do
+  case "${job_filename[$i]}" in UnityFramework.*) ;; *) continue ;; esac
+  has_unityframework=1
+  case " $uf_uuids " in *" ${job_uuid[$i]} "*) ;; *) uf_uuids="${uf_uuids:+$uf_uuids }${job_uuid[$i]}" ;; esac
+done
 [ $has_unityframework -eq 0 ] && warn "UnityFramework.dSYM was not found — iOS crashes in this build will NOT symbolicate. Set the UnityFramework target's 'Debug Information Format' to 'DWARF with dSYM File'."
 
 # ── 4. Ask the server what it lacks ───────────────────────────────────────
@@ -220,6 +242,7 @@ fi
 
 if [ -z "${missing// }" ]; then
   log "server already has all $discovered symbol slice(s) — nothing to upload."
+  [ $has_unityframework -eq 1 ] && uf_verified=1
   exit 0
 fi
 
@@ -300,6 +323,7 @@ if [ "$check_failed" -eq 0 ]; then
         failed=$((failed + 1))
       else
         log "verified: UnityFramework symbols are on the server."
+        uf_verified=1
       fi
     fi
   fi
@@ -327,9 +351,9 @@ if [ -n "$MAP_FILE" ] && [ -f "$MAP_FILE" ]; then
   if bp_curl -X POST -H "X-Api-Key: $APIKEY" -F "buildIds=$ids_json" \
       -F "file=@$MAP_FILE;type=application/gzip;filename=il2cpp_mapping.json.gz" \
       "$SERVER/api/symbols/il2cpp-mapping/upload-multi" >/dev/null; then
-    log "IL2CPP method-map uploaded."
+    log "IL2CPP method-map uploaded."; map_status="uploaded"
   else
-    warn "IL2CPP method-map upload failed — frames will symbolicate to mangled names without C# source lines."
+    warn "IL2CPP method-map upload failed — frames will symbolicate to mangled names without C# source lines."; map_status="failed"
   fi
 elif [ "$MODE" = "xcode" ]; then
   log "no staged IL2CPP method-map — skipping (no iOS cpp output / no source mapping)."
