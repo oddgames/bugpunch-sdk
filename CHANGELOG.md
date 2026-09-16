@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.210] - 2026-09-16
+
+### Changed
+- Memory marks stamp the GPU allocation, and Android gets real marks. A truck build on MTD moved the footprint 116 MB while Unity's reserved counter moved 0: the whole cost was texture and mesh uploads in Metal's driver-owned surfaces, which no engine counter sees, so the mark read as unexplained. iOS marks now stamp MTLDevice.currentAllocatedSize (gpuMB); Android marks — previously only a perf-timeline event — now record RSS, total PSS and the graphics PSS bucket (one Debug.getMemoryInfo call, no smaps walk) into evidence.marks like iOS. The dashboard's marks table shows Δ GPU / Δ Unity / Δ total per mark, tags a step as GPU when more than half of it is driver memory, and names the remainder covered by neither counter
+
 ## [0.8.209] - 2026-09-16
 
 ### Changed
@@ -116,6 +121,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.210] - 2026-09-16
+
+### Changed
+- Memory marks stamp the GPU allocation, and Android gets real marks. A truck build on MTD moved the footprint 116 MB while Unity's reserved counter moved 0: the whole cost was texture and mesh uploads in Metal's driver-owned surfaces, which no engine counter sees, so the mark read as unexplained. iOS marks now stamp MTLDevice.currentAllocatedSize (gpuMB); Android marks — previously only a perf-timeline event — now record RSS, total PSS and the graphics PSS bucket (one Debug.getMemoryInfo call, no smaps walk) into evidence.marks like iOS. The dashboard's marks table shows Δ GPU / Δ Unity / Δ total per mark, tags a step as GPU when more than half of it is driver memory, and names the remainder covered by neither counter
 
 ## [0.8.209] - 2026-09-16
 
