@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.211] - 2026-09-16
+
+### Changed
+- Memory + profiler evidence fixes read off MTD's truck-browsing reports (issue 5bf1ddd2, builds 15650/15679). iOS: the heap sampler's image table held 512 of the 1,000+ dyld images an iOS 26 Unity app loads, so UnityFramework fell off it and every Unity allocation showed as a raw address owned by libsystem_malloc — table now 2048 (matches the crash handler), the map carries imagesLoaded/imagesCaptured, and an address in no image is attributed to "(unresolved)" instead of the allocator shim. Memory-mark ring 64 → 256 on iOS and Android with a marksDropped count, so a 40-truck browse keeps its ramp instead of losing everything before the last ten builds. Governor host-free bands stop flapping: Critical needs < 48 MB free on 3 consecutive 1 Hz reads (churn alone is Elevated, never Critical), Elevated < 128 MB sustained or < 192 MB while compressing, recovery needs the line cleared on 3 reads — the 15679 session went Normal→Critical twice in 20 s with 1.3 GB of per-app headroom and paused the video ring each time; Android mirrors the sustain rule (lowMemory stays immediate). The C# memMap sweep and dev-extras table now skip only at Critical (a 4 GB phone sits Elevated for whole sessions and its memory report must not be the stale one). Method profiler: a burst of queued 1 Hz ticks delivered in one frame after a long stall shipped the window once, then an empty row overwrote the real one before native consumed it — the seconds spanning every 3 s truck load came back null; ticks now coalesce per frame. Slow-frame rows add the largest INCLUSIVE sites (up to 4) beside the top-16-by-self, so the frame's owner is always named even when its self time is nil.
+
 ## [0.8.210] - 2026-09-16
 
 ### Changed
@@ -121,6 +126,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.211] - 2026-09-16
+
+### Changed
+- Memory + profiler evidence fixes read off MTD's truck-browsing reports (issue 5bf1ddd2, builds 15650/15679). iOS: the heap sampler's image table held 512 of the 1,000+ dyld images an iOS 26 Unity app loads, so UnityFramework fell off it and every Unity allocation showed as a raw address owned by libsystem_malloc — table now 2048 (matches the crash handler), the map carries imagesLoaded/imagesCaptured, and an address in no image is attributed to "(unresolved)" instead of the allocator shim. Memory-mark ring 64 → 256 on iOS and Android with a marksDropped count, so a 40-truck browse keeps its ramp instead of losing everything before the last ten builds. Governor host-free bands stop flapping: Critical needs < 48 MB free on 3 consecutive 1 Hz reads (churn alone is Elevated, never Critical), Elevated < 128 MB sustained or < 192 MB while compressing, recovery needs the line cleared on 3 reads — the 15679 session went Normal→Critical twice in 20 s with 1.3 GB of per-app headroom and paused the video ring each time; Android mirrors the sustain rule (lowMemory stays immediate). The C# memMap sweep and dev-extras table now skip only at Critical (a 4 GB phone sits Elevated for whole sessions and its memory report must not be the stale one). Method profiler: a burst of queued 1 Hz ticks delivered in one frame after a long stall shipped the window once, then an empty row overwrote the real one before native consumed it — the seconds spanning every 3 s truck load came back null; ticks now coalesce per frame. Slow-frame rows add the largest INCLUSIVE sites (up to 4) beside the top-16-by-self, so the frame's owner is always named even when its self time is nil.
 
 ## [0.8.210] - 2026-09-16
 
