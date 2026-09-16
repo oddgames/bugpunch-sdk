@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.212] - 2026-09-16
+
+### Changed
+- Method profiler attributes MANAGED ALLOCATION per site. MTD build 15679 showed 25 MB of managed allocation inside one 3 s truck-load frame with a total but no owner: the woven rows say who took the time, not who took the memory. Every woven scope (MonoBehaviour Update family + ProfilerMarker samples) now records the managed bytes it allocated (inclusive and self), and each row carries allocKB — the 1 Hz timeline rows, the per-frame stall breakdown, and the Remote IDE snapshot. The slow-frame and per-second rows add the heaviest allocators (self ≥ 256 KB / 1 MB) beside the time ranking so the allocator is always named. New BugpunchManagedAllocCounter (C#-only — engine-exclusive data, no native analogue) probes once at startup for a live source by allocating a block and checking the reading moved: GC.GetAllocatedBytesForCurrentThread (flat on Unity's Mono), else the profiler's live "GC Allocated In Frame" counter (exact in the Editor probe; the same release-available counter the perf timeline already reads), else Profiler.GetMonoUsedSizeLong; no source means no reader and an untouched hot path.
+
 ## [0.8.211] - 2026-09-16
 
 ### Changed
@@ -126,6 +131,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.212] - 2026-09-16
+
+### Changed
+- Method profiler attributes MANAGED ALLOCATION per site. MTD build 15679 showed 25 MB of managed allocation inside one 3 s truck-load frame with a total but no owner: the woven rows say who took the time, not who took the memory. Every woven scope (MonoBehaviour Update family + ProfilerMarker samples) now records the managed bytes it allocated (inclusive and self), and each row carries allocKB — the 1 Hz timeline rows, the per-frame stall breakdown, and the Remote IDE snapshot. The slow-frame and per-second rows add the heaviest allocators (self ≥ 256 KB / 1 MB) beside the time ranking so the allocator is always named. New BugpunchManagedAllocCounter (C#-only — engine-exclusive data, no native analogue) probes once at startup for a live source by allocating a block and checking the reading moved: GC.GetAllocatedBytesForCurrentThread (flat on Unity's Mono), else the profiler's live "GC Allocated In Frame" counter (exact in the Editor probe; the same release-available counter the perf timeline already reads), else Profiler.GetMonoUsedSizeLong; no source means no reader and an untouched hot path.
 
 ## [0.8.211] - 2026-09-16
 
