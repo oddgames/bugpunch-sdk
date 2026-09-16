@@ -193,15 +193,17 @@ else
 fi
 
 # UnityFramework carries the engine + IL2CPP game code; it is the ONE dSYM
-# crashes need. In Xcode mode, if the project setting was left on plain
-# 'dwarf', rebuild it from the just-linked binary (the debug map is still on
-# disk at this phase) so it carries the SAME LC_UUID as the shipped binary.
+# crashes need. Locate the just-linked framework binary whenever we can: it is
+# the symbol-table source (see step 5 — a dSYM's DWARF companion lists only the
+# exported names, the local `t` functions live in the linked binary), and the
+# dsymutil source when the project was left on plain 'dwarf' (the debug map is
+# still on disk at this phase, so the rebuilt dSYM carries the SAME LC_UUID).
 uf_present=0
 if [ ${#dsyms[@]} -gt 0 ]; then
   for d in "${dsyms[@]}"; do case "$(basename "$d")" in UnityFramework.dSYM) uf_present=1 ;; esac; done
 fi
-if [ "$MODE" = "xcode" ] && [ $uf_present -eq 0 ] && command -v dsymutil >/dev/null 2>&1; then
-  uf_bin=""
+uf_bin=""
+if [ "$MODE" = "xcode" ]; then
   for cand in \
     "${CODESIGNING_FOLDER_PATH:-}/Frameworks/UnityFramework.framework/UnityFramework" \
     "${TARGET_BUILD_DIR:-}/UnityFramework.framework/UnityFramework" \
@@ -209,6 +211,15 @@ if [ "$MODE" = "xcode" ] && [ $uf_present -eq 0 ] && command -v dsymutil >/dev/n
     if [ -n "$cand" ] && [ -f "$cand" ]; then uf_bin="$cand"; break; fi
   done
   [ -z "$uf_bin" ] && uf_bin="$(find "${CONFIGURATION_BUILD_DIR:-$DSYM_DIR/..}" -path '*UnityFramework.framework/UnityFramework' -type f -print -quit 2>/dev/null)"
+else
+  # Standalone sweep of an .xcarchive: the shipped framework sits under Products.
+  for arg in "$@"; do
+    cand="$(find "$arg" -path '*/Products/Applications/*.app/Frameworks/UnityFramework.framework/UnityFramework' -type f -print -quit 2>/dev/null)"
+    if [ -n "$cand" ]; then uf_bin="$cand"; break; fi
+  done
+fi
+[ -n "$uf_bin" ] && log "UnityFramework binary: $uf_bin"
+if [ "$MODE" = "xcode" ] && [ $uf_present -eq 0 ] && command -v dsymutil >/dev/null 2>&1; then
   if [ -n "$uf_bin" ] && [ -f "$uf_bin" ]; then
     log "UnityFramework.dSYM absent — synthesizing from $uf_bin via dsymutil."
     if dsymutil "$uf_bin" -o "$TMPDIR_BP/UnityFramework.dSYM" 2>/dev/null; then
@@ -232,6 +243,14 @@ while read -r line; do
   arch=$(echo "$line" | awk -F'[()]' '{print $2}')
   src=$(echo "$line" | awk '{for (i=4; i<=NF; i++) printf "%s%s", $i, (i==NF?"":" ")}')
   base=$(basename "$src")
+  # The dSYM's DWARF companion identifies the slice (UUID, arch) but its own symbol
+  # table lists only the exported names — dsymutil never copies the local `t`
+  # functions in. Those live in the linked framework binary, so when the shipped
+  # UnityFramework with the SAME UUID is on disk, read the table from it instead.
+  if [ "$base" = "UnityFramework" ] && [ -n "$uf_bin" ]; then
+    bin_uuid=$(dwarfdump --uuid "$uf_bin" 2>/dev/null | awk -v a="$arch" -F'[() ]+' '$3==a{print $2}' | tr 'A-F' 'a-f' | tr -d '-')
+    if [ "$bin_uuid" = "$uuid" ]; then src="$uf_bin"; else warn "linked UnityFramework UUID ($bin_uuid) differs from its dSYM ($uuid) — reading the dSYM."; fi
+  fi
   thin="$TMPDIR_BP/${uuid}-${base}"
   if lipo "$src" -thin "$arch" -output "$thin" 2>/dev/null; then src="$thin"; fi
   job_uuid+=("$uuid"); job_arch+=("$arch"); job_path+=("$src"); job_filename+=("${base}.${arch}")

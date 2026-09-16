@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.206] - 2026-09-16
+
+### Changed
+- iOS symbols: the Xcode upload phase read the symbol table from the dSYM's DWARF companion, which dsymutil fills with only the exported names, so every healthy archive was rejected as export-only (build #2459: UnityFramework 8b4d8756, 172 KB, 'binary is stripped') and its crashes would not symbolicate. The table is now read from the linked UnityFramework binary with the same UUID (the Run Script phase's built products, or Products/ inside a swept .xcarchive), falling back to the dSYM only when the UUIDs differ; the iOS post-process also sets STRIP_INSTALLED_PRODUCT=NO on the UnityFramework target so an archive's install strip cannot remove those symbols before the phase runs
+
 ## [0.8.205] - 2026-09-16
 
 ### Changed
@@ -96,6 +101,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.206] - 2026-09-16
+
+### Changed
+- iOS symbols: the Xcode upload phase read the symbol table from the dSYM's DWARF companion, which dsymutil fills with only the exported names, so every healthy archive was rejected as export-only (build #2459: UnityFramework 8b4d8756, 172 KB, 'binary is stripped') and its crashes would not symbolicate. The table is now read from the linked UnityFramework binary with the same UUID (the Run Script phase's built products, or Products/ inside a swept .xcarchive), falling back to the dSYM only when the UUIDs differ; the iOS post-process also sets STRIP_INSTALLED_PRODUCT=NO on the UnityFramework target so an archive's install strip cannot remove those symbols before the phase runs
 
 ## [0.8.205] - 2026-09-16
 
