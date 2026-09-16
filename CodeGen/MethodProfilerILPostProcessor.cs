@@ -30,6 +30,31 @@
 //   MonoBehaviour Update/FixedUpdate/ whole-method try/finally wrap with an
 //   LateUpdate                        "update" site — per-script timing with
 //                                     no marks required from the game.
+//   MonoBehaviour Awake/Start/        same wrap, "message" site — where an
+//   OnEnable/OnDestroy/OnCollision…   Instantiate's cost actually lands.
+//
+// DEVELOPMENT BUILDS (DEVELOPMENT_BUILD define; force with
+// BUGPUNCH_DEEP_PROFILE, opt out with BUGPUNCH_NO_DEEP_PROFILE) additionally
+// weave, in game assemblies:
+//
+//   handlers   methods whose address is taken as a delegate (ldftn → newobj
+//              UnityAction/Action/…) plus public void(≤1 arg) methods on
+//              MonoBehaviours — the shapes a Button.onClick / UnityEvent can
+//              call. A click's work runs inside EventSystem.Update, which is
+//              Unity's code and never woven, so without these a 3 s truck
+//              browse read as "scripts 3154 ms" with no owner (MTD 15679).
+//   method     any other method that looks worth timing: a loop (backward
+//              branch), ≥ 4 calls, an array allocation, or ≥ 64 bytes of IL.
+//              Getters, ctors, lambdas, Burst and AggressiveInlining are
+//              skipped. The runtime mutes a site that turns out to be hot and
+//              tiny (BugpunchMethodProfiler adaptive muting), so a mis-pick
+//              costs a few ns per call, never a frame.
+//   async /    the compiler's MoveNext of an async or iterator method, named
+//   coroutine  after the original method — continuations after an await run
+//              from the player loop and were invisible.
+//
+// Wraps handle any return type (the value parks in a local across the
+// finally). Skipped: by-ref returns, tail. calls, abstract/extern bodies.
 //
 // NOTE on release builds: Begin/End/BeginSample call sites only exist in the
 // compiled IL if ENABLE_PROFILER was defined for the GAME's compilation
@@ -192,7 +217,8 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 {
                     File.AppendAllText(WeaveLogPath,
                         $"{DateTime.Now:HH:mm:ss} {asmName}: {session.SiteCount} sites " +
-                        $"(samples={session.SampleSites} markers={session.MarkerSites} updates={session.UpdateSites})\n");
+                        $"(samples={session.SampleSites} markers={session.MarkerSites} updates={session.UpdateSites} " +
+                        $"messages={session.MessageSites} handlers={session.HandlerSites} methods={session.MethodSites} stateMachines={session.StateMachineSites})\n");
                 }
             }
             catch (Exception e)
@@ -217,11 +243,18 @@ namespace ODDGames.BugpunchSdk.CodeGen
             readonly Dictionary<string, string> _markerNameCache = new();
 
             public int SiteCount => _descriptors.Count;
-            public int SampleSites, MarkerSites, UpdateSites;
+            public int SampleSites, MarkerSites, UpdateSites, MessageSites, HandlerSites, MethodSites, StateMachineSites;
+            readonly bool _deep;
+            // Methods whose address is taken as a delegate anywhere in the
+            // module — collected in one pass before weaving so a handler is
+            // recognised regardless of declaration order.
+            readonly HashSet<MethodDefinition> _delegateTargets = new();
 
             public WeaveSession(ModuleDefinition module, ICompiledAssembly compiled)
             {
                 _module = module;
+                _deep = IsDeep(compiled);
+                if (_deep) CollectDelegateTargets(module);
                 var bpRef = GetOrAddBugpunchRef(module, compiled);
                 _collector = new TypeReference(CollectorNamespace, CollectorType, module, bpRef);
                 var ts = module.TypeSystem;
@@ -229,6 +262,71 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 _enterDynamic = StaticMethod("EnterDynamic", ts.Void, ts.String);
                 _exit = StaticMethod("Exit", ts.Void);
                 _registerSites = StaticMethod("RegisterSites", ts.Int32, new ArrayType(ts.String));
+            }
+
+            static bool IsDeep(ICompiledAssembly compiled)
+            {
+                bool dev = false, force = false;
+                foreach (var d in compiled.Defines ?? Array.Empty<string>())
+                {
+                    if (d == "BUGPUNCH_NO_DEEP_PROFILE") return false;
+                    if (d == "DEVELOPMENT_BUILD") dev = true;
+                    else if (d == "BUGPUNCH_DEEP_PROFILE") force = true;
+                }
+                return dev || force;
+            }
+
+            void CollectDelegateTargets(ModuleDefinition module)
+            {
+                foreach (var type in module.GetTypes())
+                {
+                    foreach (var method in type.Methods)
+                    {
+                        if (!method.HasBody) continue;
+                        foreach (var ins in method.Body.Instructions)
+                        {
+                            if (ins.OpCode.Code != Code.Ldftn && ins.OpCode.Code != Code.Ldvirtftn) continue;
+                            // ldftn feeds the delegate ctor two instructions on: ldftn, newobj.
+                            var next = ins.Next;
+                            if (next == null || next.OpCode.Code != Code.Newobj) continue;
+                            if (!(next.Operand is MethodReference ctor) || !IsDelegateCtor(ctor)) continue;
+                            if (ins.Operand is MethodReference target)
+                            {
+                                MethodDefinition def = null;
+                                try { def = target.Resolve(); } catch { }
+                                if (def != null && def.Module == module) _delegateTargets.Add(def);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Every delegate constructor is (object target, native int fn) —
+            // recognisable without resolving the delegate type, which may
+            // live in a core library the weaver's resolver cannot see.
+            static bool IsDelegateCtor(MethodReference ctor)
+            {
+                if (ctor.Name != ".ctor" || ctor.Parameters.Count != 2) return false;
+                var p1 = ctor.Parameters[1].ParameterType.FullName;
+                return p1 == "System.IntPtr" || IsDelegateType(ctor.DeclaringType);
+            }
+
+            static bool IsDelegateType(TypeReference t)
+            {
+                try
+                {
+                    var def = t.Resolve();
+                    int guard = 0;
+                    while (def != null && guard++ < 8)
+                    {
+                        var bt = def.BaseType?.FullName;
+                        if (bt == "System.MulticastDelegate" || bt == "System.Delegate") return true;
+                        if (bt == null || bt == "System.Object") return false;
+                        def = def.BaseType.Resolve();
+                    }
+                }
+                catch { }
+                return false;
             }
 
             MethodReference StaticMethod(string name, TypeReference ret, params TypeReference[] ps)
@@ -394,13 +492,28 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 if (HasBurst(type)) return;
 
                 bool isMb = IsMonoBehaviour(type);
+                var stateMachine = _deep ? StateMachineKind(type) : null;
                 foreach (var method in type.Methods)
                 {
                     if (!method.HasBody || method.Body.Instructions.Count == 0) continue;
                     if (HasBurst(method)) continue;
+                    // Decided before WeaveCalls edits the body: the size and
+                    // loop tests read offsets Cecil assigned at load time.
+                    int wrap = 0;
+                    if (isMb && IsWrappableUpdate(method)) wrap = 1;
+                    else if (isMb && IsLifecycleMessage(method)) wrap = 2;
+                    else if (stateMachine != null && method.Name == "MoveNext" && method.Parameters.Count == 0 && CanWrap(method)) wrap = 3;
+                    else if (_deep && IsHandler(method, isMb)) wrap = 4;
+                    else if (_deep && IsWorthTiming(method)) wrap = 5;
                     bool modified = WeaveCalls(method);
-                    if (isMb && IsWrappableUpdate(method))
-                        modified |= WrapUpdateMethod(method);
+                    switch (wrap)
+                    {
+                        case 1: modified |= WrapMethod(method, "update", method.Name, method.DeclaringType.FullName, ref UpdateSites); break;
+                        case 2: modified |= WrapMethod(method, "message", method.Name, method.DeclaringType.FullName, ref MessageSites); break;
+                        case 3: modified |= WrapMethod(method, stateMachine, StateMachineSourceName(type), type.DeclaringType?.FullName ?? type.FullName, ref StateMachineSites); break;
+                        case 4: modified |= WrapMethod(method, "handler", OverloadName(method), method.DeclaringType.FullName, ref HandlerSites); break;
+                        case 5: modified |= WrapMethod(method, "method", OverloadName(method), method.DeclaringType.FullName, ref MethodSites); break;
+                    }
                     if (modified)
                         WidenShortBranches(method.Body);
                 }
@@ -410,6 +523,126 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 (m.Name == "Update" || m.Name == "FixedUpdate" || m.Name == "LateUpdate")
                 && !m.IsStatic && !m.IsAbstract && m.Parameters.Count == 0
                 && m.ReturnType.FullName == "System.Void";
+
+            // The engine messages where a spawn's cost lands (Awake/Start/
+            // OnEnable run inside Instantiate) and the discrete physics /
+            // visibility / app-state callbacks. The per-step *Stay variants
+            // are left out: one per contact per physics step.
+            static readonly HashSet<string> LifecycleMessages = new()
+            {
+                "Awake", "Start", "OnEnable", "OnDisable", "OnDestroy",
+                "OnCollisionEnter", "OnCollisionExit", "OnTriggerEnter", "OnTriggerExit",
+                "OnCollisionEnter2D", "OnCollisionExit2D", "OnTriggerEnter2D", "OnTriggerExit2D",
+                "OnApplicationPause", "OnApplicationFocus", "OnApplicationQuit",
+                "OnBecameVisible", "OnBecameInvisible", "OnJointBreak", "OnParticleCollision",
+                "OnTransformChildrenChanged", "OnTransformParentChanged", "OnRectTransformDimensionsChange",
+            };
+
+            static bool IsLifecycleMessage(MethodDefinition m) =>
+                LifecycleMessages.Contains(m.Name)
+                && !m.IsStatic && !m.IsAbstract && m.Parameters.Count <= 1
+                && m.ReturnType.FullName == "System.Void" && CanWrap(m);
+
+            // "async" for an await state machine, "coroutine" for an iterator,
+            // null for anything else. The compiler names them <Method>d__N.
+            static string StateMachineKind(TypeDefinition type)
+            {
+                if (!type.IsNested || !type.Name.StartsWith("<") || !type.Name.Contains(">d__")) return null;
+                foreach (var i in type.Interfaces)
+                {
+                    var n = i.InterfaceType.FullName;
+                    if (n == "System.Runtime.CompilerServices.IAsyncStateMachine") return "async";
+                    if (n == "System.Collections.IEnumerator") return "coroutine";
+                }
+                return null;
+            }
+
+            static string StateMachineSourceName(TypeDefinition type)
+            {
+                int end = type.Name.IndexOf(">d__", StringComparison.Ordinal);
+                return end > 1 ? type.Name.Substring(1, end - 1) : type.Name;
+            }
+
+            // What a UnityEvent / Button.onClick / C# event can call into:
+            // any method whose address is taken as a delegate, and the public
+            // void(≤1 arg) instance methods on a MonoBehaviour that an
+            // Inspector-bound persistent listener can reach.
+            bool IsHandler(MethodDefinition m, bool isMb)
+            {
+                if (!CanWrap(m) || IsAccessor(m) || IsCompilerGenerated(m)) return false;
+                if (_delegateTargets.Contains(m)) return true;
+                if (EventSystemHandlers.Contains(m.Name) && m.Parameters.Count == 1) return true;
+                return isMb && m.IsPublic && !m.IsStatic && m.Parameters.Count <= 1
+                    && m.ReturnType.FullName == "System.Void";
+            }
+
+            // UnityEngine.EventSystems interface methods — the pointer / drag /
+            // submit callbacks a UI script implements (explicit or not).
+            static readonly HashSet<string> EventSystemHandlers = new()
+            {
+                "OnPointerClick", "OnPointerDown", "OnPointerUp", "OnPointerEnter", "OnPointerExit",
+                "OnSubmit", "OnCancel", "OnSelect", "OnDeselect", "OnMove", "OnScroll",
+                "OnBeginDrag", "OnDrag", "OnEndDrag", "OnDrop", "OnInitializePotentialDrag", "OnUpdateSelected",
+            };
+
+            // A body that looks like it can take real time: a loop, several
+            // calls, an array allocation, or simply a lot of IL. Everything
+            // trivial (getters, one-liners, ctors, lambdas) stays untouched.
+            bool IsWorthTiming(MethodDefinition m)
+            {
+                if (!CanWrap(m) || IsAccessor(m) || IsCompilerGenerated(m)) return false;
+                if (m.HasCustomAttributes && m.CustomAttributes.Any(a =>
+                        a.AttributeType.Name == "MethodImplAttribute"
+                        && a.ConstructorArguments.Count == 1
+                        && a.ConstructorArguments[0].Value is int impl && (impl & 0x100) != 0))
+                    return false;   // AggressiveInlining — the author wants it gone
+                var body = m.Body;
+                if (body.CodeSize >= 64) return true;
+                int calls = 0;
+                foreach (var ins in body.Instructions)
+                {
+                    var code = ins.OpCode.Code;
+                    if (code == Code.Newarr) return true;
+                    if (code == Code.Call || code == Code.Callvirt) { if (++calls >= 4) return true; }
+                    if (ins.Operand is Instruction target && target.Offset <= ins.Offset
+                        && (ins.OpCode.FlowControl == FlowControl.Branch || ins.OpCode.FlowControl == FlowControl.Cond_Branch))
+                        return true;   // backward branch = loop
+                }
+                return false;
+            }
+
+            static bool IsAccessor(MethodDefinition m) =>
+                m.IsGetter || m.IsSetter || m.IsAddOn || m.IsRemoveOn || m.IsConstructor;
+
+            static bool IsCompilerGenerated(MethodDefinition m)
+            {
+                if (m.Name.StartsWith("<")) return true;
+                var t = m.DeclaringType;
+                if (t.Name.StartsWith("<")) return true;   // <>c, <>c__DisplayClass, state machines
+                return m.HasCustomAttributes && m.CustomAttributes.Any(a =>
+                    a.AttributeType.Name == "CompilerGeneratedAttribute");
+            }
+
+            // The shapes the try/finally wrap cannot express.
+            static bool CanWrap(MethodDefinition m)
+            {
+                if (m.IsAbstract || m.IsPInvokeImpl || m.IsRuntime || !m.HasBody) return false;
+                if (m.ReturnType.IsByReference || m.ReturnType.IsPointer) return false;
+                foreach (var ins in m.Body.Instructions)
+                    if (ins.OpCode.Code == Code.Tail) return false;
+                return true;
+            }
+
+            // Overloads share a name; give each its parameter list so the
+            // rows stay tellable apart.
+            static string OverloadName(MethodDefinition m)
+            {
+                int same = 0;
+                foreach (var o in m.DeclaringType.Methods) if (o.Name == m.Name) same++;
+                if (same < 2) return m.Name;
+                var ps = string.Join(", ", m.Parameters.Select(p => p.ParameterType.Name));
+                return m.Name + "(" + ps + ")";
+            }
 
             static bool HasBurst(ICustomAttributeProvider p) =>
                 p.HasCustomAttributes
@@ -695,19 +928,31 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 return name;
             }
 
-            // ── MonoBehaviour Update wrap ─────────────────────────────────
+            // ── Whole-method wrap ─────────────────────────────────────────
 
-            bool WrapUpdateMethod(MethodDefinition method)
+            // Enter(id) ahead of the body, the body inside a try whose finally
+            // calls Exit(). A value-returning method parks its result in a new
+            // local at every ret (stloc; leave) and reloads it after the
+            // finally — leave cannot carry a value out of a protected region.
+            bool WrapMethod(MethodDefinition method, string kind, string name, string declaring, ref int counter)
             {
                 var body = method.Body;
                 var il = body.GetILProcessor();
-                var f = AddSite("update", method.Name, method.DeclaringType.FullName, SourceForMethod(method));
-                UpdateSites++;
+                var f = AddSite(kind, name, declaring, SourceForMethod(method));
+                counter++;
 
                 var first = body.Instructions[0];
                 // Original rets become leave → finalRet. Collected before we
                 // append our trailer (whose ret must not be rewritten).
                 var rets = body.Instructions.Where(x => x.OpCode.Code == Code.Ret).ToList();
+                bool returnsValue = method.ReturnType.FullName != "System.Void";
+                VariableDefinition retLocal = null;
+                if (returnsValue)
+                {
+                    retLocal = new VariableDefinition(method.ReturnType);
+                    body.Variables.Add(retLocal);
+                    body.InitLocals = true;
+                }
 
                 il.InsertBefore(first, il.Create(OpCodes.Ldsfld, f));
                 il.InsertBefore(first, il.Create(OpCodes.Call, _enter));
@@ -715,14 +960,32 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 var exitCall = il.Create(OpCodes.Call, _exit);
                 var endFinally = il.Create(OpCodes.Endfinally);
                 var finalRet = il.Create(OpCodes.Ret);
+                Instruction leaveTarget = finalRet;
                 il.Append(exitCall);
                 il.Append(endFinally);
+                if (returnsValue)
+                {
+                    leaveTarget = il.Create(OpCodes.Ldloc, retLocal);
+                    il.Append(leaveTarget);
+                }
                 il.Append(finalRet);
 
                 foreach (var r in rets)
                 {
-                    r.OpCode = OpCodes.Leave;
-                    r.Operand = finalRet;
+                    if (returnsValue)
+                    {
+                        // ret → stloc retLocal; leave — the stloc takes the
+                        // ret's slot so every branch that targeted the ret
+                        // still lands on the store.
+                        r.OpCode = OpCodes.Stloc;
+                        r.Operand = retLocal;
+                        il.InsertAfter(r, il.Create(OpCodes.Leave, leaveTarget));
+                    }
+                    else
+                    {
+                        r.OpCode = OpCodes.Leave;
+                        r.Operand = leaveTarget;
+                    }
                 }
 
                 // Appended last → outermost handler; any pre-existing EH nests
@@ -732,7 +995,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     TryStart = first,
                     TryEnd = exitCall,
                     HandlerStart = exitCall,
-                    HandlerEnd = finalRet,
+                    HandlerEnd = leaveTarget,
                 });
                 return true;
             }

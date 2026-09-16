@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.213] - 2026-09-16
+
+### Changed
+- Method profiler weaves far more of the game on its own. Always (every player build): MonoBehaviour lifecycle messages — Awake, Start, OnEnable, OnDisable, OnDestroy, the discrete collision / trigger / visibility / app-state callbacks — so an Instantiate's real cost lands on the component that paid it. Development builds (DEVELOPMENT_BUILD; force with BUGPUNCH_DEEP_PROFILE, opt out with BUGPUNCH_NO_DEEP_PROFILE) also weave: handlers — any method whose address is taken as a delegate (Button.onClick / UnityEvent / C# events), public void(≤1 arg) methods on MonoBehaviours (what an Inspector-bound listener can reach) and the EventSystems pointer / drag / submit callbacks — because a click's work runs inside EventSystem.Update, Unity's code, and a 3 s truck browse on MTD read as "scripts 3154 ms" with no owner; heavy methods — a loop, four or more calls, an array allocation or 64+ bytes of IL (getters, ctors, lambdas, Burst and AggressiveInlining skipped); and the compiler's MoveNext of async and iterator methods, named after the source method, so continuations after an await are attributed instead of vanishing into the player loop. Wraps now park a return value across the finally, so any return type qualifies. Runtime safety valve: a site hit 5,000 times in one window at under 1 µs self is muted for 30 windows (push/pop only — no clock, no counters), so a mis-picked helper in a hot loop costs nanoseconds, never a frame. A frame that allocates ≥ 2 MB of managed memory ships its method breakdown like a slow frame even when it was quick; the dashboard shows it as an "alloc" marker. Weaver tests cover the new shapes end to end (JIT-verified value returns, async/iterator wraps, handler detection).
+
 ## [0.8.212] - 2026-09-16
 
 ### Changed
@@ -131,6 +136,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.213] - 2026-09-16
+
+### Changed
+- Method profiler weaves far more of the game on its own. Always (every player build): MonoBehaviour lifecycle messages — Awake, Start, OnEnable, OnDisable, OnDestroy, the discrete collision / trigger / visibility / app-state callbacks — so an Instantiate's real cost lands on the component that paid it. Development builds (DEVELOPMENT_BUILD; force with BUGPUNCH_DEEP_PROFILE, opt out with BUGPUNCH_NO_DEEP_PROFILE) also weave: handlers — any method whose address is taken as a delegate (Button.onClick / UnityEvent / C# events), public void(≤1 arg) methods on MonoBehaviours (what an Inspector-bound listener can reach) and the EventSystems pointer / drag / submit callbacks — because a click's work runs inside EventSystem.Update, Unity's code, and a 3 s truck browse on MTD read as "scripts 3154 ms" with no owner; heavy methods — a loop, four or more calls, an array allocation or 64+ bytes of IL (getters, ctors, lambdas, Burst and AggressiveInlining skipped); and the compiler's MoveNext of async and iterator methods, named after the source method, so continuations after an await are attributed instead of vanishing into the player loop. Wraps now park a return value across the finally, so any return type qualifies. Runtime safety valve: a site hit 5,000 times in one window at under 1 µs self is muted for 30 windows (push/pop only — no clock, no counters), so a mis-picked helper in a hot loop costs nanoseconds, never a frame. A frame that allocates ≥ 2 MB of managed memory ships its method breakdown like a slow frame even when it was quick; the dashboard shows it as an "alloc" marker. Weaver tests cover the new shapes end to end (JIT-verified value returns, async/iterator wraps, handler detection).
 
 ## [0.8.212] - 2026-09-16
 
