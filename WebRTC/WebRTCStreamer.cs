@@ -119,6 +119,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
         // on desktop). Surfaced live to the dashboard HUD via the metadata channel
         // ("thrm" = tier, "tfps" = the fps cap currently in force).
         int _thermalTier;             // 0 nominal · 1 fair · 2 serious · 3 critical
+        int _memoryLevel;             // BugpunchMemoryGovernor level folded into the same caps
         int _thermalFpsCap = 60;      // fps ceiling implied by the tier
         float _thermalEdgeScale = 1f; // resolution scale implied by the tier
         float _nextThermalPollUnscaled;
@@ -631,8 +632,13 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             _nextThermalPollUnscaled = now + THERMAL_POLL_SECONDS;
 
             int tier = BugpunchNative.GetThermalTier();
-            if (tier == _thermalTier) return;
+            // Memory pressure throttles through the same caps: the stream's two
+            // RenderTextures (encode RT + full-screen capture RT) are the largest
+            // allocations the IDE session holds, and a smaller edge shrinks both.
+            int mem = BugpunchMemoryGovernor.Level;
+            if (tier == _thermalTier && mem == _memoryLevel) return;
             _thermalTier = tier;
+            _memoryLevel = mem;
 
             int fpsCap; float edge;
             switch (tier)
@@ -646,12 +652,14 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                                                            // doesn't climb to serious
                 default: fpsCap = 60; edge = 1.00f; break; // nominal → no cap
             }
+            if (mem >= BugpunchMemoryGovernor.Critical)      { fpsCap = Mathf.Min(fpsCap, 10); edge = Mathf.Min(edge, 0.50f); }
+            else if (mem >= BugpunchMemoryGovernor.Elevated) { fpsCap = Mathf.Min(fpsCap, 24); edge = Mathf.Min(edge, 0.75f); }
 
             bool edgeChanged = !Mathf.Approximately(edge, _thermalEdgeScale);
             _thermalFpsCap = fpsCap;
             _thermalEdgeScale = edge;
             BugpunchLog.Info("WebRTCStreamer",
-                $"thermal tier={tier} → fpsCap={fpsCap} edge×{edge:0.00} (configured {_fps}fps/{_reqMaxEdge}px)");
+                $"thermal tier={tier} memory={BugpunchMemoryGovernor.Name(mem)} → fpsCap={fpsCap} edge×{edge:0.00} (configured {_fps}fps/{_reqMaxEdge}px)");
 
             if (edgeChanged && _streaming)
             {

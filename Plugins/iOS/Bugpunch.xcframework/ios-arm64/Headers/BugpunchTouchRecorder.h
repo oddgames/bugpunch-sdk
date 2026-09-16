@@ -36,6 +36,13 @@ bool BugpunchTouch_Start(void);
 /// Stop capturing. Events already in the ring are preserved until next Start.
 void BugpunchTouch_Stop(void);
 
+/// Memory governor reaction (BugpunchMemoryGovernor.mm). At Elevated and above
+/// the ring is trimmed to the last ~5 s of touches and stays capped there until
+/// pressure clears; a 54,000-event ring is ~1.3 MB of deque that no report needs
+/// while the OS is short of memory. Configure() is unaffected — the configured
+/// size returns on recovery.
+void BugpunchTouch_OnMemoryPressure(int level);
+
 bool BugpunchTouch_IsRunning(void);
 
 /// Snapshot events in [startHostTime, endHostTime] (seconds since boot) and
