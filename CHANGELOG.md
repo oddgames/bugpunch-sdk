@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.209] - 2026-09-16
+
+### Changed
+- fix(ios): memory governor shed labels were truncated at 40 chars ('GPU video capture pool (recording pause') in the memMap — buffer widened to 64. Android already unbounded; managed lane has no native governor.
+
+## [0.8.208] - 2026-09-16
+
+### Changed
+- Memory governor: judge the device, not just the app — and actually reach C#. MTD build 15675 died in Unity's allocator (Texture2D.ReadPixels from the cloud-save thumbnail) with 32 MB free on the host and the compressor holding 759 MB, while the per-app headroom still read 946 MB; the governor had fired on the memory warning 6.5 minutes earlier, shed 10 MB, then recovered to Normal on that healthy headroom and was Normal at death. It now also reads device-wide free memory (iOS: host_statistics64 free pages + compression rate from the 1 Hz sampler; Android: MemoryInfo.availMem + the kernel's lowMemory flag from the same getMemoryInfo read) with its own bands — Critical under 64 MB free or under 128 MB while the compressor churns, Elevated under 192 MB — and recovery requires both the app's headroom and the host's free memory to clear their bands. The native→C# transition push was named OnMemoryPressure, which UnitySendMessage matched to ScreenCaptureService's same-named private handler on the BugpunchClient GameObject ('Failed to call function OnMemoryPressure of class ScreenCaptureService' ×3 in the crash log), so C# never applied the level: the push is now OnNativeMemoryPressure and every private handler is named ApplyMemoryPressure / OnGovernorChanged. Game code can read the level too — Bugpunch.MemoryPressure + Bugpunch.MemoryPressureChanged — to skip its own multi-MB work (thumbnails, readbacks) at Critical. The memMap os.governor block and the [Bugpunch][Mem] log lines now carry host free / avail alongside headroom
+
 ## [0.8.207] - 2026-09-16
 
 ### Changed
@@ -106,6 +116,16 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.209] - 2026-09-16
+
+### Changed
+- fix(ios): memory governor shed labels were truncated at 40 chars ('GPU video capture pool (recording pause') in the memMap — buffer widened to 64. Android already unbounded; managed lane has no native governor.
+
+## [0.8.208] - 2026-09-16
+
+### Changed
+- Memory governor: judge the device, not just the app — and actually reach C#. MTD build 15675 died in Unity's allocator (Texture2D.ReadPixels from the cloud-save thumbnail) with 32 MB free on the host and the compressor holding 759 MB, while the per-app headroom still read 946 MB; the governor had fired on the memory warning 6.5 minutes earlier, shed 10 MB, then recovered to Normal on that healthy headroom and was Normal at death. It now also reads device-wide free memory (iOS: host_statistics64 free pages + compression rate from the 1 Hz sampler; Android: MemoryInfo.availMem + the kernel's lowMemory flag from the same getMemoryInfo read) with its own bands — Critical under 64 MB free or under 128 MB while the compressor churns, Elevated under 192 MB — and recovery requires both the app's headroom and the host's free memory to clear their bands. The native→C# transition push was named OnMemoryPressure, which UnitySendMessage matched to ScreenCaptureService's same-named private handler on the BugpunchClient GameObject ('Failed to call function OnMemoryPressure of class ScreenCaptureService' ×3 in the crash log), so C# never applied the level: the push is now OnNativeMemoryPressure and every private handler is named ApplyMemoryPressure / OnGovernorChanged. Game code can read the level too — Bugpunch.MemoryPressure + Bugpunch.MemoryPressureChanged — to skip its own multi-MB work (thumbnails, readbacks) at Critical. The memMap os.governor block and the [Bugpunch][Mem] log lines now carry host free / avail alongside headroom
 
 ## [0.8.207] - 2026-09-16
 

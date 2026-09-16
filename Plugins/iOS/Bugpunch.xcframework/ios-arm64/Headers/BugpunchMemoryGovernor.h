@@ -23,7 +23,7 @@
 // feeds its 1 Hz headroom read; the governor registers the OS notifications
 // itself so it works before/without the monitor). C# reads it through
 // Bugpunch_GetMemoryPressure (like the thermal tier) and receives a push on
-// every transition (BugpunchClient.OnMemoryPressure) so it can drop its own
+// every transition (BugpunchClient.OnNativeMemoryPressure) so it can drop its own
 // buffers. A signal pins its level for a hold window, recovery needs headroom
 // well back above the band (hysteresis), and levels never flap faster than
 // once per 10 s. Every transition and every shed is announced in the captured
@@ -54,6 +54,10 @@ int Bugpunch_GetMemoryPressure(void);
 /// Feed the latest per-app headroom (os_proc_available_memory, MB; < 0 =
 /// unknown). The perf monitor calls this from its 1 Hz sampler.
 void BugpunchMemoryGovernor_OnHeadroom(float headroomMB);
+// Feed the latest device-wide free memory (MB; < 0 = unknown) and compressor
+// churn (compressions/s; < 0 = unknown). The 1 Hz sampler calls this; a
+// starved host raises the level even while the app is under its own limit.
+void BugpunchMemoryGovernor_OnHostMemory(float hostFreeMB, float compressionsPerSec);
 
 /// Record something the SDK released in response to pressure, for the memMap
 /// and the log ring. `what` is a short noun phrase; `mb` may be 0 when unknown.
