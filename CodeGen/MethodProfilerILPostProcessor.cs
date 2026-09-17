@@ -56,6 +56,15 @@
 // Wraps handle any return type (the value parks in a local across the
 // finally). Skipped: by-ref returns, tail. calls, abstract/extern bodies.
 //
+// BURST: nothing Burst compiles may carry a hook — the collector's
+// Stopwatch / thread-id icalls are BC1091 errors, and a static-field read of
+// the site table drags its cctor in (MTD 4.0.15680 failed on exactly that).
+// Every method reachable by direct call from a [BurstCompile] type or method
+// is left untouched; and when the module references Unity.Burst, every hook
+// is emitted through a [BurstDiscard] shim on the generated holder, so a
+// reachable method the closure missed (constrained generic call, function
+// pointer) compiles as a no-op instead of failing the build.
+//
 // NOTE on release builds: Begin/End/BeginSample call sites only exist in the
 // compiled IL if ENABLE_PROFILER was defined for the GAME's compilation
 // (Unity defines it for development builds; add it to Scripting Define
@@ -218,7 +227,8 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     File.AppendAllText(WeaveLogPath,
                         $"{DateTime.Now:HH:mm:ss} {asmName}: {session.SiteCount} sites " +
                         $"(samples={session.SampleSites} markers={session.MarkerSites} updates={session.UpdateSites} " +
-                        $"messages={session.MessageSites} handlers={session.HandlerSites} methods={session.MethodSites} stateMachines={session.StateMachineSites})\n");
+                        $"messages={session.MessageSites} handlers={session.HandlerSites} methods={session.MethodSites} stateMachines={session.StateMachineSites} " +
+                        $"burstSkipped={session.BurstSkipped})\n");
                 }
             }
             catch (Exception e)
@@ -232,9 +242,16 @@ namespace ODDGames.BugpunchSdk.CodeGen
         sealed class WeaveSession
         {
             readonly ModuleDefinition _module;
-            readonly MethodReference _enter, _enterDynamic, _exit, _registerSites;
+            // What woven code calls: the collector directly, or — when the
+            // module references Unity.Burst — [BurstDiscard] shims that forward
+            // to it (see the BURST note in the header).
+            MethodReference _enter, _enterDynamic, _exit;
+            readonly MethodReference _registerSites, _bpEnter, _bpEnterDynamic, _bpExit;
             MethodReference _enterDynamicCtx;   // built lazily off the original call's Object param
             readonly TypeReference _collector;
+            readonly AssemblyNameReference _burstRef;   // null when the game has no Burst
+            readonly HashSet<MethodDefinition> _burstReachable = new();
+            public int BurstSkipped;
 
             TypeDefinition _holder;
             readonly List<string> _descriptors = new();
@@ -258,10 +275,76 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 var bpRef = GetOrAddBugpunchRef(module, compiled);
                 _collector = new TypeReference(CollectorNamespace, CollectorType, module, bpRef);
                 var ts = module.TypeSystem;
-                _enter = StaticMethod("Enter", ts.Void, ts.Int32);
-                _enterDynamic = StaticMethod("EnterDynamic", ts.Void, ts.String);
-                _exit = StaticMethod("Exit", ts.Void);
+                _bpEnter = StaticMethod("Enter", ts.Void, ts.Int32);
+                _bpEnterDynamic = StaticMethod("EnterDynamic", ts.Void, ts.String);
+                _bpExit = StaticMethod("Exit", ts.Void);
                 _registerSites = StaticMethod("RegisterSites", ts.Int32, new ArrayType(ts.String));
+                CollectBurstReachable(module);
+                foreach (var ar in module.AssemblyReferences)
+                    if (ar.Name == "Unity.Burst") { _burstRef = ar; break; }
+                if (_burstRef != null)
+                {
+                    EnsureHolder();
+                    _enter = MakeDiscardShim("Enter", _bpEnter, ts.Int32);
+                    _enterDynamic = MakeDiscardShim("EnterDynamic", _bpEnterDynamic, ts.String);
+                    _exit = MakeDiscardShim("Exit", _bpExit);
+                }
+                else
+                {
+                    _enter = _bpEnter;
+                    _enterDynamic = _bpEnterDynamic;
+                    _exit = _bpExit;
+                }
+            }
+
+            // Every method a [BurstCompile] type or method reaches by direct
+            // call / delegate / ctor within this module. Burst compiles the
+            // whole set, so none of it may be woven.
+            void CollectBurstReachable(ModuleDefinition module)
+            {
+                var queue = new Queue<MethodDefinition>();
+                foreach (var type in module.GetTypes())
+                {
+                    bool typeBurst = HasBurst(type);
+                    foreach (var m in type.Methods)
+                        if ((typeBurst || HasBurst(m)) && m.HasBody && _burstReachable.Add(m)) queue.Enqueue(m);
+                }
+                while (queue.Count > 0)
+                {
+                    var m = queue.Dequeue();
+                    foreach (var ins in m.Body.Instructions)
+                    {
+                        var code = ins.OpCode.Code;
+                        if (code != Code.Call && code != Code.Callvirt && code != Code.Ldftn && code != Code.Newobj) continue;
+                        if (!(ins.Operand is MethodReference mr)) continue;
+                        MethodDefinition def = null;
+                        try { def = mr.Resolve(); } catch { }
+                        if (def == null || def.Module != module || !def.HasBody) continue;
+                        if (_burstReachable.Add(def)) queue.Enqueue(def);
+                    }
+                }
+            }
+
+            // static void Name(args) { BugpunchMethodProfiler.Name(args); } with
+            // [BurstDiscard]: Burst drops the call and its argument evaluation
+            // (the site-field load) from anything it compiles; every other
+            // caller pays one forwarding call.
+            MethodReference MakeDiscardShim(string name, MethodReference target, params TypeReference[] ps)
+            {
+                var ts = _module.TypeSystem;
+                var m = new MethodDefinition(name,
+                    MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig, ts.Void);
+                m.ImplAttributes |= MethodImplAttributes.AggressiveInlining;
+                foreach (var p in ps) m.Parameters.Add(new ParameterDefinition(p));
+                var il = m.Body.GetILProcessor();
+                for (int i = 0; i < ps.Length; i++) il.Emit(OpCodes.Ldarg, m.Parameters[i]);
+                il.Emit(OpCodes.Call, target);
+                il.Emit(OpCodes.Ret);
+                var discard = new TypeReference("Unity.Burst", "BurstDiscardAttribute", _module, _burstRef);
+                var ctor = new MethodReference(".ctor", ts.Void, discard) { HasThis = true };
+                m.CustomAttributes.Add(new CustomAttribute(ctor));
+                _holder.Methods.Add(m);
+                return m;
             }
 
             static bool IsDeep(ICompiledAssembly compiled)
@@ -359,17 +442,20 @@ namespace ODDGames.BugpunchSdk.CodeGen
 
             // ── Site table ────────────────────────────────────────────────
 
+            void EnsureHolder()
+            {
+                if (_holder != null) return;
+                _holder = new TypeDefinition(
+                    "ODDGames.BugpunchSdk.Generated", "__BugpunchProfiledSites",
+                    TypeAttributes.NotPublic | TypeAttributes.Abstract | TypeAttributes.Sealed
+                    | TypeAttributes.Class | TypeAttributes.AnsiClass,
+                    _module.TypeSystem.Object);
+                _module.Types.Add(_holder);
+            }
+
             FieldDefinition AddSite(string kind, string name, string method, string source)
             {
-                if (_holder == null)
-                {
-                    _holder = new TypeDefinition(
-                        "ODDGames.BugpunchSdk.Generated", "__BugpunchProfiledSites",
-                        TypeAttributes.NotPublic | TypeAttributes.Abstract | TypeAttributes.Sealed
-                        | TypeAttributes.Class | TypeAttributes.AnsiClass,
-                        _module.TypeSystem.Object);
-                    _module.Types.Add(_holder);
-                }
+                EnsureHolder();
                 var field = new FieldDefinition(
                     "s" + _fields.Count,
                     FieldAttributes.Assembly | FieldAttributes.Static,
@@ -497,6 +583,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 {
                     if (!method.HasBody || method.Body.Instructions.Count == 0) continue;
                     if (HasBurst(method)) continue;
+                    if (_burstReachable.Contains(method)) { BurstSkipped++; continue; }
                     // Decided before WeaveCalls edits the body: the size and
                     // loop tests read offsets Cecil assigned at load time.
                     int wrap = 0;
@@ -723,8 +810,11 @@ namespace ODDGames.BugpunchSdk.CodeGen
                             if (_enterDynamicCtx == null)
                             {
                                 var ctxType = _module.ImportReference(mr.Parameters[1].ParameterType);
-                                _enterDynamicCtx = StaticMethod("EnterDynamic",
+                                var bpCtx = StaticMethod("EnterDynamic",
                                     _module.TypeSystem.Void, _module.TypeSystem.String, ctxType);
+                                _enterDynamicCtx = _burstRef != null
+                                    ? MakeDiscardShim("EnterDynamicCtx", bpCtx, _module.TypeSystem.String, ctxType)
+                                    : bpCtx;
                             }
                             SampleSites++;
                             ins.OpCode = OpCodes.Call;

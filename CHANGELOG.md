@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.215] - 2026-09-17
+
+### Changed
+- Weaver is Burst-safe. MTD's first iOS build on 0.8.213 failed in Burst (BC1091: "External and internal calls are not allowed inside static constructors: System.Diagnostics.Stopwatch.GetTimestamp()" x3): the deep weave had wrapped helpers that [BurstCompile] jobs call (160 of them in MagicaClothV2), and a Burst-compiled body reading a site-table field dragged the holder's cctor, RegisterSites and the collector's Stopwatch-initialised statics into the Burst compilation. Two guards, both shipped: every method reachable by direct call, delegate or ctor from a [BurstCompile] type or method is left untouched (no wrap, no marker redirect); and when the game module references Unity.Burst, every hook is emitted through [BurstDiscard] shims on the generated holder (Enter / EnterDynamic / Exit) that forward to the collector, so Burst compiles a reachable method the closure missed (constrained generic call, function pointer) as a no-op instead of failing the build. Weaver tests gain a Unity.Burst stub assembly and cover both guards; the opt-in weave smoke test now reports the shims and the log the burstSkipped count. Verified against MTD's Assembly-CSharp, Assembly-CSharp-firstpass and MagicaClothV2: 0 invalid IL.
+
 ## [0.8.214] - 2026-09-17
 
 ### Changed
@@ -141,6 +146,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.215] - 2026-09-17
+
+### Changed
+- Weaver is Burst-safe. MTD's first iOS build on 0.8.213 failed in Burst (BC1091: "External and internal calls are not allowed inside static constructors: System.Diagnostics.Stopwatch.GetTimestamp()" x3): the deep weave had wrapped helpers that [BurstCompile] jobs call (160 of them in MagicaClothV2), and a Burst-compiled body reading a site-table field dragged the holder's cctor, RegisterSites and the collector's Stopwatch-initialised statics into the Burst compilation. Two guards, both shipped: every method reachable by direct call, delegate or ctor from a [BurstCompile] type or method is left untouched (no wrap, no marker redirect); and when the game module references Unity.Burst, every hook is emitted through [BurstDiscard] shims on the generated holder (Enter / EnterDynamic / Exit) that forward to the collector, so Burst compiles a reachable method the closure missed (constrained generic call, function pointer) as a no-op instead of failing the build. Weaver tests gain a Unity.Burst stub assembly and cover both guards; the opt-in weave smoke test now reports the shims and the log the burstSkipped count. Verified against MTD's Assembly-CSharp, Assembly-CSharp-firstpass and MagicaClothV2: 0 invalid IL.
 
 ## [0.8.214] - 2026-09-17
 
