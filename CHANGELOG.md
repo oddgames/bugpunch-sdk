@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.217] - 2026-09-17
+
+### Changed
+- Weaver + method profiler review pass. Burst closure now also treats a job's interface calls as reaching every implementation in the module (constrained generic calls, T : IFoo, resolve only to the interface method); the [BurstDiscard] forwarders are emitted whenever Unity.Burst is in the build at all (name-only reference added), not only when the module already references it — a struct handed to another assembly's Burst job lives in a module that may not; the generated holder is never itself woven; explicit-interface EventSystems handlers (IPointerClickHandler.OnPointerClick) are recognised. Descriptor table is now one RVA-backed UTF-8 blob (RegisterSites(byte[], int)) decoded per site on first report instead of 15k interned string literals plus their splits — MTD's deep-woven Assembly-CSharp carries 1.6 MB of descriptors rather than ~6 MB of managed strings. Allocation-triggered frame captures are rate-limited to one per second so a game allocating 2 MB every frame cannot fill native's 64-slot stall ring or pay for a breakdown per frame; the managed-allocation counter probe (two 128 KB blocks) is skipped while the governor is Critical. Weaver tests read descriptors from the blob; MTD's Assembly-CSharp, Assembly-CSharp-firstpass and MagicaClothV2 smoke-weave with 0 invalid IL.
+
 ## [0.8.216] - 2026-09-17
 
 ### Changed
@@ -151,6 +156,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.217] - 2026-09-17
+
+### Changed
+- Weaver + method profiler review pass. Burst closure now also treats a job's interface calls as reaching every implementation in the module (constrained generic calls, T : IFoo, resolve only to the interface method); the [BurstDiscard] forwarders are emitted whenever Unity.Burst is in the build at all (name-only reference added), not only when the module already references it — a struct handed to another assembly's Burst job lives in a module that may not; the generated holder is never itself woven; explicit-interface EventSystems handlers (IPointerClickHandler.OnPointerClick) are recognised. Descriptor table is now one RVA-backed UTF-8 blob (RegisterSites(byte[], int)) decoded per site on first report instead of 15k interned string literals plus their splits — MTD's deep-woven Assembly-CSharp carries 1.6 MB of descriptors rather than ~6 MB of managed strings. Allocation-triggered frame captures are rate-limited to one per second so a game allocating 2 MB every frame cannot fill native's 64-slot stall ring or pay for a breakdown per frame; the managed-allocation counter probe (two 128 KB blocks) is skipped while the governor is Critical. Weaver tests read descriptors from the blob; MTD's Assembly-CSharp, Assembly-CSharp-firstpass and MagicaClothV2 smoke-weave with 0 invalid IL.
 
 ## [0.8.216] - 2026-09-17
 

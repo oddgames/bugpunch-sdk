@@ -74,7 +74,8 @@
 // wraps need nothing — they're always recoverable.
 //
 // Each woven assembly gets a generated __BugpunchProfiledSites class: a
-// cctor that registers the site descriptor table with BugpunchMethodProfiler
+// cctor that registers the site descriptor table (one RVA-backed UTF-8 blob,
+// a line per site — no per-site string literals) with BugpunchMethodProfiler
 // and stores the returned base id in one static field, plus Enter / Exit /
 // EnterDynamic forwarders that add the base to a site's weave-time index.
 // Call sites push the index as a constant (ldc.i4) — never a static field
@@ -252,7 +253,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
             // in the header), which add the registered base id to the constant
             // site index every call site pushes.
             MethodReference _enter, _enterDynamic, _exit;
-            readonly MethodReference _registerSites, _bpEnter, _bpEnterDynamic, _bpExit;
+            readonly MethodReference _registerSites, _registerSitesBlob, _bpEnter, _bpEnterDynamic, _bpExit;
             FieldDefinition _baseField;
             MethodReference _enterDynamicCtx;   // built lazily off the original call's Object param
             readonly TypeReference _collector;
@@ -285,9 +286,9 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 _bpEnterDynamic = StaticMethod("EnterDynamic", ts.Void, ts.String);
                 _bpExit = StaticMethod("Exit", ts.Void);
                 _registerSites = StaticMethod("RegisterSites", ts.Int32, new ArrayType(ts.String));
+                _registerSitesBlob = StaticMethod("RegisterSites", ts.Int32, new ArrayType(ts.Byte), ts.Int32);
                 CollectBurstReachable(module);
-                foreach (var ar in module.AssemblyReferences)
-                    if (ar.Name == "Unity.Burst") { _burstRef = ar; break; }
+                _burstRef = GetOrAddBurstRef(module, compiled);
                 EnsureHolder();
                 _enter = MakeShim("Enter", _bpEnter, addBase: true, ts.Int32);
                 _enterDynamic = MakeShim("EnterDynamic", _bpEnterDynamic, addBase: false, ts.String);
@@ -306,6 +307,30 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     foreach (var m in type.Methods)
                         if ((typeBurst || HasBurst(m)) && m.HasBody && _burstReachable.Add(m)) queue.Enqueue(m);
                 }
+                // Interface implementations by interface method, built once: a
+                // job's constrained call through a generic parameter (T : IFoo)
+                // resolves only to the interface method, so every struct in the
+                // module implementing it counts as reached.
+                var implementations = new Dictionary<MethodDefinition, List<MethodDefinition>>();
+                foreach (var type in module.GetTypes())
+                {
+                    if (!type.HasInterfaces) continue;
+                    foreach (var impl in type.Interfaces)
+                    {
+                        TypeDefinition iface = null;
+                        try { iface = impl.InterfaceType.Resolve(); } catch { }
+                        if (iface == null || iface.Module != module) continue;
+                        foreach (var im in iface.Methods)
+                        {
+                            var target = type.Methods.FirstOrDefault(tm => tm.HasBody
+                                && (tm.Name == im.Name || tm.Name.EndsWith("." + im.Name))
+                                && tm.Parameters.Count == im.Parameters.Count);
+                            if (target == null) continue;
+                            if (!implementations.TryGetValue(im, out var list)) implementations[im] = list = new List<MethodDefinition>();
+                            list.Add(target);
+                        }
+                    }
+                }
                 while (queue.Count > 0)
                 {
                     var m = queue.Dequeue();
@@ -316,8 +341,10 @@ namespace ODDGames.BugpunchSdk.CodeGen
                         if (!(ins.Operand is MethodReference mr)) continue;
                         MethodDefinition def = null;
                         try { def = mr.Resolve(); } catch { }
-                        if (def == null || def.Module != module || !def.HasBody) continue;
-                        if (_burstReachable.Add(def)) queue.Enqueue(def);
+                        if (def == null || def.Module != module) continue;
+                        if (def.HasBody && _burstReachable.Add(def)) queue.Enqueue(def);
+                        if (def.DeclaringType.IsInterface && implementations.TryGetValue(def, out var impls))
+                            foreach (var t in impls) if (_burstReachable.Add(t)) queue.Enqueue(t);
                     }
                 }
             }
@@ -450,6 +477,28 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 return nr;
             }
 
+            // The project's Unity.Burst, if it has one: an existing reference,
+            // else a name-only reference when the DLL is among the compile's
+            // references. A module with no Burst reference of its own can still
+            // hold structs that ANOTHER assembly's jobs call (a comparer handed
+            // to a Burst sort, an IJob helper), so the [BurstDiscard] forwarders
+            // are worth having whenever Burst is in the build at all. Null when
+            // the project has no Burst — nothing to discard for.
+            static AssemblyNameReference GetOrAddBurstRef(ModuleDefinition module, ICompiledAssembly compiled)
+            {
+                foreach (var ar in module.AssemblyReferences)
+                    if (ar.Name == "Unity.Burst") return ar;
+                var dllPath = compiled.References.FirstOrDefault(r =>
+                    string.Equals(Path.GetFileName(r), "Unity.Burst.dll", StringComparison.OrdinalIgnoreCase));
+                if (dllPath == null) return null;
+                var version = new Version(0, 0, 0, 0);
+                try { using var a = AssemblyDefinition.ReadAssembly(dllPath); version = a.Name.Version; }
+                catch { }
+                var nr = new AssemblyNameReference("Unity.Burst", version);
+                module.AssemblyReferences.Add(nr);
+                return nr;
+            }
+
             // ── Site table ────────────────────────────────────────────────
 
             void EnsureHolder()
@@ -549,18 +598,40 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig
                     | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
                     ts.Void);
+                // The descriptor table as one RVA-backed byte blob (the shape
+                // the C# compiler uses for array initialisers): UTF-8, one
+                // descriptor per line. No string literal is materialised for
+                // any site until the runtime reports it.
+                var blobBytes = System.Text.Encoding.UTF8.GetBytes(
+                    string.Join("\n", _descriptors.Select(d => d.Replace('\n', ' ').Replace('\r', ' '))));
+                var corlib = ts.CoreLibrary;
+                var valueType = new TypeReference("System", "ValueType", _module, corlib);
+                var blobType = new TypeDefinition("", "__BugpunchDescriptors",
+                    TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout | TypeAttributes.Sealed
+                    | TypeAttributes.AnsiClass, valueType)
+                { ClassSize = blobBytes.Length, PackingSize = 1 };
+                _holder.NestedTypes.Add(blobType);
+                var blobField = new FieldDefinition("data",
+                    FieldAttributes.Assembly | FieldAttributes.Static | FieldAttributes.InitOnly | FieldAttributes.HasFieldRVA,
+                    blobType)
+                { InitialValue = blobBytes };
+                blobType.Fields.Add(blobField);
+                var arrayType = new TypeReference("System", "Array", _module, corlib);
+                var fieldHandle = new TypeReference("System", "RuntimeFieldHandle", _module, corlib) { IsValueType = true };
+                var initializeArray = new MethodReference("InitializeArray", ts.Void,
+                    new TypeReference("System.Runtime.CompilerServices", "RuntimeHelpers", _module, corlib)) { HasThis = false };
+                initializeArray.Parameters.Add(new ParameterDefinition(arrayType));
+                initializeArray.Parameters.Add(new ParameterDefinition(fieldHandle));
+
                 var body = cctor.Body;
                 var il = body.GetILProcessor();
+                il.Emit(OpCodes.Ldc_I4, blobBytes.Length);
+                il.Emit(OpCodes.Newarr, ts.Byte);
+                il.Emit(OpCodes.Dup);
+                il.Emit(OpCodes.Ldtoken, blobField);
+                il.Emit(OpCodes.Call, initializeArray);
                 il.Emit(OpCodes.Ldc_I4, _descriptors.Count);
-                il.Emit(OpCodes.Newarr, ts.String);
-                for (int i = 0; i < _descriptors.Count; i++)
-                {
-                    il.Emit(OpCodes.Dup);
-                    il.Emit(OpCodes.Ldc_I4, i);
-                    il.Emit(OpCodes.Ldstr, _descriptors[i]);
-                    il.Emit(OpCodes.Stelem_Ref);
-                }
-                il.Emit(OpCodes.Call, _registerSites);
+                il.Emit(OpCodes.Call, _registerSitesBlob);
                 il.Emit(OpCodes.Stsfld, _baseField);
                 il.Emit(OpCodes.Ret);
                 _holder.Methods.Add(cctor);
@@ -570,6 +641,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
 
             public void WeaveType(TypeDefinition type)
             {
+                if (type == _holder) return;
                 foreach (var nested in type.NestedTypes.ToList())
                     WeaveType(nested);
                 if (HasBurst(type)) return;
@@ -655,7 +727,13 @@ namespace ODDGames.BugpunchSdk.CodeGen
             {
                 if (!CanWrap(m) || IsAccessor(m) || IsCompilerGenerated(m)) return false;
                 if (_delegateTargets.Contains(m)) return true;
-                if (EventSystemHandlers.Contains(m.Name) && m.Parameters.Count == 1) return true;
+                if (m.Parameters.Count == 1)
+                {
+                    // Explicit implementations carry the interface prefix.
+                    var dot = m.Name.LastIndexOf('.');
+                    var bare = dot >= 0 ? m.Name.Substring(dot + 1) : m.Name;
+                    if (EventSystemHandlers.Contains(bare)) return true;
+                }
                 return isMb && m.IsPublic && !m.IsStatic && m.Parameters.Count <= 1
                     && m.ReturnType.FullName == "System.Void";
             }
