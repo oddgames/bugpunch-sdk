@@ -6,8 +6,12 @@
 // UNITY_EDITOR, so editor iteration never pays the weave cost and a weaver
 // bug can never break editor compiles. Opt out per project with the
 // BUGPUNCH_NO_METHOD_PROFILER scripting define. For debugging the profiler
-// itself, the BUGPUNCH_WEAVE_IN_EDITOR scripting define temporarily allows
-// editor compilations to be woven (remove it when done).
+// itself, the BUGPUNCH_WEAVE_IN_EDITOR scripting define allows editor
+// compilations to be woven. The SDK test project (sdk/test) keeps it on,
+// with BUGPUNCH_DEEP_PROFILE, as the Burst canary: the Editor's Burst JIT
+// compiles every job on domain reload, and Assets/BurstScenario/ holds the
+// shapes that reached the collector from Burst-compiled code — a "Burst
+// error BC…" block in Editor.log after a reload means the weaver regressed.
 //
 // What gets rewritten (game assemblies only — never Unity's, never ours):
 //
@@ -73,15 +77,17 @@
 // Symbols to keep marks in release). Auto() scopes and the MonoBehaviour
 // wraps need nothing — they're always recoverable.
 //
-// Each woven assembly gets a generated __BugpunchProfiledSites class: a
-// cctor that registers the site descriptor table (one RVA-backed UTF-8 blob,
-// a line per site — no per-site string literals) with BugpunchMethodProfiler
-// and stores the returned base id in one static field, plus Enter / Exit /
-// EnterDynamic forwarders that add the base to a site's weave-time index.
-// Call sites push the index as a constant (ldc.i4) — never a static field
-// read, because Burst evaluates a type's static constructor the moment
-// compiled code touches one of its static fields, [BurstDiscard] or not.
-// First profiled call triggers the cctor — no startup hook.
+// Each woven assembly gets a generated __BugpunchProfiledSites class with
+// NO static constructor: Enter / Exit / EnterDynamic forwarders, a Base id, a
+// state word, and a Register() that, on the first Enter, hands the site
+// descriptor table (one RVA-backed UTF-8 blob, a line per site — no per-site
+// string literals) to BugpunchMethodProfiler and stores the returned base id.
+// The forwarders add Base to the constant (ldc.i4) site index every call
+// site pushes. Nothing here is evaluable by Burst and nothing needs to be:
+// Burst runs a type's static constructor as soon as compiled code references
+// the type, even through a [BurstDiscard] call (MTD 4.0.15685), so the type
+// Burst can see must have none. First profiled call registers — no startup
+// hook.
 //
 // Each descriptor also carries a weave-time SOURCE location pulled from the
 // PDB ("Assets/Rel/Path.cs:line"), so a profiler row reads "Ticker.Update —
@@ -254,7 +260,8 @@ namespace ODDGames.BugpunchSdk.CodeGen
             // site index every call site pushes.
             MethodReference _enter, _enterDynamic, _exit;
             readonly MethodReference _registerSites, _registerSitesBlob, _bpEnter, _bpEnterDynamic, _bpExit;
-            FieldDefinition _baseField;
+            FieldDefinition _baseField, _stateField;
+            MethodDefinition _register;   // body filled in by EmitSiteHolder once the table is known
             MethodReference _enterDynamicCtx;   // built lazily off the original call's Object param
             readonly TypeReference _collector;
             readonly AssemblyNameReference _burstRef;   // null when the game has no Burst
@@ -363,6 +370,18 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 m.ImplAttributes |= MethodImplAttributes.AggressiveInlining;
                 foreach (var p in ps) m.Parameters.Add(new ParameterDefinition(p));
                 var il = m.Body.GetILProcessor();
+                if (addBase)
+                {
+                    // if (s_state != 2) Register();  — an acquire read so Base,
+                    // written before the state flips, is visible with it.
+                    var ready = il.Create(OpCodes.Nop);
+                    il.Emit(OpCodes.Volatile);
+                    il.Emit(OpCodes.Ldsfld, _stateField);
+                    il.Emit(OpCodes.Ldc_I4_2);
+                    il.Emit(OpCodes.Beq, ready);
+                    il.Emit(OpCodes.Call, _register);
+                    il.Append(ready);
+                }
                 for (int i = 0; i < ps.Length; i++)
                 {
                     il.Emit(OpCodes.Ldarg, m.Parameters[i]);
@@ -374,14 +393,17 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 }
                 il.Emit(OpCodes.Call, target);
                 il.Emit(OpCodes.Ret);
-                if (_burstRef != null)
-                {
-                    var discard = new TypeReference("Unity.Burst", "BurstDiscardAttribute", _module, _burstRef);
-                    var ctor = new MethodReference(".ctor", ts.Void, discard) { HasThis = true };
-                    m.CustomAttributes.Add(new CustomAttribute(ctor));
-                }
+                AddBurstDiscard(m);
                 _holder.Methods.Add(m);
                 return m;
+            }
+
+            void AddBurstDiscard(MethodDefinition m)
+            {
+                if (_burstRef == null) return;
+                var discard = new TypeReference("Unity.Burst", "BurstDiscardAttribute", _module, _burstRef);
+                var ctor = new MethodReference(".ctor", _module.TypeSystem.Void, discard) { HasThis = true };
+                m.CustomAttributes.Add(new CustomAttribute(ctor));
             }
 
             static bool IsDeep(ICompiledAssembly compiled)
@@ -513,6 +535,14 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 _baseField = new FieldDefinition("Base",
                     FieldAttributes.Assembly | FieldAttributes.Static, _module.TypeSystem.Int32);
                 _holder.Fields.Add(_baseField);
+                // 0 = unregistered, 1 = a thread is registering, 2 = Base is valid.
+                _stateField = new FieldDefinition("s_state",
+                    FieldAttributes.Assembly | FieldAttributes.Static, _module.TypeSystem.Int32);
+                _holder.Fields.Add(_stateField);
+                _register = new MethodDefinition("Register",
+                    MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig, _module.TypeSystem.Void);
+                _register.ImplAttributes |= MethodImplAttributes.NoInlining;
+                _holder.Methods.Add(_register);
             }
 
             /// <summary>Registers a site; returns its weave-time index (the
@@ -589,15 +619,13 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 return slash >= 0 ? p.Substring(slash + 1) : p;
             }
 
-            /// <summary>Generated cctor: register descriptors, store base+i into each id field.</summary>
+            /// <summary>Fills in Register(): the first thread through hands the
+            /// descriptor blob to the collector and publishes Base; any other
+            /// thread arriving meanwhile spins until it is published.</summary>
             public void EmitSiteHolder()
             {
                 if (_holder == null) return;
                 var ts = _module.TypeSystem;
-                var cctor = new MethodDefinition(".cctor",
-                    MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig
-                    | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
-                    ts.Void);
                 // The descriptor table as one RVA-backed byte blob (the shape
                 // the C# compiler uses for array initialisers): UTF-8, one
                 // descriptor per line. No string literal is materialised for
@@ -623,8 +651,30 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 initializeArray.Parameters.Add(new ParameterDefinition(arrayType));
                 initializeArray.Parameters.Add(new ParameterDefinition(fieldHandle));
 
-                var body = cctor.Body;
+                var intRef = new ByReferenceType(ts.Int32);
+                var interlocked = new TypeReference("System.Threading", "Interlocked", _module, corlib);
+                var compareExchange = new MethodReference("CompareExchange", ts.Int32, interlocked) { HasThis = false };
+                compareExchange.Parameters.Add(new ParameterDefinition(intRef));
+                compareExchange.Parameters.Add(new ParameterDefinition(ts.Int32));
+                compareExchange.Parameters.Add(new ParameterDefinition(ts.Int32));
+                var exchange = new MethodReference("Exchange", ts.Int32, interlocked) { HasThis = false };
+                exchange.Parameters.Add(new ParameterDefinition(intRef));
+                exchange.Parameters.Add(new ParameterDefinition(ts.Int32));
+                var spinWait = new MethodReference("SpinWait", ts.Void,
+                    new TypeReference("System.Threading", "Thread", _module, corlib)) { HasThis = false };
+                spinWait.Parameters.Add(new ParameterDefinition(ts.Int32));
+
+                var body = _register.Body;
                 var il = body.GetILProcessor();
+                var wait = il.Create(OpCodes.Nop);
+                var done = il.Create(OpCodes.Ret);
+                // if (Interlocked.CompareExchange(ref s_state, 1, 0) != 0) goto wait;
+                il.Emit(OpCodes.Ldsflda, _stateField);
+                il.Emit(OpCodes.Ldc_I4_1);
+                il.Emit(OpCodes.Ldc_I4_0);
+                il.Emit(OpCodes.Call, compareExchange);
+                il.Emit(OpCodes.Brtrue, wait);
+                // Base = RegisterSites(blob, count); Interlocked.Exchange(ref s_state, 2);
                 il.Emit(OpCodes.Ldc_I4, blobBytes.Length);
                 il.Emit(OpCodes.Newarr, ts.Byte);
                 il.Emit(OpCodes.Dup);
@@ -633,8 +683,24 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 il.Emit(OpCodes.Ldc_I4, _descriptors.Count);
                 il.Emit(OpCodes.Call, _registerSitesBlob);
                 il.Emit(OpCodes.Stsfld, _baseField);
+                il.Emit(OpCodes.Ldsflda, _stateField);
+                il.Emit(OpCodes.Ldc_I4_2);
+                il.Emit(OpCodes.Call, exchange);
+                il.Emit(OpCodes.Pop);
                 il.Emit(OpCodes.Ret);
-                _holder.Methods.Add(cctor);
+                // wait: while (Interlocked.CompareExchange(ref s_state, 2, 2) != 2) Thread.SpinWait(1);
+                il.Append(wait);
+                il.Emit(OpCodes.Ldsflda, _stateField);
+                il.Emit(OpCodes.Ldc_I4_2);
+                il.Emit(OpCodes.Ldc_I4_2);
+                il.Emit(OpCodes.Call, compareExchange);
+                il.Emit(OpCodes.Ldc_I4_2);
+                il.Emit(OpCodes.Beq, done);
+                il.Emit(OpCodes.Ldc_I4_1);
+                il.Emit(OpCodes.Call, spinWait);
+                il.Emit(OpCodes.Br, wait);
+                il.Append(done);
+                AddBurstDiscard(_register);
             }
 
             // ── Type / method traversal ───────────────────────────────────

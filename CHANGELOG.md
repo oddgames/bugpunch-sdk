@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.218] - 2026-09-17
+
+### Changed
+- Weaver: the generated site holder has no static constructor. Reproduced MTD's Burst failure in the SDK test project (Editor Burst JIT over woven code, Assets/BurstScenario): with the 0.8.213 weaver a job reaching a wrapped helper compiles the collector itself (BC1091 Stopwatch in BugpunchMethodProfiler..cctor — MTD 15680's exact signature); with 0.8.215 a per-site static field read from a Burst-reached method evaluates the holder's cctor (BC1028 managed string[] / BC1360 mixed managed code in __BugpunchProfiledSites..cctor); the 0.8.216/217 shape (constant index + [BurstDiscard] forwarders) compiles clean, including a comparer struct Burst compiles inside Unity.Collections' SortJob that no closure in the game module can see. Registration now happens lazily on the first Enter (Interlocked state word, spin for a racing thread) so the holder carries nothing Burst could ever evaluate. Runtime: the descriptor table is one RVA blob decoded per site on first report; a stack-overflow in Meta() caught by the weaver tests before release. The test project keeps BUGPUNCH_WEAVE_IN_EDITOR + BUGPUNCH_DEEP_PROFILE on as the standing Burst canary.
+
 ## [0.8.217] - 2026-09-17
 
 ### Changed
@@ -156,6 +161,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.218] - 2026-09-17
+
+### Changed
+- Weaver: the generated site holder has no static constructor. Reproduced MTD's Burst failure in the SDK test project (Editor Burst JIT over woven code, Assets/BurstScenario): with the 0.8.213 weaver a job reaching a wrapped helper compiles the collector itself (BC1091 Stopwatch in BugpunchMethodProfiler..cctor — MTD 15680's exact signature); with 0.8.215 a per-site static field read from a Burst-reached method evaluates the holder's cctor (BC1028 managed string[] / BC1360 mixed managed code in __BugpunchProfiledSites..cctor); the 0.8.216/217 shape (constant index + [BurstDiscard] forwarders) compiles clean, including a comparer struct Burst compiles inside Unity.Collections' SortJob that no closure in the game module can see. Registration now happens lazily on the first Enter (Interlocked state word, spin for a racing thread) so the holder carries nothing Burst could ever evaluate. Runtime: the descriptor table is one RVA blob decoded per site on first report; a stack-overflow in Meta() caught by the weaver tests before release. The test project keeps BUGPUNCH_WEAVE_IN_EDITOR + BUGPUNCH_DEEP_PROFILE on as the standing Burst canary.
 
 ## [0.8.217] - 2026-09-17
 
