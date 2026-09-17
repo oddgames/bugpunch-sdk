@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.219] - 2026-09-17
+
+### Changed
+- Session time on every report. app.uptime (seconds since launch) rides the perf snapshot on all three lanes — iOS Bugpunch_UptimeSec (CLOCK_MONOTONIC from a load-time constructor, signal-safe), Android BugpunchRuntime.uptimeSec (Process.getStartElapsedRealtime on API 24+), managed BugpunchRuntime.UptimeSec (Process.StartTime, off-thread safe) — and every crash header carries uptime_sec: the iOS signal/Mach/ANR/GPU-hang writers via write_metadata, bp.c's signal handler from a boot-clock stamp taken at JNI_OnLoad, the Java uncaught / ANR / GPU-hang writers, and the next-launch synths (iOS OOM heuristic, Android AEI) from a persisted session start so a dead session's duration is its own, not the new launch's. Both drains lift uptime_sec onto app.uptime after appendEnvBlocks. Dashboard: Environment tab "Session 12m 05s", share .md "Session time: 12m 05s since launch". Also: BugpunchCrashHandler no longer files a game exception a second time as "[SDK] BugpunchCrashHandler: …" — the SDK-origin heuristic scanned the whole log trace, and our own ILogHandler wrapper (BugpunchLogHandler) sits in the logging call site of every Debug.LogException a game makes (MTD issues 8b16b52f, b6222867); it now looks only at the frames that threw, above Unity's log dispatch, and never at the wrapper.
+
 ## [0.8.218] - 2026-09-17
 
 ### Changed
@@ -161,6 +166,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.219] - 2026-09-17
+
+### Changed
+- Session time on every report. app.uptime (seconds since launch) rides the perf snapshot on all three lanes — iOS Bugpunch_UptimeSec (CLOCK_MONOTONIC from a load-time constructor, signal-safe), Android BugpunchRuntime.uptimeSec (Process.getStartElapsedRealtime on API 24+), managed BugpunchRuntime.UptimeSec (Process.StartTime, off-thread safe) — and every crash header carries uptime_sec: the iOS signal/Mach/ANR/GPU-hang writers via write_metadata, bp.c's signal handler from a boot-clock stamp taken at JNI_OnLoad, the Java uncaught / ANR / GPU-hang writers, and the next-launch synths (iOS OOM heuristic, Android AEI) from a persisted session start so a dead session's duration is its own, not the new launch's. Both drains lift uptime_sec onto app.uptime after appendEnvBlocks. Dashboard: Environment tab "Session 12m 05s", share .md "Session time: 12m 05s since launch". Also: BugpunchCrashHandler no longer files a game exception a second time as "[SDK] BugpunchCrashHandler: …" — the SDK-origin heuristic scanned the whole log trace, and our own ILogHandler wrapper (BugpunchLogHandler) sits in the logging call site of every Debug.LogException a game makes (MTD issues 8b16b52f, b6222867); it now looks only at the frames that threw, above Unity's log dispatch, and never at the wrapper.
 
 ## [0.8.218] - 2026-09-17
 

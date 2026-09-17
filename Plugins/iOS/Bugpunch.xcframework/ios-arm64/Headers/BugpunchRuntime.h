@@ -200,3 +200,15 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
+
+/// Seconds this process has been alive — CLOCK_MONOTONIC since the static
+/// library loaded, which dyld does before main(). Async-signal-safe (one
+/// clock_gettime, no allocation), so the crash writers use it too. Mirrors
+/// BugpunchRuntime.uptimeSec() on Android.
+#ifdef __cplusplus
+extern "C" {
+#endif
+long long Bugpunch_UptimeSec(void);
+#ifdef __cplusplus
+}
+#endif
