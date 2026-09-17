@@ -58,10 +58,12 @@
 //
 // BURST: nothing Burst compiles may carry a hook — the collector's
 // Stopwatch / thread-id icalls are BC1091 errors, and a static-field read of
-// the site table drags its cctor in (MTD 4.0.15680 failed on exactly that).
-// Every method reachable by direct call from a [BurstCompile] type or method
-// is left untouched; and when the module references Unity.Burst, every hook
-// is emitted through a [BurstDiscard] shim on the generated holder, so a
+// the site table drags its cctor in (MTD 4.0.15680 failed on exactly that,
+// twice: first through wrapped helpers, then through the per-site static
+// field a discarded call still referenced). Every method reachable by direct
+// call from a [BurstCompile] type or method is left untouched; every hook
+// goes through the holder's forwarders, which carry [BurstDiscard] when the
+// module references Unity.Burst; and the argument is a constant, so a
 // reachable method the closure missed (constrained generic call, function
 // pointer) compiles as a no-op instead of failing the build.
 //
@@ -71,10 +73,14 @@
 // Symbols to keep marks in release). Auto() scopes and the MonoBehaviour
 // wraps need nothing — they're always recoverable.
 //
-// Each woven assembly gets a generated __BugpunchProfiledSites class: one
-// internal static int field per site plus a cctor that registers the site
-// descriptor table with BugpunchMethodProfiler and stores base+index ids
-// into the fields. First profiled call triggers the cctor — no startup hook.
+// Each woven assembly gets a generated __BugpunchProfiledSites class: a
+// cctor that registers the site descriptor table with BugpunchMethodProfiler
+// and stores the returned base id in one static field, plus Enter / Exit /
+// EnterDynamic forwarders that add the base to a site's weave-time index.
+// Call sites push the index as a constant (ldc.i4) — never a static field
+// read, because Burst evaluates a type's static constructor the moment
+// compiled code touches one of its static fields, [BurstDiscard] or not.
+// First profiled call triggers the cctor — no startup hook.
 //
 // Each descriptor also carries a weave-time SOURCE location pulled from the
 // PDB ("Assets/Rel/Path.cs:line"), so a profiler row reads "Ticker.Update —
@@ -242,11 +248,12 @@ namespace ODDGames.BugpunchSdk.CodeGen
         sealed class WeaveSession
         {
             readonly ModuleDefinition _module;
-            // What woven code calls: the collector directly, or — when the
-            // module references Unity.Burst — [BurstDiscard] shims that forward
-            // to it (see the BURST note in the header).
+            // What woven code calls: the holder's forwarders (see the BURST note
+            // in the header), which add the registered base id to the constant
+            // site index every call site pushes.
             MethodReference _enter, _enterDynamic, _exit;
             readonly MethodReference _registerSites, _bpEnter, _bpEnterDynamic, _bpExit;
+            FieldDefinition _baseField;
             MethodReference _enterDynamicCtx;   // built lazily off the original call's Object param
             readonly TypeReference _collector;
             readonly AssemblyNameReference _burstRef;   // null when the game has no Burst
@@ -255,7 +262,6 @@ namespace ODDGames.BugpunchSdk.CodeGen
 
             TypeDefinition _holder;
             readonly List<string> _descriptors = new();
-            readonly List<FieldDefinition> _fields = new();
             readonly Dictionary<string, bool> _monoBehaviourCache = new();
             readonly Dictionary<string, string> _markerNameCache = new();
 
@@ -282,19 +288,10 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 CollectBurstReachable(module);
                 foreach (var ar in module.AssemblyReferences)
                     if (ar.Name == "Unity.Burst") { _burstRef = ar; break; }
-                if (_burstRef != null)
-                {
-                    EnsureHolder();
-                    _enter = MakeDiscardShim("Enter", _bpEnter, ts.Int32);
-                    _enterDynamic = MakeDiscardShim("EnterDynamic", _bpEnterDynamic, ts.String);
-                    _exit = MakeDiscardShim("Exit", _bpExit);
-                }
-                else
-                {
-                    _enter = _bpEnter;
-                    _enterDynamic = _bpEnterDynamic;
-                    _exit = _bpExit;
-                }
+                EnsureHolder();
+                _enter = MakeShim("Enter", _bpEnter, addBase: true, ts.Int32);
+                _enterDynamic = MakeShim("EnterDynamic", _bpEnterDynamic, addBase: false, ts.String);
+                _exit = MakeShim("Exit", _bpExit, addBase: false);
             }
 
             // Every method a [BurstCompile] type or method reaches by direct
@@ -325,11 +322,13 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 }
             }
 
-            // static void Name(args) { BugpunchMethodProfiler.Name(args); } with
-            // [BurstDiscard]: Burst drops the call and its argument evaluation
-            // (the site-field load) from anything it compiles; every other
-            // caller pays one forwarding call.
-            MethodReference MakeDiscardShim(string name, MethodReference target, params TypeReference[] ps)
+            // static void Name(args) { BugpunchMethodProfiler.Name([Base +] args); }
+            // — the one place the registered base id is read. Carries
+            // [BurstDiscard] when the module references Unity.Burst, so Burst
+            // drops the call (and with it the only path to the holder's
+            // statics) from anything it compiles; every other caller pays one
+            // inlinable forwarding call.
+            MethodReference MakeShim(string name, MethodReference target, bool addBase, params TypeReference[] ps)
             {
                 var ts = _module.TypeSystem;
                 var m = new MethodDefinition(name,
@@ -337,12 +336,23 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 m.ImplAttributes |= MethodImplAttributes.AggressiveInlining;
                 foreach (var p in ps) m.Parameters.Add(new ParameterDefinition(p));
                 var il = m.Body.GetILProcessor();
-                for (int i = 0; i < ps.Length; i++) il.Emit(OpCodes.Ldarg, m.Parameters[i]);
+                for (int i = 0; i < ps.Length; i++)
+                {
+                    il.Emit(OpCodes.Ldarg, m.Parameters[i]);
+                    if (i == 0 && addBase)
+                    {
+                        il.Emit(OpCodes.Ldsfld, _baseField);
+                        il.Emit(OpCodes.Add);
+                    }
+                }
                 il.Emit(OpCodes.Call, target);
                 il.Emit(OpCodes.Ret);
-                var discard = new TypeReference("Unity.Burst", "BurstDiscardAttribute", _module, _burstRef);
-                var ctor = new MethodReference(".ctor", ts.Void, discard) { HasThis = true };
-                m.CustomAttributes.Add(new CustomAttribute(ctor));
+                if (_burstRef != null)
+                {
+                    var discard = new TypeReference("Unity.Burst", "BurstDiscardAttribute", _module, _burstRef);
+                    var ctor = new MethodReference(".ctor", ts.Void, discard) { HasThis = true };
+                    m.CustomAttributes.Add(new CustomAttribute(ctor));
+                }
                 _holder.Methods.Add(m);
                 return m;
             }
@@ -451,19 +461,18 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     | TypeAttributes.Class | TypeAttributes.AnsiClass,
                     _module.TypeSystem.Object);
                 _module.Types.Add(_holder);
+                _baseField = new FieldDefinition("Base",
+                    FieldAttributes.Assembly | FieldAttributes.Static, _module.TypeSystem.Int32);
+                _holder.Fields.Add(_baseField);
             }
 
-            FieldDefinition AddSite(string kind, string name, string method, string source)
+            /// <summary>Registers a site; returns its weave-time index (the
+            /// constant a call site pushes — the runtime id is Base + index).</summary>
+            int AddSite(string kind, string name, string method, string source)
             {
                 EnsureHolder();
-                var field = new FieldDefinition(
-                    "s" + _fields.Count,
-                    FieldAttributes.Assembly | FieldAttributes.Static,
-                    _module.TypeSystem.Int32);
-                _holder.Fields.Add(field);
-                _fields.Add(field);
                 _descriptors.Add(kind + Sep + name + Sep + method + Sep + source);
-                return field;
+                return _descriptors.Count - 1;
             }
 
             // ── Source location (weave-time, from the PDB) ─────────────────
@@ -541,8 +550,6 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
                     ts.Void);
                 var body = cctor.Body;
-                body.InitLocals = true;
-                body.Variables.Add(new VariableDefinition(ts.Int32));
                 var il = body.GetILProcessor();
                 il.Emit(OpCodes.Ldc_I4, _descriptors.Count);
                 il.Emit(OpCodes.Newarr, ts.String);
@@ -554,17 +561,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     il.Emit(OpCodes.Stelem_Ref);
                 }
                 il.Emit(OpCodes.Call, _registerSites);
-                il.Emit(OpCodes.Stloc_0);
-                for (int i = 0; i < _fields.Count; i++)
-                {
-                    il.Emit(OpCodes.Ldloc_0);
-                    if (i > 0)
-                    {
-                        il.Emit(OpCodes.Ldc_I4, i);
-                        il.Emit(OpCodes.Add);
-                    }
-                    il.Emit(OpCodes.Stsfld, _fields[i]);
-                }
+                il.Emit(OpCodes.Stsfld, _baseField);
                 il.Emit(OpCodes.Ret);
                 _holder.Methods.Add(cctor);
             }
@@ -789,10 +786,10 @@ namespace ODDGames.BugpunchSdk.CodeGen
                                 && !targets.Contains(prev) && !targets.Contains(ins))
                             {
                                 // Literal sample name → weave-time integer id.
-                                var f = AddSite("sample", (string)prev.Operand, methodLabel, SourceForInstruction(method, ins));
+                                var idx = AddSite("sample", (string)prev.Operand, methodLabel, SourceForInstruction(method, ins));
                                 SampleSites++;
-                                prev.OpCode = OpCodes.Ldsfld;
-                                prev.Operand = f;
+                                prev.OpCode = OpCodes.Ldc_I4;
+                                prev.Operand = idx;
                                 ins.OpCode = OpCodes.Call;
                                 ins.Operand = _enter;
                             }
@@ -812,9 +809,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
                                 var ctxType = _module.ImportReference(mr.Parameters[1].ParameterType);
                                 var bpCtx = StaticMethod("EnterDynamic",
                                     _module.TypeSystem.Void, _module.TypeSystem.String, ctxType);
-                                _enterDynamicCtx = _burstRef != null
-                                    ? MakeDiscardShim("EnterDynamicCtx", bpCtx, _module.TypeSystem.String, ctxType)
-                                    : bpCtx;
+                                _enterDynamicCtx = MakeShim("EnterDynamicCtx", bpCtx, addBase: false, _module.TypeSystem.String, ctxType);
                             }
                             SampleSites++;
                             ins.OpCode = OpCodes.Call;
@@ -863,18 +858,18 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 {
                     foreach (var (seq, call, field) in markerBegins)
                     {
-                        var f = AddSite("marker", ResolveMarkerName(field), methodLabel, SourceForInstruction(method, call));
+                        var idx = AddSite("marker", ResolveMarkerName(field), methodLabel, SourceForInstruction(method, call));
                         MarkerSites++;
                         // NOP everything but the final load slot, which becomes
-                        // the int site id — net stack effect identical.
+                        // the int site index — net stack effect identical.
                         for (int i = 0; i < seq.Length - 1; i++)
                         {
                             seq[i].OpCode = OpCodes.Nop;
                             seq[i].Operand = null;
                         }
                         var last = seq[seq.Length - 1];
-                        last.OpCode = OpCodes.Ldsfld;
-                        last.Operand = f;
+                        last.OpCode = OpCodes.Ldc_I4;
+                        last.Operand = idx;
                         call.OpCode = OpCodes.Call;
                         call.Operand = _enter;
                     }
@@ -899,11 +894,11 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 {
                     foreach (var (stloc, field) in autoSites)
                     {
-                        var f = AddSite("marker", ResolveMarkerName(field), methodLabel, SourceForInstruction(method, stloc));
+                        var idx = AddSite("marker", ResolveMarkerName(field), methodLabel, SourceForInstruction(method, stloc));
                         MarkerSites++;
-                        // InsertAfter in reverse order → [stloc][ldsfld][call Enter]
+                        // InsertAfter in reverse order → [stloc][ldc.i4 idx][call Enter]
                         il.InsertAfter(stloc, il.Create(OpCodes.Call, _enter));
-                        il.InsertAfter(stloc, il.Create(OpCodes.Ldsfld, f));
+                        il.InsertAfter(stloc, il.Create(OpCodes.Ldc_I4, idx));
                     }
                     foreach (var d in disposeCalls)
                         il.InsertAfter(d, il.Create(OpCodes.Call, _exit));
@@ -1028,7 +1023,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
             {
                 var body = method.Body;
                 var il = body.GetILProcessor();
-                var f = AddSite(kind, name, declaring, SourceForMethod(method));
+                var idx = AddSite(kind, name, declaring, SourceForMethod(method));
                 counter++;
 
                 var first = body.Instructions[0];
@@ -1044,7 +1039,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     body.InitLocals = true;
                 }
 
-                il.InsertBefore(first, il.Create(OpCodes.Ldsfld, f));
+                il.InsertBefore(first, il.Create(OpCodes.Ldc_I4, idx));
                 il.InsertBefore(first, il.Create(OpCodes.Call, _enter));
 
                 var exitCall = il.Create(OpCodes.Call, _exit);

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.216] - 2026-09-17
+
+### Changed
+- Weaver: site ids are constants, not static fields. MTD's next iOS build (0.8.215) still failed in Burst with two BC1091s: a [BurstDiscard] shim removes the call, but the per-site static field its argument loaded was still a reference to the holder type, and Burst evaluates a type's static constructor (RegisterSites → the collector's Stopwatch statics) the moment compiled code touches any of its static fields. The generated holder now has ONE static field — the base id RegisterSites returns — and every call site pushes its weave-time site index as an ldc.i4 constant; the holder's Enter(int) forwarder adds the base. Nothing Burst can reach references a static field of ours any more; the forwarders (always emitted, [BurstDiscard] when Unity.Burst is referenced, AggressiveInlining) are the only place the base is read. Tests assert the constant push and the single field; smoke-woven MTD's Assembly-CSharp, Assembly-CSharp-firstpass and MagicaClothV2 with 0 invalid IL.
+
 ## [0.8.215] - 2026-09-17
 
 ### Changed
@@ -146,6 +151,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.216] - 2026-09-17
+
+### Changed
+- Weaver: site ids are constants, not static fields. MTD's next iOS build (0.8.215) still failed in Burst with two BC1091s: a [BurstDiscard] shim removes the call, but the per-site static field its argument loaded was still a reference to the holder type, and Burst evaluates a type's static constructor (RegisterSites → the collector's Stopwatch statics) the moment compiled code touches any of its static fields. The generated holder now has ONE static field — the base id RegisterSites returns — and every call site pushes its weave-time site index as an ldc.i4 constant; the holder's Enter(int) forwarder adds the base. Nothing Burst can reach references a static field of ours any more; the forwarders (always emitted, [BurstDiscard] when Unity.Burst is referenced, AggressiveInlining) are the only place the base is read. Tests assert the constant push and the single field; smoke-woven MTD's Assembly-CSharp, Assembly-CSharp-firstpass and MagicaClothV2 with 0 invalid IL.
 
 ## [0.8.215] - 2026-09-17
 
