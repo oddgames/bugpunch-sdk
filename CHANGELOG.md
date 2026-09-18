@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.223] - 2026-09-19
+
+### Changed
+- sdk(android): MemoryMark no longer walks /proc/self/smaps on the caller thread — PSS + graphics filled on the perf HandlerThread (main-menu truck switching was choppy on Android only)
+- sdk: dev-build LocalIdeServer — Remote IDE API served directly on device over HTTP (adb forward / LAN), config localIdeServer + localIdeServerPort
+- sdk: MemorySnapshotService chunked snapshot read (bounded base64 frames, resumable offset)
+- sdk(editor): source/symbol upload survives unreadable files — extended-length path retry, per-file skip with summary instead of failing the bundle
+
 ## [0.8.222] - 2026-09-18
 
 ### Changed
@@ -185,6 +193,14 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.223] - 2026-09-19
+
+### Changed
+- sdk(android): MemoryMark no longer walks /proc/self/smaps on the caller thread — PSS + graphics filled on the perf HandlerThread (main-menu truck switching was choppy on Android only)
+- sdk: dev-build LocalIdeServer — Remote IDE API served directly on device over HTTP (adb forward / LAN), config localIdeServer + localIdeServerPort
+- sdk: MemorySnapshotService chunked snapshot read (bounded base64 frames, resumable offset)
+- sdk(editor): source/symbol upload survives unreadable files — extended-length path retry, per-file skip with summary instead of failing the bundle
 
 ## [0.8.222] - 2026-09-18
 
