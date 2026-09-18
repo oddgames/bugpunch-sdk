@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.220] - 2026-09-18
+
+### Changed
+- Database plugins run server-side: per-build managed-assembly bundle upload (assemblyUploadEnabled) so crash-sample DB attachments are parsed by the game's own IDatabasePlugin IL in a sandboxed host
+- SiaqodbPlugin: read through Siaqodb's type-free metadata API (GetAllTypes/LoadAllOIDs/LoadValue) — fixes stored-type resolution never matching and the DB never being closed; Configure() hook for encrypted/licensed DBs; .esqo detected; complex refs render as Type#oid
+- DatabasePluginBase.DirectoryBased; registry prefers a game's plugin subclass over the built-in on ProviderId collision and logs the registered count
+- docs/database-plugins.md — writing a plugin over existing game data access, [Preserve], attachment rules
+
 ## [0.8.219] - 2026-09-17
 
 ### Changed
@@ -166,6 +174,14 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.220] - 2026-09-18
+
+### Changed
+- Database plugins run server-side: per-build managed-assembly bundle upload (assemblyUploadEnabled) so crash-sample DB attachments are parsed by the game's own IDatabasePlugin IL in a sandboxed host
+- SiaqodbPlugin: read through Siaqodb's type-free metadata API (GetAllTypes/LoadAllOIDs/LoadValue) — fixes stored-type resolution never matching and the DB never being closed; Configure() hook for encrypted/licensed DBs; .esqo detected; complex refs render as Type#oid
+- DatabasePluginBase.DirectoryBased; registry prefers a game's plugin subclass over the built-in on ProviderId collision and logs the registered count
+- docs/database-plugins.md — writing a plugin over existing game data access, [Preserve], attachment rules
 
 ## [0.8.219] - 2026-09-17
 
