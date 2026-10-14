@@ -49,7 +49,7 @@ Add to `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk.git#v0.8.226"
+    "au.com.oddgames.bugpunch": "https://github.com/oddgames/bugpunch-sdk.git#v0.8.227"
   }
 }
 ```

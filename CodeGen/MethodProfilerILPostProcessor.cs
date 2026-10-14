@@ -66,8 +66,8 @@
 // twice: first through wrapped helpers, then through the per-site static
 // field a discarded call still referenced). Every method reachable by direct
 // call from a [BurstCompile] type or method is left untouched; every hook
-// goes through the holder's forwarders, which carry [BurstDiscard] when the
-// module references Unity.Burst; and the argument is a constant, so a
+// goes through the holder's forwarders, which carry [BurstDiscard] whenever
+// the project has Burst; and the argument is a constant, so a
 // reachable method the closure missed (constrained generic call, function
 // pointer) compiles as a no-op instead of failing the build.
 //
@@ -250,6 +250,35 @@ namespace ODDGames.BugpunchSdk.CodeGen
             }
         }
 
+        // Burst is in the project when Unity.Burst.dll is a compile reference,
+        // sits beside one (every asmdef in a compile lands in the same
+        // ScriptAssemblies dir), or com.unity.burst is in the resolved
+        // package set. dllPath is null when only the package list proved it
+        // — the reference is then name-only at 0.0.0.0, which the player
+        // resolves by simple name.
+        internal static bool FindProjectBurst(IEnumerable<string> references, string projectRoot, out string dllPath)
+        {
+            var refs = (references ?? Enumerable.Empty<string>()).ToList();
+            dllPath = refs.FirstOrDefault(r =>
+                string.Equals(Path.GetFileName(r), "Unity.Burst.dll", StringComparison.OrdinalIgnoreCase));
+            if (dllPath != null) return true;
+            foreach (var dir in refs.Select(Path.GetDirectoryName).Where(d => !string.IsNullOrEmpty(d)).Distinct())
+            {
+                var candidate = Path.Combine(dir, "Unity.Burst.dll");
+                if (File.Exists(candidate)) { dllPath = candidate; return true; }
+            }
+            foreach (var file in new[] { "packages-lock.json", "manifest.json" })
+            {
+                try
+                {
+                    var path = Path.Combine(projectRoot ?? "", "Packages", file);
+                    if (File.Exists(path) && File.ReadAllText(path).Contains("\"com.unity.burst\"")) return true;
+                }
+                catch { }
+            }
+            return false;
+        }
+
         // ── Per-module weave state ─────────────────────────────────────────
 
         sealed class WeaveSession
@@ -358,7 +387,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
 
             // static void Name(args) { BugpunchMethodProfiler.Name([Base +] args); }
             // — the one place the registered base id is read. Carries
-            // [BurstDiscard] when the module references Unity.Burst, so Burst
+            // [BurstDiscard] whenever the project has Burst, so Burst
             // drops the call (and with it the only path to the holder's
             // statics) from anything it compiles; every other caller pays one
             // inlinable forwarding call.
@@ -500,22 +529,26 @@ namespace ODDGames.BugpunchSdk.CodeGen
             }
 
             // The project's Unity.Burst, if it has one: an existing reference,
-            // else a name-only reference when the DLL is among the compile's
-            // references. A module with no Burst reference of its own can still
-            // hold structs that ANOTHER assembly's jobs call (a comparer handed
-            // to a Burst sort, an IJob helper), so the [BurstDiscard] forwarders
-            // are worth having whenever Burst is in the build at all. Null when
-            // the project has no Burst — nothing to discard for.
+            // else a name-only reference added whenever Burst is in the PROJECT.
+            // A module with no Burst reference of its own can still hold structs
+            // that ANOTHER assembly's jobs call (a comparer handed to a Burst
+            // sort, an IJob helper), so the [BurstDiscard] forwarders are worth
+            // having whenever Burst is in the build at all. The compile's own
+            // references are not enough to tell: an asmdef that doesn't list
+            // Unity.Burst never sees the DLL (Trucks' ODDFramework
+            // RaycastHitDistanceComparer — BC1091 through an undiscarded Enter).
+            // Null when the project has no Burst — nothing to discard for.
             static AssemblyNameReference GetOrAddBurstRef(ModuleDefinition module, ICompiledAssembly compiled)
             {
                 foreach (var ar in module.AssemblyReferences)
                     if (ar.Name == "Unity.Burst") return ar;
-                var dllPath = compiled.References.FirstOrDefault(r =>
-                    string.Equals(Path.GetFileName(r), "Unity.Burst.dll", StringComparison.OrdinalIgnoreCase));
-                if (dllPath == null) return null;
+                if (!FindProjectBurst(compiled.References, Directory.GetCurrentDirectory(), out var dllPath)) return null;
                 var version = new Version(0, 0, 0, 0);
-                try { using var a = AssemblyDefinition.ReadAssembly(dllPath); version = a.Name.Version; }
-                catch { }
+                if (dllPath != null)
+                {
+                    try { using var a = AssemblyDefinition.ReadAssembly(dllPath); version = a.Name.Version; }
+                    catch { }
+                }
                 var nr = new AssemblyNameReference("Unity.Burst", version);
                 module.AssemblyReferences.Add(nr);
                 return nr;

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.228] - 2026-10-14
+
+### Changed
+- Weaver: the [BurstDiscard] profiler forwarders are emitted whenever Burst is in the PROJECT, not only when the woven assembly itself references Unity.Burst. Trucks Off Road's Android build failed in Burst (BC1091: Stopwatch.GetTimestamp in BugpunchMethodProfiler..cctor) because ODDFramework's RaycastHitDistanceComparer — a comparer struct in an asmdef with no Burst reference, sorted by a Burst job — was woven with undiscarded Enter/Exit forwarders. Burst is now detected from the compile references, a Unity.Burst.dll beside them in the build dir, or com.unity.burst in Packages/packages-lock.json / manifest.json. New weaver test covers each detection path; the test project's Burst canary gains Assets/BurstScenarioNoRef (comparer in an asmdef without Burst, sorted by SortJob) and compiles clean under the Editor Burst JIT.
+
 ## [0.8.227] - 2026-10-14
 
 ### Changed
@@ -219,6 +224,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.228] - 2026-10-14
+
+### Changed
+- Weaver: the [BurstDiscard] profiler forwarders are emitted whenever Burst is in the PROJECT, not only when the woven assembly itself references Unity.Burst. Trucks Off Road's Android build failed in Burst (BC1091: Stopwatch.GetTimestamp in BugpunchMethodProfiler..cctor) because ODDFramework's RaycastHitDistanceComparer — a comparer struct in an asmdef with no Burst reference, sorted by a Burst job — was woven with undiscarded Enter/Exit forwarders. Burst is now detected from the compile references, a Unity.Burst.dll beside them in the build dir, or com.unity.burst in Packages/packages-lock.json / manifest.json. New weaver test covers each detection path; the test project's Burst canary gains Assets/BurstScenarioNoRef (comparer in an asmdef without Burst, sorted by SortJob) and compiles clean under the Editor Burst JIT.
 
 ## [0.8.227] - 2026-10-14
 
