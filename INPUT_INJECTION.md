@@ -1,4 +1,4 @@
-# Bugpunch UITest — Search + InputInjector
+# Bugpunch UI Automation — Search + InputInjector
 
 Engine internals for the two layers below `ActionExecutor`: how a screen-target query resolves to a `GameObject`, and how synthetic input events reach Unity's `EventSystem`.
 
@@ -12,12 +12,12 @@ Search.Find()  →  GameObject  →  screen position  →  StateEvent  →  Inpu
    (Search.cs)                    (UIUtility.cs)     (InputInjector.cs)                       (Unity)
 ```
 
-Two pieces:
-
-| Layer | File(s) | Job |
+| Layer | Files | Job |
 |---|---|---|
-| **Search** | `Search.cs` + `Search.Matching.cs` + `Search.Chainable.cs` + `Search.Spatial.cs` + `Search.OrderingFiltering.cs` | Find the right `GameObject` from a fluent query. |
-| **InputInjector** | `InputInjector.cs` + `Input/InputInjector.{Mouse,Touch,Gesture}.cs` | Turn coords + duration into platform input events. |
+| **Search** (public) | `Search.cs` + partials `.Chainable`, `.Spatial`, `.OrderingFiltering`, `.Matching`, `.Helpers`, `.GameObject`, `.StaticPath`, `.Inverse`; `SearchCandidateCache.cs` | Find the right `GameObject` from a fluent query. |
+| **InputInjector** (internal) | `InputInjector.cs` + `Input/InputInjector.{Mouse,Touch,Gesture,Keyboard}.cs` | Turn screen coordinates + durations into Input System events. |
+
+`InputInjector` is `internal` to the SDK assembly — game and test code drive it through `ActionExecutor`. `UIUtility` (screen positions, raycast hits) is public.
 
 ---
 
@@ -25,54 +25,59 @@ Two pieces:
 
 ### Query model
 
-Every `Search` is a chained list of conditions over `GameObject`. Conditions are `Func<GameObject, bool>` plus a few spatial / structural filters that need the whole match set.
+A `Search` is a list of conditions (`Func<GameObject, bool>`) plus optional post-processing (ordering, `First`/`Skip`/`Take`, spatial scoring) that needs the whole match set.
 
 ```csharp
-Name("btn_*")            // name pattern (wildcards + |-OR)
-    .Type<Button>()       // component type
-    .Inside(Name("HUD"))  // ancestor query
-    .Not.Disabled()       // negated state filter
-    .Visible()            // on-screen + non-zero rect
-    .RequiresReceiver()   // EventSystem raycast hits us
+var close = Name("btn_close*|btn_x")       // wildcard + |-OR, case-insensitive
+    .Type<Button>()                         // has component
+    .HasAncestor(Name("HUD"))               // tree relation with a sub-Search
+    .Not.Name("*_disabled")                 // Not negates the next filter
+    .Interactable()                         // Selectable.interactable
+    .Visible()                              // centre inside screen + ScrollRect viewport
+    .RequiresReceiver(typeof(UnityEngine.EventSystems.IPointerClickHandler));
 ```
 
-`Find()` (`Search.Matching.cs`) scans `Object.FindObjectsByType<Transform>()` once per check, filters through the condition list, then enforces:
+`Find()` (`Search.Matching.cs`) works like this:
 
-- **On-screen filter** — corner-based `Rect` overlap with the screen bounds, zero-size rejected.
-- **Stability** — match set must be identical for **3 consecutive frames** before returning. Animations, fade-ins, and post-load layouts all settle before we click them.
-- **Depth ordering** — UI elements (have a `Canvas`) win ties; world-space objects rank by camera distance.
-- **Diagnostic snapshots** — every 2s during a wait, dump a screenshot + matched-set summary to `TestReport`.
+- **Candidates** come from `SearchCandidateCache`, not a fresh `FindObjectsByType` per check. Discovery is incremental (a budget of 2048 objects per frame, held by weak reference) and re-runs at most every 0.25 s. A search that finds nothing asks for rediscovery.
+- **On-screen filter** — screen bounds must be non-zero and overlap the screen. Partially visible objects count. `IncludeOffScreen()` turns this off.
+- **Stability** — the match set must be identical for **3 consecutive frames** before `Find` returns, so animations, fade-ins and post-load layouts settle first.
+- **Default order** — by depth: UI by root canvas `sortingOrder` (later siblings first), world objects by `Camera.main` distance, with UI winning ties. Any explicit ordering (`OrderBy*`, `Near`, `Randomize`, …) replaces this.
+- **Polling** — every frame while there are candidates, otherwise every 100 ms, until the timeout (Stopwatch time, so `timeScale = 0` doesn't stall it).
+- **Diagnostic snapshots** — every 2 s during a wait, `TestReport.CaptureSearchSnapshot` records the search and its partial matches when a session is active.
 
 ### Surface area
 
-| Filter | Where | Notes |
+| Filters | Partial | Notes |
 |---|---|---|
-| `Name`, `Text`, `Type`, `Tag`, `Texture`, `Path` | `Search.Chainable.cs` | Patterns: `*` wildcard, `|` OR. |
-| `HasParent`, `HasChild`, `HasAncestor`, `Inside` | `Search.Chainable.cs` | Tree relations (with sub-`Search`). |
-| `Adjacent`, `Near` | `Search.Spatial.cs` | Direction enum (`Left`/`Right`/`Above`/`Below`); distance scoring. |
-| `RequiresReceiver` | `Search.Matching.cs` + `UIUtility.cs:129` | EventSystem raycast hit must include the candidate. |
-| `Active`, `Visible`, `Interactable`, `Enabled` | `Search.Chainable.cs` | State filters. |
-| `IncludeInactive`, `IncludeDisabled`, `IncludeOffScreen` | `Search.cs` | Scope opt-ins. |
-| `Skip`, `Take`, `OrderBy`, `First`, `Last`, `At(index)` | `Search.OrderingFiltering.cs` | Set ops. |
-| `Not` | prefix on any filter | Negation. |
+| `Name`, `Text`, `Type`/`Type<T>`, `Texture`, `Path`, `Tag`, `Any`, `With<T>`, `Where` | `.Chainable` | Patterns: `*` wildcard, `\|` OR, case-insensitive. `Text` checks only the element's own TMP/legacy `Text`. `Tag` is exact (`CompareTag`). |
+| `HasParent`, `HasAncestor`, `HasChild`, `HasDescendant`, `HasSibling` | `.Chainable` | Take a sub-`Search` or a name pattern. |
+| `GetParent<T>`, `GetChild<T>` | `.Chainable` | Filters: keep elements that have a `T` ancestor / descendant. |
+| `InRegion` | `.Chainable` | Screen-region filter. |
+| `Adjacent(text, Direction)`, `Near(text, Direction?)` | `.Spatial` | `Direction` is `Right`/`Below`/`Left`/`Above`. These replace the query's target. |
+| `Visible`, `Interactable`, `RequiresReceiver(types)` | `.OrderingFiltering` | State filters. |
+| `First`, `Last`, `Skip`, `Take`, `OrderBy<T>`, `OrderByDescending<T>`, `OrderByPosition`, `OrderByName(Descending)`, `OrderByInstanceId(Descending)`, `Randomize` | `.OrderingFiltering` | Post-processing over the match set. |
+| `Or`, `GetParent()`, `GetChild(int)`, `GetSibling(int)` | `.OrderingFiltering` | Combine or navigate from the result. |
+| `IncludeInactive`, `IncludeOffScreen` | `Search.cs` | Scope opt-ins. Non-interactable elements always match; filter them with `Interactable()`. |
+| `Not` | prefix property | Negates the next filter. |
+
+`RequiresReceiver` raycasts (`EventSystem.RaycastAll`) at the candidate's screen position and passes if any hit object has one of the given handler components. It is a "something clickable is here" check, not a "this candidate is on top" check.
 
 ### Canvas + camera handling
 
-`UIUtility.GetScreenPosition()` (line 17–53) handles four cases:
+`UIUtility.GetScreenPosition()` handles:
 
-1. **ScreenSpaceOverlay** — `RectTransform` corner → screen pixel directly.
-2. **ScreenSpaceCamera** — `RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, ...)`. If `worldCamera` is null, falls back to `Camera.main`.
-3. **WorldSpace canvas** — same pipeline as 3D world via the canvas's camera.
-4. **3D world (no canvas)** — `Renderer` bounds or `Collider` bounds projected via `Camera.main`.
+1. **ScreenSpaceOverlay** — centre of the `RectTransform`'s world corners, already in screen pixels.
+2. **ScreenSpaceCamera / WorldSpace canvas** — `RectTransformUtility.WorldToScreenPoint(canvas.worldCamera ?? Camera.main, centre)`.
+3. **No canvas** — `Renderer` bounds centre, else `Collider` bounds centre, else `transform.position`, projected through `Camera.main`.
 
-Mixing canvas types in one test is fine; the per-element resolution handles each correctly. Render textures need an explicit `canvas.worldCamera`.
+Positions are computed per element, so mixing canvas types in one test is fine. Cameras that render into a RenderTexture need an explicit `canvas.worldCamera`.
 
 ### What Search can't see
 
-- **IMGUI** (`OnGUI`) has no `Transform` and is not searchable.
-- **Prefab Editor** finds objects but they may not render or receive events as expected — test in Play mode.
-- **Occlusion** — there is no z-test culling. A button covered by another element is still found by name. Add `RequiresReceiver()` if you need topmost-only.
-- **`EventSystem.current == null`** silently fails raycast queries. The injector logs a warning at setup if no EventSystem is in the scene.
+- **IMGUI** (`OnGUI`) has no `Transform` and can't be searched.
+- **Occlusion** — there is no z-test. A covered button is still found by name; the tap lands on whatever is on top.
+- **`EventSystem.current == null`** — raycasts return nothing, so `RequiresReceiver` never matches and clicks reach nothing. No warning is logged.
 
 ---
 
@@ -80,113 +85,109 @@ Mixing canvas types in one test is fine; the per-element resolution handles each
 
 ### Virtual devices
 
-On `Setup()` (`InputInjector.cs:207`) the injector creates three virtual devices via the new Input System:
+`InputInjector.Setup()` (called by the PlayMode fixtures and the AI runner):
 
-- `UIAutomation_Mouse` (`Mouse`)
-- `UIAutomation_Keyboard` (`Keyboard`)
-- `UIAutomation_Touchscreen` (`Touchscreen`)
+- snapshots `InputSettings.backgroundBehavior` and `editorInputBehaviorInPlayMode`, then sets `IgnoreFocus` and `AllDeviceInputAlwaysGoesToGameView`, so injection works when the Game view isn't focused;
+- adds `UIAutomation_Mouse`, `UIAutomation_Keyboard` and `UIAutomation_Touchscreen`;
+- disables hardware devices so real input doesn't interfere.
 
-Hardware devices are **disabled** while a test runs so the Editor doesn't double-process events. Settings snapshotted: `backgroundBehavior`, `editorInputBehaviorInPlayMode`. Restored on teardown.
+Without `Setup()`, each virtual device is created lazily the first time an action needs it, and hardware stays enabled. Teardown restores the settings and re-enables hardware.
 
-Domain reload is hostile to virtual devices — `OnDomainReload()` (line 172) re-enables hardware and clears stale refs. `CleanupOrphanedVirtualDevices()` (line 380) sweeps any `UIAutomation_*` device left from a previous run.
+Domain reload is hostile to virtual devices. `OnDomainReload()` re-enables hardware and clears stale references, and `CleanupOrphanedVirtualDevices()` removes `UIAutomation_*` devices left from a previous run. During `ExitingPlayMode` the injector makes no `InputSystem` calls, because they trigger native asserts in some Unity versions.
 
-Play mode exit is the other hazardous moment: the injector avoids **all** `InputSystem` API calls during `ExitingPlayMode` (line 297) because they trigger native asserts in some Unity versions.
+### Mouse vs touch
 
-### Mouse path (`InputInjector.Mouse.cs`)
+`ShouldUseTouchInput()` picks the path. It is always touch in iOS/Android builds (compile-time). Elsewhere it is touch only when `Mouse.current == null` and `Touchscreen.current != null`.
 
-A single `Click` is three events scheduled across **8 frames** total:
+| Path | Tap sequence |
+|---|---|
+| **Mouse** | move to position (wait 2 frames) → press (4 frames) → release (2 frames). The leading move makes `EventSystem` set up pointer-enter before the click. |
+| **Touch** | `Began` → 4 frames → `Ended` → 2 frames. |
 
-| Step | Event | Frame delay after |
-|---|---|---|
-| 1 | move to position (button=0) | 2 |
-| 2 | press (button=1) | 4 |
-| 3 | release (button=0) | 2 |
+Double/triple taps put `Async.Delay(2 frames, 0.05 s)` between taps (both thresholds must pass) so they land inside the double-click window.
 
-Each event is a full device snapshot via `StateEvent.From(mouse, out var ptr)` queued through `InputSystem.QueueEvent`. The leading move-to-position step exists because `EventSystem` will not raise pointer-enter/click on a stale position.
+Each event is a full device snapshot (`StateEvent.From` / `QueueStateEvent`) queued through `InputSystem`.
 
-### Touch path (`InputInjector.Touch.cs`)
-
-`TouchState { phase = Began, position, pressure = 1f, touchId }` queued via `InputSystem.QueueStateEvent(touchscreen, state)`. Multi-tap (double / triple) inserts a `Async.Delay(2 frames, 0.05s)` gap — both frame and wall-clock thresholds — to land inside the system double-click window.
-
-`ShouldUseTouchInput()` (`InputInjector.Gesture.cs:24`) auto-routes to touch when running on iOS or Android, or when there is no Mouse but there is a Touchscreen.
-
-### Gestures (`InputInjector.Gesture.cs` + `ActionExecutor.Gestures.cs`)
+### Drags and gestures
 
 | Gesture | Implementation |
 |---|---|
-| **Swipe** | One pointer drag from start → end across `max(5, duration*60fps)` interpolated steps. |
-| **Pinch** | Two symmetrical touches; offsets scale from `startOffset → startOffset * scale`. |
-| **Rotate** | Two fingers orbit a center point by an angle. `fingerDistance` (0..1) sets radius. |
-| **Two-finger swipe** | Two parallel touches translate together; `fingerSpacing` controls width. |
+| **Drag / swipe** | Short settle, press, hold `holdTime`, then interpolate start→end over **at least 10 frames** or `duration` (Stopwatch), whichever is longer. Uses touch or mouse per `ShouldUseTouchInput`. |
+| **Swipe on an element** (`ActionExecutor.Swipe(search, …)`) | Goes through `InputInjector.Swipe(GameObject, …)`, which **always injects a mouse drag**, even on touch devices. Swipe by coordinates (`SwipeAt`) uses the touch/mouse routing above. |
+| **Pinch** | Two touches about a centre; spacing scales from start to `start × scale` over `max(5, duration × 60)` frames. The element overload needs a `RectTransform`. |
+| **Rotate** | Two touches orbit the centre by `degrees`; `fingerDistance` (normalized) or `radiusPixels` sets the radius. |
+| **Two-finger swipe** | Two parallel touches translate together; `fingerSpacing` sets their gap. |
 
-All gestures call `InputVisualizer.Record*` so the on-screen debug overlay shows where synthetic input went.
+Every injection is reported to `InputVisualizer`, so the debug overlay (`ActionExecutor.ShowInputOverlay`) shows where synthetic input went.
 
-### Keyboard
+### Keyboard (`Input/InputInjector.Keyboard.cs`)
 
-`InputInjector.Type(string)` walks characters → key state events. Modifier keys (shift, ctrl) are pressed/released around the affected character. `ActionExecutor.Input.cs` exposes `Type`, `Press`, `KeyDown`, `KeyUp`.
+- `PressKey(Key)` queues a `KeyboardState` press, also sends a legacy-Input key event so `Input.GetKeyDown` sees it, waits 3 frames, then releases.
+- `HoldKey` / `HoldKeys` keep the key(s) down for a duration. `PressKeyWithModifier`, `SelectAllText` (Ctrl+A) and `DeleteAllText` build on these.
+- `TypeText(string)` queues one `InputSystem.QueueTextEvent` per character, one per frame. That reaches `Keyboard.onTextInput` listeners, **not** `TMP_InputField`.
+- `TypeIntoField(go, text, clearFirst, pressEnter)` taps the field, then sets `TMP_InputField.text` / `InputField.text` directly (replace or append), re-activates the field, moves the caret to the end and optionally presses Enter. `ActionExecutor.TextInput` / `Type` use this path.
 
 ### Frame stepping
 
-Two helpers, both in `InputInjector.cs`:
+`Async` (in `InputInjector.cs`) provides the primitives, all `Task`-based (no coroutines):
 
-- `Async.DelayFrames(n)` — yields until `Time.frameCount` advances by `n`.
-- `Async.Delay(minFrames, minSeconds)` — both thresholds must clear (Stopwatch + frame count). Used wherever the injector needs real wall-clock spacing (multi-tap, animations).
-
-Coroutines are not used — pure `Task` / `async` / `await` with frame-yield primitives.
+- `Async.ToMainThread()` — post to the Unity `SynchronizationContext`; on the main thread, wait one frame.
+- `Async.DelayFrames(n)` — wait until `Time.frameCount` advances by `n`.
+- `Async.Delay(minFrames, minSeconds)` — wait until both the frame count and the Stopwatch time have passed.
 
 ---
 
 ## Recorder
 
-`Recorder/RecordingSession.cs` is a thin facade over an `IRecorderBackend`:
+`ODDGames.Recorder.MediaRecorder.StartAsync(RecorderSettings)` returns a `RecordingSession` (`IsRecording`, `StopAsync()` → output path, `Dispose()`). The backend is chosen by platform:
 
-- `Start()` begins capture.
-- `StopAsync()` returns the output file path.
-- `IsRecording` for status.
+| Platform | Backend |
+|---|---|
+| Editor | Unity Recorder (`com.unity.recorder`) via `EditorRecorder` in the Editor assembly. |
+| Android player | Native `MediaCodecBridge` (`au.com.oddgames.recorder`). |
+| Windows / macOS player | Native `ODDRecorder` plugin. |
+| iOS player | Not supported — no-op backend. |
+| Anything else | No-op backend, with a warning. |
 
-Backends:
+`TestReport.StartSession` starts a recording automatically (1280×720, 15 fps) and attaches it to the session report. There is no replay engine; recordings are diagnostic artifacts only.
 
-- **Android** — native `MediaProjection` ring buffer (in `BugpunchPlugin.aar`).
-- **iOS** — `VideoToolbox` ring buffer (`BugpunchRingRecorder.mm`).
-- **Editor / Standalone** — `Texture2D.ReadPixels` readback per frame.
-
-There is no replay engine. Recordings are diagnostic artifacts only — `TestReport` attaches them to failure bundles uploaded to the dashboard.
+This test recorder is separate from the crash-reporting video ring buffer, which is native-owned on Android/iOS (see `README.md`).
 
 ---
 
-## Threading rules of thumb
+## Threading rules
 
-- `Search.Find()` and `InputInjector.Inject*` are **main thread only** — Unity object access requires it.
-- `Search.Matches()` (the predicate evaluator) is also main-thread for the same reason.
-- The orchestration layer (`ActionExecutor`) marshals for you — see `ACTION_EXECUTOR.md`. Drive `Search` / `InputInjector` directly only when you've already ensured main thread.
-- Don't call into the SDK from a `[InitializeOnLoad]` static ctor — main thread isn't established yet.
+- `Search.Find()` / `Matches()` and all injection are **main thread only**.
+- `ActionExecutor` marshals for you (see `ACTION_EXECUTOR.md`). Call `Search` directly only when you're already on the main thread.
+- The main-thread context is captured at `BeforeSceneLoad`; don't drive the SDK from an `[InitializeOnLoad]` static constructor.
 
 ---
 
 ## Gotchas
 
 - **IMGUI** — invisible to Search.
-- **`EventSystem.current == null`** — raycast filters silently return nothing. Drop a default EventSystem in the scene.
-- **Render texture cameras** — set `canvas.worldCamera` explicitly; `Camera.main` fallback may not match.
-- **Camera-overlay vs World-space canvas** — coords are computed per-element so mixing is fine, but a shared screen-position assumption isn't.
-- **Occluded UI** — found by name; not blocked. Add `RequiresReceiver()` for topmost-only.
-- **Domain reload mid-test** — the injector handles it (`OnDomainReload` re-enables hardware, sweeps orphaned virtual devices), but tests will fail mid-flight.
-- **Double-click windows** — system threshold ~300ms; the injector enforces a minimum gap, but app-level handlers may need tighter timing.
-- **`Time.timeScale == 0`** — pause screens don't break injection (Stopwatch-based timing) but Unity animations / Animator state machines that gate UI on time will. Use unscaled-time UI or bump the scale.
+- **No EventSystem** — raycast-based checks silently fail. Make sure the scene has one.
+- **RenderTexture cameras** — set `canvas.worldCamera` explicitly; the `Camera.main` fallback may not match.
+- **Occluded UI** — still found by name; the tap goes to whatever is on top.
+- **TMP input** — `TypeText` won't reach `TMP_InputField`; use `TextInput` / `Type` on the field.
+- **Element swipes on mobile** — `Swipe(search, …)` injects a mouse drag; use `SwipeAt` for a real touch swipe.
+- **Domain reload mid-test** — the injector recovers its devices, but the running test fails.
+- **`Time.timeScale == 0`** — injection timing is Stopwatch-based and keeps working, but UI that animates on scaled time won't.
 
 ---
 
 ## File map
 
-| Area | Path |
+| Area | Path (under `csharp-src/Bugpunch/Sources/`) |
 |---|---|
-| Search | `Search.cs` + partials (`.Matching.cs`, `.Chainable.cs`, `.Spatial.cs`, `.OrderingFiltering.cs`) |
-| Injection | `InputInjector.cs` + `Input/InputInjector.{Mouse,Touch,Gesture}.cs` |
+| Search | `Search.cs` + `Search.*.cs` partials, `SearchCandidateCache.cs` |
+| Injection | `InputInjector.cs` + `Input/InputInjector.{Mouse,Touch,Gesture,Keyboard}.cs` |
+| Overlay | `InputVisualizer.cs` |
 | Geometry / hits | `UIUtility.cs` |
-| Recorder facade | `Recorder/RecordingSession.cs` |
+| Recorder | `Recorder/MediaRecorder.cs`, `Recorder/RecordingSession.cs`, `Recorder/Internal/` |
 
 ## See also
 
-- `ACTION_EXECUTOR.md` — orchestration layer above this engine (public API, scope/logging, JSON dispatcher).
+- `ACTION_EXECUTOR.md` — orchestration layer above this engine.
 - `REFERENCE.md` — user-facing test-authoring API.
 - `JSON_ACTIONS.md` — JSON action protocol.

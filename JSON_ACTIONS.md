@@ -1,89 +1,102 @@
 # JSON Action API Reference
 
-> Complete reference for AI agents producing JSON action objects to drive Unity UI via `UIACTION` commands.
+> Reference for tools and AI agents that drive a running Unity game with JSON action objects.
 
 ## Overview
 
-Actions are JSON objects sent via the `UIACTION` bridge command. Every action has a required `"action"` field and optional parameters. A screenshot is automatically captured after every action.
+An action is a single JSON object with a required `"action"` verb plus target fields and parameters. One object = one action.
 
-```
-UIACTION {"action":"click", "text":"Settings"}
+```json
+{"action":"click", "text":"Settings"}
 ```
 
-Or programmatically:
+The same dispatcher sits behind every entry point:
+
+| Entry point | Where it runs | Result |
+|---|---|---|
+| `ActionExecutor.Execute(json)` (C#) | Any build with the SDK | `ActionResult` (below) |
+| `clibridge4unity UIACTION <json>` | Unity Editor, Play Mode only | `OK (123ms)` or the error text |
+| Remote IDE device route `POST /action` | A device connected to the dashboard (tunnel or local IDE server) | `{"ok":true,"elapsedMs":123}` / `{"ok":false,"error":"…","elapsedMs":123}` |
+| Gemini AI test runner | Editor (`GeminiTestRunner`) | Steps recorded in the test result |
 
 ```csharp
 var result = await ActionExecutor.Execute("{\"action\":\"click\", \"text\":\"Settings\"}");
-// result.Success, result.Error, result.ElapsedMs, result.ScreenshotPath
+// result.Success, result.Action, result.Error, result.ElapsedMs, result.ScreenshotPath
 ```
 
-### Response Format
+### `ActionResult`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `Success` | bool | Whether the action completed without error |
-| `Error` | string | Error message if failed (element not found, timeout, invalid JSON) |
-| `ElapsedMs` | float | Execution time in milliseconds |
-| `ScreenshotPath` | string | Path to the post-action screenshot |
+| `Success` | bool | The action completed without throwing |
+| `Action` | string | The JSON that was executed (trimmed) |
+| `Error` | string | Failure reason — invalid JSON, missing/unknown action, element not found, timeout |
+| `ElapsedMs` | float | Wall-clock time including the post-action screenshot |
+| `ScreenshotPath` | string | PNG saved to `Application.persistentDataPath` after every action (also after failures) |
 
-### Sessions
+Actions run one at a time. `UIACTION` serialises concurrent calls through a queue.
 
-Wrap action sequences in a session for automatic logging and HTML report generation:
+### Sessions (clibridge4unity)
 
-```
-UISESSION START MyTest "Description of what we're testing"
+Wrap a sequence in a session to get a per-action screenshot log and an HTML report (`%TEMP%/clibridge4unity/sessions/<id>/index.html`):
+
+```text
+UISESSION start --name MyTest --desc "Navigate to settings and verify"
 UIACTION {"action":"click", "text":"Play"}
 UIACTION {"action":"waitfor", "text":"Game Over", "seconds":60}
-UISESSION STOP
+UISESSION stop
 ```
 
 ---
 
 ## Element Targeting (Search Fields)
 
-Most actions need to find a UI element. Specify targets using **search fields** -- multiple fields are AND-combined.
+Most actions need to find an element. Targets are given with these fields:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `text` | string | Match by visible text content (Text, TMP_Text) |
-| `name` | string | Match by GameObject name in the hierarchy |
-| `type` | string | Match by component type name (e.g. `"Button"`, `"Slider"`) |
-| `adjacent` | string | Find the nearest interactable element next to this text label |
-| `near` | string | Find the nearest element to this text label (pure distance) |
-| `tag` | string | Match by Unity tag |
-| `path` | string | Match by hierarchy path |
-| `any` | string | Match by any of: text, name, or type |
-| `at` | `[x, y]` | Normalized screen coordinates (0-1); bypasses element search |
-| `direction` | string | Direction for `adjacent`/`near`: `"right"`, `"left"`, `"above"`/`"up"`, `"below"`/`"down"` |
-| `index` | int | When multiple elements match, select by 0-based index (for click/doubleclick/tripleclick/hold) |
+| Field | Type | Matches |
+|-------|------|---------|
+| `text` | string | Text content of a `Text` / `TMP_Text` **on the element itself** (not its children) |
+| `name` | string | GameObject name |
+| `type` | string | Component type name, e.g. `"Button"`, `"Slider"`, `"TMP_*"` |
+| `tag` | string | Unity tag (exact, no wildcards) |
+| `path` | string | Hierarchy path, e.g. `"/Canvas/MainMenu/PlayButton"`, `"*/Panel/Button*"` |
+| `near` | string | Nearest interactable to a text label (pure distance) |
+| `adjacent` | string | Best-aligned interactable next to a text label |
+| `any` | string | Name, text, sprite/texture name, or hierarchy path |
+| `direction` | string | Direction for `near` / `adjacent`: `"right"`, `"left"`, `"above"`/`"up"`, `"below"`/`"down"` |
+| `index` | int | 0-based pick when several elements match (`click`, `doubleclick`, `tripleclick`, `hold`) |
 
-### Wildcard Patterns
+Pattern matching is case-insensitive. An element must be on screen to match.
 
-All string search fields support `*` wildcards and `|` OR syntax:
+**Combining fields.** Every search field in the object is AND-combined into one search — `near`, `adjacent` and `any` included. For example `{"type":"Toggle", "adjacent":"Music"}` matches only when the element adjacent to the "Music" label is a Toggle, and `{"any":"*Play*", "tag":"MainMenu"}` needs both. `near` also orders the matches by distance to its label.
 
 ```json
-{"action":"click", "text":"Play*"}
-{"action":"click", "name":"btn_*"}
-{"action":"click", "text":"OK|Confirm|Accept"}
-{"action":"click", "any":"*Settings*"}
+{"action":"click", "name":"btn_*", "type":"Button"}
 ```
 
-### Coordinate System
+Because `text` only matches the element carrying the text, `{"text":"Submit", "type":"Button"}` finds nothing on a standard UGUI button (the label is a child). Use `text` alone — the tap lands on the button under the label — or target the button by `name`.
 
-`at` values are **normalized screen coordinates**:
+### Screen coordinates (`at`)
+
+`at` is not a search field: it replaces the target with a screen position. It is accepted by `click`, `doubleclick`, `tripleclick`, `hold`, `swipe`, `twofingerswipe`, `scroll`, `pinch`, `rotate`, and inside `drag`'s `from` / `to`.
+
+Values are **normalized**, with Unity's bottom-left origin:
 - `[0, 0]` = bottom-left
 - `[1, 1]` = top-right
 - `[0.5, 0.5]` = screen center
 
-### Combining Search Fields
+### Wildcard Patterns
 
-Multiple fields create an AND query:
+String fields other than `tag` support `*` wildcards and `|` alternatives:
 
 ```json
-{"action":"click", "text":"Submit", "type":"Button"}
+[
+  {"action":"click", "text":"Play*"},
+  {"action":"click", "name":"btn_*"},
+  {"action":"click", "text":"OK|Confirm|Accept"},
+  {"action":"click", "any":"*Settings*"}
+]
 ```
-
-This finds a Button component whose text is "Submit".
 
 ### Choosing the Right Search Field
 
@@ -92,51 +105,48 @@ This finds a Button component whose text is "Submit".
 | Button/label with visible text | `text` | `{"text":"Play Game"}` |
 | Element with a known hierarchy name | `name` | `{"name":"SettingsPanel"}` |
 | Input field next to a label | `adjacent` | `{"adjacent":"Username:"}` |
-| Closest element to a reference point | `near` | `{"near":"Settings"}` |
+| Closest element to a reference label | `near` | `{"near":"Settings"}` |
 | No clear identifier | `at` | `{"at":[0.5, 0.3]}` |
-| Broad match across name/text/path | `any` | `{"any":"*volume*"}` |
+| Broad match across name/text/sprite/path | `any` | `{"any":"*volume*"}` |
 
 ---
 
 ## Adjacent vs Near
 
-Both find elements relative to a text label, but with different strategies.
+Both find an element relative to a text label.
 
 ### `adjacent`
 
-Finds the **single best-scoring interactable** (Button, InputField, Dropdown, Slider, Toggle, or any Selectable) next to a text label. Uses **alignment-weighted scoring** -- strongly prefers elements in the same row/column.
+Finds the **single best-scoring interactable** (Button, InputField, Dropdown, Slider, Toggle, or any Selectable) beside a label, using **alignment-weighted scoring** that strongly prefers the same row/column. Default direction: right.
 
 Best for: form layouts, settings screens, any label + control pair.
 
 ```json
-{"action":"click", "adjacent":"Remember me"}
-{"action":"type", "adjacent":"Username:", "value":"admin"}
-{"action":"slider", "adjacent":"Volume:", "value":0.8}
-{"action":"dropdown", "adjacent":"Language:", "option":"English"}
-{"action":"click", "adjacent":"Actions", "direction":"below"}
-{"action":"type", "adjacent":"Description", "direction":"below", "value":"text"}
+[
+  {"action":"click", "adjacent":"Remember me"},
+  {"action":"type", "adjacent":"Username:", "value":"admin"},
+  {"action":"slider", "adjacent":"Volume:", "value":0.8},
+  {"action":"dropdown", "adjacent":"Language:", "option":"English"},
+  {"action":"click", "adjacent":"Actions", "direction":"below"},
+  {"action":"type", "adjacent":"Description", "direction":"below", "value":"text"}
+]
 ```
-
-Use the `"direction"` field to search in a specific direction: `"right"` (default), `"left"`, `"above"`/`"up"`, `"below"`/`"down"`.
 
 ### `near`
 
-Finds the **nearest interactable** by pure Euclidean distance, with no alignment preference. Optionally filterable by direction in C#.
+Finds the **nearest interactable** by Euclidean distance, with no alignment preference. Without `direction` it searches all directions.
 
 Best for: diagonal/irregular layouts, when the element isn't strictly beside the label.
 
 ```json
-{"action":"click", "near":"Settings"}
-{"action":"click", "near":"Audio", "direction":"below"}
+[
+  {"action":"click", "near":"Settings"},
+  {"action":"click", "near":"Audio", "direction":"below"}
+]
 ```
-
-Use the optional `"direction"` field to filter to a specific direction.
-
-### Comparison
 
 | | `adjacent` | `near` |
 |---|---|---|
-| Returns | Single best match | Nearest by distance |
 | Scoring | Alignment-weighted (row/column preference) | Pure Euclidean distance |
 | Default direction | Right | All directions |
 | Best for | Form fields next to labels | Irregular layouts |
@@ -147,330 +157,346 @@ Use the optional `"direction"` field to filter to a specific direction.
 
 ### click
 
-Single click on an element.
+Single click / tap.
 
 ```json
-{"action":"click", "text":"Settings"}
-{"action":"click", "name":"SettingsBtn"}
-{"action":"click", "at":[0.5, 0.5]}
-{"action":"click", "text":"Submit", "type":"Button"}
-{"action":"click", "adjacent":"Enable Sounds"}
-{"action":"click", "any":"*play*"}
-{"action":"click", "text":"Item", "index":2}
+[
+  {"action":"click", "text":"Settings"},
+  {"action":"click", "name":"SettingsBtn"},
+  {"action":"click", "at":[0.5, 0.5]},
+  {"action":"click", "adjacent":"Enable Sounds"},
+  {"action":"click", "any":"*play*"},
+  {"action":"click", "text":"Item", "index":2}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `index` | int | 0 | When multiple elements match, click the Nth one (0-based) |
+| `index` | int | 0 | When several elements match, click the Nth one (0-based) |
 
 ### doubleclick
 
 ```json
-{"action":"doubleclick", "text":"Item"}
-{"action":"doubleclick", "name":"FileEntry"}
-{"action":"doubleclick", "at":[0.5, 0.5]}
-{"action":"doubleclick", "text":"ListItem", "index":1}
+[
+  {"action":"doubleclick", "text":"Item"},
+  {"action":"doubleclick", "at":[0.5, 0.5]},
+  {"action":"doubleclick", "text":"ListItem", "index":1}
+]
 ```
 
-Supports `index` param (same as click).
+Supports `index`.
 
 ### tripleclick
 
 ```json
-{"action":"tripleclick", "name":"TextArea"}
-{"action":"tripleclick", "at":[0.3, 0.7]}
+[
+  {"action":"tripleclick", "name":"TextArea"},
+  {"action":"tripleclick", "at":[0.3, 0.7]}
+]
 ```
 
-Supports `index` param (same as click).
+Supports `index`.
 
 ### hold
 
-Press and hold for a duration.
+Press and hold.
 
 ```json
-{"action":"hold", "text":"Delete", "seconds":2}
-{"action":"hold", "at":[0.5, 0.5], "seconds":1.5}
-{"action":"hold", "name":"ChargeButton", "seconds":3}
+[
+  {"action":"hold", "text":"Delete", "seconds":2},
+  {"action":"hold", "at":[0.5, 0.5], "seconds":1.5}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `seconds` | float | 1 | Hold duration |
+| `index` | int | 0 | Pick among several matches |
 
 ### type
 
-Type text into an input field. Finds the field, clicks to focus, then types.
+Taps the field to focus it, then sets its text. The matched element must carry a `TMP_InputField` or legacy `InputField` (text is written to the field directly — `TMP_InputField` does not consume Input System text events).
 
 ```json
-{"action":"type", "name":"InputField", "value":"hello world"}
-{"action":"type", "adjacent":"Username:", "value":"admin"}
-{"action":"type", "adjacent":"Password:", "value":"secret123", "enter":true}
-{"action":"type", "name":"SearchBox", "value":"query", "clear":true, "enter":true}
+[
+  {"action":"type", "name":"InputField", "value":"hello world"},
+  {"action":"type", "adjacent":"Password:", "value":"secret123", "enter":true},
+  {"action":"type", "name":"SearchBox", "value":" more", "clear":false}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `value` | string | `""` | Text to type |
-| `clear` | bool | `true` | Clear existing text before typing |
-| `enter` | bool | `false` | Press Enter after typing |
+| `value` | string | `""` | Text to enter |
+| `clear` | bool | `true` | Replace existing text; `false` appends |
+| `enter` | bool | `false` | Press Enter afterwards |
 
 ### textinput
 
-Lower-level text injection into a found input field.
+Like `type` with `clear: true` and no Enter; looks for a `TMP_InputField` first, then a legacy `InputField`.
 
 ```json
-{"action":"textinput", "name":"Field", "value":"raw text"}
 {"action":"textinput", "adjacent":"Comment:", "value":"some text"}
 ```
 
 ### typetext
 
-Simulate keyboard character presses globally (no target element).
+Queues Input System text events for each character, with no target. Reaches `Keyboard.onTextInput` listeners — not `TMP_InputField` (use `type` for that).
 
 ```json
 {"action":"typetext", "text":"Hello World"}
-{"action":"typetext", "value":"abc123"}
 ```
+
+`value` is accepted as an alias for `text`.
 
 ### keys
 
-Type a string of characters via keyboard simulation (no target element).
+Presses the key for each character in turn (letters, digits, space and common punctuation; other characters are skipped).
 
 ```json
 {"action":"keys", "text":"abc123"}
-{"action":"keys", "value":"test input"}
 ```
+
+`value` is accepted as an alias for `text`.
 
 ### key
 
-Press a single keyboard key.
+Press and release one key.
 
 ```json
-{"action":"key", "key":"enter"}
-{"action":"key", "key":"escape"}
-{"action":"key", "key":"space"}
-{"action":"key", "key":"tab"}
-{"action":"key", "key":"backspace"}
-{"action":"key", "key":"a"}
-{"action":"key", "key":"F1"}
+[
+  {"action":"key", "key":"enter"},
+  {"action":"key", "key":"escape"},
+  {"action":"key", "key":"space"},
+  {"action":"key", "key":"a"},
+  {"action":"key", "key":"F1"}
+]
 ```
 
-**Key aliases**: `enter`, `esc`, `up`, `down`, `left`, `right`, `backspace`/`bs`, `del`, `space`, `tab`, `shift`, `ctrl`/`control`, `alt`. Single characters (`a`-`z`, `0`-`9`) and Unity `KeyCode` enum names also work.
+Accepted names: a single character, any Unity `KeyCode` name (case-insensitive: `space`, `tab`, `escape`, `return`, `f1`, `leftshift`, …) and the aliases `enter`, `esc`, `up`, `down`, `left`, `right`, `backspace`/`bs`, `del`, `space`, `tab`, `shift`, `ctrl`/`control`, `alt`. An unrecognised name — or a `KeyCode` with no Input System equivalent — fails the action with an error naming the key.
 
 ### holdkey
 
-Press and hold a key for a duration.
+Hold one key for a duration.
 
 ```json
-{"action":"holdkey", "key":"shift", "duration":1.0}
-{"action":"holdkey", "key":"space", "seconds":2.0}
+[
+  {"action":"holdkey", "key":"shift", "duration":1.0},
+  {"action":"holdkey", "key":"space", "seconds":2.0}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `key` | string | **required** | Key name or alias |
+| `key` | string | **required** | Key name |
 | `duration` / `seconds` | float | 1 | Hold duration |
+
+Key names are the same as for `key`. An unknown name fails with `Unknown key: '…'`.
 
 ### holdkeys
 
-Press and hold multiple keys simultaneously.
+Hold several keys together (same key names as `holdkey`).
 
 ```json
-{"action":"holdkeys", "keys":["ctrl", "a"], "duration":0.5}
-{"action":"holdkeys", "keys":["ctrl", "shift", "s"], "duration":0.3}
+[
+  {"action":"holdkeys", "keys":["ctrl", "a"], "duration":0.5},
+  {"action":"holdkeys", "keys":["ctrl", "shift", "s"], "duration":0.3}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `keys` | string[] | **required** | Array of key names |
+| `keys` | string[] | **required** | Key names |
 | `duration` / `seconds` | float | 1 | Hold duration |
 
 ### swipe
 
-Single-finger swipe gesture.
+Single-finger swipe. Without a target or `at`, swipes from screen center.
 
 ```json
-{"action":"swipe", "direction":"left"}
-{"action":"swipe", "direction":"up", "name":"ScrollPanel", "distance":0.3}
-{"action":"swipe", "direction":"down", "at":[0.5, 0.5], "duration":0.3}
-{"action":"swipe", "direction":"right", "text":"Card"}
+[
+  {"action":"swipe", "direction":"left"},
+  {"action":"swipe", "direction":"up", "name":"ScrollPanel", "distance":0.3},
+  {"action":"swipe", "direction":"down", "at":[0.5, 0.5], "duration":0.3}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `direction` | string | **required** | `"left"`, `"right"`, `"up"`, `"down"` |
-| `distance` | float | 0.2 | Normalized screen distance |
-| `duration` | float | 0.15 | Swipe duration in seconds |
-
-Without a target, swipes from screen center.
+| `direction` | string | `"left"` | `"left"`, `"right"`, `"up"`, `"down"` |
+| `distance` | float | 0.2 | Normalized screen distance (0-1) |
+| `duration` | float | 0.15 | Seconds |
 
 ### twofingerswipe
 
-Two-finger swipe gesture.
-
 ```json
-{"action":"twofingerswipe", "direction":"up"}
-{"action":"twofingerswipe", "direction":"left", "distance":0.3, "fingerSpacing":0.05}
-{"action":"twofingerswipe", "direction":"down", "at":[0.5, 0.5]}
-{"action":"twofingerswipe", "direction":"right", "name":"MapView"}
+[
+  {"action":"twofingerswipe", "direction":"up"},
+  {"action":"twofingerswipe", "direction":"left", "distance":0.3, "fingerSpacing":0.05},
+  {"action":"twofingerswipe", "direction":"right", "name":"MapView"}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `direction` | string | **required** | `"left"`, `"right"`, `"up"`, `"down"` |
+| `direction` | string | `"up"` | `"left"`, `"right"`, `"up"`, `"down"` |
 | `distance` | float | 0.2 | Normalized screen distance |
-| `duration` | float | 0.15 | Duration in seconds |
-| `fingerSpacing` | float | 0.03 | Spacing between fingers (normalized) |
+| `duration` | float | 0.15 | Seconds |
+| `fingerSpacing` | float | 0.03 | Normalized spacing between the fingers |
 
 ### scroll
 
-Mouse scroll wheel input.
-
 ```json
-{"action":"scroll", "name":"ListView", "delta":-120}
-{"action":"scroll", "at":[0.5, 0.5], "delta":120}
-{"action":"scroll", "name":"Panel", "direction":"down", "amount":0.3}
+[
+  {"action":"scroll", "name":"ListView", "delta":-120},
+  {"action":"scroll", "at":[0.5, 0.5], "delta":120},
+  {"action":"scroll", "name":"Panel", "direction":"down", "amount":0.3}
+]
 ```
 
-Two modes:
-
-**Delta mode** (mouse wheel units):
+**Delta mode** (mouse wheel) — used unless both `direction` and a target are given. Without a target or `at`, scrolls at screen center.
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `delta` | float | -120 | Scroll amount (negative = down, positive = up) |
+| `delta` | float | -120 | Wheel amount (negative = down) |
 
-**Direction mode** (on a target element):
+**Direction mode** (requires a target):
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `direction` | string | - | `"up"`, `"down"`, `"left"`, `"right"` |
-| `amount` | float | 0.3 | Scroll distance (normalized) |
-
-Without a target, scrolls at screen center.
+| `direction` | string | — | `"up"`, `"down"`, `"left"`, `"right"` |
+| `amount` | float | 0.3 | Normalized scroll distance |
 
 ### scrollto
 
-Scroll a container until a target element becomes visible. Uses drag input.
+Drag-scroll a container until a target is visible (up to 20 attempts). The outer fields identify the container; `target` is a nested search object.
 
 ```json
-{"action":"scrollto", "name":"ScrollView", "target":{"text":"TargetItem"}}
-{"action":"scrollto", "name":"InventoryList", "target":{"name":"RareItem"}}
-{"action":"scrollto", "path":"Canvas/Settings/ScrollView", "target":{"text":"Advanced*"}}
+[
+  {"action":"scrollto", "name":"ScrollView", "target":{"text":"TargetItem"}},
+  {"action":"scrollto", "path":"*/Settings/ScrollView", "target":{"text":"Advanced*"}}
+]
 ```
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `target` | object | **Required.** A nested search object (same fields: text, name, type, etc.) |
+### scrolltoandclick
 
-The container is identified by the outer search fields; the `target` is what to scroll into view.
+`scrollto`, then click the target.
+
+```json
+{"action":"scrolltoandclick", "name":"ItemList", "target":{"text":"Rare Sword"}}
+```
 
 ### drag
 
-Drag elements or between positions.
-
-**Direction-based drag** (on element or from center):
+**Direction drag** — from the target (or screen center when there is no target) by a normalized offset (`[0.3, 0]` = 30% of the screen width to the right):
 
 ```json
-{"action":"drag", "name":"Handle", "direction":[0.3, 0.0]}
-{"action":"drag", "direction":[0.0, -0.2], "duration":0.3}
-{"action":"drag", "text":"Slider", "direction":[0.5, 0.0], "holdTime":0.1}
+[
+  {"action":"drag", "name":"Handle", "direction":[0.3, 0.0]},
+  {"action":"drag", "direction":[0.0, -0.2], "duration":0.3},
+  {"action":"drag", "name":"Object", "direction":[0.5, 0], "button":"right"}
+]
 ```
 
-**From/to drag** (between two elements or positions):
+**From/to drag** — both `from` and `to` are required. Give both as search objects, or both as `at` positions:
 
 ```json
-{"action":"drag", "from":{"name":"Source"}, "to":{"name":"Target"}}
-{"action":"drag", "from":{"at":[0.2, 0.5]}, "to":{"at":[0.8, 0.5]}}
-{"action":"drag", "from":{"text":"Item"}, "to":{"name":"DropZone"}}
-{"action":"drag", "name":"Object", "direction":[0.5, 0], "button":"right"}
+[
+  {"action":"drag", "from":{"name":"Source"}, "to":{"name":"Target"}},
+  {"action":"drag", "from":{"at":[0.2, 0.5]}, "to":{"at":[0.8, 0.5]}},
+  {"action":"drag", "from":{"text":"Item"}, "to":{"name":"DropZone"}}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `direction` | `[x, y]` | - | Normalized drag vector |
-| `from` / `to` | object | - | Search objects or `at` coordinates |
-| `duration` | float | 0.15 | Drag duration in seconds |
-| `holdTime` | float | 0.05 | Hold time at start before dragging |
-| `button` | string | `"left"` | Mouse button: `"left"`, `"right"`, `"middle"` |
+| `direction` | `[x, y]` | — | Normalized drag offset |
+| `from` / `to` | object | — | Search objects, or `{"at":[x, y]}` |
+| `duration` | float | 0.15 | Seconds |
+| `holdTime` | float | 0.05 | Hold at the start before moving |
+| `button` | string | `"left"` | `"left"`, `"right"`, `"middle"` (ignored for a center drag with no target) |
 
 ### dropdown
 
-Open a dropdown and select an option.
+Open a dropdown and pick an option.
 
 ```json
-{"action":"dropdown", "name":"Dropdown", "option":2}
-{"action":"dropdown", "name":"Dropdown", "option":"Option Label"}
-{"action":"dropdown", "adjacent":"Language:", "option":"English"}
-{"action":"dropdown", "text":"Select Country", "option":5}
+[
+  {"action":"dropdown", "name":"Dropdown", "option":2},
+  {"action":"dropdown", "adjacent":"Language:", "option":"English"}
+]
 ```
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `option` | int or string | **Required.** Index (0-based) or label text |
+| `option` | int or string | **Required.** 0-based index or option label |
 
 ### slider
 
-Set a slider to a normalized value.
+Tap a slider at a normalized position, or drag from one position to another.
 
 ```json
-{"action":"slider", "name":"VolumeSlider", "value":0.75}
-{"action":"slider", "adjacent":"Brightness:", "value":0.5}
-{"action":"slider", "name":"VolumeSlider", "value":0.75, "from":0.0}
+[
+  {"action":"slider", "name":"VolumeSlider", "value":0.75},
+  {"action":"slider", "name":"VolumeSlider", "value":0.75, "from":0.0}
+]
 ```
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `value` | float | **Required.** Target value (0-1 normalized) |
-| `from` | float | Optional. If specified, drags from this position to `value` instead of clicking |
+| `value` | float | **Required.** Target position (0-1) |
+| `from` | float | Optional. Drag from this position to `value` instead of tapping |
+
+### clickslider
+
+Tap a slider at a normalized position (same as `slider` without `from`).
+
+```json
+{"action":"clickslider", "adjacent":"Brightness:", "value":0.5}
+```
 
 ### scrollbar
 
-Set a scrollbar to a normalized position.
+Tap a scrollbar at a normalized position.
 
 ```json
 {"action":"scrollbar", "name":"Scrollbar", "value":0.5}
-{"action":"scrollbar", "name":"ContentScroll", "value":1.0}
 ```
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `value` | float | **Required.** Position (0-1 normalized) |
 
 ### pinch
 
-Two-finger pinch gesture for zoom.
+Two-finger pinch. Without a target or `at`, pinches at screen center.
 
 ```json
-{"action":"pinch", "scale":2.0}
-{"action":"pinch", "scale":0.5, "at":[0.5, 0.5], "duration":0.3}
-{"action":"pinch", "name":"MapView", "scale":1.5}
+[
+  {"action":"pinch", "scale":2.0},
+  {"action":"pinch", "scale":0.5, "at":[0.5, 0.5], "duration":0.3},
+  {"action":"pinch", "name":"MapView", "scale":1.5}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `scale` | float | 2 | Scale factor (>1 = zoom in, <1 = zoom out) |
-| `duration` | float | 0.15 | Gesture duration |
-
-Without a target or `at`, pinches at screen center.
+| `scale` | float | 2 | >1 zooms in, <1 zooms out |
+| `duration` | float | 0.15 | Seconds |
 
 ### rotate
 
-Two-finger rotation gesture.
+Two-finger rotation. Without a target or `at`, rotates at screen center.
 
 ```json
-{"action":"rotate", "degrees":45}
-{"action":"rotate", "name":"Dial", "degrees":-90, "duration":0.3}
-{"action":"rotate", "at":[0.5, 0.5], "degrees":180, "fingerDistance":0.08}
+[
+  {"action":"rotate", "degrees":45},
+  {"action":"rotate", "name":"Dial", "degrees":-90, "duration":0.3},
+  {"action":"rotate", "at":[0.5, 0.5], "degrees":180, "fingerDistance":0.08}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `degrees` | float | 90 | Rotation angle (positive = clockwise) |
-| `duration` | float | 0.15 | Gesture duration |
-| `fingerDistance` | float | 0.05 | Distance of fingers from center (normalized) |
-
-Without a target or `at`, rotates at screen center.
+| `degrees` | float | 90 | Positive = clockwise |
+| `duration` | float | 0.15 | Seconds |
+| `fingerDistance` | float | 0.05 | Normalized finger distance from center (used with `at`) |
 
 ---
 
@@ -478,7 +504,7 @@ Without a target or `at`, rotates at screen center.
 
 ### wait
 
-Static delay.
+Fixed delay (default 1 second).
 
 ```json
 {"action":"wait", "seconds":1.5}
@@ -486,31 +512,35 @@ Static delay.
 
 ### waitfor
 
-Wait for an element to appear (with optional text match).
+Wait for an element to appear, optionally until its text equals `expected`.
 
 ```json
-{"action":"waitfor", "text":"Loading Complete", "seconds":10}
-{"action":"waitfor", "name":"Dialog", "seconds":5}
-{"action":"waitfor", "name":"ScoreText", "expected":"100", "seconds":10}
+[
+  {"action":"waitfor", "text":"Loading Complete", "seconds":10},
+  {"action":"waitfor", "name":"ScoreText", "expected":"100", "seconds":10}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `seconds` | float | 10 | Timeout |
-| `expected` | string | null | If set, waits for the element's text to match this value |
+| `expected` | string | — | Wait for the element's text to match |
 
 ### waitfornot
 
 Wait for an element to disappear.
 
 ```json
-{"action":"waitfornot", "text":"Loading...", "seconds":10}
 {"action":"waitfornot", "name":"Spinner", "seconds":15}
 ```
 
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `seconds` | float | 10 | Timeout |
+
 ### waitfps
 
-Wait for a stable framerate.
+Wait for a stable frame rate.
 
 ```json
 {"action":"waitfps", "minFps":20, "stableFrames":5, "timeout":10}
@@ -519,12 +549,12 @@ Wait for a stable framerate.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `minFps` | float | 20 | Minimum acceptable FPS |
-| `stableFrames` | int | 5 | Consecutive frames above minFps |
-| `timeout` | float | 10 | Timeout in seconds |
+| `stableFrames` | int | 5 | Consecutive frames at or above `minFps` |
+| `timeout` | float | 10 | Seconds |
 
 ### waitframerate
 
-Wait until average FPS reaches a threshold.
+Wait until the average FPS over a sample window reaches a target.
 
 ```json
 {"action":"waitframerate", "fps":30, "sampleDuration":2, "timeout":60}
@@ -533,12 +563,12 @@ Wait until average FPS reaches a threshold.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `fps` | int | 30 | Target average FPS |
-| `sampleDuration` | float | 2 | Seconds to sample |
-| `timeout` | float | 60 | Timeout in seconds |
+| `sampleDuration` | float | 2 | Seconds per sample |
+| `timeout` | float | 60 | Seconds |
 
 ### scenechange
 
-Wait for a Unity scene transition.
+Wait for the active scene to change.
 
 ```json
 {"action":"scenechange", "seconds":30}
@@ -550,7 +580,7 @@ Wait for a Unity scene transition.
 
 ### screenshot
 
-No-op -- a screenshot is captured automatically after every action. Use this explicitly if you want a screenshot without any other action.
+No-op — a screenshot is captured after every action anyway. Use it to grab one without doing anything else.
 
 ```json
 {"action":"screenshot"}
@@ -558,7 +588,7 @@ No-op -- a screenshot is captured automatically after every action. Use this exp
 
 ### snapshot
 
-Captures a full hierarchy snapshot for debugging.
+Records a detailed UI hierarchy snapshot (component properties, text, bounds) into the active diagnostics session (`TestReport`), viewable in the Diagnostics Viewer. It is not returned in the action result, and logs a warning when no session is active.
 
 ```json
 {"action":"snapshot"}
@@ -570,151 +600,64 @@ Captures a full hierarchy snapshot for debugging.
 
 ### randomclick
 
-Click a random clickable element on screen. Optionally filter by search fields.
+Click a random clickable element, optionally limited by search fields.
 
 ```json
-{"action":"randomclick"}
-{"action":"randomclick", "type":"Button"}
-{"action":"randomclick", "name":"MenuItem_*"}
+[
+  {"action":"randomclick"},
+  {"action":"randomclick", "type":"Button"},
+  {"action":"randomclick", "name":"MenuItem_*"}
+]
 ```
 
 ### autoexplore
 
-Automatically explore the UI by clicking random elements. Three modes available.
-
-**Time-based** (default): explore for a duration.
+Click random elements.
 
 ```json
-{"action":"autoexplore", "mode":"time", "seconds":30}
-{"action":"autoexplore", "seconds":10, "seed":42, "delay":0.3}
-```
-
-**Action-count**: explore for N clicks.
-
-```json
-{"action":"autoexplore", "mode":"actions", "count":20}
-{"action":"autoexplore", "mode":"actions", "count":50, "seed":42}
-```
-
-**Dead-end**: explore until no more clickable elements.
-
-```json
-{"action":"autoexplore", "mode":"deadend"}
-{"action":"autoexplore", "mode":"deadend", "tryBack":true}
+[
+  {"action":"autoexplore", "mode":"time", "seconds":30},
+  {"action":"autoexplore", "seconds":10, "seed":42, "delay":0.3},
+  {"action":"autoexplore", "mode":"actions", "count":50, "seed":42},
+  {"action":"autoexplore", "mode":"deadend", "tryBack":true}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `mode` | string | `"time"` | `"time"`, `"actions"`, or `"deadend"` |
-| `seconds` | float | 10 | Duration for time mode |
-| `count` | int | 10 | Number of actions for actions mode |
-| `seed` | int | null | Random seed for reproducibility |
-| `delay` | float | 0.5 | Delay between actions in seconds |
-| `tryBack` | bool | false | In deadend mode, try navigating back when stuck |
-
----
-
-## Advanced Click Actions
-
-### clickslider
-
-Click a slider at a specific normalized position (alternative to `slider` which uses direct value setting).
-
-```json
-{"action":"clickslider", "name":"VolumeSlider", "value":0.75}
-{"action":"clickslider", "adjacent":"Brightness:", "value":0.5}
-```
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `value` | float | **Required.** Target position (0-1 normalized) |
-
-### scrolltoandclick
-
-Scroll a container until a target is visible, then click it. Combines `scrollto` + `click` in one action.
-
-```json
-{"action":"scrolltoandclick", "name":"ItemList", "target":{"text":"Rare Sword"}}
-{"action":"scrolltoandclick", "name":"SettingsList", "target":{"text":"Advanced"}}
-```
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `target` | object | **Required.** Nested search object for the element to scroll to and click |
+| `mode` | string | `"time"` | `"time"`, `"actions"`, or `"deadend"` (until nothing is clickable) |
+| `seconds` | float | 10 | Duration for `time` mode (`value` is an alias) |
+| `count` | int | 10 | Clicks for `actions` mode (`value` is an alias) |
+| `seed` | int | — | Random seed for reproducibility |
+| `delay` | float | 0.5 | Seconds between clicks |
+| `tryBack` | bool | false | `deadend` mode: try navigating back when stuck |
 
 ---
 
 ## GameObject Manipulation Actions
 
-These actions modify GameObjects directly -- useful for test setup (disabling tutorials, freezing AI, repositioning objects).
-
-### enable
-
-Activate a GameObject (sets active to true, can find inactive objects).
+Modify GameObjects directly — useful for test setup (hiding tutorials, freezing AI, repositioning). The C# API returns restore tokens; JSON actions do not restore.
 
 ```json
-{"action":"enable", "name":"TutorialPanel"}
+[
+  {"action":"enable", "name":"TutorialPanel"},
+  {"action":"disable", "name":"AdBanner"},
+  {"action":"freeze", "name":"EnemyAI"},
+  {"action":"freeze", "name":"Player", "includeChildren":false},
+  {"action":"teleport", "name":"Player", "position":[100, 0, 50]},
+  {"action":"noclip", "name":"Player"},
+  {"action":"clip", "name":"Player"}
+]
 ```
 
-### disable
-
-Deactivate a GameObject (sets active to false).
-
-```json
-{"action":"disable", "name":"TutorialPanel"}
-{"action":"disable", "name":"AdBanner"}
-```
-
-### freeze
-
-Zero velocity and set kinematic on rigidbodies.
-
-```json
-{"action":"freeze", "name":"EnemyAI"}
-{"action":"freeze", "name":"Player", "includeChildren":false}
-```
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `includeChildren` | bool | true | Also freeze child rigidbodies |
-
-### teleport
-
-Move a transform to a world position.
-
-```json
-{"action":"teleport", "name":"Player", "position":[100, 0, 50]}
-{"action":"teleport", "name":"Camera", "position":[0, 10, -5]}
-```
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `position` | `[x, y, z]` | **Required.** World-space coordinates |
-
-### noclip
-
-Disable all colliders on a GameObject (pass through objects).
-
-```json
-{"action":"noclip", "name":"Player"}
-{"action":"noclip", "name":"Vehicle", "includeChildren":true}
-```
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `includeChildren` | bool | true | Also disable child colliders |
-
-### clip
-
-Enable all colliders on a GameObject (restore collision).
-
-```json
-{"action":"clip", "name":"Player"}
-```
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `includeChildren` | bool | true | Also enable child colliders |
+| Action | Effect | Params |
+|--------|--------|--------|
+| `enable` | `SetActive(true)` (finds inactive objects) | — |
+| `disable` | `SetActive(false)` | — |
+| `freeze` | Zero velocity + kinematic on rigidbodies (3D and 2D) | `includeChildren` (default true) |
+| `teleport` | Move the transform to a world position | `position: [x, y, z]` (required) |
+| `noclip` | Disable colliders (3D and 2D) | `includeChildren` (default true) |
+| `clip` | Enable colliders | `includeChildren` (default true) |
 
 ---
 
@@ -722,31 +665,34 @@ Enable all colliders on a GameObject (restore collision).
 
 ### getvalue
 
-Read a value via static reflection path. The result is logged to the Unity console.
+Read a value through a static reflection path. The value is written to the Unity console (`[GetValue] path = value`); it is not returned in the action result.
 
 ```json
-{"action":"getvalue", "path":"GameManager.Instance.Score"}
-{"action":"getvalue", "path":"Player.Instance.Health"}
-{"action":"getvalue", "path":"GameManager.Instance.IsReady"}
+[
+  {"action":"getvalue", "path":"GameManager.Instance.Score"},
+  {"action":"getvalue", "path":"GameManager.Instance.IsReady"}
+]
 ```
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `path` | string | **Required.** Static reflection path (e.g. `"ClassName.StaticField.Property"`) |
+| `path` | string | **Required.** `TypeName.StaticMember.Member…` |
 
 ### exists
 
-Check whether an element exists. Succeeds silently if found; optionally throws if not found.
+Check whether an element exists. Succeeds either way unless `required` is true.
 
 ```json
-{"action":"exists", "text":"TutorialPopup", "seconds":1}
-{"action":"exists", "name":"ErrorDialog", "required":true, "seconds":3}
+[
+  {"action":"exists", "text":"TutorialPopup", "seconds":1},
+  {"action":"exists", "name":"ErrorDialog", "required":true, "seconds":3}
+]
 ```
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `seconds` | float | 1 | Timeout for search |
-| `required` | bool | false | If true, throws error when element not found |
+| `seconds` | float | 1 | Search timeout |
+| `required` | bool | false | Fail when the element is not found |
 
 ---
 
@@ -755,55 +701,53 @@ Check whether an element exists. Succeeds silently if found; optionally throws i
 | Action | Description |
 |--------|-------------|
 | **Click & Tap** | |
-| `click` | Single click (supports `index`) |
-| `doubleclick` | Double click (supports `index`) |
-| `tripleclick` | Triple click (supports `index`) |
-| `hold` | Press and hold (supports `index`) |
-| `clickslider` | Click slider at normalized position |
-| `scrolltoandclick` | Scroll to element and click it |
-| `randomclick` | Click random clickable element |
+| `click` | Single click (supports `index`, `at`) |
+| `doubleclick` | Double click (supports `index`, `at`) |
+| `tripleclick` | Triple click (supports `index`, `at`) |
+| `hold` | Press and hold (supports `index`, `at`) |
+| `clickslider` | Tap a slider at a normalized position |
+| `scrolltoandclick` | Scroll to an element and click it |
+| `randomclick` | Click a random clickable element |
 | **Text & Keyboard** | |
-| `type` | Type into input field (click to focus, then type) |
-| `textinput` | Inject text directly into input field |
-| `typetext` | Simulate keyboard chars (no target) |
-| `keys` | Type string of chars via keyboard (no target) |
-| `key` | Press single key |
-| `holdkey` | Hold single key |
-| `holdkeys` | Hold multiple keys simultaneously |
+| `type` | Focus an input field and set its text |
+| `textinput` | Set an input field's text (clears first) |
+| `typetext` | Input System text events, no target |
+| `keys` | Press a key per character, no target |
+| `key` | Press one key |
+| `holdkey` | Hold one key |
+| `holdkeys` | Hold several keys together |
 | **Drag & Scroll** | |
 | `swipe` | Single-finger swipe |
 | `twofingerswipe` | Two-finger swipe |
-| `scroll` | Mouse scroll wheel |
-| `scrollto` | Scroll container until target is visible |
-| `drag` | Drag by direction or between from/to (supports `button` for right-click) |
-| `dropdown` | Select dropdown option |
-| `slider` | Set slider value (direct or drag) |
-| `scrollbar` | Set scrollbar value |
+| `scroll` | Mouse wheel, or directional scroll on a target |
+| `scrollto` | Scroll a container until the target is visible |
+| `drag` | Drag by offset or from/to (supports `button`) |
+| `dropdown` | Select a dropdown option |
+| `slider` | Tap or drag a slider |
+| `scrollbar` | Tap a scrollbar |
 | **Gestures** | |
-| `pinch` | Two-finger pinch (zoom) |
+| `pinch` | Two-finger pinch |
 | `rotate` | Two-finger rotation |
 | **Wait & Sync** | |
-| `wait` | Static delay |
-| `waitfor` | Wait for element to appear |
-| `waitfornot` | Wait for element to disappear |
-| `waitfps` | Wait for stable framerate |
-| `waitframerate` | Wait for target FPS |
-| `scenechange` | Wait for scene transition |
+| `wait` | Fixed delay |
+| `waitfor` | Wait for an element (optionally its text) |
+| `waitfornot` | Wait for an element to disappear |
+| `waitfps` | Wait for a stable frame rate |
+| `waitframerate` | Wait for a target average FPS |
+| `scenechange` | Wait for a scene change |
 | **Exploration** | |
-| `autoexplore` | Auto-click random elements (time/count/deadend modes) |
+| `autoexplore` | Random clicking (time / count / dead-end modes) |
 | **GameObject Manipulation** | |
-| `enable` | Activate a GameObject |
-| `disable` | Deactivate a GameObject |
-| `freeze` | Zero velocity + kinematic on rigidbodies |
-| `teleport` | Move transform to world position |
-| `noclip` | Disable colliders |
-| `clip` | Enable colliders |
+| `enable` / `disable` | Activate / deactivate |
+| `freeze` | Zero velocity + kinematic |
+| `teleport` | Move to a world position |
+| `noclip` / `clip` | Disable / enable colliders |
 | **Inspection** | |
-| `getvalue` | Read value via static reflection path |
-| `exists` | Check if element exists |
+| `getvalue` | Log a value read via a static path |
+| `exists` | Check whether an element exists |
 | **Utility** | |
-| `screenshot` | Capture screenshot (auto after every action) |
-| `snapshot` | Capture hierarchy snapshot |
+| `screenshot` | Screenshot only (one is taken after every action) |
+| `snapshot` | Hierarchy snapshot into the diagnostics session |
 
 ---
 
@@ -811,112 +755,127 @@ Check whether an element exists. Succeeds silently if found; optionally throws i
 
 ### Recommended Loop
 
-1. **Observe** -- take a screenshot or snapshot to understand current UI state
-2. **Plan** -- decide which element to interact with based on the screenshot
-3. **Act** -- send a single JSON action
-4. **Verify** -- check `Success` and the post-action screenshot
-5. **Repeat** -- continue until the goal is achieved
+1. **Observe** — look at the latest screenshot (and the UI hierarchy if you have it)
+2. **Plan** — choose the element to interact with
+3. **Act** — send one JSON action
+4. **Verify** — check `Success` / `Error` and the post-action screenshot
+5. **Repeat** until the goal is reached
 
 ### Error Handling
 
-If an action fails, `Success` is `false` and `Error` describes the problem:
-- `"Could not find ..."` -- element not found within the search timeout
-- `"Invalid JSON: ..."` -- malformed JSON
-- `"Missing 'action' field"` -- no action specified
-- `"Unknown action: '...'"` -- unrecognized action name
+When an action fails, `Success` is `false` and `Error` explains why:
+- `"<Action>(…) failed: Element not found within Ns"` — no match within the search timeout (with a diagnostics session active the message is a fuller diagnostic report)
+- `"Invalid JSON: …"` — malformed JSON
+- `"Missing 'action' field"` — no verb
+- `"Unknown action: '…'. Valid: …"` — unrecognised verb
+- `"No target specified. Use one or more of: …"` — the action needs a target and none was given
 
-**Strategy**: Wait briefly, retry with adjusted search parameters, or try a different targeting approach.
+**Strategy:** wait briefly, retry with different search fields, or target differently.
 
 ### Search Timeout
 
-When invoked via the bridge (`UIACTION`), the search timeout defaults to **1 second** for fast-fail retry loops. In C# test code, the default is 10 seconds.
+`ActionExecutor.DefaultSearchTime` controls how long a search waits for a match. It defaults to **10 seconds**; the `UIACTION` bridge command sets it to **1 second** (for fast-fail retry loops), and the setting is global — it stays at 1 second for that Play session.
 
 ### Tips for Reliable Actions
 
-1. **Prefer `text` for buttons** -- most stable and human-readable
-2. **Use `adjacent` for form fields** -- finds inputs by their labels
-3. **Include punctuation in labels** -- `"Username:"` is more precise than `"Username"`
-4. **Wait before acting on dynamic content** -- use `waitfor` before clicking elements that load asynchronously
-5. **Use `waitfornot` for loading screens** -- wait for spinners/loading text to disappear
-6. **Combine search fields for precision** -- `{"text":"Submit", "type":"Button"}` avoids matching non-button text
-7. **Use `scrollto` before clicking hidden items** -- elements in scroll views may be off-screen
-8. **Use `at` as a fallback** -- when no other targeting works, use screen coordinates
+1. **Prefer `text` for buttons** — stable and human-readable
+2. **Use `adjacent` for form fields** — finds inputs by their labels
+3. **Include punctuation in labels** — `"Username:"` is more precise than `"Username"`
+4. **Wait before acting on dynamic content** — `waitfor` before clicking things that load asynchronously
+5. **Use `waitfornot` for loading screens** — wait for spinners to disappear
+6. **Combine `name` / `type` / `tag` / `path` for precision** — remember `text` only matches the element that holds the text
+7. **Use `scrollto` for items in scroll views** — off-screen elements don't match
+8. **Use `at` as a fallback** — when nothing else identifies the element
 
 ### Example: Login Flow
 
 ```json
-{"action":"click", "text":"Login"}
-{"action":"waitfor", "name":"LoginPanel", "seconds":5}
-{"action":"type", "adjacent":"Username:", "value":"testuser"}
-{"action":"type", "adjacent":"Password:", "value":"secret123", "enter":true}
-{"action":"waitfor", "text":"Welcome", "seconds":10}
+[
+  {"action":"click", "text":"Login"},
+  {"action":"waitfor", "name":"LoginPanel", "seconds":5},
+  {"action":"type", "adjacent":"Username:", "value":"testuser"},
+  {"action":"type", "adjacent":"Password:", "value":"secret123", "enter":true},
+  {"action":"waitfor", "text":"Welcome", "seconds":10}
+]
 ```
 
 ### Example: Settings Navigation
 
 ```json
-{"action":"click", "text":"Settings"}
-{"action":"waitfor", "name":"SettingsPanel", "seconds":5}
-{"action":"slider", "adjacent":"Volume:", "value":0.5}
-{"action":"click", "adjacent":"Notifications"}
-{"action":"dropdown", "adjacent":"Language:", "option":"English"}
-{"action":"click", "text":"Save"}
+[
+  {"action":"click", "text":"Settings"},
+  {"action":"waitfor", "name":"SettingsPanel", "seconds":5},
+  {"action":"slider", "adjacent":"Volume:", "value":0.5},
+  {"action":"click", "adjacent":"Notifications"},
+  {"action":"dropdown", "adjacent":"Language:", "option":"English"},
+  {"action":"click", "text":"Save"}
+]
 ```
 
 ### Example: Scroll and Select
 
 ```json
-{"action":"scrollto", "name":"ItemList", "target":{"text":"Rare Sword"}}
-{"action":"click", "text":"Rare Sword"}
-{"action":"waitfor", "name":"ItemDetails", "seconds":5}
-{"action":"click", "text":"Equip"}
+[
+  {"action":"scrollto", "name":"ItemList", "target":{"text":"Rare Sword"}},
+  {"action":"click", "text":"Rare Sword"},
+  {"action":"waitfor", "name":"ItemDetails", "seconds":5},
+  {"action":"click", "text":"Equip"}
+]
 ```
 
 ### Example: Drag and Drop
 
 ```json
-{"action":"drag", "from":{"name":"InventorySlot_3"}, "to":{"name":"EquipSlot_Weapon"}}
-{"action":"waitfor", "name":"EquippedIcon", "seconds":3}
+[
+  {"action":"drag", "from":{"name":"InventorySlot_3"}, "to":{"name":"EquipSlot_Weapon"}},
+  {"action":"waitfor", "name":"EquippedIcon", "seconds":3}
+]
 ```
 
 ### Example: Gesture Interaction
 
 ```json
-{"action":"pinch", "at":[0.5, 0.5], "scale":2.0}
-{"action":"wait", "seconds":0.5}
-{"action":"swipe", "direction":"left", "distance":0.3}
-{"action":"rotate", "at":[0.5, 0.5], "degrees":45}
+[
+  {"action":"pinch", "at":[0.5, 0.5], "scale":2.0},
+  {"action":"wait", "seconds":0.5},
+  {"action":"swipe", "direction":"left", "distance":0.3},
+  {"action":"rotate", "at":[0.5, 0.5], "degrees":45}
+]
 ```
 
 ### Example: Form with Validation
 
 ```json
-{"action":"type", "adjacent":"Email:", "value":"invalid-email"}
-{"action":"click", "text":"Submit"}
-{"action":"waitfor", "text":"*invalid*", "seconds":3}
-{"action":"type", "adjacent":"Email:", "value":"user@example.com", "clear":true}
-{"action":"click", "text":"Submit"}
-{"action":"waitfornot", "text":"*invalid*", "seconds":3}
-{"action":"waitfor", "text":"Success", "seconds":10}
+[
+  {"action":"type", "adjacent":"Email:", "value":"invalid-email"},
+  {"action":"click", "text":"Submit"},
+  {"action":"waitfor", "text":"*invalid*", "seconds":3},
+  {"action":"type", "adjacent":"Email:", "value":"user@example.com", "clear":true},
+  {"action":"click", "text":"Submit"},
+  {"action":"waitfornot", "text":"*invalid*", "seconds":3},
+  {"action":"waitfor", "text":"Success", "seconds":10}
+]
 ```
+
+The examples are arrays for readability — send each object as its own action.
 
 ---
 
 ## Prompting Guide for AI Systems
 
-This section is for developers building AI agents or prompt pipelines that produce UIACTION JSON. It covers how to structure system prompts, what context to provide, and common pitfalls.
+For developers building agents or prompt pipelines that produce action JSON.
 
 ### System Prompt Design
 
-When instructing an LLM to generate actions, your system prompt should include:
+Include:
 
-1. **The action schema** -- include the Complete Action List table and the search fields table from this doc
-2. **The output format constraint** -- tell the model to produce exactly one JSON object per step
-3. **The observation loop** -- explain that each action returns a screenshot, and the model should reason about it before choosing the next action
+1. **The action schema** — the Complete Action List and the search fields table from this doc
+2. **The output format** — exactly one JSON object per step
+3. **The observation loop** — each action returns a result and a screenshot; reason about them before the next action
 
 **Minimal system prompt template:**
 
-```
+```text
 You are a UI automation agent controlling a Unity game. You interact by producing
 one JSON action object at a time. After each action, you receive a screenshot of
 the result.
@@ -932,8 +891,8 @@ Example: {"action":"click", "text":"Play"}
 
 ## Search Fields
 To target UI elements, use these fields in your JSON:
-- "text": visible text on the element
-- "name": GameObject name in the hierarchy  
+- "text": text on the element itself (a button's label, not the button)
+- "name": GameObject name in the hierarchy
 - "adjacent": finds the input/toggle/slider next to a text label
 - "at": [x, y] normalized screen coordinates (0-1), bottom-left origin
 
@@ -944,19 +903,17 @@ To target UI elements, use these fields in your JSON:
 - Use "at" only when text/name targeting fails
 ```
 
-### Providing Screenshots
+### Providing Context
 
-The model needs visual context to decide what to click. Best practices:
+- **Send the screenshot after every action** — `ScreenshotPath` points at it
+- **Include the action result** — success or the error message
+- **Resize screenshots** — 512–768 px is usually enough for UI recognition
+- **Give the model the hierarchy when you can** — exact GameObject names and texts (for example from the Remote IDE hierarchy panel) are far more reliable than reading pixels
 
-- **Send the screenshot after every action** -- the bridge captures one automatically
-- **Include the action result** -- tell the model whether the previous action succeeded or failed and why
-- **Resize screenshots for token efficiency** -- 512x512 or 768x768 is usually sufficient for UI recognition
-- **Include a `snapshot` early** -- a hierarchy snapshot gives the model exact GameObject names and text, which is far more reliable than reading screenshots visually
+**Hierarchy-first strategy** (recommended for structured UIs):
 
-**Snapshot-first strategy** (recommended for structured UIs):
-
-```
-Turn 1 (system): Here is the current UI hierarchy snapshot:
+```text
+Turn 1 (system): Current UI hierarchy:
   Canvas/MainMenu/PlayButton [Button] text="Play"
   Canvas/MainMenu/SettingsButton [Button] text="Settings"
   Canvas/MainMenu/QuitButton [Button] text="Quit"
@@ -964,68 +921,53 @@ Turn 1 (system): Here is the current UI hierarchy snapshot:
 Turn 1 (assistant): {"action":"click", "text":"Settings"}
 ```
 
-This avoids OCR errors entirely. The model can reference exact text and names from the snapshot.
-
 ### Structured Output vs Free-form
 
-**Structured output** (recommended): Force the model to return only valid JSON. Use JSON mode, function calling, or tool_use to constrain output. This eliminates parsing failures from markdown wrapping, commentary, or multi-action responses.
+**Structured output** (recommended): constrain the model to valid JSON with JSON mode, function calling or tool use — no markdown wrapping, commentary or multi-action replies to parse around.
 
-**Free-form with extraction**: If you can't use structured output, instruct the model to wrap actions in a predictable delimiter and parse the first JSON object from the response.
+**Free-form with extraction**: if you can't constrain output, ask for a predictable delimiter and parse the first JSON object.
 
 ### One Action Per Turn vs Batching
 
-**One action per turn** (recommended for reactive agents):
-- Send one action, get result + screenshot, reason about next step
-- More reliable -- the agent can react to unexpected states (popups, loading screens, errors)
-- Higher latency (one LLM call per action)
+**One action per turn** (recommended for reactive agents): the agent reacts to popups, loading screens and errors, at the cost of one LLM call per action.
 
-**Batched action plans** (for predictable flows):
-- Ask the model to produce a sequence of actions upfront
-- Execute them in order, stopping on first failure
-- Lower latency but brittle -- any unexpected UI state breaks the remaining plan
-- Best for well-known, stable flows (e.g. always-the-same login screen)
+**Batched plans** (predictable flows): produce a sequence up front and stop on the first failure. Lower latency, but any unexpected UI state breaks the rest of the plan — best for stable flows like a fixed login screen.
 
 ### Handling Failures
 
-Teach the model to handle failures explicitly in your system prompt:
-
-```
+```text
 ## When an action fails
-If the previous action failed:
-1. Read the error message carefully
-2. If "Could not find": the element may not be visible yet. Try:
-   - {"action":"waitfor", ...} to wait for it to appear
-   - {"action":"screenshot"} to see current state
+1. Read the error message
+2. If "Element not found": the element may not be visible yet. Try:
+   - {"action":"waitfor", ...} to wait for it
+   - {"action":"screenshot"} to see the current state
    - A different search field (text vs name vs adjacent)
-   - {"action":"scrollto", ...} if the element might be off-screen
+   - {"action":"scrollto", ...} if it may be off-screen
 3. If the same action fails twice, try a completely different approach
 4. Never repeat the exact same failed action more than once
 ```
 
 ### Context Window Management
 
-For long test sessions, the conversation grows quickly with screenshots. Strategies:
-
-- **Summarize history** -- after every N actions, summarize what was accomplished and drop old screenshots
-- **Keep only the last 2-3 screenshots** -- older ones are rarely needed
-- **Include the session action log** -- a compact text summary of all actions taken so far (the session report provides this)
+- **Summarize history** every N actions and drop old screenshots
+- **Keep only the last 2–3 screenshots**
+- **Keep a compact action log** (a `UISESSION` report provides one)
 
 ### Common Prompting Mistakes
 
 | Mistake | Problem | Fix |
 |---------|---------|-----|
 | No screenshot after each action | Model guesses blindly | Always send the post-action screenshot |
-| Asking for multiple actions at once | Model can't react to failures or unexpected UI | One action per turn |
-| Not explaining `adjacent` | Model tries `{"action":"type", "text":"Username:"}` (clicks the label) | Explain that `adjacent` finds the input *next to* a label |
-| Not explaining coordinate system | Model uses pixel coordinates | Clarify `at` uses 0-1 normalized, bottom-left origin |
-| No failure recovery instructions | Model retries the same failed action forever | Include failure handling rules |
-| Omitting `waitfor` after navigation | Model clicks elements that haven't loaded yet | Require `waitfor` after scene changes and panel transitions |
-| Sending full-resolution screenshots | Wastes tokens, hits context limits | Resize to 512-768px |
-| No hierarchy snapshot | Model struggles with elements that have no visible text | Use `{"action":"snapshot"}` and include the result |
+| Asking for several actions at once | Model can't react to failures | One action per turn |
+| Not explaining `adjacent` | Model sends `{"action":"type", "text":"Username:"}` (targets the label) | Explain that `adjacent` finds the input next to a label |
+| Not explaining coordinates | Model sends pixels or assumes a top-left origin | `at` is 0-1 normalized, bottom-left origin |
+| No failure-recovery rules | Model retries the same failure forever | Include failure-handling rules |
+| No `waitfor` after navigation | Model clicks elements that haven't loaded | Require `waitfor` after scene/panel changes |
+| Full-resolution screenshots | Wastes tokens | Resize to 512–768 px |
 
 ### Example: Complete Agent Prompt
 
-```
+```text
 You are controlling a Unity mobile game to test the settings menu.
 
 ## Your Goal
@@ -1039,16 +981,16 @@ Each turn, you send exactly one JSON action. You then receive:
 ## Action Format
 {"action":"<verb>", ...search fields..., ...params...}
 
-Search fields (combine for precision):
-- "text": match visible text
+Search fields:
+- "text": match text on the element itself
 - "name": match GameObject name
-- "adjacent": find control next to a label (best for settings/forms)
-- "at": [x, y] normalized coords (0=bottom-left, 1=top-right)
+- "adjacent": find the control next to a label (best for settings/forms)
+- "at": [x, y] normalized coords (0,0 = bottom-left, 1,1 = top-right)
 
 Key actions:
 - click, type, slider, dropdown, swipe, scroll, scrollto, drag
 - waitfor (wait for element), waitfornot (wait for element to disappear)
-- wait (static delay), screenshot, snapshot
+- wait (fixed delay), screenshot
 
 ## Rules
 1. Send ONE action per turn, wait for the result
@@ -1060,38 +1002,37 @@ Key actions:
 
 ### Token-Efficient Reference
 
-If your system prompt has tight token limits, here is a minimal reference you can include:
+```text
+Action JSON: {"action":"<verb>", ...target fields...}
 
-```
-UIACTION JSON format: {"action":"<verb>", ...target fields...}
-
-Target fields (AND-combined):
-  text, name, adjacent, near, type, tag, path, any, at:[x,y]
+Target fields:
+  text, name, type, tag, path  (AND-combined; text = text on the element itself)
+  near, adjacent  (relative to a text label; ignore text/name/type)
+  any  (name/text/sprite/path; replaces other fields)
   direction: for adjacent/near ("right","left","above","below")
-  index: 0-based element index for click/doubleclick/tripleclick/hold
+  index: 0-based match index for click/doubleclick/tripleclick/hold
+  at:[x,y] normalized, bottom-left origin (click, doubleclick, tripleclick, hold,
+         swipe, twofingerswipe, scroll, pinch, rotate, drag from/to)
 
 Actions:
   click, doubleclick, tripleclick, hold(seconds),
   type(value,clear,enter), textinput(value), typetext(text), keys(text),
   key(key), holdkey(key,duration), holdkeys(keys:[...],duration),
-  swipe(direction,distance), twofingerswipe(direction,distance,fingerSpacing),
+  swipe(direction,distance,duration), twofingerswipe(direction,distance,fingerSpacing),
   scroll(delta | direction+amount), scrollto(target:{...}), scrolltoandclick(target:{...}),
-  drag(direction:[x,y] | from/to:{...}, button), dropdown(option),
+  drag(direction:[dx,dy] | from:{...},to:{...}, button), dropdown(option),
   slider(value,from), clickslider(value), scrollbar(value),
   pinch(scale), rotate(degrees),
   wait(seconds), waitfor(seconds,expected), waitfornot(seconds),
-  waitfps(minFps), waitframerate(fps), scenechange(seconds),
-  randomclick, autoexplore(mode,seconds|count,seed,delay),
+  waitfps(minFps,stableFrames,timeout), waitframerate(fps), scenechange(seconds),
+  randomclick, autoexplore(mode,seconds|count,seed,delay,tryBack),
   enable, disable, freeze(includeChildren), teleport(position:[x,y,z]),
   noclip(includeChildren), clip(includeChildren),
   getvalue(path), exists(seconds,required),
   screenshot, snapshot
 
 Notes:
-  - "adjacent" finds the nearest control next to a text label (for forms)
-  - "direction" controls search direction for adjacent/near
-  - "at" is normalized [0,0]=bottom-left [1,1]=top-right
-  - "index" selects Nth match when multiple elements found
+  - drag direction is a normalized offset ([0.3,0] = 30% of screen width)
   - "button" on drag: "left" (default), "right", "middle"
   - waitfor after navigation; waitfornot for loading screens
   - type clear defaults true; enter defaults false

@@ -1,164 +1,165 @@
 # ODDGames.Scripting
 
-Embedded C#-like scripting language shipped inside the Bugpunch SDK. Powers the Remote IDE's `ScriptRunner` (live, on-device evaluation from the dashboard) and any in-game tooling that needs to run untrusted code without bringing in `Reflection.Emit` or a JIT.
+Embedded C#-subset scripting language shipped inside the Bugpunch SDK. It powers the Remote IDE's script panel (live, on-device evaluation from the dashboard) and any in-game tooling that needs to run code at runtime without `Reflection.Emit` or a JIT.
 
-> **Distribution.** Ships as `ODDGames.Scripting.dll` under `Plugins/` next to `ODDGames.Bugpunch.dll`. No separate UPM package — the runtime DLL is co-located with the SDK runtime DLL on every platform.
+> **Distribution.** Ships as `ODDGames.Scripting.dll` in `Plugins/`, next to `ODDGames.Bugpunch.dll`. There is no separate UPM package or manifest entry — every Bugpunch consumer gets it with the SDK. Namespace: `ODDGames.Scripting`.
 
 ---
 
 ## Why it exists
 
-- **IL2CPP-safe.** No `Reflection.Emit`, no `DynamicMethod`, no `System.Reflection.Emit.AssemblyBuilder`. Mono runtime stripping won't break it. AOT platforms (iOS, console) are first-class.
-- **Sandboxable.** Three trust levels (`Untrusted`, `Admin`, `System`) gate which host APIs a script can call. `[ScriptProtected]` attributes mark members off-limits below a level.
-- **Re-entrant.** Each invocation gets a fresh VM instance; nested script calls don't share stack frames.
-- **Small surface.** Compiler + VM live in one assembly with no dependencies. Drop in, register host types, run code.
+- **IL2CPP-safe.** A bytecode VM — no `Reflection.Emit`, `DynamicMethod` or JIT. AOT platforms (iOS, consoles) are first-class.
+- **Sandboxed.** A hard deny-list that no trust level can lift, plus three trust levels (`Untrusted`, `Admin`, `System`) and `[ScriptProtected]` for host members. The VM caps instructions, call depth and stack size.
+- **Re-entrant.** VMs are pooled per thread; a nested host → script → host → script call gets its own VM and frames.
+- **Self-contained.** Compiler, VM and the optional browser IDE live in one `netstandard2.1` assembly with no dependencies.
 
-The SDK's primary consumer is `BugpunchClient.Sources/RemoteIDE/Services/ScriptRunner.cs`. The dashboard's "Run Script" panel posts source text → server forwards via tunnel → SDK compiles + runs → result returned as a JSON envelope.
+The SDK's main consumer is `RemoteIDE/Services/ScriptRunner.cs`: the dashboard's script panel sends source → the server forwards it over the device tunnel → the SDK compiles and runs it → the result comes back as JSON (`{ok, output}` or `{ok:false, errors}`).
 
 ---
 
 ## Pipeline
 
 ```
-source ─► Lexer ─► Parser ─► SemanticAnalyzer ─► Emitter ─► Chunk
-                                                              │
-                                                              ▼
-                                                             VM ─► result
+source ─► Lexer ─► Parser ─► SemanticAnalyzer (+ lowering) ─► Emitter ─► Chunk
+                                                                           │
+                                                                           ▼
+                                                                          VM ─► result
 ```
 
-| Stage | File | Notes |
+| Stage | Files (under `scripting/Runtime/`) | Notes |
 |---|---|---|
-| Lexer | `Lexing/Lexer.cs` | Hand-written single-pass tokenizer; line/col tracking; 80+ token kinds in `TokenKind.cs`. |
-| Parser | `Parsing/Parser.cs` | Pratt-style for expressions, recursive-descent for statements/declarations. |
-| AST | `Syntax/{Expressions,Statements,Declarations}.cs` | Immutable nodes. |
-| Semantic | `Binding/SemanticAnalyzer.cs` + `Binding/TypeResolver.cs` | Type inference for literals / `var`, symbol scoping, namespace import resolution, denial-list enforcement. |
-| Emitter | `Emit/Emitter.cs` | Walks AST, emits to a `ChunkBuilder` (bytecode + constants + handler table + inline-cache slots). |
-| Bytecode | `Bytecode/{Chunk,OpCode,InlineCache}.cs` | Operand widths: u8 / u16 / i32 little-endian. ~50 opcodes. |
-| VM | `VirtualMachine/VM.cs` | Big-switch dispatcher over opcodes; `StackSlot[]` operand stack; per-call locals. |
+| Lexer | `Lexing/{Lexer,Token,TokenKind}.cs` | Hand-written single-pass tokenizer with line/column tracking. |
+| Parser | `Parsing/Parser.cs` | Pratt parsing for expressions, recursive descent for statements and declarations. |
+| AST | `Syntax/{Expressions,Statements,Declarations,TypeRefs}.cs` | Immutable nodes. |
+| Semantic | `Binding/{SemanticAnalyzer,TypeResolver,ScriptType,Symbol}.cs` | Type inference, scoping, imports, deny-list enforcement. |
+| Lowering | `Binding/{AsyncLowering,IteratorLowering,UsingLowering}.cs` | `async`/`await`, iterators and `using` declarations rewritten into simpler constructs. |
+| Emitter | `Emit/Emitter.cs` | Walks the AST into a chunk: bytecode, constants, handler table, inline-cache slots. |
+| Bytecode | `Bytecode/{Chunk,OpCode,InlineCache}.cs` | Compact opcodes with u8 / u16 / i32 operands. |
+| VM | `VirtualMachine/VM.cs` | Switch dispatcher over a `StackSlot[]` operand stack. |
 
-`StackSlot` is a tagged-union struct: primitives (i32 / i64 / f32 / f64 / bool / char) live inline; reference types (string, user objects, delegates) sit in the `Obj` field. Boxing only happens at the boundary, not during arithmetic.
+`StackSlot` is a tagged union: primitives (i32 / i64 / f32 / f64 / bool / char) live inline, and references (strings, script objects, delegates) go in an object field. Values are only boxed at the host boundary, not during arithmetic.
+
+Compiled scripts are cached: an LRU keyed by a SHA-256 of the source plus the options that affect emission. Set `ScriptCompileOptions.CacheKey = "-"` to bypass it, or call `ScriptCompiler.ClearCache()`.
 
 ---
 
 ## Language surface
 
-What the language has today, in one list. Anything not here is not supported.
+A broad C# subset. Supported today:
 
-**Types.** `int`, `long`, `short`, `byte`, `uint`, `ulong`, `ushort`, `sbyte`, `float`, `double`, `decimal`, `bool`, `char`, `string`, `object`, `null`. Generics on BCL collections (`List<T>`, `Dictionary<K, V>`, `IEnumerable<T>`). User-defined `class` with fields, methods, constructors, `this`. Method-overload resolution is MVP — first matching arity wins.
+- **Types** — all numeric primitives, `decimal`, `bool`, `char`, `string`, `object`, nullable value types, arrays, generics (BCL generics and generic script methods/types), tuples, anonymous types.
+- **Declarations** — classes with fields, constructors, properties, indexers, static members, field initializers, inheritance and `abstract`; interfaces; structs; enums; operator overloading; extension methods; top-level functions and local functions; default parameter values; `out`/`ref` parameters.
+- **Expressions** — the full arithmetic/bitwise/logical set, compound assignment, `??` / `??=` / `?.`, ternary, casts, `is`/`as` with pattern matching, `typeof`, `nameof`, `checked`, string interpolation, object and collection initializers, lambdas (expression and block bodied).
+- **Statements** — `if`, `while`, `do`, `for`, `foreach`, `switch` statements and expressions, `break`/`continue`/`goto`, `return`, `throw`, `try`/`catch`/`finally`, `using` statements and declarations, `yield return`/`yield break` iterators, `async`/`await`.
+- **Imports** — `using`, `using static` and alias directives. `System` is always imported.
+- **Top level** — statements run in order; the value of a top-level `return` is what `Evaluate` returns.
 
-**Literals.** Decimal, hex (`0x...`), binary (`0b...`), char `'c'`, string `"..."` with escapes, `true`/`false`/`null`.
+Semantics to be aware of:
 
-**Operators.** Arithmetic (`+ - * / %` and unary `-`), pre/post `++` `--`, comparison (`== != < <= > >=`), logical (`&& || !` with short-circuit), bitwise (`& | ^ ~ << >>`), compound assignment (`+= -= *= /= %= &= |= ^= <<= >>= ??=`), null-coalescing (`??`), null-conditional (`?.`), ternary (`?:`), member (`.`), indexer (`[]`), cast `(T)expr`, `typeof`, `is`, `as`, `new`.
+- **Lambdas capture by value.** A lambda sees a snapshot of a captured local; later changes to that local outside the lambda aren't visible inside it (referenced objects are shared, as usual). Lambdas convert to matching `Func<…>` / `Action<…>` delegates when passed to host APIs.
+- **Overloads** resolve by best-fitting argument types.
+- **Undeclared identifiers are compile errors**, unless the host lists them in `ScriptCompileOptions.GlobalNames` (see below).
 
-**Control flow.** `if`/`else if`/`else`, `while`, `do/while`, `for`, `foreach`, `break`, `continue`, `return`, `throw`. Block scoping with shadowing. Implicit `return` of last expression at script top-level.
+---
 
-**Functions.** Lambda expressions (`x => x * 2`) and block-bodied (`x => { ... }`). Captures are by-value snapshot — outer-variable mutations after capture do not propagate. Auto-coerces to matching `Func<...>` / `Action<...>` delegate signatures via `LambdaShim`.
+## Sandbox
 
-**Exceptions.** `try` / `catch` (untyped catch-all and typed catches with binding), `throw`, rethrow (`throw;` inside `catch`). Multiple catch clauses match in source order. Nested try/catch with proper unwinding.
+Always enforced, at every trust level (`MethodInvocationGuard`):
 
-**Imports.** `using System;` style directives, `using static`, alias forms. Implicit defaults: `System`. Implicit denials: anything starting with `ODDGames.Bugpunch` (configurable on `ScriptCompileOptions`).
+- **Denied namespaces** — `System.Reflection`, `System.IO`, `System.Diagnostics`, `System.Net`, `System.Runtime.InteropServices`, `System.Runtime.Loader`, `System.Threading` (except `System.Threading.Tasks`), `System.Security`, `System.Configuration`, `System.Resources`, `Microsoft`.
+- **Denied types** — `Type`, `Activator`, `AppDomain`, `AppContext`, `Environment`, `GC`, `Delegate`, `MulticastDelegate`, `OperatingSystem`, `WeakReference`.
+- **VM limits** — 50,000,000 instructions per evaluation, call depth 100 and 1,048,576 stack slots. Exceeding any of them throws `ScriptRuntimeException`, so runaway loops and deep recursion fail cleanly instead of hanging or overflowing the host.
 
-**Not yet supported.** `finally`, `switch`/`case`, `async`/`await`, top-level free functions (only methods on script classes), property get/set codegen (syntax parses, emit is incomplete), interfaces, base-class semantics, default parameter values, expression field initializers, static fields on script classes.
+Configurable:
+
+- **`ScriptCompileOptions.DeniedNamespacePrefixes`** — namespaces hidden from scripts at compile time. The default is `ODDGames.Bugpunch`, which matches that namespace and its children.
+- **Trust levels** — `ScriptCompileOptions.TrustLevel` (default `Untrusted`) plus `MethodInvocationGuard.EnterTrustLevel(level)` around evaluation. A member marked `[ScriptProtected(level)]` can't be called from below that level. A blocked call throws `ScriptRuntimeException("Blocked: …")` before invocation.
+- **Dynamic predicates** — `MethodInvocationGuard.Register(...)` adds process-wide checks. The SDK registers one that refuses `Object.Destroy` on `[ScriptProtected]` GameObjects.
+
+The Remote IDE runs dashboard scripts at **`Admin`** trust. Only members marked `[ScriptProtected(ScriptTrustLevel.System)]` stay out of reach there.
+
+There is no wall-clock timeout and no heap cap. The instruction budget bounds CPU per evaluation, but a script can still allocate large objects through host APIs.
 
 ---
 
 ## Host integration
 
-A host registers types and globals through `ScriptHost`:
-
 ```csharp
-var host = new ScriptHost();
-host.Globals["player"] = playerInstance;            // visible as `player` in script
-host.Globals["Log"] = (Action<string>)Debug.Log;    // callable as Log("hi")
-```
+using System.Collections.Generic;
+using ODDGames.Scripting;
 
-- **Type discovery** — `TypeResolver` resolves dotted names against every loaded assembly. Add namespace imports via `ScriptCompileOptions.ImplicitUsings`. Block whole namespaces via `DeniedNamespacePrefixes`.
-- **Marshalling** — `StackSlot.FromObject` / `Unbox` handle the boundary. Primitives stay unboxed inside the VM.
-- **Trust levels.** Set per call via `MethodInvocationGuard.EnterTrustLevel(level)`. `ScriptRunner` runs untrusted by default; admin scripts bump the thread-local. Process-global predicates (`MethodInvocationGuard.Register`) can deny calls dynamically — the SDK uses one to block `Object.Destroy(*)` on `[ScriptProtected]` GameObjects.
-- **`[ScriptProtected]`** — attribute on type or member; takes a minimum trust level. Caller below that level → `ScriptSecurityException` at the call site, before invocation.
+var options = new ScriptCompileOptions();
+options.GlobalNames.Add("nums");              // declare host globals at compile time
+options.DefaultUsings.Add("UnityEngine");     // implicit using for every script
 
-### Example
-
-```csharp
-var compiler = new ScriptCompiler();
-var compiled = compiler.Compile(@"
-    var sum = 0;
-    foreach (var n in nums) sum += n;
-    return sum;
-", new ScriptCompileOptions());
-
-if (!compiled.Diagnostics.HasErrors) {
+if (ScriptCompiler.TryCompile(@"
+        var sum = 0;
+        foreach (var n in nums) sum += n;
+        return sum;
+    ", out var compiled, options))
+{
     var host = new ScriptHost();
     host.Globals["nums"] = new List<int> { 1, 2, 3, 4 };
-    var result = compiled.Evaluate(host);   // -> 10
+    var result = compiled.Evaluate(host);    // 10
+}
+else
+{
+    foreach (var d in compiled.Diagnostics)
+        UnityEngine.Debug.LogError(d);
 }
 ```
+
+- **`ScriptCompiler`** is static. `Compile(source, options)` throws `ScriptCompileException` (with `Diagnostics`) on errors; `TryCompile` returns `false` instead. `Warmup()` pre-resolves common Unity types so the first script hits a warm reflection cache; `ClearCache()` / `ClearReflectionCache()` flush them.
+- **`CompiledScript`** — `IsValid`, `Diagnostics`, `Evaluate(host = null)` (null uses `ScriptHost.Default`), plus `DeclaredTypes`, `CreateInstance` and `Invoke` for driving script-defined classes.
+- **`ScriptHost`** — `Globals` holds the values for the names declared in `GlobalNames`. `RegisterFastPath(method, invoker)` installs a direct invoker for a hot host method so calls skip reflection.
+- **`ScriptCompileOptions`** — `DefaultUsings`, `AssemblyAllowlist` (limit type resolution to named assemblies), `DeniedNamespacePrefixes`, `TrustLevel`, `CacheKey`, `GlobalNames`, `SourceName` (used in diagnostics).
+- **Type discovery** — `TypeResolver` resolves names against the loaded assemblies (or `AssemblyAllowlist`), minus denied namespaces and types. Members are reflected once and then hit a per-call-site inline cache.
+- **Runtime errors** surface as `ScriptRuntimeException` with a source `Location`.
+
+### Script behaviours and the browser IDE
+
+- **`ScriptBehaviour`** gives a script-defined class a `Start()` / `Update(dt)` / `Destroy()` lifecycle plus named events (`Send("OnGoal")`). Context is injected with `With("self", gameObject)`. It is engine-agnostic and IL2CPP-safe.
+- **`ODDGames.Scripting.Ide.ScriptIde.Host(rootDirectory)`** starts an in-process, Monaco-based browser IDE: file tree, IntelliSense from the runtime's own resolver, diagnostics and a Run panel. It binds to loopback by default. It can read, write and run code on the host, so expose it only on a trusted network.
 
 ---
 
 ## Runtime model
 
-- **Stack.** `StackSlot[]` operand stack, dynamically resized. `_sp` tracks top.
-- **Locals.** Sized to `chunk.LocalCount` per call. Slot 0 is `this` for instance methods.
-- **Calls.** Cross-call state isolated — each `Execute*` builds its own `VM` instance. No shared frame stack across nested host-script-host-script chains.
-- **Exceptions.** Handler stack of `ExceptionHandler { pc, type, depth }`. On throw the VM scans handlers, rewinds the operand stack to saved depth, pushes the exception, jumps to handler PC.
-- **Inline cache.** Two-entry monomorphic cache per dynamic-dispatch site (`InlineCache.cs`). Hits skip reflection; polymorphic sites fall back to a `MethodInfo` lookup.
-- **GC.** Delegated to .NET. The VM holds no long-lived roots once a call returns — locals/stack are released with the `VM` instance.
-
-### What's missing as a sandbox
-
-- No instruction-count quota.
-- No memory cap (operand stack can grow without bound).
-- No wall-clock timeout in the VM itself.
-
-If you need any of those, wrap `compiled.Evaluate(...)` in a `CancellationToken` + watchdog thread on the host side. The SDK's `ScriptRunner` accepts a hard cancel from the dashboard but does not cap CPU.
+- **VMs** are rented from a thread-local pool. Nested calls rent another VM, so frames are never shared.
+- **Locals** are sized per chunk. Slot 0 is `this` for instance methods.
+- **Exceptions** use a handler table: on throw, the VM finds the nearest handler, rewinds the operand stack and jumps to it. `finally` blocks run on every exit path.
+- **Inline caches** at dynamic-dispatch sites skip repeat reflection lookups.
+- **GC** is .NET's. The VM holds no long-lived roots once an evaluation returns.
 
 ---
 
-## Building
+## Building and testing
 
 ```bash
 cd scripting/Runtime
-dotnet build -c Release
-# → ODDGames.Scripting.dll (netstandard2.1)
+dotnet build -c Release          # → ODDGames.Scripting.dll (netstandard2.1)
+
+cd ../Tests
+dotnet test                      # xUnit suite (net8.0)
 ```
 
-The SDK build copies the DLL into `package/Plugins/` next to `ODDGames.Bugpunch.dll`. Both ride together to every platform lane (Android / iOS / Standalone) — no JNI / P-Invoke for scripting; the VM is pure managed.
+The source of truth is the private `oddgames/unity-scripting` repo, checked out as the sibling `scripting/` directory. The SDK's `build-all.ps1` compiles it and copies the DLL into `package/Plugins/`. The VM is pure managed code, so the same DLL serves every lane (Android / iOS / Editor / Standalone).
 
----
-
-## Testing
-
-xUnit suite under `scripting/Tests/` (~20 files): end-to-end semantics, lambdas, generics, try/catch, loops, classes, indexers, statics, parser, lexer, error reporting, microbenchmarks.
-
-```bash
-cd scripting/Tests
-dotnet test
-```
+The test suite (~80 files under `scripting/Tests/`) covers language semantics end to end: classes, inheritance, generics, lambdas, async, iterators, pattern matching, exceptions, the sandbox, the IDE and microbenchmarks.
 
 ---
 
 ## Source map
 
-| Concern | Path |
+| Concern | Path (under `scripting/Runtime/`) |
 |---|---|
-| Compile entry | `Runtime/ScriptCompiler.cs` |
-| Lexer / tokens | `Runtime/Lexing/{Lexer,TokenKind}.cs` |
-| Parser | `Runtime/Parsing/Parser.cs` |
-| AST | `Runtime/Syntax/{Expressions,Statements,Declarations}.cs` |
-| Semantic + types | `Runtime/Binding/{SemanticAnalyzer,TypeResolver,ScriptType}.cs` |
-| Emitter | `Runtime/Emit/Emitter.cs` |
-| Bytecode | `Runtime/Bytecode/{Chunk,OpCode,InlineCache}.cs` |
-| VM | `Runtime/VirtualMachine/{VM,StackSlot,ScriptObject,LambdaValue,MethodInvocationGuard}.cs` |
-| Public surface | `Runtime/{ScriptHost,ScriptCompileOptions,CompiledScript,ScriptProtectedAttribute}.cs` |
-| SDK consumer | `BugpunchClient.Sources/RemoteIDE/Services/ScriptRunner.cs` |
-
----
-
-## Known limits
-
-- `finally`, `switch`, `async/await`, properties (get/set codegen), interfaces, inheritance — parser may accept the syntax; emitter does not yet implement them. Do not rely on them.
-- Method overload resolution picks the first method with matching parameter count. Same-name methods of differing arity are fine; same arity with different parameter types may resolve to the wrong one.
-- Lambdas capture by value. Mutating the captured local outside the lambda has no effect inside.
-- No `ScriptHost.RegisterFastPath` yet — every dynamic call goes through reflection (with inline cache). Tight loops over host calls are noticeably slower than native C#.
-- No stack-overflow guard on deep recursion. Untrusted scripts can crash the host with a managed `StackOverflowException`. Wrap evaluation in your own thread if you accept arbitrary input.
+| Compile entry + cache | `ScriptCompiler.cs`, `CompiledScriptCache.cs` |
+| Public surface | `ScriptHost.cs`, `ScriptCompileOptions.cs`, `CompiledScript.cs`, `ScriptInstance.cs`, `ScriptProtectedAttribute.cs`, `ScriptCompileException.cs`, `ScriptDiagnostic.cs` |
+| Lexer | `Lexing/` |
+| Parser + AST | `Parsing/Parser.cs`, `Syntax/` |
+| Binding + lowering | `Binding/` |
+| Emitter + bytecode | `Emit/Emitter.cs`, `Bytecode/` |
+| VM + sandbox | `VirtualMachine/` (`VM`, `StackSlot`, `ScriptObject`, `LambdaValue`, `LambdaShim`, `ScriptIterator`, `ScriptAsyncBuilder`, `MethodInvocationGuard`) |
+| Behaviours | `ScriptBehaviour.cs`, `ScriptBehaviourHost.cs`, `ScriptBehaviourManager.cs` |
+| Browser IDE | `Ide/` |
+| SDK consumer | `server/sdk/csharp-src/Bugpunch/Sources/RemoteIDE/Services/ScriptRunner.cs` |

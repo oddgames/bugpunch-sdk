@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.227] - 2026-10-14
+
+### Changed
+- sdk: docs audit — README/REFERENCE/SCRIPTING/JSON_ACTIONS/ACTION_EXECUTOR/INPUT_INJECTION re-verified against source; every code sample now compiles against the shipped DLLs (new sdk/scripts/check-doc-samples.mjs, enforced by preflight)
+- sdk(scripting): script namespace deny-list matched the pre-rename ODDGames.Bugpunch, so scripts could reach SDK internals; now ODDGames.BugpunchSdk, and the VM extension-host deny set derives from the same defaults
+- sdk(automation): JSON at-positions converted to screen pixels for doubleclick/tripleclick/hold/scroll/drag (previously landed bottom-left); near/adjacent/any now AND with other fields; unknown key names fail loudly (key/holdkey/holdkeys/PressKey); UIACTION restores DefaultSearchTime
+- sdk(automation): searchTime -1 means DefaultSearchTime everywhere (ScrollTo, ClickDropdown, Disable/Enable/Freeze/Teleport/NoClip/Clip, Find); Randomize() order is stable across polls so Find settles; BeforeAction is now invoked; Swipe(GameObject) uses touch on touch devices; IncludeDisabled() removed (was a no-op)
+- sdk(editor): UI-automation upload honours Upload Passed Tests and defaults to the project's serverUrl
+
 ## [0.8.226] - 2026-10-14
 
 ### Changed
@@ -210,6 +219,15 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.227] - 2026-10-14
+
+### Changed
+- sdk: docs audit — README/REFERENCE/SCRIPTING/JSON_ACTIONS/ACTION_EXECUTOR/INPUT_INJECTION re-verified against source; every code sample now compiles against the shipped DLLs (new sdk/scripts/check-doc-samples.mjs, enforced by preflight)
+- sdk(scripting): script namespace deny-list matched the pre-rename ODDGames.Bugpunch, so scripts could reach SDK internals; now ODDGames.BugpunchSdk, and the VM extension-host deny set derives from the same defaults
+- sdk(automation): JSON at-positions converted to screen pixels for doubleclick/tripleclick/hold/scroll/drag (previously landed bottom-left); near/adjacent/any now AND with other fields; unknown key names fail loudly (key/holdkey/holdkeys/PressKey); UIACTION restores DefaultSearchTime
+- sdk(automation): searchTime -1 means DefaultSearchTime everywhere (ScrollTo, ClickDropdown, Disable/Enable/Freeze/Teleport/NoClip/Clip, Find); Randomize() order is stable across polls so Find settles; BeforeAction is now invoked; Swipe(GameObject) uses touch on touch devices; IncludeDisabled() removed (was a no-op)
+- sdk(editor): UI-automation upload honours Upload Passed Tests and defaults to the project's serverUrl
 
 ## [0.8.226] - 2026-10-14
 

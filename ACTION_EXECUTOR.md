@@ -1,11 +1,9 @@
-# Bugpunch UITest — ActionExecutor
+# Bugpunch UI Automation — ActionExecutor
 
-Orchestration layer above `Search` and `InputInjector`. Owns the public test API (`Click`, `Tap`, `Type`, `Swipe`, `Pinch`, `Rotate`, `Hold`, `Drag`, `Wait`, ...), the JSON action dispatcher used by the dashboard and AI test generator, and the cross-cutting concerns every action shares: main-thread marshalling, logging, screenshots, recorder hand-off, retry policy, lifecycle hooks.
-
-Sits between user code and the engine:
+Orchestration layer above `Search` and `InputInjector`. `ActionExecutor` owns the public test API (`Click`, `Type`, `Swipe`, `Pinch`, `Rotate`, `Hold`, `Drag`, `Wait`, …), the JSON action dispatcher used by the Remote IDE, the AI test runner and the CLI bridge, and what every action shares: main-thread marshalling, START/COMPLETE logging, diagnostics screenshots and the post-action interval.
 
 ```
-       user / dashboard / AI / agent
+       test code / Remote IDE / AI runner / clibridge4unity
                    │
                    ▼
           ActionExecutor.*       ← public API + JSON dispatcher  (this doc)
@@ -15,133 +13,138 @@ Sits between user code and the engine:
      Search                InputInjector       ← engine ( INPUT_INJECTION.md )
 ```
 
-For the user-facing API surface (filters, methods, examples) see `REFERENCE.md`. For the JSON action protocol see `JSON_ACTIONS.md`. For the engine internals it drives see `INPUT_INJECTION.md`.
+For the user-facing API (filters, methods, examples) see `REFERENCE.md`. For the JSON action protocol see `JSON_ACTIONS.md`. For the engine it drives see `INPUT_INJECTION.md`.
 
 ---
 
 ## Files
 
-`ActionExecutor` is split across partial classes:
+`ActionExecutor` is one `static partial class`:
 
 | Partial | Owns |
 |---|---|
-| `ActionExecutor.cs` | Constants, defaults (`DefaultSearchTime`, `Interval`), config, hook registration. |
-| `ActionExecutor.Pointers.cs` | `Click`, `Tap`, `DoubleTap`, `LongPress`, `Hold`, `Drag`. |
-| `ActionExecutor.Gestures.cs` | `Swipe`, `Pinch`, `Rotate`, two-finger swipe. |
-| `ActionExecutor.Input.cs` | `Type`, `Press`, `KeyDown`, `KeyUp`, `Clear`. |
-| `ActionExecutor.Find.cs` | `Find<T>`, `FindAll<T>`, `Wait`, existence assertions. |
-| `ActionExecutor.Logging.cs` | `RunAction`, `ActionScope`, `ActionScopeInner` — every public action goes through here. |
-| `ActionParser.cs` | JSON dispatcher → routes to the partials above. |
+| `ActionExecutor.cs` | Configuration (`DefaultSearchTime`, `Interval`, `PollInterval`, `DebugMode`, `ShowInputOverlay`, `BeforeAction`), button-click tracking, unobserved-exception capture, random seed. Also `StaticPath`, `SwipeDirection`, `ItemContainer`, `SimpleExploreResult`. |
+| `ActionExecutor.Logging.cs` | `RunAction` / `ActionScope` — the scope every public action runs in. |
+| `ActionExecutor.SearchShortcuts.cs` | `Name`, `Text`, `Type`, `Texture`, `Path`, `Tag`, `Any`, `Adjacent`, `Near`, `Reflect`. |
+| `ActionExecutor.Pointers.cs` | `Click`, `ClickAt`, `DoubleClick(At)`, `TripleClick(At)`, `Hold(At)`, `Drag`, `DragTo`, `DragFromTo`. |
+| `ActionExecutor.Gestures.cs` | `Swipe(At)`, `Pinch(At)`, `Rotate(At)`, `RotateAtPixels`, `TwoFingerSwipe(At)`. |
+| `ActionExecutor.Input.cs` | `TextInput`, `Type`, `TypeText`, `PressKey`, `PressKeys`, `HoldKey(s)`, `KeyCodeToKey`, `CharToKey`. |
+| `ActionExecutor.Scrolling.cs` | `Scroll`, `ScrollAt`, `ScrollTo`, `ScrollToAndClick`, `ClickSlider`, `DragSlider`, `SetSlider`, `SetScrollbar`. |
+| `ActionExecutor.UI.cs` | `ClickDropdown`, `FindItems`, `RandomClick(Except)`, `AutoExplore*`. |
+| `ActionExecutor.Find.cs` | `Find<T>`, `FindAll<T>`, search-failure messages. |
+| `ActionExecutor.WaitMethods.cs` | `WaitFor(Search)`, `WaitFor(Search, text)`, `WaitForNot`, `WaitFor(path)`, `WaitFor<T>(path, expected)`, static-path resolver. |
+| `ActionExecutor.WaitOperations.cs` | `Wait(seconds)`, `Wait(Search)`, `WaitFor(Func<bool>)`, `WaitFramerate`. |
+| `ActionExecutor.SceneManagement.cs` | `LoadTestData`, `WaitForStableFrameRate`, `SceneChange`, `NavigateToMainMenu`. |
+| `ActionExecutor.GameObject.cs` | `Disable`, `Enable`, `Freeze`, `Teleport`, `NoClip`, `Clip`. |
+| `ActionExecutor.GetValue.cs` | `GetValue<T>(Search)`, `GetValue<T>(path)`, `Static(path)`. |
+| `ActionExecutor.Diagnostics.cs` | `Screenshot`, `Snapshot`. |
+| `ActionExecutor.Locators.cs` | `LocatorsFor` — suggested searches that resolve back to a GameObject. |
+| `ActionParser.cs` | `Execute(json)` + the JSON dispatcher (`ActionJsonExecutor`). |
 
 ---
 
 ## The action scope
 
-Every public action follows the same shape:
+Every public action has the same shape:
 
 ```csharp
-public async Task Click(Search search) {
-    await using (await RunAction(scope => /* search.Find + injector.Tap */)) { ... }
+// doc-check: skip — RunAction is private; this is the internal pattern
+public static async Task Click(Search search, float searchTime = -1f, int index = 0)
+{
+    await using var action = await RunAction($"Click({search})");
+    var element = await search.Find(ResolveSearchTime(searchTime), index);
+    if (element == null) { action.Fail(BuildSearchFailureMessage(search, searchTime)); return; }
+    await InputInjector.InjectPointerTap(InputInjector.GetScreenPosition(element));
+    action.SetResult($"'{element.name}'");
 }
 ```
 
-`RunAction()` (`ActionExecutor.Logging.cs:44`) returns an `ActionScope`. The scope's awaiter:
+`RunAction(name)` returns an awaitable `ActionScope`:
 
-1. **Marshals to main thread.** `Async.ToMainThread()` checks the captured `SynchronizationContext` from `[RuntimeInitializeOnLoadMethod]`; off-thread callers post; main-thread callers yield one frame.
-2. **Logs START.** `TestReport.LogAction(START, ...)` with caller stack trace truncated at the first frame outside `ODDGames.Bugpunch`.
-3. **Fires `BeforeAction`.** Hook (`ActionExecutor.cs:303`) — register a callback to dismiss popups, check preconditions, etc., before every action.
-4. **Runs the body.**
-5. On success: `TestReport.CaptureScreenshot()` + `LogAction(COMPLETE)`.
-6. On failure: `TestReport.RecordFailure()` with screenshot + recorder video (if a `RecordingSession` is running) + scene name + matched-element snapshot.
-7. **Interval delay** (default 50ms, `Interval` property) before yielding back.
+1. **Awaiting it marshals to the main thread.** `Async.ToMainThread()` posts through the Unity `SynchronizationContext` captured at `BeforeSceneLoad`; on the main thread it waits one frame instead.
+2. **START is logged** through `TestReport.LogAction`, tagged with the caller's file/line — the first stack frame outside `ODDGames.BugpunchSdk`, `System` and `Microsoft`. When a diagnostics session is active, START also queues a screenshot.
+3. **The body runs** and reports through the scope:
+   - `SetResult(text)` — queues a `<action>_success` screenshot and logs `COMPLETE: <action> -> text`.
+   - `Warn(reason)` — logs `WARN`, does not throw.
+   - `Fail(reason)` — marks the session failed, logs `FAILED` (with a failure screenshot) and throws `BugpunchTestFailureException("<action> failed: <reason>")`.
+4. **Disposal** marshals back to the main thread, sleeps `Interval` ms (×`DebugIntervalMultiplier` in `DebugMode`), and logs a plain `COMPLETE` if the body neither set a result nor failed.
 
-This is why `await using` matters — disposal is where logging + screenshot + interval happen. Bypass the scope and you lose the diagnostics.
+`await using` matters: disposal is where the interval and the closing log happen. Calling `Search.Find()` and the injector directly works but loses the START/COMPLETE trail, screenshots and failure reporting.
+
+`TestReport` only writes a session folder (log, screenshots, hierarchy snapshots, and a screen recording started with the session) when `TestReport.StartSession` has been called — the PlayMode fixtures and `UISESSION` do this. Without a session, actions still log to the Unity console.
 
 ---
 
 ## Wait + retry policy
 
-There is no per-action retry loop. `Search.Find()` already polls until match-stable (3 consecutive identical frames) and times out. `ActionExecutor` only sets the timeout:
+There is no per-action retry loop. `Search.Find()` already polls until the match set is stable for 3 consecutive frames, or times out. `ActionExecutor` only chooses the timeout:
 
-| Mode | `DefaultSearchTime` | When |
-|---|---|---|
-| Normal | 10s | Test code, JSON actions. |
-| Interactive | 1s | Bridge / live REPL — fail fast so the user can iterate. |
+| Caller | `DefaultSearchTime` |
+|---|---|
+| Test code, Remote IDE `/action`, AI runner | 10 s (default) |
+| `clibridge4unity UIACTION` | 1 s — fail fast so the caller can retry. Set globally; it stays at 1 s for the Play session. |
 
-Timeouts use `Stopwatch`, not `Time.time`, so `timeScale = 0` (paused game, slow-motion) does not freeze them.
+Methods take `searchTime = -1` to mean "use `DefaultSearchTime`"; a few older overloads (`Swipe(search)`, `Pinch(search)`, `Rotate(search)`, `ScrollToAndClick`) default to a fixed value instead.
 
-`Wait(Search, seconds)` and `WaitFor*` overloads in `ActionExecutor.Find.cs` are the explicit-wait API — same scope wrapper, same screenshot cadence as actions.
+Timeouts use `Stopwatch`, not `Time.time`, so `timeScale = 0` doesn't freeze them. While a search is waiting, a diagnostics screenshot is captured every 2 s.
 
 ---
 
-## Hooks
+## Hooks and options
 
-| Hook | Where | Purpose |
-|---|---|---|
-| `BeforeAction` | `ActionExecutor.cs:303` | Fires inside the scope before every action body. Use for popup dismissal, preconditions, light assertions. Multi-cast supported. |
-| `RecordingSession` | `Recorder/RecordingSession.cs` | If a session is active when an action fails, the recording is attached to the failure bundle. Start/stop from your test setup; the executor doesn't manage the session itself. |
-| `TestReport` | `TestReport.cs` | Static sink for log entries, screenshots, failure bundles. The dashboard reads these. |
+| Member | Purpose |
+|---|---|
+| `BeforeAction` | A `Func<string, Task>` awaited on the main thread at the start of every action scope (`RunAction`), before the START log and element search, receiving the action description. Nested scopes (e.g. the `Find<T>` inside `Swipe`) run it too. Actions the hook itself runs don't re-trigger it (`AsyncLocal` guard in `PrepareActionAsync`); an exception it throws fails the action. Typical use: dismiss popups. |
+| `CaptureUnobservedExceptions` / `CapturedExceptions` / `ClearCapturedExceptions()` | Collect unobserved `Task` exceptions during a test instead of losing them. |
+| `EnableButtonClickTracking()` / `LastClickedButton` | Adds an `onClick` listener to every `Button` to log which one actually fired. |
+| `ShowInputOverlay` | Draws injected input (clicks, drags, scrolls, keys) on screen via `InputVisualizer`. |
+| `SetRandomSeed(seed)` | Deterministic `RandomClick` / `AutoExplore`. |
 
 ---
 
 ## JSON action dispatcher
 
-`ActionParser.Execute(string json)` (`ActionParser.cs:34`) parses a `JObject` and routes through `ActionJsonExecutor` to the matching partial.
+`ActionExecutor.Execute(string json)` (`ActionParser.cs`) parses a `JObject`, routes on the lower-cased `"action"` field to the matching public method, then always takes a `Screenshot()`.
 
-```jsonc
+```json
 {
   "action": "click",
-  "name": "btn_login",      // filter sub-language
-  "inside": { "name": "LoginPanel" }
+  "name": "btn_login",
+  "path": "*/LoginPanel/*"
 }
 ```
 
-Action grammar (`click`, `tap`, `type`, `swipe`, `scroll`, `drag`, `dropdown`, `pinch`, `rotate`, `hold`, `key`, `wait`, ...) and filter sub-language (`name`, `text`, `type`, `at`, `adjacent`, `inside`, ...) are documented in `JSON_ACTIONS.md`. Each JSON action is wrapped in the same `RunAction` scope as the C# API — same logging, same screenshot, same `BeforeAction`. Result:
+Verbs (`click`, `type`, `swipe`, `scroll`, `drag`, `dropdown`, `pinch`, `rotate`, `hold`, `key`, `waitfor`, …) and target fields (`text`, `name`, `type`, `tag`, `path`, `near`, `adjacent`, `any`, plus `at`) are documented in `JSON_ACTIONS.md`. Because each verb calls the public C# method, JSON actions run inside the same scope — same logging, screenshots and failure reporting. Normalized JSON coordinates are converted to screen pixels before calling the pixel-space methods (`DoubleClickAt`, `HoldAt`, `ScrollAt`, `DragFromTo`, `Drag(Vector2)`).
 
 ```csharp
-public sealed class ActionResult {
-    public bool   Success;
-    public string Error;        // exception message + truncated stack on failure
-    public long   ElapsedMs;
-    public string ScreenshotPath;
+public class ActionResult
+{
+    public bool Success;
+    public string Action;          // the JSON that ran
+    public string ScreenshotPath;  // post-action PNG in persistentDataPath
+    public string Error;           // exception message on failure
+    public float ElapsedMs;
 }
 ```
 
-This is the hot path for AI-generated tests, dashboard "Run Action" buttons, the agent-controlled test runner, and the chat/IDE "drive the device" surface.
-
----
-
-## Public surface
-
-For the full API + filter reference see `REFERENCE.md`. Short list of what the partials expose:
-
-| Partial | Main methods |
-|---|---|
-| `.Pointers` | `Click`, `Tap`, `DoubleTap`, `LongPress`, `Hold`, `Drag`, `DragTo`. |
-| `.Gestures` | `Swipe`, `SwipeFrom`, `Pinch`, `PinchAt`, `Rotate`, `TwoFingerSwipe`. |
-| `.Input` | `Type`, `TypeInto`, `Press`, `KeyDown`, `KeyUp`, `Clear`, `ClearAndType`. |
-| `.Find` | `Find<T>`, `FindAll<T>`, `Exists`, `DoesNotExist`, `Wait`, `WaitForGone`. |
-
-All methods are `async Task` and accept either a `Search` or a string shorthand (which builds `Name(...)` or `Text(...)` depending on context).
+Callers: the Remote IDE device route `POST /action` (returns `{ok, error?, elapsedMs}`), `GeminiTestRunner` (AI-generated tests), and the `UIACTION` bridge command.
 
 ---
 
 ## Threading rules
 
-- `ActionExecutor.*` is safe to `await` from any thread. The scope marshals.
-- `Search.Find()` and `InputInjector.Inject*` directly are **main thread only** — the scope is the only sanctioned entry.
-- Don't call into the SDK from `[InitializeOnLoad]` static constructors — main thread isn't established yet.
-- `BeforeAction` callbacks run on the main thread inside the scope. Block too long and the action's frame budget shifts.
+- `ActionExecutor.*` can be awaited from any thread — the scope marshals to the main thread.
+- `Search.Find()` / `FindAll()` and the injector are **main thread only**; reach them through `ActionExecutor` unless you're already on the main thread.
+- The main-thread context is captured at `RuntimeInitializeLoadType.BeforeSceneLoad`; calls made before that (e.g. from `[InitializeOnLoad]` static constructors) can't marshal.
 
 ---
 
 ## Gotchas
 
-- **Skipping the scope.** Calling `Search.Find()` + `InputInjector.Tap()` directly works but loses screenshots, START/COMPLETE logs, recorder linkage, and `BeforeAction`. Don't. Use `RunAction` if you need a custom action.
-- **Long `BeforeAction` callbacks** delay every single action. If the callback does network or scene scans, gate it.
-- **Multiple `RunAction` scopes nested in one action** double-log and double-screenshot. Build composite actions inside one scope, not by calling other public methods that each open their own scope.
-- **`TestReport` is a static sink.** In test runs it pipes to disk + dashboard upload. In ad-hoc bridge use it just logs to console. Behaviour depends on whether a `TestRun` is active.
-- **Domain reload mid-action** — `InputInjector` recovers, but the in-flight action will throw. Tests fail mid-flight; that's by design.
+- **Skipping the scope.** Calling `Search.Find()` + injector methods directly loses START/COMPLETE logs, screenshots and failure reporting.
+- **Nested public calls double-log.** A composite action built from other public actions opens one scope per call (e.g. `NavigateToMainMenu` logs every `Click` it makes). Expected, but noisy in reports.
+- **`DefaultSearchTime` is global.** Anything that changes it (the bridge sets 1 s) affects every later action in the session.
+- **Domain reload mid-action** — the injector re-enables hardware devices and sweeps orphaned virtual devices, but the in-flight action is lost.
 
 ---
 
@@ -149,4 +152,4 @@ All methods are `async Task` and accept either a `Search` or a string shorthand 
 
 - `REFERENCE.md` — public API + filter reference.
 - `JSON_ACTIONS.md` — JSON action protocol.
-- `INPUT_INJECTION.md` — `Search` + `InputInjector` engine internals (what `ActionExecutor` drives).
+- `INPUT_INJECTION.md` — `Search` + `InputInjector` engine internals.
