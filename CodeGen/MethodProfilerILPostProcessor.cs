@@ -65,11 +65,13 @@
 // the site table drags its cctor in (MTD 4.0.15680 failed on exactly that,
 // twice: first through wrapped helpers, then through the per-site static
 // field a discarded call still referenced). Every method reachable by direct
-// call from a [BurstCompile] type or method is left untouched; every hook
-// goes through the holder's forwarders, which carry [BurstDiscard] whenever
-// the project has Burst; and the argument is a constant, so a
-// reachable method the closure missed (constrained generic call, function
-// pointer) compiles as a no-op instead of failing the build.
+// call from a [BurstCompile] type or method — or belonging to a struct handed
+// to another assembly's generic code (a SortJob comparer) — is left
+// untouched; every hook goes through the holder's forwarders, which carry
+// [BurstDiscard] (imported from UnityEngine.CoreModule, where it is defined —
+// see ImportBurstDiscardCtor); and the argument is a constant, so a reachable
+// method the closure missed (function pointer, a path no scan sees) compiles
+// as a no-op instead of failing the build.
 //
 // NOTE on release builds: Begin/End/BeginSample call sites only exist in the
 // compiled IL if ENABLE_PROFILER was defined for the GAME's compilation
@@ -250,35 +252,6 @@ namespace ODDGames.BugpunchSdk.CodeGen
             }
         }
 
-        // Burst is in the project when Unity.Burst.dll is a compile reference,
-        // sits beside one (every asmdef in a compile lands in the same
-        // ScriptAssemblies dir), or com.unity.burst is in the resolved
-        // package set. dllPath is null when only the package list proved it
-        // — the reference is then name-only at 0.0.0.0, which the player
-        // resolves by simple name.
-        internal static bool FindProjectBurst(IEnumerable<string> references, string projectRoot, out string dllPath)
-        {
-            var refs = (references ?? Enumerable.Empty<string>()).ToList();
-            dllPath = refs.FirstOrDefault(r =>
-                string.Equals(Path.GetFileName(r), "Unity.Burst.dll", StringComparison.OrdinalIgnoreCase));
-            if (dllPath != null) return true;
-            foreach (var dir in refs.Select(Path.GetDirectoryName).Where(d => !string.IsNullOrEmpty(d)).Distinct())
-            {
-                var candidate = Path.Combine(dir, "Unity.Burst.dll");
-                if (File.Exists(candidate)) { dllPath = candidate; return true; }
-            }
-            foreach (var file in new[] { "packages-lock.json", "manifest.json" })
-            {
-                try
-                {
-                    var path = Path.Combine(projectRoot ?? "", "Packages", file);
-                    if (File.Exists(path) && File.ReadAllText(path).Contains("\"com.unity.burst\"")) return true;
-                }
-                catch { }
-            }
-            return false;
-        }
-
         // ── Per-module weave state ─────────────────────────────────────────
 
         sealed class WeaveSession
@@ -293,8 +266,9 @@ namespace ODDGames.BugpunchSdk.CodeGen
             MethodDefinition _register;   // body filled in by EmitSiteHolder once the table is known
             MethodReference _enterDynamicCtx;   // built lazily off the original call's Object param
             readonly TypeReference _collector;
-            readonly AssemblyNameReference _burstRef;   // null when the game has no Burst
+            readonly MethodReference _burstDiscardCtor;   // null when CoreModule can't be resolved
             readonly HashSet<MethodDefinition> _burstReachable = new();
+            readonly HashSet<TypeDefinition> _rootedArgs = new();
             public int BurstSkipped;
 
             TypeDefinition _holder;
@@ -324,16 +298,18 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 _registerSites = StaticMethod("RegisterSites", ts.Int32, new ArrayType(ts.String));
                 _registerSitesBlob = StaticMethod("RegisterSites", ts.Int32, new ArrayType(ts.Byte), ts.Int32);
                 CollectBurstReachable(module);
-                _burstRef = GetOrAddBurstRef(module, compiled);
+                _burstDiscardCtor = ImportBurstDiscardCtor(module);
                 EnsureHolder();
                 _enter = MakeShim("Enter", _bpEnter, addBase: true, ts.Int32);
                 _enterDynamic = MakeShim("EnterDynamic", _bpEnterDynamic, addBase: false, ts.String);
                 _exit = MakeShim("Exit", _bpExit, addBase: false);
             }
 
-            // Every method a [BurstCompile] type or method reaches by direct
-            // call / delegate / ctor within this module. Burst compiles the
-            // whole set, so none of it may be woven.
+            // Every method Burst can compile: what a [BurstCompile] type or
+            // method reaches by call / delegate / ctor within this module, what
+            // generic code reaches through a struct named as a generic argument,
+            // and the static constructors Burst evaluates. None of it may be
+            // woven.
             void CollectBurstReachable(ModuleDefinition module)
             {
                 var queue = new Queue<MethodDefinition>();
@@ -343,6 +319,32 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     foreach (var m in type.Methods)
                         if ((typeBurst || HasBurst(m)) && m.HasBody && _burstReachable.Add(m)) queue.Enqueue(m);
                 }
+                // Generic code is compiled where it lives, not where this module
+                // shows a call: Trucks' RaycastHitDistanceComparer is reached only
+                // as the comparer of Unity.Collections' SortJob<T, U>, a
+                // NativeHashMap key's Equals / GetHashCode the same way, and this
+                // module's own generic helper can forward either into a job.
+                // Generic code can call a struct only through its virtual methods
+                // (interface implementations, Object overrides), so those are
+                // rooted for every struct named as a generic argument anywhere.
+                foreach (var type in module.GetTypes())
+                    foreach (var m in type.Methods)
+                    {
+                        if (!m.HasBody) continue;
+                        foreach (var ins in m.Body.Instructions)
+                        {
+                            switch (ins.Operand)
+                            {
+                                case MethodReference mr:
+                                    if (mr is GenericInstanceMethod gim)
+                                        foreach (var arg in gim.GenericArguments) RootGenericArgument(arg, module, queue);
+                                    RootGenericArguments(mr.DeclaringType, module, queue);
+                                    break;
+                                case FieldReference fr: RootGenericArguments(fr.DeclaringType, module, queue); break;
+                                case TypeReference tr: RootGenericArguments(tr, module, queue); break;
+                            }
+                        }
+                    }
                 // Interface implementations by interface method, built once: a
                 // job's constrained call through a generic parameter (T : IFoo)
                 // resolves only to the interface method, so every struct in the
@@ -373,8 +375,24 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     foreach (var ins in m.Body.Instructions)
                     {
                         var code = ins.OpCode.Code;
+                        // Burst evaluates the static constructor of every type
+                        // whose statics compiled code touches.
+                        if ((code == Code.Ldsfld || code == Code.Ldsflda || code == Code.Stsfld) && ins.Operand is FieldReference fr)
+                        {
+                            FieldDefinition field = null;
+                            try { field = fr.Resolve(); } catch { }
+                            var cctor = field != null && field.DeclaringType.Module == module
+                                ? field.DeclaringType.Methods.FirstOrDefault(x => x.IsConstructor && x.IsStatic) : null;
+                            if (cctor != null && cctor.HasBody && _burstReachable.Add(cctor)) queue.Enqueue(cctor);
+                            continue;
+                        }
                         if (code != Code.Call && code != Code.Callvirt && code != Code.Ldftn && code != Code.Newobj) continue;
                         if (!(ins.Operand is MethodReference mr)) continue;
+                        // `constrained. S callvirt Object::GetHashCode` — how C#
+                        // calls a struct's own override — resolves to Object; the
+                        // method that runs is S's.
+                        if (code == Code.Callvirt && ins.Previous?.OpCode.Code == Code.Constrained)
+                            RootOverride(ins.Previous.Operand as TypeReference, mr, module, queue);
                         MethodDefinition def = null;
                         try { def = mr.Resolve(); } catch { }
                         if (def == null || def.Module != module) continue;
@@ -385,12 +403,48 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 }
             }
 
+            // Each struct t names as a generic argument, at any depth —
+            // SortJob<T, U>.Schedule() carries the comparer one level down.
+            void RootGenericArguments(TypeReference t, ModuleDefinition module, Queue<MethodDefinition> queue)
+            {
+                if (t is GenericInstanceType git)
+                    foreach (var arg in git.GenericArguments) RootGenericArgument(arg, module, queue);
+                else if (t is TypeSpecification spec)
+                    RootGenericArguments(spec.ElementType, module, queue);
+            }
+
+            void RootGenericArgument(TypeReference arg, ModuleDefinition module, Queue<MethodDefinition> queue)
+            {
+                RootGenericArguments(arg, module, queue);
+                // Only this module's structs matter, and Cecil reads them as
+                // TypeDefinitions; sending every List<int> / string argument
+                // through the assembly resolver adds seconds to a game-sized
+                // assembly's compile.
+                var element = arg.GetElementType();
+                var def = element as TypeDefinition;
+                if (def == null && element.Scope == module)
+                    try { def = element.Resolve(); } catch { }
+                if (def == null || def.Module != module || !def.IsValueType || !_rootedArgs.Add(def)) return;
+                foreach (var m in def.Methods)
+                    if (m.IsVirtual && m.HasBody && _burstReachable.Add(m)) queue.Enqueue(m);
+            }
+
+            void RootOverride(TypeReference constrainedTo, MethodReference called, ModuleDefinition module, Queue<MethodDefinition> queue)
+            {
+                TypeDefinition def = null;
+                try { def = constrainedTo?.Resolve(); } catch { }
+                if (def == null || def.Module != module) return;
+                var target = def.Methods.FirstOrDefault(m => m.HasBody
+                    && (m.Name == called.Name || m.Name.EndsWith("." + called.Name))
+                    && m.Parameters.Count == called.Parameters.Count);
+                if (target != null && _burstReachable.Add(target)) queue.Enqueue(target);
+            }
+
             // static void Name(args) { BugpunchMethodProfiler.Name([Base +] args); }
             // — the one place the registered base id is read. Carries
-            // [BurstDiscard] whenever the project has Burst, so Burst
-            // drops the call (and with it the only path to the holder's
-            // statics) from anything it compiles; every other caller pays one
-            // inlinable forwarding call.
+            // [BurstDiscard], so Burst drops the call (and with it the only
+            // path to the holder's statics) from anything it compiles; every
+            // other caller pays one inlinable forwarding call.
             MethodReference MakeShim(string name, MethodReference target, bool addBase, params TypeReference[] ps)
             {
                 var ts = _module.TypeSystem;
@@ -429,10 +483,26 @@ namespace ODDGames.BugpunchSdk.CodeGen
 
             void AddBurstDiscard(MethodDefinition m)
             {
-                if (_burstRef == null) return;
-                var discard = new TypeReference("Unity.Burst", "BurstDiscardAttribute", _module, _burstRef);
-                var ctor = new MethodReference(".ctor", _module.TypeSystem.Void, discard) { HasThis = true };
-                m.CustomAttributes.Add(new CustomAttribute(ctor));
+                if (_burstDiscardCtor != null) m.CustomAttributes.Add(new CustomAttribute(_burstDiscardCtor));
+            }
+
+            // Unity.Burst.BurstDiscardAttribute is DEFINED in UnityEngine.CoreModule;
+            // Unity.Burst.dll only uses it (no definition, no type forward). A
+            // reference scoped to Unity.Burst still matches in the Editor — Burst
+            // compares attribute names — but the player build's linker can't
+            // resolve it and drops the attribute, so Burst AOT compiles straight
+            // into the collector (Trucks Off Road, BC1091 through
+            // RaycastHitDistanceComparer). Imported from the defining assembly
+            // it always resolves, so it is emitted with or without Burst in the
+            // project.
+            static MethodReference ImportBurstDiscardCtor(ModuleDefinition module)
+            {
+                AssemblyDefinition core = null;
+                try { core = module.AssemblyResolver.Resolve(new AssemblyNameReference("UnityEngine.CoreModule", new Version(0, 0, 0, 0))); }
+                catch { }
+                var ctor = core?.MainModule.GetType("Unity.Burst", "BurstDiscardAttribute")?
+                    .Methods.FirstOrDefault(m => m.IsConstructor && !m.IsStatic && !m.HasParameters);
+                return ctor == null ? null : module.ImportReference(ctor);
             }
 
             static bool IsDeep(ICompiledAssembly compiled)
@@ -524,32 +594,6 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     catch { version = new Version(0, 0, 0, 0); }
                 }
                 var nr = new AssemblyNameReference("ODDGames.Bugpunch", version);
-                module.AssemblyReferences.Add(nr);
-                return nr;
-            }
-
-            // The project's Unity.Burst, if it has one: an existing reference,
-            // else a name-only reference added whenever Burst is in the PROJECT.
-            // A module with no Burst reference of its own can still hold structs
-            // that ANOTHER assembly's jobs call (a comparer handed to a Burst
-            // sort, an IJob helper), so the [BurstDiscard] forwarders are worth
-            // having whenever Burst is in the build at all. The compile's own
-            // references are not enough to tell: an asmdef that doesn't list
-            // Unity.Burst never sees the DLL (Trucks' ODDFramework
-            // RaycastHitDistanceComparer — BC1091 through an undiscarded Enter).
-            // Null when the project has no Burst — nothing to discard for.
-            static AssemblyNameReference GetOrAddBurstRef(ModuleDefinition module, ICompiledAssembly compiled)
-            {
-                foreach (var ar in module.AssemblyReferences)
-                    if (ar.Name == "Unity.Burst") return ar;
-                if (!FindProjectBurst(compiled.References, Directory.GetCurrentDirectory(), out var dllPath)) return null;
-                var version = new Version(0, 0, 0, 0);
-                if (dllPath != null)
-                {
-                    try { using var a = AssemblyDefinition.ReadAssembly(dllPath); version = a.Name.Version; }
-                    catch { }
-                }
-                var nr = new AssemblyNameReference("Unity.Burst", version);
                 module.AssemblyReferences.Add(nr);
                 return nr;
             }

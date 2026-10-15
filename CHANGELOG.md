@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.229] - 2026-10-15
+
+### Changed
+- Weaver: fixes Trucks Off Road's Android BC1091 (Stopwatch.GetTimestamp in BugpunchMethodProfiler..cctor via RaycastHitDistanceComparer, a SortJob comparer). Root cause: the [BurstDiscard] on the profiler forwarders referenced the attribute in Unity.Burst, but it is DEFINED in UnityEngine.CoreModule (Unity.Burst only uses it, no type forward). Editor Burst JIT matches by name so it passed; in a player build UnityLinker could not resolve it and dropped the attribute, so Burst AOT compiled into the collector. The attribute is now imported from CoreModule and always emitted; 0.8.228's project-wide Burst detection (a non-cause) is removed. Burst-reachability closure hardened: every struct named as a generic argument anywhere in the module (SortJob comparers, NativeHashMap keys, forwarded through the module's own generic helpers) has its virtual methods left unwoven; static constructors of types whose statics Burst code touches; constrained-call overrides (S.GetHashCode); plain struct overrides with no interface. 50 new Burst-situation weaver tests (jobs, function pointers, ISystem, generic jobs, comparers, hash keys, static readonly tables, recursion, operators, markers) + invariants (forwarders are void [BurstDiscard] scoped to CoreModule; no woven code touches holder statics). Weave smoke against Trucks' real Assembly-CSharp: 18,020 sites, 0 invalid IL, comparer untouched, weave time unchanged.
+
 ## [0.8.228] - 2026-10-14
 
 ### Changed
@@ -224,6 +229,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.229] - 2026-10-15
+
+### Changed
+- Weaver: fixes Trucks Off Road's Android BC1091 (Stopwatch.GetTimestamp in BugpunchMethodProfiler..cctor via RaycastHitDistanceComparer, a SortJob comparer). Root cause: the [BurstDiscard] on the profiler forwarders referenced the attribute in Unity.Burst, but it is DEFINED in UnityEngine.CoreModule (Unity.Burst only uses it, no type forward). Editor Burst JIT matches by name so it passed; in a player build UnityLinker could not resolve it and dropped the attribute, so Burst AOT compiled into the collector. The attribute is now imported from CoreModule and always emitted; 0.8.228's project-wide Burst detection (a non-cause) is removed. Burst-reachability closure hardened: every struct named as a generic argument anywhere in the module (SortJob comparers, NativeHashMap keys, forwarded through the module's own generic helpers) has its virtual methods left unwoven; static constructors of types whose statics Burst code touches; constrained-call overrides (S.GetHashCode); plain struct overrides with no interface. 50 new Burst-situation weaver tests (jobs, function pointers, ISystem, generic jobs, comparers, hash keys, static readonly tables, recursion, operators, markers) + invariants (forwarders are void [BurstDiscard] scoped to CoreModule; no woven code touches holder statics). Weave smoke against Trucks' real Assembly-CSharp: 18,020 sites, 0 invalid IL, comparer untouched, weave time unchanged.
 
 ## [0.8.228] - 2026-10-14
 
