@@ -220,7 +220,10 @@ namespace ODDGames.BugpunchSdk.CodeGen
             {
                 AssemblyResolver = resolver,
                 SymbolStream = hasPdb ? new MemoryStream(compiledAssembly.InMemoryAssembly.PdbData) : null,
-                SymbolReaderProvider = new PortablePdbReaderProvider(),
+                // Any provider makes Cecil read symbols — from the module's
+                // file name when there's no stream, which an in-memory read
+                // doesn't have.
+                SymbolReaderProvider = hasPdb ? new PortablePdbReaderProvider() : null,
                 ReadingMode = ReadingMode.Immediate,
                 ReadSymbols = hasPdb,
                 InMemory = true,
@@ -261,7 +264,7 @@ namespace ODDGames.BugpunchSdk.CodeGen
             // in the header), which add the registered base id to the constant
             // site index every call site pushes.
             MethodReference _enter, _enterDynamic, _exit;
-            readonly MethodReference _registerSites, _registerSitesBlob, _bpEnter, _bpEnterDynamic, _bpExit;
+            readonly MethodReference _registerSites, _registerSitesBlob, _registrationFailed, _bpEnter, _bpEnterDynamic, _bpExit;
             FieldDefinition _baseField, _stateField;
             MethodDefinition _register;   // body filled in by EmitSiteHolder once the table is known
             MethodReference _enterDynamicCtx;   // built lazily off the original call's Object param
@@ -297,6 +300,8 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 _bpExit = StaticMethod("Exit", ts.Void);
                 _registerSites = StaticMethod("RegisterSites", ts.Int32, new ArrayType(ts.String));
                 _registerSitesBlob = StaticMethod("RegisterSites", ts.Int32, new ArrayType(ts.Byte), ts.Int32);
+                _registrationFailed = StaticMethod("SiteRegistrationFailed", ts.Void, ts.String,
+                    new TypeReference("System", "Exception", module, ts.CoreLibrary));
                 CollectBurstReachable(module);
                 _burstDiscardCtor = ImportBurstDiscardCtor(module);
                 EnsureHolder();
@@ -455,13 +460,13 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 var il = m.Body.GetILProcessor();
                 if (addBase)
                 {
-                    // if (s_state != 2) Register();  — an acquire read so Base,
+                    // if (s_state < 2) Register();  — an acquire read so Base,
                     // written before the state flips, is visible with it.
                     var ready = il.Create(OpCodes.Nop);
                     il.Emit(OpCodes.Volatile);
                     il.Emit(OpCodes.Ldsfld, _stateField);
                     il.Emit(OpCodes.Ldc_I4_2);
-                    il.Emit(OpCodes.Beq, ready);
+                    il.Emit(OpCodes.Bge, ready);
                     il.Emit(OpCodes.Call, _register);
                     il.Append(ready);
                 }
@@ -612,7 +617,9 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 _baseField = new FieldDefinition("Base",
                     FieldAttributes.Assembly | FieldAttributes.Static, _module.TypeSystem.Int32);
                 _holder.Fields.Add(_baseField);
-                // 0 = unregistered, 1 = a thread is registering, 2 = Base is valid.
+                // 0 = unregistered, 1 = a thread is registering, 2 = Base is
+                // valid, 3 = registration threw and Base is int.MinValue (every
+                // id negative: the collector pairs the scopes, records nothing).
                 _stateField = new FieldDefinition("s_state",
                     FieldAttributes.Assembly | FieldAttributes.Static, _module.TypeSystem.Int32);
                 _holder.Fields.Add(_stateField);
@@ -698,7 +705,9 @@ namespace ODDGames.BugpunchSdk.CodeGen
 
             /// <summary>Fills in Register(): the first thread through hands the
             /// descriptor blob to the collector and publishes Base; any other
-            /// thread arriving meanwhile spins until it is published.</summary>
+            /// thread arriving meanwhile spins until it is published. A throw
+            /// anywhere in that hand-over disables this assembly's sites
+            /// instead of escaping into (and breaking) every woven method.</summary>
             public void EmitSiteHolder()
             {
                 if (_holder == null) return;
@@ -711,7 +720,11 @@ namespace ODDGames.BugpunchSdk.CodeGen
                     string.Join("\n", _descriptors.Select(d => d.Replace('\n', ' ').Replace('\r', ' '))));
                 var corlib = ts.CoreLibrary;
                 var valueType = new TypeReference("System", "ValueType", _module, corlib);
-                var blobType = new TypeDefinition("", "__BugpunchDescriptors",
+                // Named exactly like the compiler's own initialiser structs:
+                // Mono refuses to load any value type over 1 MB unless its name
+                // contains "StaticArrayInitTypeSize" (class-init.c), and a big
+                // game's table passes that (Trucks Off Road: 2 MB).
+                var blobType = new TypeDefinition("", "__StaticArrayInitTypeSize=" + blobBytes.Length,
                     TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout | TypeAttributes.Sealed
                     | TypeAttributes.AnsiClass, valueType)
                 { ClassSize = blobBytes.Length, PackingSize = 1 };
@@ -728,6 +741,23 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 initializeArray.Parameters.Add(new ParameterDefinition(arrayType));
                 initializeArray.Parameters.Add(new ParameterDefinition(fieldHandle));
 
+                // static byte[] LoadDescriptors() => new byte[N] { <blob> };
+                // Its own NoInlining method so a type-load failure on the blob
+                // (raised when this body is JIT-compiled) surfaces as an
+                // exception at the call inside Register's try, not while
+                // compiling Register itself, where nothing can catch it.
+                var load = new MethodDefinition("LoadDescriptors",
+                    MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig, new ArrayType(ts.Byte));
+                load.ImplAttributes |= MethodImplAttributes.NoInlining;
+                var lil = load.Body.GetILProcessor();
+                lil.Emit(OpCodes.Ldc_I4, blobBytes.Length);
+                lil.Emit(OpCodes.Newarr, ts.Byte);
+                lil.Emit(OpCodes.Dup);
+                lil.Emit(OpCodes.Ldtoken, blobField);
+                lil.Emit(OpCodes.Call, initializeArray);
+                lil.Emit(OpCodes.Ret);
+                _holder.Methods.Add(load);
+
                 var intRef = new ByReferenceType(ts.Int32);
                 var interlocked = new TypeReference("System.Threading", "Interlocked", _module, corlib);
                 var compareExchange = new MethodReference("CompareExchange", ts.Int32, interlocked) { HasThis = false };
@@ -740,10 +770,15 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 var spinWait = new MethodReference("SpinWait", ts.Void,
                     new TypeReference("System.Threading", "Thread", _module, corlib)) { HasThis = false };
                 spinWait.Parameters.Add(new ParameterDefinition(ts.Int32));
+                var exceptionType = new TypeReference("System", "Exception", _module, corlib);
 
                 var body = _register.Body;
+                var error = new VariableDefinition(exceptionType);
+                body.Variables.Add(error);
+                body.InitLocals = true;
                 var il = body.GetILProcessor();
                 var wait = il.Create(OpCodes.Nop);
+                var publish = il.Create(OpCodes.Ldsflda, _stateField);
                 var done = il.Create(OpCodes.Ret);
                 // if (Interlocked.CompareExchange(ref s_state, 1, 0) != 0) goto wait;
                 il.Emit(OpCodes.Ldsflda, _stateField);
@@ -751,32 +786,67 @@ namespace ODDGames.BugpunchSdk.CodeGen
                 il.Emit(OpCodes.Ldc_I4_0);
                 il.Emit(OpCodes.Call, compareExchange);
                 il.Emit(OpCodes.Brtrue, wait);
-                // Base = RegisterSites(blob, count); Interlocked.Exchange(ref s_state, 2);
-                il.Emit(OpCodes.Ldc_I4, blobBytes.Length);
-                il.Emit(OpCodes.Newarr, ts.Byte);
-                il.Emit(OpCodes.Dup);
-                il.Emit(OpCodes.Ldtoken, blobField);
-                il.Emit(OpCodes.Call, initializeArray);
+                // try { Base = RegisterSites(LoadDescriptors(), count); }
+                var tryStart = il.Create(OpCodes.Call, load);
+                il.Append(tryStart);
                 il.Emit(OpCodes.Ldc_I4, _descriptors.Count);
                 il.Emit(OpCodes.Call, _registerSitesBlob);
                 il.Emit(OpCodes.Stsfld, _baseField);
+                il.Emit(OpCodes.Leave, publish);
+                // catch (Exception e) {
+                //   Base = int.MinValue; Interlocked.Exchange(ref s_state, 3);
+                //   try { SiteRegistrationFailed(assembly, e); } catch { }
+                //   return;
+                // }
+                var catchStart = il.Create(OpCodes.Stloc, error);
+                il.Append(catchStart);
+                il.Emit(OpCodes.Ldc_I4, int.MinValue);
+                il.Emit(OpCodes.Stsfld, _baseField);
                 il.Emit(OpCodes.Ldsflda, _stateField);
+                il.Emit(OpCodes.Ldc_I4_3);
+                il.Emit(OpCodes.Call, exchange);
+                il.Emit(OpCodes.Pop);
+                var reportStart = il.Create(OpCodes.Ldstr, _module.Assembly.Name.Name);
+                il.Append(reportStart);
+                il.Emit(OpCodes.Ldloc, error);
+                il.Emit(OpCodes.Call, _registrationFailed);
+                il.Emit(OpCodes.Leave, done);
+                var swallowStart = il.Create(OpCodes.Pop);
+                il.Append(swallowStart);
+                il.Emit(OpCodes.Leave, done);
+                // publish: Interlocked.Exchange(ref s_state, 2); return;
+                il.Append(publish);
                 il.Emit(OpCodes.Ldc_I4_2);
                 il.Emit(OpCodes.Call, exchange);
                 il.Emit(OpCodes.Pop);
                 il.Emit(OpCodes.Ret);
-                // wait: while (Interlocked.CompareExchange(ref s_state, 2, 2) != 2) Thread.SpinWait(1);
+                // wait: while (volatile s_state == 1) Thread.SpinWait(1);
+                // State 3 releases waiters too — a failed registration must
+                // not leave other threads spinning forever.
                 il.Append(wait);
-                il.Emit(OpCodes.Ldsflda, _stateField);
-                il.Emit(OpCodes.Ldc_I4_2);
-                il.Emit(OpCodes.Ldc_I4_2);
-                il.Emit(OpCodes.Call, compareExchange);
-                il.Emit(OpCodes.Ldc_I4_2);
-                il.Emit(OpCodes.Beq, done);
+                il.Emit(OpCodes.Volatile);
+                il.Emit(OpCodes.Ldsfld, _stateField);
+                il.Emit(OpCodes.Ldc_I4_1);
+                il.Emit(OpCodes.Bne_Un, done);
                 il.Emit(OpCodes.Ldc_I4_1);
                 il.Emit(OpCodes.Call, spinWait);
                 il.Emit(OpCodes.Br, wait);
                 il.Append(done);
+
+                // Inner (report) handler first: ECMA-335 wants nested
+                // handlers listed before the ones enclosing them.
+                body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+                {
+                    TryStart = reportStart, TryEnd = swallowStart,
+                    HandlerStart = swallowStart, HandlerEnd = publish,
+                    CatchType = exceptionType,
+                });
+                body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+                {
+                    TryStart = tryStart, TryEnd = catchStart,
+                    HandlerStart = catchStart, HandlerEnd = publish,
+                    CatchType = exceptionType,
+                });
                 AddBurstDiscard(_register);
             }
 
