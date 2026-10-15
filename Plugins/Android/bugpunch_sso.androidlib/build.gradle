@@ -31,7 +31,11 @@ android {
     buildToolsVersion '36.0.0'
 
     defaultConfig {
-        minSdk 25
+        // The game's own floor: this stub ships no code, and a minSdk above
+        // the game's fails the launcher's manifest merge. Each dependency's
+        // real floor is still checked against the game by that merge.
+        // :unityLibrary (the parent) is configured before its children.
+        minSdk project.parent.android.defaultConfig.minSdk ?: 23
         targetSdk 36
     }
 

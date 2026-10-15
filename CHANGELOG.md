@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.230] - 2026-10-15
+
+### Changed
+- Android: fixes Trucks Off Road's Android build failing in the Gradle manifest merge (uses-sdk:minSdkVersion 24 cannot be smaller than version 25 declared in library bugpunch_sso.androidlib). Two Bugpunch libraries declared a higher floor than the game: the bugpunch_sso.androidlib dependency stub hardcoded minSdk 25 and BugpunchPlugin.aar has declared 26 since v0.8.78. AGP reports only the first offending library, so both are fixed: the SSO stub now inherits the game's minSdk from :unityLibrary (it carries no code), and the AAR declares minSdk 24. The 21 API-26 calls lint found at minSdk 24 (java.nio.file Files.readAllBytes / glob PathMatcher, java.time Instant.parse / Instant.now) go through the new BugpunchCompat (Unix-glob semantics preserved; verified against the JDK's own translator). GPU video recording still needs API 26: BugpunchRecorder.startGpu now gates it and reports videoStatus os_unsupported; the native AHardwareBuffer / AMediaCodec calls were already dlsym-resolved. New build gate: :bugpunch:lintRelease (NewApi, abortOnError) runs before assembleRelease so an unguarded newer-API call can't ship again. Verified with lint clean at minSdk 24 and the test project's exported Gradle project passing :launcher:processDebugMainManifest at minSdk 24.
+
 ## [0.8.229] - 2026-10-15
 
 ### Changed
@@ -229,6 +234,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.230] - 2026-10-15
+
+### Changed
+- Android: fixes Trucks Off Road's Android build failing in the Gradle manifest merge (uses-sdk:minSdkVersion 24 cannot be smaller than version 25 declared in library bugpunch_sso.androidlib). Two Bugpunch libraries declared a higher floor than the game: the bugpunch_sso.androidlib dependency stub hardcoded minSdk 25 and BugpunchPlugin.aar has declared 26 since v0.8.78. AGP reports only the first offending library, so both are fixed: the SSO stub now inherits the game's minSdk from :unityLibrary (it carries no code), and the AAR declares minSdk 24. The 21 API-26 calls lint found at minSdk 24 (java.nio.file Files.readAllBytes / glob PathMatcher, java.time Instant.parse / Instant.now) go through the new BugpunchCompat (Unix-glob semantics preserved; verified against the JDK's own translator). GPU video recording still needs API 26: BugpunchRecorder.startGpu now gates it and reports videoStatus os_unsupported; the native AHardwareBuffer / AMediaCodec calls were already dlsym-resolved. New build gate: :bugpunch:lintRelease (NewApi, abortOnError) runs before assembleRelease so an unguarded newer-API call can't ship again. Verified with lint clean at minSdk 24 and the test project's exported Gradle project passing :launcher:processDebugMainManifest at minSdk 24.
 
 ## [0.8.229] - 2026-10-15
 
