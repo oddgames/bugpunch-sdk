@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.232] - 2026-10-19
+
+### Changed
+- Per-report attachments: Bugpunch.Report(..., attachments: new[] { BugpunchAttachment.Path(...), Bytes(...), Text(...) }) attaches files, folders (zipped), wildcards (* / **, separate files or one zip) and in-memory data to one report, copied at the call and never sampled; missing paths / over-cap files (20 MB each, 50 MB per report) show as skipped in the Attachments tab. All three lanes (BugpunchReportAttachments .java/.mm/.cs).
+- Smart upload compression: issue ingest/enrich file parts that compress well (64 KB fastest-level sample) are gzipped on the wire as .bpgz and inflated by the server, so downloads are always the original file (BugpunchUploadCompression .java/.mm/.cs). Needs server b32431c75+.
+- build-xcframework-remote.ps1 resolves its output + package.json from its own sdk/ dir (worked only from C:/Workspaces/odddev/server).
+
 ## [0.8.231] - 2026-10-15
 
 ### Changed
@@ -239,6 +246,13 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.232] - 2026-10-19
+
+### Changed
+- Per-report attachments: Bugpunch.Report(..., attachments: new[] { BugpunchAttachment.Path(...), Bytes(...), Text(...) }) attaches files, folders (zipped), wildcards (* / **, separate files or one zip) and in-memory data to one report, copied at the call and never sampled; missing paths / over-cap files (20 MB each, 50 MB per report) show as skipped in the Attachments tab. All three lanes (BugpunchReportAttachments .java/.mm/.cs).
+- Smart upload compression: issue ingest/enrich file parts that compress well (64 KB fastest-level sample) are gzipped on the wire as .bpgz and inflated by the server, so downloads are always the original file (BugpunchUploadCompression .java/.mm/.cs). Needs server b32431c75+.
+- build-xcframework-remote.ps1 resolves its output + package.json from its own sdk/ dir (worked only from C:/Workspaces/odddev/server).
 
 ## [0.8.231] - 2026-10-15
 

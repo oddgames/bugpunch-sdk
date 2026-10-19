@@ -101,6 +101,16 @@ using ODDGames.BugpunchSdk;
 Bugpunch.Report("Player got stuck on level 3 boss", "Fell through the arena floor");
 Bugpunch.Feedback("Loved the new gesture controls!");
 
+// Attach files to ONE report — copied at the call, always uploaded (never
+// sampled). A missing path shows on the report as skipped, not an error.
+// type: "error" files silently (no report form) and groups by title.
+Bugpunch.Report("Save failed to load", "Slot 2 checksum mismatch", type: "error", attachments: new[] {
+    BugpunchAttachment.Path("[PersistentDataPath]/save.json"),
+    BugpunchAttachment.Path("[PersistentDataPath]/profile/"),            // folder → profile.zip
+    BugpunchAttachment.Path("[PersistentDataPath]/logs/*.txt", zip: true),
+    BugpunchAttachment.Text("state.json", "{\"slot\":2}"),
+});
+
 // One-button entry for testers / players: Ask A Question (chat),
 // Record A Bug (debug mode + recording), Request A Feature (feedback board).
 Bugpunch.RequestHelp();
