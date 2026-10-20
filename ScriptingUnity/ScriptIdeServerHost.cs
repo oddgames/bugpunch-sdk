@@ -31,6 +31,10 @@ namespace ODDGames.Scripting.Unity
             public string WorkspaceLabel = "Mods";
             /// <summary>TCP port; 0 picks a free one.</summary>
             public int Port;
+            /// <summary>Address the listener binds. Default all interfaces (LAN); use "127.0.0.1" when the IDE is only relayed locally.</summary>
+            public string BindAddress = "0.0.0.0";
+            /// <summary>False starts no HTTP listener; drive the IDE through <see cref="Dispatch"/> instead.</summary>
+            public bool Listen = true;
             /// <summary>Browser tab title.</summary>
             public string Title = "Script IDE";
             public ScriptCompileOptions CompileOptions;
@@ -56,11 +60,25 @@ namespace ODDGames.Scripting.Unity
         private Workspace _workspace;
         private Application.LogCallback _logHandler;
 
+        /// <summary>IDE protocol version of the bundled IDE build.</summary>
+        public const int ApiVersion = ScriptIde.ApiVersion;
+
         public bool Running => _server != null;
         public int Port { get; private set; }
 
-        /// <summary>Loopback connect URL (e.g. <c>http://127.0.0.1:8971/</c>), or null when not running.</summary>
+        /// <summary>Loopback connect URL (e.g. <c>http://127.0.0.1:8971/</c>), or null when not running or not listening.</summary>
         public string Url => _server?.Url;
+
+        /// <summary>Raised (level, message) for each Unity warning/error forwarded into the IDE console.</summary>
+        public event Action<string, string> LogEmitted;
+
+        /// <summary>Answer one IDE request (e.g. <c>GET /api/tree</c>) without HTTP. Thread-safe.</summary>
+        public IdeReply Dispatch(string method, string pathAndQuery, string body)
+        {
+            var server = _server;
+            if (server == null) throw new InvalidOperationException("Script IDE server is not running.");
+            return server.Dispatch(method, pathAndQuery, body);
+        }
 
         /// <summary>Start the server (idempotent). Returns the connect URL.</summary>
         public string Start(Options o)
@@ -79,6 +97,8 @@ namespace ODDGames.Scripting.Unity
             {
                 RootDirectory = o.WorkspaceLabel ?? "Mods",
                 Port = o.Port,
+                BindAddress = o.BindAddress,
+                Listen = o.Listen,
                 Title = o.Title,
                 CacheFile = cacheFile,
                 CompileOptions = o.CompileOptions,
@@ -235,6 +255,7 @@ namespace ODDGames.Scripting.Unity
             }
             string msg = (level == "error" && !string.IsNullOrEmpty(stackTrace)) ? condition + "\n" + stackTrace : condition;
             try { server.Log(level, msg); } catch { /* server torn down mid-callback */ }
+            LogEmitted?.Invoke(level, msg);
         }
     }
 }
