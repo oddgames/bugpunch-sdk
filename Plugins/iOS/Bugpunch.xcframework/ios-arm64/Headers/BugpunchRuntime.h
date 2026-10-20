@@ -140,31 +140,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// on Android. Best-effort; only non-empty string values are copied.
 + (void)mergeServerSsoConfig:(nullable NSDictionary*)sso;
 
-/// Store the project's bug-bounty master switch (`gameConfig.bountyEnabled`,
-/// from GET /api/v1/config) onto `config[@"bountyEnabled"]`. Read natively by
-/// the bug-report submit path to show the "you'll earn a bounty" thank-you.
-/// Arrives on every poll, not in the build-time config blob. Mirrors the
-/// Android sibling's `getConfig().optBoolean("bountyEnabled")` read.
-+ (void)setBountyEnabled:(BOOL)enabled;
-
-/// Whether the project has bug bounty enabled server-side. Gates the Inbox
-/// "Bounties" tab. Mirrors Android `BugpunchRuntime.isBountyEnabled()`.
-+ (BOOL)bountyEnabled;
-
-/// Store the project's human reward blurb (`gameConfig.bountyRewardText`, from
-/// GET /api/v1/config) onto `config[@"bountyRewardText"]`. Named in the
-/// bug-report submit thank-you when bounties are on (e.g. "100 credits", "a $5
-/// voucher"). Arrives on every poll alongside `bountyEnabled`. Pass nil/empty
-/// to clear. Mirrors Android `BugpunchRuntime.setBountyRewardText` + the C#
-/// `BugpunchRuntime.BountyRewardText` setter.
-+ (void)setBountyRewardText:(nullable NSString*)text;
-
-/// The configured human reward blurb for the bug-report thank-you line, or an
-/// empty string when unset (call sites fall back to "a reward"). Mirrors
-/// Android `BugpunchRuntime.getBountyRewardText()` + C#
-/// `BugpunchRuntime.BountyRewardText`.
-+ (NSString*)bountyRewardText;
-
 /// Start the CADisplayLink frame tick. Drives FPS measurement and the
 /// periodic backbuffer flush. Idempotent — called once from
 /// `Bugpunch_StartDebugMode`; re-entry is a no-op.
@@ -188,7 +163,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// Foreground modal-overlay coordination. The SDK self-error overlay
 /// (BugpunchSdkErrorOverlay) checks `isModalOverlayShowing` before adding its
 /// banner / full-screen card to the key window: stacking a tap-eating overlay
-/// over a presented modal (BugFound / Bounty dialog) wedges touch on both —
+/// over a presented Bugpunch modal wedges touch on both —
 /// the game freezes AND the modal can't be tapped. Reentrant (counts nesting);
 /// when the last modal closes the error overlay flushes any deferred banner.
 /// Mirrors `BugpunchRuntime.pushModalOverlay / popModalOverlay /
