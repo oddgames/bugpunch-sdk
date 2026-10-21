@@ -17,7 +17,6 @@ The same dispatcher sits behind every entry point:
 | `ActionExecutor.Execute(json)` (C#) | Any build with the SDK | `ActionResult` (below) |
 | `clibridge4unity UIACTION <json>` | Unity Editor, Play Mode only | `OK (123ms)` or the error text |
 | Remote IDE device route `POST /action` | A device connected to the dashboard (tunnel or local IDE server) | `{"ok":true,"elapsedMs":123}` / `{"ok":false,"error":"…","elapsedMs":123}` |
-| Gemini AI test runner | Editor (`GeminiTestRunner`) | Steps recorded in the test result |
 
 ```csharp
 var result = await ActionExecutor.Execute("{\"action\":\"click\", \"text\":\"Settings\"}");

@@ -39,6 +39,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             // can't be added until the remote description is set, so we queue.
             public readonly List<RTCIceCandidate> PendingIce = new();
             public bool RemoteDescSet;
+            public bool Closed;
             // ABR state per peer — viewers may have wildly different links.
             public ulong AbrCurrentBps = ABR_INIT_BPS;
             public ulong AbrLastPacketsSent;
@@ -850,7 +851,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                         _screenCapRT.Create();
                     }
                     ScreenCapture.CaptureScreenshotIntoRenderTexture(_screenCapRT);
-                    Graphics.Blit(_screenCapRT, _rt, new Vector2(1, -1), new Vector2(0, 1));
+                    ScreenCaptureService.BlitScreenCaptureUpright(_screenCapRT, _rt);
                 }
             }
 
@@ -880,12 +881,17 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                 lock (_peersLock) { snap = new List<PeerSession>(_peers.Values); }
                 foreach (var session in snap)
                 {
-                    if (session.Pc == null) continue;
+                    if (session.Closed || session.Pc == null) continue;
                     var op = session.Pc.GetStats();
                     yield return op;
                     if (op.IsError) continue;
                     var report = op.Value;
                     if (report == null) continue;
+                    if (session.Closed)
+                    {
+                        report.Dispose();
+                        continue;
+                    }
 
                     ulong packetsSent = 0, packetsLost = 0;
                     foreach (var s in report.Stats.Values)
@@ -951,7 +957,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
 
         void SetVideoMaxBitrateForPeer(PeerSession session, ulong bps, uint maxFps)
         {
-            if (session?.Pc == null) return;
+            if (session == null || session.Closed || session.Pc == null) return;
             foreach (var sender in session.Pc.GetSenders())
             {
                 if (sender?.Track == null || sender.Track.Kind != TrackKind.Video) continue;
@@ -979,6 +985,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             {
                 if (!_peers.TryGetValue(sessionId, out session)) return;
                 _peers.Remove(sessionId);
+                session.Closed = true;
             }
             try
             {

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.234] - 2026-10-21
+
+### Changed
+- Controlled sessions: the game joins its seat (-bugpunchSession), so takeover, agent input/act/tools and the SDK video stream work on editor seats
+- /action replies were invalid JSON (format brace), so every seat.act / key / type timed out as a 502; same fix in MaterialService and WatchService
+- Search discovery includes the DontDestroyOnLoad scene
+- New /input/key {key, action: down|up|press} for takeover keyboard
+- Screen capture no longer upside down on OpenGL (Linux editor -force-glcore)
+- WebRTC: a viewer leaving mid-ABR tick no longer throws ObjectDisposedException
+
 ## [0.8.233] - 2026-10-20
 
 ### Changed
@@ -251,6 +261,16 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.234] - 2026-10-21
+
+### Changed
+- Controlled sessions: the game joins its seat (-bugpunchSession), so takeover, agent input/act/tools and the SDK video stream work on editor seats
+- /action replies were invalid JSON (format brace), so every seat.act / key / type timed out as a 502; same fix in MaterialService and WatchService
+- Search discovery includes the DontDestroyOnLoad scene
+- New /input/key {key, action: down|up|press} for takeover keyboard
+- Screen capture no longer upside down on OpenGL (Linux editor -force-glcore)
+- WebRTC: a viewer leaving mid-ABR tick no longer throws ObjectDisposedException
 
 ## [0.8.233] - 2026-10-20
 

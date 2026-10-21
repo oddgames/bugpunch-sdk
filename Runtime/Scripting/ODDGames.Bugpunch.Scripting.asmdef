@@ -1,0 +1,24 @@
+{
+    "name": "ODDGames.Bugpunch.Scripting",
+    "rootNamespace": "ODDGames.BugpunchSdk.Scripting",
+    "references": [
+        "ODDGames.Bugpunch"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "BUGPUNCH_SCRIPTING"
+    ],
+    "versionDefines": [
+        {
+            "name": "au.com.oddgames.scripting",
+            "expression": "1.0.0",
+            "define": "BUGPUNCH_SCRIPTING"
+        }
+    ],
+    "noEngineReferences": false
+}

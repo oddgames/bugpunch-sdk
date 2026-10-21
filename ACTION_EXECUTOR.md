@@ -127,7 +127,7 @@ public class ActionResult
 }
 ```
 
-Callers: the Remote IDE device route `POST /action` (returns `{ok, error?, elapsedMs}`), `GeminiTestRunner` (AI-generated tests), and the `UIACTION` bridge command.
+Callers: the Remote IDE device route `POST /action` (returns `{ok, error?, elapsedMs}`) and the `UIACTION` bridge command.
 
 ---
 

@@ -33,9 +33,9 @@ the Remote IDE, and more.
   on.
 - **Remote IDE** — connect from the dashboard to a running build and drive
   it live: scene hierarchy, inspector, console stream, WebRTC game-view
-  stream with touch/mouse input, C# script execution (see
-  [SCRIPTING.md](SCRIPTING.md)), file browser, data snapshots, memory
-  snapshots and device info.
+  stream with touch/mouse input, C# script execution (needs the optional
+  `au.com.oddgames.scripting` package — see below), file browser, data
+  snapshots, memory snapshots and device info.
 - **Performance** — FPS, memory, thermal and OOM tracking per build, with
   the dashboard flagging builds that breach thresholds.
 - **Analytics + QA** — events, purchases, ads, progression, tags, QA
@@ -246,6 +246,25 @@ purchase handler.
 
 Google Mobile Ads (`com.google.ads.mobile` 9+) gets a matching shim:
 `rewardedAd.WithBugpunch(placement: "level_end")`.
+
+### Scripting
+
+Bugpunch's script features — the Remote IDE script panel, `script`
+attachment rules, server debug-tool scripts and crash-directive scripts —
+run on the separate scripting package. Without it they answer
+"Scripting not installed". To turn them on, add it next to Bugpunch:
+
+```json
+{
+  "dependencies": {
+    "au.com.oddgames.scripting": "https://github.com/oddgames/scripting-sdk.git#v1.0.0"
+  }
+}
+```
+
+The optional `ODDGames.Bugpunch.Scripting` assembly then compiles in
+automatically. See the scripting package's README for the language and
+sandbox.
 
 ### UI test automation
 
