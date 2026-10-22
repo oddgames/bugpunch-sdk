@@ -19,7 +19,7 @@ PluginImporter:
       settings:
         DefaultValueInitialized: true
     Win64:
-      enabled: 1
+      enabled: 0
       settings:
         CPU: x86_64
   userData: 
