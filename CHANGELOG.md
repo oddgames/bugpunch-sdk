@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.243] - 2026-10-23
+
+### Changed
+- Android video: recordings whose encoder input was black in every probe are no longer shipped as black MP4s — the report carries videoStatus capture_black instead (prod: every Samsung Adreno 540/830/840 clip was all-black and short clips slipped past the ~45 s guard). GLES capture now records GL renderer/version, GL errors queued by Unity vs by the capture event, and reads back the handoff texture at heal time (content -> enables glFinish before the cross-context blit); the diagnosis rides videoStatus.diag + captureHealth.diag. New global SDK capability-failure channel (Android + iOS): video init_error / encoder_error / capture_black raise once per process to the admin SDK Bugs tab with kind=capture + device/GPU details — no overlay, nothing filed in the game's project.
+
 ## [0.8.242] - 2026-10-23
 
 ### Changed
@@ -302,6 +307,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.243] - 2026-10-23
+
+### Changed
+- Android video: recordings whose encoder input was black in every probe are no longer shipped as black MP4s — the report carries videoStatus capture_black instead (prod: every Samsung Adreno 540/830/840 clip was all-black and short clips slipped past the ~45 s guard). GLES capture now records GL renderer/version, GL errors queued by Unity vs by the capture event, and reads back the handoff texture at heal time (content -> enables glFinish before the cross-context blit); the diagnosis rides videoStatus.diag + captureHealth.diag. New global SDK capability-failure channel (Android + iOS): video init_error / encoder_error / capture_black raise once per process to the admin SDK Bugs tab with kind=capture + device/GPU details — no overlay, nothing filed in the game's project.
 
 ## [0.8.242] - 2026-10-23
 

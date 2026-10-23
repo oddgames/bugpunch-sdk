@@ -90,6 +90,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString* videoStatus;
 @property (nonatomic, copy, nullable) NSString* videoStatusMessage;
 
+/// Set both video status fields together. A status that means the SDK's own
+/// capture failed ("init_error" / "encoder_error") is also raised once per
+/// process on the global SDK Bugs channel (kind "capture"). Mirrors Android
+/// `BugpunchRuntime.setVideoStatus`.
+- (void)setVideoStatus:(nullable NSString*)status message:(nullable NSString*)message;
+
 /// ICE servers for the native WebRTC streamer (`BugpunchStreamer`). Folded
 /// into the poll bootstrap (`bootstrap.iceServers`) and stashed here by
 /// `BugpunchPoller` so the streamer can build its `RTCConfiguration` without
