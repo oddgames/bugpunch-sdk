@@ -57,7 +57,8 @@ Most actions need to find an element. Targets are given with these fields:
 | `text` | string | Text content of a `Text` / `TMP_Text` **on the element itself** (not its children) |
 | `name` | string | GameObject name |
 | `type` | string | Component type name, e.g. `"Button"`, `"Slider"`, `"TMP_*"` |
-| `tag` | string | Unity tag (exact, no wildcards) |
+| `tag` | string | Unity tag (exact, no wildcards); on a UI Toolkit element, a USS class |
+| `class` | string | UI Toolkit USS class, e.g. `"bbtn"`, `"promotile*"` |
 | `path` | string | Hierarchy path, e.g. `"/Canvas/MainMenu/PlayButton"`, `"*/Panel/Button*"` |
 | `near` | string | Nearest interactable to a text label (pure distance) |
 | `adjacent` | string | Best-aligned interactable next to a text label |
@@ -74,6 +75,10 @@ Pattern matching is case-insensitive. An element must be on screen to match.
 ```
 
 Because `text` only matches the element carrying the text, `{"text":"Submit", "type":"Button"}` finds nothing on a standard UGUI button (the label is a child). Use `text` alone — the tap lands on the button under the label — or target the button by `name`.
+
+### UI Toolkit
+
+Elements of every live `UIDocument` panel are searched alongside uGUI with the same fields: `name` is the `VisualElement` name (`{"name":"back-button"}`), `type` is the element type or any base type (`"Button"`, `"Label"`, `"TextElement"`), `text` is a `Label` / `Button` / `TextElement`'s text, and `class` / `tag` match USS classes. A `Button` with no text of its own takes the text of the labels inside it, and matches instead of them, so `{"text":"REPAIR"}` finds the button once. Only elements a player could tap count: displayed, visible, enabled, not fully transparent and on screen, and picking-enabled (or a picking-ignore container holding such an element). The tap is a normal injected pointer at the element's on-screen centre, clipped to any `ScrollView` it is scrolled inside. In the hierarchy dump the elements sit under a `UI Toolkit` root, one child per panel.
 
 ### Screen coordinates (`at`)
 
