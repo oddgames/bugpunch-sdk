@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using ODDGames.Scripting;
 using ODDGames.Scripting.VirtualMachine;
 using ODDGames.BugpunchSdk.RemoteIDE;
@@ -75,6 +76,101 @@ namespace ODDGames.BugpunchSdk.Scripting
                 error = e is ScriptRuntimeException ? "runtime error: " + e.Message : e.GetType().Name + ": " + e.Message;
                 return false;
             }
+        }
+
+        // Test scripts are the one Admin surface that must reach the SDK's own testing API,
+        // so the default ODDGames.BugpunchSdk denial (which keeps chat-scripts out) is lifted.
+        public string CompileTest(string code, out Func<object> evaluate)
+        {
+            evaluate = null;
+            try
+            {
+                var options = new ScriptCompileOptions { TrustLevel = ScriptTrustLevel.Admin };
+                options.DeniedNamespacePrefixes.Remove("ODDGames.BugpunchSdk");
+                // Line markers are best-effort: a construct they can't sit in front of falls back
+                // to the unmarked script, whose diagnostics are the author's own.
+                if (!ScriptCompiler.TryCompile(WrapTestBody(code, markLines: true), out var script, options) || script == null)
+                {
+                    if (!ScriptCompiler.TryCompile(WrapTestBody(code, markLines: false), out script, options) || script == null)
+                        return BuildErrorResponse(script?.Diagnostics);
+                }
+                evaluate = () =>
+                {
+                    using (MethodInvocationGuard.EnterTrustLevel(ScriptTrustLevel.Admin))
+                        return script.Evaluate();
+                };
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return $"{{\"ok\":false,\"errors\":[{DescribeError(ex)}]}}";
+            }
+        }
+
+        // The VM lowers `await` only inside class methods, so a plain top-level test body is moved
+        // into one. The header joins the last leading `using` line and the footer goes on a new
+        // final line, so diagnostics keep the author's line numbers. A script that declares its own
+        // class is compiled as written and must end with an expression yielding its Task.
+        // markLines prefixes each statement line with ScriptTest.Line(n) so a run reports the line
+        // it is on (the VM keeps no line table); the marker shares the line, so numbering holds.
+        static string WrapTestBody(string code, bool markLines)
+        {
+            if (Regex.IsMatch(code, @"^\s*(public\s+|static\s+|sealed\s+)*class\s", RegexOptions.Multiline))
+                return code;
+
+            var lines = code.Split('\n');
+            int lastUsing = -1;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var t = lines[i].Trim();
+                if (t.Length == 0 || t.StartsWith("//")) continue;
+                if (t.StartsWith("using ") && t.EndsWith(";")) { lastUsing = i; continue; }
+                break;
+            }
+
+            if (markLines)
+            {
+                string prev = null;
+                for (int i = lastUsing + 1; i < lines.Length; i++)
+                {
+                    var t = lines[i].Trim();
+                    if (t.Length == 0 || t.StartsWith("//")) continue;
+                    if (StartsStatement(t, prev))
+                        lines[i] = "ODDGames.BugpunchSdk.ScriptTest.Line(" + (i + 1) + "); " + lines[i];
+                    prev = t;
+                }
+            }
+
+            const string header = "class __BugpunchTest { public async System.Threading.Tasks.Task<object> Run() { ";
+            const string footer = "\nreturn null; } } new __BugpunchTest().Run();";
+            if (lastUsing < 0) return header + code + footer;
+            lines[lastUsing] = lines[lastUsing].TrimEnd('\r') + " " + header;
+            return string.Join("\n", lines) + footer;
+        }
+
+        // A line opens a new statement when the previous code line closed one (or there is none)
+        // and it isn't a continuation clause. After an unbraced if / for / while header the marker
+        // would become the guarded statement, so those lines are skipped.
+        static bool StartsStatement(string line, string prevCode)
+        {
+            if (prevCode != null && !(prevCode.EndsWith(";") || prevCode.EndsWith("{") || prevCode.EndsWith("}")))
+                return false;
+            if (line.EndsWith(",")) return false;
+            foreach (var p in s_nonStatementStarts)
+                if (line.StartsWith(p, StringComparison.Ordinal)) return false;
+            return true;
+        }
+
+        static readonly string[] s_nonStatementStarts =
+            { "{", "}", ".", "[", "#", "else", "catch", "finally", "case ", "default:", "where ", "&&", "||", "?", ":", "+", ")" };
+
+        public string DescribeError(Exception ex)
+        {
+            var sb = new StringBuilder("{");
+            for (var e = ex; e != null; e = e.InnerException)
+                if (e is ScriptRuntimeException rex) { AppendLocation(sb, rex.Location); break; }
+            sb.Append($"\"message\":\"{BugpunchJson.Esc(ex.Message)}\"}}");
+            return sb.ToString();
         }
 
         public bool IsNamespaceDenied(string ns) => ScriptNamespaceDenylist.IsDenied(ns);

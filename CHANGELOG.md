@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.244] - 2026-10-23
+
+### Changed
+- AI-healed script tests: POST /run-test runs a stored C# test script; a missing element, unconfirmed required goal or breakpoint parks the run ("stuck") for a healer (Claude on a runner) to resolve via /run-test/resolve (retry / continue / abort / pause, optional snippet); healer actions are recorded back as C# lines
+- ScriptTest API: Step, ExpectGoal (server-confirmed, required/optional, timeout), Pause; status reports state, steps, goals, current source line and stuck line
+- Goals re-armed per controlled session and tagged with session/seat/run in goal.observed + "Goal Reached" log lines; test-run goal poll 2 s
+
 ## [0.8.243] - 2026-10-23
 
 ### Changed
@@ -307,6 +314,13 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.244] - 2026-10-23
+
+### Changed
+- AI-healed script tests: POST /run-test runs a stored C# test script; a missing element, unconfirmed required goal or breakpoint parks the run ("stuck") for a healer (Claude on a runner) to resolve via /run-test/resolve (retry / continue / abort / pause, optional snippet); healer actions are recorded back as C# lines
+- ScriptTest API: Step, ExpectGoal (server-confirmed, required/optional, timeout), Pause; status reports state, steps, goals, current source line and stuck line
+- Goals re-armed per controlled session and tagged with session/seat/run in goal.observed + "Goal Reached" log lines; test-run goal poll 2 s
 
 ## [0.8.243] - 2026-10-23
 
