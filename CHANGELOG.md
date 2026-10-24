@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.246] - 2026-10-24
+
+### Changed
+- Editor test seats report like devices: an Editor seated in a Controlled Session uploads auto errors (plain dev play stays suppressed), and managed-lane reports now carry a screenshot (end-of-frame, governor-scaled), the Editor/Windows video ring, and logs on manual reports - all alongside a running WebRTC stream
+- Distinct errors are never dropped by the rate limit (all lanes): a repeat of the same exception is still deduped, but a different exception inside the global floor is deferred and sent when it opens (tags deferred + occurredAtMs, deferredOverflow past a 64-entry cap). Android/iOS previously used one global 30 s cooldown that dropped every other exception
+- Managed lane: reports raised off the main thread (background-thread / unobserved-Task exceptions) were silently lost because Async.ToMainThread resumed on the thread pool; it now posts the continuation to Unity's context
+- End-of-frame captures (report screenshot, IDE /capture) start inside the end-of-frame coroutine, fixing upside-down whole-Editor-window screenshots
+
 ## [0.8.245] - 2026-10-24
 
 ### Changed
@@ -320,6 +328,14 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.246] - 2026-10-24
+
+### Changed
+- Editor test seats report like devices: an Editor seated in a Controlled Session uploads auto errors (plain dev play stays suppressed), and managed-lane reports now carry a screenshot (end-of-frame, governor-scaled), the Editor/Windows video ring, and logs on manual reports - all alongside a running WebRTC stream
+- Distinct errors are never dropped by the rate limit (all lanes): a repeat of the same exception is still deduped, but a different exception inside the global floor is deferred and sent when it opens (tags deferred + occurredAtMs, deferredOverflow past a 64-entry cap). Android/iOS previously used one global 30 s cooldown that dropped every other exception
+- Managed lane: reports raised off the main thread (background-thread / unobserved-Task exceptions) were silently lost because Async.ToMainThread resumed on the thread pool; it now posts the continuation to Unity's context
+- End-of-frame captures (report screenshot, IDE /capture) start inside the end-of-frame coroutine, fixing upside-down whole-Editor-window screenshots
 
 ## [0.8.245] - 2026-10-24
 
