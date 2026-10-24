@@ -208,6 +208,8 @@ await WaitFor(Name("Score"), "100", timeout: 10f);    // element text equals
 await WaitForNot(Name("LoadingSpinner"));
 await WaitFor(() => Time.timeScale > 0, seconds: 30); // custom condition
 await SceneChange(seconds: 30);
+await FastForward(scale: 8f, untilGoal: "match.finished"); // run 8× until that goal (or a scene change)
+await FastForward(scale: 4f, untilGoal: null, seconds: 60);  // 4× until the scene changes
 await WaitForStableFrameRate(minFps: 20);
 await WaitFramerate(30);
 ```

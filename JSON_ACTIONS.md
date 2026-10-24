@@ -578,6 +578,23 @@ Wait for the active scene to change.
 {"action":"scenechange", "seconds":30}
 ```
 
+### fastforward
+
+Run the game faster (`Time.timeScale`) until the active scene changes or a goal is reached, then restore the
+previous time scale. Skips waiting a player would sit through (a match timer, a cutscene); fails after
+`seconds` of real time.
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `scale` | float | 4 | 1–100 |
+| `goal` | string/null | `""` | a goal id; `""` = any goal reached for the first time; `null` = don't stop on goals |
+| `untilSceneChange` | bool | true | also stop when the active scene changes |
+| `seconds` | float | 120 | real-time timeout |
+
+```json
+{"action":"fastforward", "scale":8, "goal":"match.finished"}
+```
+
 ---
 
 ## Utility Actions
@@ -739,6 +756,7 @@ Check whether an element exists. Succeeds either way unless `required` is true.
 | `waitfps` | Wait for a stable frame rate |
 | `waitframerate` | Wait for a target average FPS |
 | `scenechange` | Wait for a scene change |
+| `fastforward` | Run faster until a scene change or goal |
 | **Exploration** | |
 | `autoexplore` | Random clicking (time / count / dead-end modes) |
 | **GameObject Manipulation** | |
@@ -1029,6 +1047,7 @@ Actions:
   pinch(scale), rotate(degrees),
   wait(seconds), waitfor(seconds,expected), waitfornot(seconds),
   waitfps(minFps,stableFrames,timeout), waitframerate(fps), scenechange(seconds),
+  fastforward(scale,goal,untilSceneChange,seconds),
   randomclick, autoexplore(mode,seconds|count,seed,delay,tryBack),
   enable, disable, freeze(includeChildren), teleport(position:[x,y,z]),
   noclip(includeChildren), clip(includeChildren),
