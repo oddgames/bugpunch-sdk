@@ -16,7 +16,7 @@
     "versionDefines": [
         {
             "name": "au.com.oddgames.scripting",
-            "expression": "1.0.0",
+            "expression": "1.0.1",
             "define": "BUGPUNCH_SCRIPTING"
         }
     ],

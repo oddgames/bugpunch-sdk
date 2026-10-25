@@ -80,22 +80,22 @@ namespace ODDGames.BugpunchSdk.Scripting
 
         // Test scripts are the one Admin surface that must reach the SDK's own testing API,
         // so the default ODDGames.BugpunchSdk denial (which keeps chat-scripts out) is lifted.
-        public string CompileTest(string code, out Func<object> evaluate)
+        public string CompileTest(string code, ITestLineHook hook, out Func<object> evaluate)
         {
             evaluate = null;
             try
             {
-                var options = new ScriptCompileOptions { TrustLevel = ScriptTrustLevel.Admin };
+                var options = new ScriptCompileOptions { TrustLevel = ScriptTrustLevel.Admin, DebugHooks = hook != null };
                 options.DeniedNamespacePrefixes.Remove("ODDGames.BugpunchSdk");
-                // Line markers are best-effort: a construct they can't sit in front of falls back
-                // to the unmarked script, whose diagnostics are the author's own.
-                if (!ScriptCompiler.TryCompile(WrapTestBody(code, markLines: true), out var script, options) || script == null)
-                {
-                    if (!ScriptCompiler.TryCompile(WrapTestBody(code, markLines: false), out script, options) || script == null)
-                        return BuildErrorResponse(script?.Diagnostics);
-                }
+                bool wrapped = !DeclaresClass(code);
+                if (!ScriptCompiler.TryCompile(wrapped ? WrapTestBody(code) : code, out var script, options) || script == null)
+                    return BuildErrorResponse(script?.Diagnostics);
+                var debugHook = hook == null ? null : new TestDebugHook(hook, wrapped);
                 evaluate = () =>
                 {
+                    // Attach is per thread and an async script keeps the hook across its awaits, so it only
+                    // has to be in place while the script starts.
+                    using (debugHook == null ? null : ScriptDebugger.Attach(debugHook))
                     using (MethodInvocationGuard.EnterTrustLevel(ScriptTrustLevel.Admin))
                         return script.Evaluate();
                 };
@@ -107,17 +107,18 @@ namespace ODDGames.BugpunchSdk.Scripting
             }
         }
 
+        static bool DeclaresClass(string code) =>
+            Regex.IsMatch(code, @"^\s*(public\s+|static\s+|sealed\s+)*class\s", RegexOptions.Multiline);
+
         // The VM lowers `await` only inside class methods, so a plain top-level test body is moved
         // into one. The header joins the last leading `using` line and the footer goes on a new
-        // final line, so diagnostics keep the author's line numbers. A script that declares its own
-        // class is compiled as written and must end with an expression yielding its Task.
-        // markLines prefixes each statement line with ScriptTest.Line(n) so a run reports the line
-        // it is on (the VM keeps no line table); the marker shares the line, so numbering holds.
-        static string WrapTestBody(string code, bool markLines)
-        {
-            if (Regex.IsMatch(code, @"^\s*(public\s+|static\s+|sealed\s+)*class\s", RegexOptions.Multiline))
-                return code;
+        // final line, so the VM's lines are the author's. A script that declares its own class is
+        // compiled as written and must end with an expression yielding its Task.
+        const string TestClass = "__BugpunchTest";
+        const string TestMethod = "Run";
 
+        static string WrapTestBody(string code)
+        {
             var lines = code.Split('\n');
             int lastUsing = -1;
             for (int i = 0; i < lines.Length; i++)
@@ -128,41 +129,72 @@ namespace ODDGames.BugpunchSdk.Scripting
                 break;
             }
 
-            if (markLines)
-            {
-                string prev = null;
-                for (int i = lastUsing + 1; i < lines.Length; i++)
-                {
-                    var t = lines[i].Trim();
-                    if (t.Length == 0 || t.StartsWith("//")) continue;
-                    if (StartsStatement(t, prev))
-                        lines[i] = "ODDGames.BugpunchSdk.ScriptTest.Line(" + (i + 1) + "); " + lines[i];
-                    prev = t;
-                }
-            }
-
-            const string header = "class __BugpunchTest { public async System.Threading.Tasks.Task<object> Run() { ";
-            const string footer = "\nreturn null; } } new __BugpunchTest().Run();";
+            const string header = "class " + TestClass + " { public async System.Threading.Tasks.Task<object> " + TestMethod + "() { ";
+            const string footer = "\nreturn null; } } new " + TestClass + "()." + TestMethod + "();";
             if (lastUsing < 0) return header + code + footer;
             lines[lastUsing] = lines[lastUsing].TrimEnd('\r') + " " + header;
             return string.Join("\n", lines) + footer;
         }
 
-        // A line opens a new statement when the previous code line closed one (or there is none)
-        // and it isn't a continuation clause. After an unbraced if / for / while header the marker
-        // would become the guarded statement, so those lines are skipped.
-        static bool StartsStatement(string line, string prevCode)
+        /// <summary>
+        /// Hands the VM's statement and fault reports for the test body to the run's <see cref="ITestLineHook"/>.
+        /// Helpers the body calls stay quiet (step over), and their faults are deferred to the body line that
+        /// called them, where the run can park. A script with its own class reports every frame.
+        /// </summary>
+        sealed class TestDebugHook : IScriptDebugHook
         {
-            if (prevCode != null && !(prevCode.EndsWith(";") || prevCode.EndsWith("{") || prevCode.EndsWith("}")))
-                return false;
-            if (line.EndsWith(",")) return false;
-            foreach (var p in s_nonStatementStarts)
-                if (line.StartsWith(p, StringComparison.Ordinal)) return false;
-            return true;
-        }
+            const int MaxValueChars = 200;
+            readonly ITestLineHook _hook;
+            readonly bool _wrapped;
+            // One locals reader per frame rather than a closure per statement.
+            ScriptDebugFrame _localsFrame;
+            Func<string> _locals;
 
-        static readonly string[] s_nonStatementStarts =
-            { "{", "}", ".", "[", "#", "else", "catch", "finally", "case ", "default:", "where ", "&&", "||", "?", ":", "+", ")" };
+            public TestDebugHook(ITestLineHook hook, bool wrapped)
+            {
+                _hook = hook;
+                _wrapped = wrapped;
+            }
+
+            bool IsBody(ScriptDebugFrame f) => !_wrapped || (f.TypeName == TestClass && f.MethodName == TestMethod);
+
+            public System.Threading.Tasks.Task OnStatement(ScriptDebugFrame frame)
+            {
+                if (!IsBody(frame)) return System.Threading.Tasks.Task.CompletedTask;
+                if (frame != _localsFrame)
+                {
+                    _localsFrame = frame;
+                    _locals = () => LocalsJson(frame);
+                }
+                return _hook.OnLine(frame.Line, frame.CanPause, _locals);
+            }
+
+            public async System.Threading.Tasks.Task<ScriptFaultAction> OnFault(ScriptDebugFrame frame, Exception exception)
+            {
+                if (!IsBody(frame)) return ScriptFaultAction.Defer;
+                var action = await _hook.OnFault(frame.Line, exception, frame.CanPause, () => LocalsJson(frame));
+                return (ScriptFaultAction)(int)action;
+            }
+
+            static string LocalsJson(ScriptDebugFrame frame)
+            {
+                var sb = new StringBuilder("{");
+                bool first = true;
+                foreach (var kv in frame.GetLocals())
+                {
+                    if (!first) sb.Append(',');
+                    first = false;
+                    sb.Append('"').Append(BugpunchJson.Esc(kv.Key)).Append("\":");
+                    if (kv.Value == null) { sb.Append("null"); continue; }
+                    string text;
+                    try { text = kv.Value.ToString() ?? ""; }
+                    catch (Exception e) { text = "<" + e.GetType().Name + ">"; }
+                    if (text.Length > MaxValueChars) text = text.Substring(0, MaxValueChars) + "…";
+                    sb.Append('"').Append(BugpunchJson.Esc(text)).Append('"');
+                }
+                return sb.Append('}').ToString();
+            }
+        }
 
         public string DescribeError(Exception ex)
         {
