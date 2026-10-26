@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.250] - 2026-10-26
+
+### Changed
+- Editor Fake Store dialog is scriptable: while Unity IAP's UIFakeStore IMGUI confirm window is open, its Buy/OK and Cancel buttons are found by Text()/Name() and Click() presses them through the dialog's own handlers, so purchase goals run unattended in Editor seats (built-in FakeStoreElements provider; looks for the window only when IAP is loaded, at most every 0.25 s)
+- Custom elements: game-supplied BugpunchElements (Bugpunch.RegisterElements) are mirrored as proxies for Search, Click, ui_tree and the Remote IDE hierarchy; IBugpunchElementInfo overrides on existing GameObjects
+
 ## [0.8.249] - 2026-10-25
 
 ### Changed
@@ -343,6 +349,12 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.250] - 2026-10-26
+
+### Changed
+- Editor Fake Store dialog is scriptable: while Unity IAP's UIFakeStore IMGUI confirm window is open, its Buy/OK and Cancel buttons are found by Text()/Name() and Click() presses them through the dialog's own handlers, so purchase goals run unattended in Editor seats (built-in FakeStoreElements provider; looks for the window only when IAP is loaded, at most every 0.25 s)
+- Custom elements: game-supplied BugpunchElements (Bugpunch.RegisterElements) are mirrored as proxies for Search, Click, ui_tree and the Remote IDE hierarchy; IBugpunchElementInfo overrides on existing GameObjects
 
 ## [0.8.249] - 2026-10-25
 

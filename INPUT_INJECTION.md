@@ -73,10 +73,80 @@ var close = Name("btn_close*|btn_x")       // wildcard + |-OR, case-insensitive
 
 Positions are computed per element, so mixing canvas types in one test is fine. Cameras that render into a RenderTexture need an explicit `canvas.worldCamera`.
 
+### Custom UI (BugpunchElements)
+
+UI that is neither uGUI nor UI Toolkit (custom-drawn buttons, `SpriteRenderer` or world-space 3D buttons, immediate-mode renderers) can be described to the SDK. Search, `Click`, the JSON actions and the UI tree (`seat_ui_tree`) then treat it like any other element.
+
+**A provider** returns virtual elements, like an Android `AccessibilityNodeProvider` or iOS `UIAccessibilityElement`. Each becomes a hidden proxy GameObject under a `Custom UI` root, rebuilt at most once per frame and only while automation or the UI tree is looking.
+
+```csharp
+using System.Collections.Generic;
+using ODDGames.BugpunchSdk;
+using UnityEngine;
+
+public class MenuButtons : MonoBehaviour
+{
+    System.IDisposable _registration;
+    readonly BugpunchElement _play = new BugpunchElement { Id = "menu.play", Name = "Play", Role = BugpunchElementRole.Button };
+
+    void OnEnable() => _registration = Bugpunch.RegisterElements(Collect);
+    void OnDisable() => _registration?.Dispose();
+
+    void Collect(List<BugpunchElement> into)
+    {
+        _play.Text = "PLAY";
+        _play.ScreenRect = new Rect(100, 100, 240, 80); // pixels, bottom-left origin
+        _play.SortOrder = 10;                          // Canvas.sortingOrder scale: above a sortingOrder 0 canvas
+        _play.Visible = isActiveAndEnabled;
+        _play.OnActivate = StartGame;                  // optional: Click calls this instead of tapping
+        into.Add(_play);
+    }
+
+    void StartGame() { }
+}
+```
+
+| Field | Meaning to Search |
+|---|---|
+| `Id` | Required, unique. `Name()` matches it too. |
+| `Name`, `Text`, `Type` | `Name()` / `Text()` / `Type()`. `Type()` also matches the role name (`Type("Button")`). |
+| `Role` | Button, Toggle, Slider, TextField, ListItem and Tab are interactable. |
+| `ScreenRect` | Bounds, `Visible()`, the off-screen filter and the tap point (centre). |
+| `SortOrder` | Default result order, interleaved with canvases and UI Toolkit panels. |
+| `Visible` | `false` hides the element and its children unless `IncludeInactive()`. |
+| `Enabled` | `false` keeps it findable but fails `Interactable()`. |
+| `ParentId` | Builds the tree for `HasParent` / `Path`. |
+| `OnActivate` | `Click` invokes it on the main thread instead of injecting a pointer. Without it the pointer is injected at the rect centre and reaches the game's own input code. |
+
+`BugpunchElements.Get(go)` returns the element behind a Search result. A provider that throws is logged once and skipped; it never breaks a search.
+
+**An existing GameObject** can correct how it is judged by implementing `IBugpunchElementInfo`. Null fields keep the SDK's own judgement.
+
+```csharp
+using ODDGames.BugpunchSdk;
+using UnityEngine;
+
+[RequireComponent(typeof(SpriteRenderer))]
+public class SpriteButton : MonoBehaviour, IBugpunchElementInfo
+{
+    public string label = "SHOP";
+    public bool locked;
+
+    public void Describe(ref BugpunchElementOverrides o)
+    {
+        o.SortOrder = 20;     // drawn over the HUD canvas
+        o.Enabled = !locked;  // Interactable() without a Selectable
+        o.Text = label;       // Text("SHOP") matches this object
+    }
+}
+```
+
+`BugpunchElementOverrides` also takes `Visible`, `ScreenRect` (when the renderer bounds are not where it is drawn) and `Name` (an extra name `Name()` matches). The UI tree reports `rect`, `visible`, `interactable` and `sortOrder` for these objects, and `custom`, `role` and the same fields for provider elements.
+
 ### What Search can't see
 
-- **IMGUI** (`OnGUI`) has no `Transform` and can't be searched.
-- **Occlusion** — there is no z-test. A covered button is still found by name; the tap lands on whatever is on top.
+- **IMGUI** (`OnGUI`) has no `Transform`; describe it with a provider (above) to make it searchable. Unity IAP's Fake Store purchase dialog is built in: its question is a `Label` and its buttons are `Button`s (Ids `fakestore.ok` / `fakestore.cancel`), so `Click(Text("Buy"))` answers it.
+- **Occlusion** — there is no general z-test. A covered button is still found by name and the tap lands on whatever is on top. When a provider element or an `IBugpunchElementInfo` object with a `SortOrder` is ranked above the target and covers the tap point, `Click` logs a warning and adds it to the action result.
 - **`EventSystem.current == null`** — raycasts return nothing, so `RequiresReceiver` never matches and clicks reach nothing. No warning is logged.
 
 ---
@@ -165,10 +235,10 @@ This test recorder is separate from the crash-reporting video ring buffer, which
 
 ## Gotchas
 
-- **IMGUI** — invisible to Search.
+- **IMGUI / custom-drawn UI** — invisible to Search until a `BugpunchElements` provider describes it.
 - **No EventSystem** — raycast-based checks silently fail. Make sure the scene has one.
 - **RenderTexture cameras** — set `canvas.worldCamera` explicitly; the `Camera.main` fallback may not match.
-- **Occluded UI** — still found by name; the tap goes to whatever is on top.
+- **Occluded UI** — still found by name; the tap goes to whatever is on top (only game-described elements produce an occlusion warning).
 - **TMP input** — `TypeText` won't reach `TMP_InputField`; use `TextInput` / `Type` on the field.
 - **Element swipes on mobile** — `Swipe(search, …)` injects a mouse drag; use `SwipeAt` for a real touch swipe.
 - **Domain reload mid-test** — the injector recovers its devices, but the running test fails.
@@ -184,6 +254,7 @@ This test recorder is separate from the crash-reporting video ring buffer, which
 | Injection | `InputInjector.cs` + `Input/InputInjector.{Mouse,Touch,Gesture,Keyboard}.cs` |
 | Overlay | `InputVisualizer.cs` |
 | Geometry / hits | `UIUtility.cs` |
+| Custom UI | `BugpunchElements.cs` (public API), `CustomElements.cs` (proxy mirror + overrides) |
 | Recorder | `Recorder/MediaRecorder.cs`, `Recorder/RecordingSession.cs`, `Recorder/Internal/` |
 
 ## See also
