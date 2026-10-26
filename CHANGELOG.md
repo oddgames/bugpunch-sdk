@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.253] - 2026-10-26
+
+### Changed
+- Editor/Standalone: a controlled-session seat turns on Application.runInBackground while joined (restored on leave), so unfocused editor seats keep ticking play mode
+- Orphaned script-test failures (unobserved BugpunchTestFailureException tasks) are logged, not reported as game exceptions
+
 ## [0.8.252] - 2026-10-26
 
 ### Changed
@@ -359,6 +365,12 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.253] - 2026-10-26
+
+### Changed
+- Editor/Standalone: a controlled-session seat turns on Application.runInBackground while joined (restored on leave), so unfocused editor seats keep ticking play mode
+- Orphaned script-test failures (unobserved BugpunchTestFailureException tasks) are logged, not reported as game exceptions
 
 ## [0.8.252] - 2026-10-26
 
