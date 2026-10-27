@@ -55,6 +55,46 @@ namespace ODDGames.BugpunchSdk
                 if (!string.IsNullOrEmpty(sku)) Bugpunch.DeclareIapSku(sku);
         }
 
+        /// <summary>
+        /// Maps a purchased SKU to the item type the Spending board groups by
+        /// ("cash", "truck", "bundle", …). Unset, or returning null, logs the
+        /// purchase without a type.
+        /// </summary>
+        public static Func<string, string> ItemTypeForSku;
+
+        static readonly HashSet<string> s_ignoredTransactions = new HashSet<string>();
+
+        /// <summary>
+        /// Keep a transaction out of revenue. Unity IAP reports every order the
+        /// game confirms as a confirmed purchase — including ones the game's own
+        /// receipt validation rejected and confirms only to clear them from the
+        /// store queue. Call before confirming such an order.
+        /// </summary>
+        public static void IgnoreTransaction(string transactionId)
+        {
+            if (string.IsNullOrEmpty(transactionId)) return;
+            lock (s_ignoredTransactions) s_ignoredTransactions.Add(transactionId);
+        }
+
+        static void LogRevenue(string sku, Product product, string transactionId)
+        {
+            if (!string.IsNullOrEmpty(transactionId))
+                lock (s_ignoredTransactions)
+                    if (s_ignoredTransactions.Remove(transactionId)) return;
+
+            string itemType = null;
+            try { itemType = ItemTypeForSku?.Invoke(sku); }
+            catch (Exception ex) { Debug.LogWarning($"[Bugpunch] ItemTypeForSku threw: {ex.Message}"); }
+
+            Bugpunch.LogPurchase(
+                sku: sku,
+                price: (double)product.metadata.localizedPrice,
+                currency: product.metadata.isoCurrencyCode,
+                transactionId: transactionId,
+                itemType: itemType
+            );
+        }
+
         static void TryHook(Action act, string what)
         {
             try { act(); }
@@ -189,12 +229,7 @@ namespace ODDGames.BugpunchSdk
                     : product.definition.storeSpecificId;
                 if (string.IsNullOrEmpty(sku)) continue;
 
-                Bugpunch.LogPurchase(
-                    sku: sku,
-                    price: (double)product.metadata.localizedPrice,
-                    currency: product.metadata.isoCurrencyCode,
-                    transactionId: transactionId
-                );
+                LogRevenue(sku, product, transactionId);
             }
         }
 
@@ -311,12 +346,7 @@ namespace ODDGames.BugpunchSdk
                 if (string.IsNullOrEmpty(sku)) return;
 
                 Bugpunch.DeclareIapSku(sku);
-                Bugpunch.LogPurchase(
-                    sku: sku,
-                    price: (double)product.metadata.localizedPrice,
-                    currency: product.metadata.isoCurrencyCode,
-                    transactionId: product.transactionID ?? string.Empty
-                );
+                LogRevenue(sku, product, product.transactionID ?? string.Empty);
             }
             catch (Exception ex) { Debug.LogWarning($"[Bugpunch] purchase log failed: {ex.Message}"); }
         }
