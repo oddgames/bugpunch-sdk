@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.262] - 2026-10-28
+
+### Changed
+- Editor F12 reports carry the full capture: logs always buffered (not gated on the toolbar toggle), device/app/systemInfo blocks + game SetTag tags, and a videoStatus reason when no clip is attached
+- Reports carry appDataMB / sdkDataMB (disk the app and the SDK occupy) on all three lanes
+- Chat file requests accept a folder: zipped (recursive) and uploaded as one attachment
+
 ## [0.8.261] - 2026-10-28
 
 ### Changed
@@ -413,6 +420,13 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.262] - 2026-10-28
+
+### Changed
+- Editor F12 reports carry the full capture: logs always buffered (not gated on the toolbar toggle), device/app/systemInfo blocks + game SetTag tags, and a videoStatus reason when no clip is attached
+- Reports carry appDataMB / sdkDataMB (disk the app and the SDK occupy) on all three lanes
+- Chat file requests accept a folder: zipped (recursive) and uploaded as one attachment
 
 ## [0.8.261] - 2026-10-28
 
