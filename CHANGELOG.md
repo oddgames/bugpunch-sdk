@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.265] - 2026-11-03
+
+### Changed
+- Seat screen capture no longer leaves its blit target bound: the WebRTC stream, seat_screenshot and editor F12 capture restore RenderTexture.active after BlitScreenCaptureUpright, fixing an upside-down half-size copy of the screen drawn over the top-left of the game view on controlled seats
+
 ## [0.8.264] - 2026-11-03
 
 ### Changed
@@ -431,6 +436,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.265] - 2026-11-03
+
+### Changed
+- Seat screen capture no longer leaves its blit target bound: the WebRTC stream, seat_screenshot and editor F12 capture restore RenderTexture.active after BlitScreenCaptureUpright, fixing an upside-down half-size copy of the screen drawn over the top-left of the game view on controlled seats
 
 ## [0.8.264] - 2026-11-03
 
