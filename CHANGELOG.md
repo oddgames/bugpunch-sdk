@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.268] - 2026-11-03
+
+### Changed
+- UI coverage keys: controls inside a declared panel are counted as '<panel>/<path under the panel>' with (Clone) dropped (BugpunchCoverageKey), in the build catalog and tester presses alike, so a prefab menu's controls match whether scanned or pressed.
+- Build catalog lists declared panels (IBugpunchPanel) and scans the prefabs that hold them, not only build scenes; panel types with no prefab still count.
+- Tester presses are keyed by the Selectable (not its label/icon child) and carry their panel.
+
 ## [0.8.267] - 2026-11-03
 
 ### Changed
@@ -448,6 +455,13 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.268] - 2026-11-03
+
+### Changed
+- UI coverage keys: controls inside a declared panel are counted as '<panel>/<path under the panel>' with (Clone) dropped (BugpunchCoverageKey), in the build catalog and tester presses alike, so a prefab menu's controls match whether scanned or pressed.
+- Build catalog lists declared panels (IBugpunchPanel) and scans the prefabs that hold them, not only build scenes; panel types with no prefab still count.
+- Tester presses are keyed by the Selectable (not its label/icon child) and carry their panel.
 
 ## [0.8.267] - 2026-11-03
 
