@@ -146,6 +146,7 @@ server_missing() {
 upload_sidecar() {  # uuid abi filename path
   bp_curl -X POST -H "X-Api-Key: $APIKEY" \
     -F "buildId=$1" -F "platform=ios" -F "abi=$2" -F "filename=$3" \
+    -F "appVersion=${APP_VERSION:-}" -F "buildCode=${BUILD_CODE:-}" \
     -F "file=@$4;type=application/gzip;filename=$1.symtab.gz" \
     "$SERVER/api/symbols/sidecar/upload" >/dev/null
 }
@@ -230,6 +231,32 @@ if [ "$MODE" = "xcode" ] && [ $uf_present -eq 0 ] && command -v dsymutil >/dev/n
   fi
 fi
 
+# The player version these symbols belong to, so the dashboard's Symbols list
+# can say which build a UUID came from. Informational only — never fails the run.
+# Order: explicit env → the app being archived → the .xcarchive → any dSYM.
+plist_get() { /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null | tr -d '"\\' | head -c 64; }
+APP_VERSION="${BUGPUNCH_APP_VERSION:-}"; BUILD_CODE="${BUGPUNCH_BUILD_CODE:-}"
+version_plists=()
+[ "$MODE" = "xcode" ] && [ -n "${TARGET_BUILD_DIR:-}" ] && [ -n "${INFOPLIST_PATH:-}" ] && version_plists+=("$TARGET_BUILD_DIR/$INFOPLIST_PATH")
+if [ "$MODE" = "standalone" ]; then
+  for arg in "$@"; do
+    [ -f "$arg/Info.plist" ] || continue
+    [ -z "$APP_VERSION" ] && APP_VERSION="$(plist_get "$arg/Info.plist" ApplicationProperties:CFBundleShortVersionString)"
+    [ -z "$BUILD_CODE" ] && BUILD_CODE="$(plist_get "$arg/Info.plist" ApplicationProperties:CFBundleVersion)"
+  done
+fi
+if [ ${#dsyms[@]} -gt 0 ]; then
+  for d in "${dsyms[@]}"; do version_plists+=("$d/Contents/Info.plist"); done
+fi
+if [ ${#version_plists[@]} -gt 0 ]; then
+  for vp in "${version_plists[@]}"; do
+    [ -f "$vp" ] || continue
+    [ -z "$APP_VERSION" ] && APP_VERSION="$(plist_get "$vp" CFBundleShortVersionString)"
+    [ -z "$BUILD_CODE" ] && BUILD_CODE="$(plist_get "$vp" CFBundleVersion)"
+  done
+fi
+[ -n "$APP_VERSION" ] && log "app version: $APP_VERSION${BUILD_CODE:+ ($BUILD_CODE)}"
+
 if [ ${#dsyms[@]} -eq 0 ]; then
   buildwarn "no .dSYM bundles found — iOS crashes in this build will NOT symbolicate."
   exit 1
@@ -272,7 +299,7 @@ done
 items_json="["
 for i in "${!job_uuid[@]}"; do
   [ $i -gt 0 ] && items_json+=","
-  items_json+="{\"buildId\":\"${job_uuid[$i]}\",\"platform\":\"ios\",\"abi\":\"${job_arch[$i]}\",\"filename\":\"${job_filename[$i]}\"}"
+  items_json+="{\"buildId\":\"${job_uuid[$i]}\",\"platform\":\"ios\",\"abi\":\"${job_arch[$i]}\",\"filename\":\"${job_filename[$i]}\",\"appVersion\":\"${APP_VERSION:-}\",\"buildCode\":\"${BUILD_CODE:-}\"}"
 done
 items_json+="]"
 
@@ -362,7 +389,7 @@ if [ "$check_failed" -eq 0 ]; then
   verify_json="["; sep=""
   for i in "${!job_uuid[@]}"; do
     case "${job_filename[$i]}" in UnityFramework.*) ;; *) continue ;; esac
-    verify_json+="${sep}{\"buildId\":\"${job_uuid[$i]}\",\"platform\":\"ios\",\"abi\":\"${job_arch[$i]}\",\"filename\":\"${job_filename[$i]}\"}"
+    verify_json+="${sep}{\"buildId\":\"${job_uuid[$i]}\",\"platform\":\"ios\",\"abi\":\"${job_arch[$i]}\",\"filename\":\"${job_filename[$i]}\",\"appVersion\":\"${APP_VERSION:-}\",\"buildCode\":\"${BUILD_CODE:-}\"}"
     sep=","
   done
   verify_json+="]"
