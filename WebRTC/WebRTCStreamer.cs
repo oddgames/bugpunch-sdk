@@ -330,7 +330,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                 case "webrtc-stop":
                     // Close only the named peer; other viewers keep streaming.
                     if (!string.IsNullOrEmpty(sessionId))
-                        ClosePeer(sessionId);
+                        ClosePeer(sessionId, "webrtc-stop");
                     break;
             }
         }
@@ -374,7 +374,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             // If a peer for this sessionId already exists (e.g. dashboard
             // tab reloaded with the same sessionId — shouldn't happen with
             // randomUUID, but guard), tear it down first.
-            ClosePeer(sessionId);
+            ClosePeer(sessionId, "replaced by new offer");
 
             // (Re)start the WebRTC.Update() operation pump — it only runs while
             // peers are alive (last-peer close stops it, including the stale
@@ -425,7 +425,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
                 {
                     lock (_mainThreadQueue)
                     {
-                        _mainThreadQueue.Enqueue(() => ClosePeer(sessionId));
+                        _mainThreadQueue.Enqueue(() => ClosePeer(sessionId, $"connection {state}"));
                     }
                 }
             };
@@ -452,11 +452,12 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             var setRemoteOp = session.Pc.SetRemoteDescription(ref offerDesc);
             yield return setRemoteOp;
 
-            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); ClosePeer(sessionId); yield break; }
+            if (AbandonIfClosed(session, "SetRemoteDescription", onError)) yield break;
+            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); ClosePeer(sessionId, "offer timeout"); yield break; }
             if (setRemoteOp.IsError)
             {
                 onError?.Invoke(setRemoteOp.Error.message);
-                ClosePeer(sessionId);
+                ClosePeer(sessionId, "SetRemoteDescription failed: " + setRemoteOp.Error.message);
                 yield break;
             }
 
@@ -467,11 +468,12 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             var answerOp = session.Pc.CreateAnswer();
             yield return answerOp;
 
-            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); ClosePeer(sessionId); yield break; }
+            if (AbandonIfClosed(session, "CreateAnswer", onError)) yield break;
+            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); ClosePeer(sessionId, "offer timeout"); yield break; }
             if (answerOp.IsError)
             {
                 onError?.Invoke(answerOp.Error.message);
-                ClosePeer(sessionId);
+                ClosePeer(sessionId, "CreateAnswer failed: " + answerOp.Error.message);
                 yield break;
             }
 
@@ -479,11 +481,12 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             var setLocalOp = session.Pc.SetLocalDescription(ref answer);
             yield return setLocalOp;
 
-            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); ClosePeer(sessionId); yield break; }
+            if (AbandonIfClosed(session, "SetLocalDescription", onError)) yield break;
+            if (Time.realtimeSinceStartup > deadline) { onError?.Invoke("Offer handling timed out"); ClosePeer(sessionId, "offer timeout"); yield break; }
             if (setLocalOp.IsError)
             {
                 onError?.Invoke(setLocalOp.Error.message);
-                ClosePeer(sessionId);
+                ClosePeer(sessionId, "SetLocalDescription failed: " + setLocalOp.Error.message);
                 yield break;
             }
 
@@ -501,6 +504,19 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             if (_abrLoop == null) _abrLoop = StartCoroutine(AdaptiveBitrateLoop());
 
             BugpunchLog.Info("WebRTCStreamer", $"HandleOffer sid={sessionId}: streaming started, peerCount={PeerCount()}");
+        }
+
+        // The peer can be closed while HandleOffer is parked on an async op
+        // (viewer sent webrtc-stop, connection failed, StopStreaming, or a
+        // re-offer replaced it). ClosePeer has disposed its RTCPeerConnection
+        // by then, so the next Pc call would throw ObjectDisposedException.
+        // Don't ClosePeer here: the sid may already belong to a newer session.
+        bool AbandonIfClosed(PeerSession session, string step, Action<string> onError)
+        {
+            if (!session.Closed) return false;
+            BugpunchLog.Info("WebRTCStreamer", $"HandleOffer sid={session.SessionId}: peer closed during {step}, abandoning negotiation");
+            onError?.Invoke($"Peer closed during {step}");
+            return true;
         }
 
         void HandleIceCandidate(string sessionId, string iceJson)
@@ -978,7 +994,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
         // Lifecycle — per-peer close + global stop
         // ------------------------------------------------------------------
 
-        void ClosePeer(string sessionId)
+        void ClosePeer(string sessionId, string reason)
         {
             PeerSession session;
             lock (_peersLock)
@@ -1018,7 +1034,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             catch { /* ignore */ }
             try { session.VideoTrack?.Dispose(); } catch { /* ignore */ }
 
-            BugpunchLog.Info("WebRTCStreamer", $"Closed peer sid={sessionId}, remaining={PeerCount()}");
+            BugpunchLog.Info("WebRTCStreamer", $"Closed peer sid={sessionId} ({reason}), remaining={PeerCount()}");
 
             // If that was the last peer, stop the global capture pipeline.
             if (PeerCount() == 0)
@@ -1059,7 +1075,7 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             BugpunchNative.SetPerfInstrumented("stream", false);
             List<string> ids;
             lock (_peersLock) { ids = new List<string>(_peers.Keys); }
-            foreach (var id in ids) ClosePeer(id);
+            foreach (var id in ids) ClosePeer(id, "StopStreaming");
             StopStreamLoops();
             CleanupRenderTexture();
             StopPerfRecorders();
