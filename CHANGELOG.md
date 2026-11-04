@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.271] - 2026-11-04
+
+### Changed
+- Bugpunch.Report() with no type now sends silently; pass type: "bug" to open the report form
+- Exception.Data is captured on managed exceptions and breadcrumbs keep their data; add Bugpunch.BeforeSend and a Report overload with per-report context
+- Reports carry app lifecycle breadcrumbs, ABI, scripting backend, development build and region; native crashes carry scene and tags
+- Empty attachments are skipped and marked instead of losing the report; attachment reports bypass the exception cooldown
+- Editor + Standalone: SetTag, SetUserId and the error overlay setting are queued until the SDK starts; a successful send logs one line in the Editor
+- ANR watchdog events carry their payload and foreground state; the Android watchdog does less work in the background; reports count suppressed repeats
+- Debug Tools board on Editor + Standalone: visible toggles and sliders, docked panel, live refresh, fresh attribute values, adminOnly on every tool type, new typed Bugpunch.Tools API
+- showSdkErrorOverlay is off by default for new configs (existing BugpunchConfig assets keep their saved value); minimum Unity is 6000.0; player feedback caption no longer names Bugpunch
+
 ## [0.8.270] - 2026-11-04
 
 ### Changed
@@ -467,6 +479,18 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.271] - 2026-11-04
+
+### Changed
+- Bugpunch.Report() with no type now sends silently; pass type: "bug" to open the report form
+- Exception.Data is captured on managed exceptions and breadcrumbs keep their data; add Bugpunch.BeforeSend and a Report overload with per-report context
+- Reports carry app lifecycle breadcrumbs, ABI, scripting backend, development build and region; native crashes carry scene and tags
+- Empty attachments are skipped and marked instead of losing the report; attachment reports bypass the exception cooldown
+- Editor + Standalone: SetTag, SetUserId and the error overlay setting are queued until the SDK starts; a successful send logs one line in the Editor
+- ANR watchdog events carry their payload and foreground state; the Android watchdog does less work in the background; reports count suppressed repeats
+- Debug Tools board on Editor + Standalone: visible toggles and sliders, docked panel, live refresh, fresh attribute values, adminOnly on every tool type, new typed Bugpunch.Tools API
+- showSdkErrorOverlay is off by default for new configs (existing BugpunchConfig assets keep their saved value); minimum Unity is 6000.0; player feedback caption no longer names Bugpunch
 
 ## [0.8.270] - 2026-11-04
 

@@ -29,8 +29,9 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
     ///
     /// We register a factory delegate, NOT an instance: WebRTCStreamer is still
     /// created lazily by BugpunchClient only when a debug session starts, so the
-    /// native libwebrtc load stays deferred (it must not happen at boot — see the
-    /// note on WebRTCStreamer).
+    /// streamer costs nothing until then. This does not defer the native library:
+    /// com.unity.webrtc's ContextManager.Init calls WebRTC.InitializeInternal at
+    /// SubsystemRegistration in every player, which loads libwebrtc at boot.
     /// </summary>
     [UnityEngine.Scripting.Preserve]
     static class WebRTCStreamerBootstrap

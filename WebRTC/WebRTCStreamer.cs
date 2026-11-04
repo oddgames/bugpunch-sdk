@@ -18,10 +18,9 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
     /// per peer), so adding a viewer costs an extra encoder pipeline but reuses
     /// the same GPU blit.
     ///
-    /// IMPORTANT: This component is created lazily — only when a debug session starts.
-    /// Do NOT add this component at startup. The act of loading this class triggers
-    /// the Unity.WebRTC assembly load which loads the native libwebrtc.so. On some
-    /// Android 15 devices that native load crashes if done too early.
+    /// Created only when a debug session starts. That keeps the streamer idle, but it
+    /// does not defer libwebrtc: com.unity.webrtc's ContextManager.Init loads the
+    /// native library at SubsystemRegistration in every player build.
     /// </summary>
     [UnityEngine.Scripting.Preserve]
     public class WebRTCStreamer : MonoBehaviour, IStreamer

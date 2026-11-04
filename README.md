@@ -56,7 +56,7 @@ Add to `Packages/manifest.json`:
 
 The repo is public, so you don't need a token or a scoped registry.
 
-**Requirements:** Unity **6000.3** or newer. The package depends on
+**Requirements:** Unity **6000.0** or newer. The package depends on
 `com.unity.webrtc` 3.0.0, `com.unity.inputsystem` 1.7.0,
 `com.unity.textmeshpro` 3.0.0, `com.unity.recorder` 5.0.0,
 `com.unity.nuget.newtonsoft-json` 3.2.1, `com.unity.nuget.mono-cecil`
@@ -97,19 +97,30 @@ builds never open it.
 using System.Collections.Generic;
 using ODDGames.BugpunchSdk;
 
-// File a bug or feedback.
+// File a report from code. Silent by default: nothing appears in front of the
+// player, it groups by title and has no cooldown. Safe from any thread. Pass
+// type: "bug" only for a report the player asked to file: on device it opens
+// the interactive report form. type: "exception" shares the automatic exception
+// cooldown, so a repeat title inside it is dropped unless it carries attachments.
 Bugpunch.Report("Player got stuck on level 3 boss", "Fell through the arena floor");
 Bugpunch.Feedback("Loved the new gesture controls!");
 
 // Attach files to ONE report — copied at the call, always uploaded (never
 // sampled). A missing path shows on the report as skipped, not an error.
-// type: "error" files silently (no report form) and groups by title.
-Bugpunch.Report("Save failed to load", "Slot 2 checksum mismatch", type: "error", attachments: new[] {
+Bugpunch.Report("Save failed to load", "Slot 2 checksum mismatch", attachments: new[] {
     BugpunchAttachment.Path("[PersistentDataPath]/save.json"),
     BugpunchAttachment.Path("[PersistentDataPath]/profile/"),            // folder → profile.zip
     BugpunchAttachment.Path("[PersistentDataPath]/logs/*.txt", zip: true),
     BugpunchAttachment.Text("state.json", "{\"slot\":2}"),
 });
+
+// Tags for one report, and a hook over everything C# sends.
+Bugpunch.Report("Save failed to load", "Slot 2", "error", null,
+    new Dictionary<string, string> { { "phase_chain", "Garage>Paint" } });
+Bugpunch.BeforeSend = report => report.Tags["level"] = "world1";
+
+// A breadcrumb can carry key/value data; it stays with the breadcrumb on the report.
+Bugpunch.Breadcrumb("store", "Purchase begin", new Dictionary<string, string> { { "sku", "coins_100" } });
 
 // One-button entry for testers / players: Ask A Question (chat),
 // Record A Bug (debug mode + recording), Request A Feature (feedback board).
@@ -265,6 +276,129 @@ run on the separate scripting package. Without it they answer
 The optional `ODDGames.Bugpunch.Scripting` assembly then compiles in
 automatically. See the scripting package's README for the language and
 sandbox.
+
+### Debug Tools
+
+A panel of buttons, switches, sliders and fields for testers, opened from the
+Bugpunch pill's overflow menu. Tools come from three places: attributes on
+static members, code, and the dashboard.
+
+```csharp
+using ODDGames.BugpunchSdk;
+
+public static class Cheats
+{
+    [DebugButton("Economy", "Give coins", "Adds 1000 coins")]
+    static void GiveCoins() => UnityEngine.Debug.Log("coins");
+
+    [DebugToggle("Player", "God mode")]
+    static bool GodMode;
+
+    [DebugSlider("Player", 0f, 4f, "Speed", adminOnly: true)]
+    static float Speed = 1f;
+
+    [DebugNumber("Economy", "Coins", min: 0f, max: 100000f)]
+    static long Coins;
+
+    [DebugString("Network", "Server override")]
+    static string Server = "";
+}
+```
+
+Attribute tools work on static methods (`[DebugButton]`) and on static fields
+or read/write properties of type `bool` (`[DebugToggle]`), `float`
+(`[DebugSlider]`), `int`, `long`, `float` or `double` (`[DebugNumber]`) and
+`string` (`[DebugString]`). The panel reads each value when it opens.
+
+For tools that belong to a screen or mode, or that need more than a static
+member, use `Bugpunch.Tools`. A group is removed together when disposed:
+
+```csharp
+using System;
+using ODDGames.BugpunchSdk;
+using UnityEngine;
+
+public class GarageScreen : MonoBehaviour
+{
+    float _zoom = 1f;
+    string _plate = "";
+    IDisposable _tools;
+
+    void OnEnable()
+    {
+        _tools = Bugpunch.Tools.Group("Garage", debugBuildOnly: true)
+            .Button("Refresh", () => Debug.Log("refresh"), description: "Reload the garage")
+            .Toggle("Run in background", () => Application.runInBackground, on => Application.runInBackground = on)
+            .Slider("Zoom", 0.5f, 3f, () => _zoom, v => _zoom = v)
+            .Number("Target frame rate", () => Application.targetFrameRate, v => Application.targetFrameRate = (int)v)
+            .Text("Plate", () => _plate, v => _plate = v);
+    }
+
+    void OnDisable() => _tools.Dispose();
+}
+```
+
+- `adminOnly` shows a tool to internal testers only, and the SDK re-checks the
+  role when the tool is used. Every attribute takes it, and so does
+  `Bugpunch.Tools.Group`.
+- `debugBuildOnly` adds nothing outside a development build.
+- `order` sorts a code-registered tool within its category, lower first.
+- `Bugpunch.Tools.Open()` opens the panel from your own button. Gate it yourself.
+- Icons are Feather names. Every panel draws `play`, `pause`, `settings`,
+  `search`, `close`, `warning`, `zap`, `eye`, `activity`, `tune`, `send`,
+  `flag`, `clock`, `cpu`, `target`, `terminal`, `toggle-left`, `toggle-right`,
+  `hash`, `wrench`, `info`, `check`, `refresh`, `trash`, `shield` and `layers`.
+  An unknown name draws a circle.
+- Register and dispose from the main thread. An open panel refreshes once on
+  the next frame, however many tools changed.
+
+`DebugToolsBridge.RegisterDynamicTool` still takes a button or toggle by id,
+for code that manages each tool on its own.
+
+### Roles on Standalone
+
+Android and iOS keep the tester role on the device, and the Editor gets it from
+a Bugpunch sign-in. A shipped Standalone (PC, Steam) player always reports
+**Public**, so that an end user's desktop build can't reach debug tools.
+Admin-only tools therefore never show there.
+
+### What runs without debug mode
+
+On Android and iOS the native SDK starts with the process in every build,
+including store builds: crash handlers, the upload queue, and the analytics
+`session_start` and `session_end` events. None of it waits for
+`StartDebugMode`. Editor and Standalone don't emit session events.
+
+Automatic exception reports are rate-limited to one per signature every 30
+seconds, with a 5 second gap between any two. A distinct exception inside the
+gap is sent late, never dropped, but a repeat of the same signature is dropped
+and isn't counted. A continuous failure therefore shows as one event every 30
+seconds. `Bugpunch.Report` and `Bugpunch.Feedback` aren't limited this way.
+
+### Using Bugpunch with Firebase Crashlytics
+
+`com.unity.webrtc` ships a prebuilt `libwebrtc.so` with no build ID and
+malformed metadata. Crashlytics' `dump_syms` exits with an error on it, which
+aborts the symbol upload for every library in the build. Android release builds
+then send no native symbols, or fail if your CI treats the upload as required.
+
+Leave `libwebrtc.so` out of the symbols folder you pass to Crashlytics. Copy the
+folder without that file, or delete it from the copy, before running the upload.
+Crash reports inside libwebrtc itself then won't symbolicate in Crashlytics; the
+rest of the build's will.
+
+The package also loads `libwebrtc` at startup in every player build, before any
+Bugpunch code runs. Bugpunch's own streamer stays idle until a debug session
+starts, but the library is already in the process.
+
+### Old Input Manager projects
+
+The package depends on the Input System, so Unity asks on each editor launch to
+enable the new input backend in a project still on the old Input Manager.
+Set **Active Input Handling** to **Both** to keep your game's input working and
+stop the prompt. Remote taps and clicks from the dashboard are injected through
+the Input System, so they can't drive a game that reads only the old Input
+Manager.
 
 ### UI test automation
 
