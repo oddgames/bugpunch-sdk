@@ -87,8 +87,9 @@ namespace ODDGames.BugpunchSdk.Scripting
             {
                 var options = new ScriptCompileOptions { TrustLevel = ScriptTrustLevel.Admin, DebugHooks = hook != null };
                 options.DeniedNamespacePrefixes.Remove("ODDGames.BugpunchSdk");
-                bool wrapped = !DeclaresClass(code);
-                if (!ScriptCompiler.TryCompile(wrapped ? WrapTestBody(code) : code, out var script, options) || script == null)
+                SplitHelpers(code, out var body, out var helpers);
+                bool wrapped = !DeclaresClass(body);
+                if (!ScriptCompiler.TryCompile((wrapped ? WrapTestBody(body) : body) + helpers, out var script, options) || script == null)
                     return BuildErrorResponse(script?.Diagnostics);
                 var debugHook = hook == null ? null : new TestDebugHook(hook, wrapped);
                 evaluate = () =>
@@ -105,6 +106,17 @@ namespace ODDGames.BugpunchSdk.Scripting
             {
                 return $"{{\"ok\":false,\"errors\":[{DescribeError(ex)}]}}";
             }
+        }
+
+        // Everything from this comment line down is the project's helper library: classes the test body calls.
+        // It is compiled after the wrapped body, so the body keeps top-level await and its own line numbers.
+        const string HelpersMarker = "\n// bugpunch:helpers";
+
+        static void SplitHelpers(string code, out string body, out string helpers)
+        {
+            int at = code.IndexOf(HelpersMarker, StringComparison.Ordinal);
+            body = at < 0 ? code : code.Substring(0, at);
+            helpers = at < 0 ? "" : code.Substring(at);
         }
 
         static bool DeclaresClass(string code) =>
