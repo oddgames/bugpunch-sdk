@@ -139,6 +139,40 @@ Callers: the Remote IDE device route `POST /action` (returns `{ok, error?, elaps
 
 ---
 
+## Named test states
+
+A test that starts from "a fresh install" or "a played account" needs the game to get there; only the game knows how. The SDK names the contract and the game implements it. Register states once at startup:
+
+```csharp
+using System.Threading.Tasks;
+using ODDGames.BugpunchSdk;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public static class MyGameTestStates
+{
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    static void Register()
+    {
+        ScriptTest.RegisterState(ScriptTest.StateBlank,
+            "Fresh install: nothing saved, signed out, at the title screen.",
+            async () =>
+            {
+                PlayerPrefs.DeleteAll();
+                await SceneManager.LoadSceneAsync("Title");
+            });
+
+        ScriptTest.RegisterState(ScriptTest.StateMainMenu,
+            "Current account, at the main menu with nothing in front of it.",
+            async () => await SceneManager.LoadSceneAsync("MainMenu"));
+    }
+}
+```
+
+Well-known names are `ScriptTest.StateBlank` (`blank`), `ScriptTest.StateDirty` (`dirty`: a played account at the main menu) and `ScriptTest.StateMainMenu` (`main_menu`); a game may register more. A script calls `await ScriptTest.State("blank");` as its first line, and the server can list and apply states through `GET /run-test/states` and `POST /run-test/state?name=<state>` (the reply carries `elapsedMs`, or the exception; an unknown name lists the registered ones). Applying a state is allowed while a test run is active.
+
+---
+
 ## Gotchas
 
 - **Skipping the scope.** Calling `Search.Find()` + injector methods directly loses START/COMPLETE logs, screenshots and failure reporting.
