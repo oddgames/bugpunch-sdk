@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.284] - 2026-11-12
+
+### Changed
+- Test contract: a game defines what automated tests need from it with BugpunchTestContract - DefineRestartGame, DefineRestartGameFresh and DefineRestartGameDirty (its own restart, as test states restart_game, restart_game_fresh, restart_game_dirty), DefineScreen (the name of the screen showing) and DefineState (its own facts). The hierarchy state read carries screen and state, and GET /run-test/contract lists what is defined and what is missing. C# only: these are hooks into the game's Unity code, reached through the Unity-side router on every lane; the Android and iOS native lanes need nothing.
+
 ## [0.8.283] - 2026-11-12
 
 ### Changed
@@ -539,6 +544,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.284] - 2026-11-12
+
+### Changed
+- Test contract: a game defines what automated tests need from it with BugpunchTestContract - DefineRestartGame, DefineRestartGameFresh and DefineRestartGameDirty (its own restart, as test states restart_game, restart_game_fresh, restart_game_dirty), DefineScreen (the name of the screen showing) and DefineState (its own facts). The hierarchy state read carries screen and state, and GET /run-test/contract lists what is defined and what is missing. C# only: these are hooks into the game's Unity code, reached through the Unity-side router on every lane; the Android and iOS native lanes need nothing.
 
 ## [0.8.283] - 2026-11-12
 
