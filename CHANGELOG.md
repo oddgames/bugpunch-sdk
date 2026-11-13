@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.285] - 2026-11-13
+
+### Changed
+- Goals can declare what a test must set up: Goal(...).Setup("game tool") names a game tool a test run calls before it starts on the goal (a debug flag, hidden purchases), and Goal(...).StartFrom("test state") names the state it starts from. Both are read by the build-time goal scan and sent in the goal catalogs as setup and start_state. C# only: goals are declared and scanned in C#; the native lanes have nothing to change, and the iOS framework is the one shipped in 0.8.284 (the build Mac was unreachable).
+
 ## [0.8.284] - 2026-11-12
 
 ### Changed
@@ -544,6 +549,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.285] - 2026-11-13
+
+### Changed
+- Goals can declare what a test must set up: Goal(...).Setup("game tool") names a game tool a test run calls before it starts on the goal (a debug flag, hidden purchases), and Goal(...).StartFrom("test state") names the state it starts from. Both are read by the build-time goal scan and sent in the goal catalogs as setup and start_state. C# only: goals are declared and scanned in C#; the native lanes have nothing to change, and the iOS framework is the one shipped in 0.8.284 (the build Mac was unreachable).
 
 ## [0.8.284] - 2026-11-12
 
