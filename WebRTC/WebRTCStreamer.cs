@@ -18,9 +18,9 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
     /// per peer), so adding a viewer costs an extra encoder pipeline but reuses
     /// the same GPU blit.
     ///
-    /// Created only when a debug session starts. That keeps the streamer idle, but it
-    /// does not defer libwebrtc: com.unity.webrtc's ContextManager.Init loads the
-    /// native library at SubsystemRegistration in every player build.
+    /// Created only when a debug session starts, and libwebrtc itself starts only on
+    /// the first offer (<see cref="WebRtcDeferredInit"/>): the SDK's build step takes
+    /// com.unity.webrtc's boot-time initialiser out of player builds.
     /// </summary>
     [UnityEngine.Scripting.Preserve]
     public class WebRTCStreamer : MonoBehaviour, IStreamer
@@ -374,6 +374,9 @@ namespace ODDGames.BugpunchSdk.RemoteIDE
             // tab reloaded with the same sessionId — shouldn't happen with
             // randomUUID, but guard), tear it down first.
             ClosePeer(sessionId, "replaced by new offer");
+
+            // The first offer is what starts libwebrtc in a player build.
+            WebRtcDeferredInit.Ensure();
 
             // (Re)start the WebRTC.Update() operation pump — it only runs while
             // peers are alive (last-peer close stops it, including the stale
