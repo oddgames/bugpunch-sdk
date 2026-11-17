@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.289] - 2026-11-17
+
+### Changed
+- Android reports its package name and signing certificate SHA-1 when it registers, so the dashboard's SDK SSO page can list them for Google sign-in setup
+
 ## [0.8.288] - 2026-11-17
 
 ### Changed
@@ -568,6 +573,11 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.289] - 2026-11-17
+
+### Changed
+- Android reports its package name and signing certificate SHA-1 when it registers, so the dashboard's SDK SSO page can list them for Google sign-in setup
 
 ## [0.8.288] - 2026-11-17
 
