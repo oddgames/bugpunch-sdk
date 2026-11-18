@@ -143,6 +143,47 @@ public class SpriteButton : MonoBehaviour, IBugpunchElementInfo
 
 `BugpunchElementOverrides` also takes `Visible`, `ScreenRect` (when the renderer bounds are not where it is drawn) and `Name` (an extra name `Name()` matches). The UI tree reports `rect`, `visible`, `interactable` and `sortOrder` for these objects, and `custom`, `role` and the same fields for provider elements.
 
+**A control that is not a Button.** Search's `Interactable()`, the UI tree and the UI crawl press Buttons, Selectables and input fields. Anything else a player taps is picked up in one of three ways:
+
+- **Found.** A component that implements uGUI's `IPointerClickHandler` or `IPointerDownHandler` is a control already; nothing to do.
+- **Declared.** Implement `IBugpunchClickable` on the MonoBehaviour, or on the `VisualElement` subclass, that handles the tap. `CanClick` says whether a tap does anything right now.
+- **Registered.** For the rare control with no class of its own (a plain `VisualElement` given a click callback), call `BugpunchElements.RegisterClickable` and dispose the result when it goes away.
+
+```csharp
+using System;
+using ODDGames.BugpunchSdk;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+// A billboard in the scene the game picks with its own raycast.
+public class AdBoard : MonoBehaviour, IBugpunchClickable
+{
+    public bool locked;
+    public bool CanClick => !locked;
+}
+
+// A card that handles its own pointer events.
+public class CardSlot : VisualElement, IBugpunchClickable
+{
+    public bool CanClick => enabledInHierarchy;
+}
+
+public class PickerScreen : MonoBehaviour
+{
+    IDisposable _cancel;
+
+    public void Show(VisualElement cancel)
+    {
+        cancel.RegisterCallback<ClickEvent>(_ => gameObject.SetActive(false));
+        _cancel = BugpunchElements.RegisterClickable(cancel);
+    }
+
+    void OnDisable() => _cancel?.Dispose();
+}
+```
+
+The tap is injected at the centre of the control's screen rect: the renderer or collider bounds for a scene object, the layout rect for an element.
+
 ### What Search can't see
 
 - **IMGUI** (`OnGUI`) has no `Transform`; describe it with a provider (above) to make it searchable. Unity IAP's Fake Store purchase dialog is built in: its question is a `Label` and its buttons are `Button`s (Ids `fakestore.ok` / `fakestore.cancel`), so `Click(Text("Buy"))` answers it.
