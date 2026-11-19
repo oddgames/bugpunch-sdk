@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.291] - 2026-11-19
+
+### Changed
+- Reachability: another UI Toolkit panel covers a control only where it draws an element, and the cover is named by that element and its panel
+- Reachability: probes with a pointer no gesture is using, so a pointer capture no longer makes every control on screen read as covered
+
 ## [0.8.290] - 2026-11-19
 
 ### Changed
@@ -578,6 +584,12 @@ All notable changes to this project will be documented in this file.
 - sdk(ios): the iOS build hook could be dropped whole on a consumer's build agent, and the only symptom was an Xcode link failure naming Apple frameworks. ODDGames.Bugpunch.Editor.dll references UnityEditor.Android.Extensions / Unity.Android.Types, so a Unity install without Android Build Support — an iOS-only Mac build agent, e.g. a Jenkins node that installs the 'ios' module only — cannot resolve them, and the importer's validateReferences then makes Unity discard the entire assembly. Nothing in the Editor lane runs: no LinkFrameworks, no -force_load, no dSYM upload hook, no Sign in with Apple entitlement merge. Without -force_load the linker pulls only the archive members IL2CPP happens to reference, so the failure surfaces 40 minutes later in the Xcode log as "Undefined symbols for architecture arm64" naming _MPSSupportsMTLDevice / _OBJC_CLASS_# Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.8.291] - 2026-11-19
+
+### Changed
+- Reachability: another UI Toolkit panel covers a control only where it draws an element, and the cover is named by that element and its panel
+- Reachability: probes with a pointer no gesture is using, so a pointer capture no longer makes every control on screen read as covered
 
 ## [0.8.290] - 2026-11-19
 
